@@ -1,0 +1,15 @@
+Format-Specification: http://anonscm.debian.org/viewvc/dep/web/deps/dep5/copyright-format.xml?revision=279&view=markup
+Name: ceph-nvmeof
+Maintainer: Jason Dillaman <dillaman@redhat.com>
+Source: http://github.com/ceph/ceph-nvmeof
+
+Files: *
+License: GPL-3.0-or-later (see LICENSE)
+
+Files: ceph_nvmeof_gateway/backends/spdk/rpc
+Copyright:
+	Intel Corporation
+License: BSD 3-clause (see COPYING-SPDK)
+
+Files: ceph_nvmeof_gateway/static/swagger-ui*
+License: Apache 2.0 (see COPYING-APACHE)
