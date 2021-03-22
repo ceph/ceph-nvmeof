@@ -103,6 +103,12 @@ class Config:
     DEFAULTS = {
         "api_host": StrSetting("api_host", "::"),
         "api_port": IntSetting("api_port", 1, 65535, 5000),
+
+        "ceph_config": StrSetting("ceph_config", ""),
+        "client_name": StrSetting("client_name", "client.admin"),
+        "pool_name": StrSetting("pool_name", "rbd"),
+        "db_name": StrSetting("db_name", "ceph_nvmeof_gateway"),
+
         "logger_level": IntSetting("logger_level", logging.DEBUG, logging.CRITICAL,
                                    logging.DEBUG),
         "log_to_stderr": BoolSetting("log_to_stderr", True),

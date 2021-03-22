@@ -5,7 +5,7 @@ from logging.handlers import RotatingFileHandler
 import signal
 import sys
 
-from . import api
+from . import api, db
 from .settings import Settings
 
 
@@ -45,6 +45,7 @@ def _initialize_logging(settings):
 
 def _parse_argments():
     parser = argparse.ArgumentParser(description='Ceph NVMeOF Gateway.')
+    parser.add_argument('db-init', nargs='?', help="initialize the backing DB")
     parser.add_argument('--conf', '-c', default='/etc/ceph/nvmeof-gateway.cfg',
                         help='path to configuration')
 
@@ -70,10 +71,16 @@ class SignalHandler:
 
 
 def main():
-    settings = Settings(_parse_argments())
+    arguments = _parse_argments()
+    settings = Settings(arguments)
     settings.load()
 
     logger = _initialize_logging(settings)
+
+    if arguments['db-init']:
+        db.create(settings)
+        return
+
     api_server = api.Server(settings)
 
     signal_handler = SignalHandler(logger, api_server)

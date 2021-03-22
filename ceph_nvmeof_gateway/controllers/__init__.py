@@ -428,6 +428,10 @@ class Controller:
                     self.__class__.__name__, self._cp_path_)  # type: ignore
         super(Controller, self).__init__()
 
+    @property
+    def db(self):
+        return cherrypy.request.db
+
 
 class RESTController(Controller):
 

@@ -3,9 +3,9 @@ import logging
 import os
 import threading
 import time
+from cp_sqlalchemy import SQLAlchemyPlugin, SQLAlchemyTool
 
-from ceph_nvmeof_gateway import controllers
-
+from ceph_nvmeof_gateway import controllers, db, models
 
 logger = logging.getLogger(__name__)
 
@@ -22,11 +22,13 @@ class Server:
     def serve(self):
         self._configure()
 
+        models.load()
         mapper, parent_urls = controllers.generate_routes()
 
         current_dir = os.path.dirname(os.path.abspath(__file__))
         config = {
             '/static': {
+                'tools.db.on': False,
                 'tools.staticdir.on': True,
                 'tools.staticdir.dir': os.path.join(current_dir, 'static'),
                 'tools.staticdir.content_types': {'css': 'text/css',
@@ -38,6 +40,11 @@ class Server:
                 'request.dispatch': mapper
             }
 
+        sqlalchemy_plugin = DbPlugin(cherrypy.engine, models.Model,
+                                     db.get_connect_uri(self.settings))
+        sqlalchemy_plugin.subscribe()
+        sqlalchemy_plugin.create()
+
         cherrypy.tree.mount(None, config=config)
         cherrypy.engine.start()
 
@@ -48,9 +55,13 @@ class Server:
         logger.info("engine stopped")
 
     def _configure(self):
+        db.initialize_ceph_vfs()
+
         server_addr = self.settings.config.api_host
         server_port = self.settings.config.api_port
         logger.info('server: host=%s port=%d', server_addr, server_port)
+
+        cherrypy.tools.db = SQLAlchemyTool(class_=db.Session)
 
         cherrypy.tools.request_logging = RequestLoggingTool()
         cherrypy.log.access_log.propagate = False
@@ -68,6 +79,7 @@ class Server:
             ],
             'tools.json_in.on': True,
             'tools.json_in.force': True,
+            'tools.db.on': True,
             'tools.request_logging.on': True,
             'log.access_file': '',
             'log.error_file': '',
@@ -75,6 +87,15 @@ class Server:
             'error_page.default': controllers.json_error_page,
         }
         cherrypy.config.update(config)
+
+
+class DbPlugin(SQLAlchemyPlugin):
+    def __init__(self, bus, orm_base, db_uri, **kwargs):
+        super(DbPlugin, self).__init__(bus, orm_base, db_uri, **kwargs)
+
+    def start(self):
+        super(DbPlugin, self).start()
+        db.initialize_session(self.sa_engine)
 
 
 class RequestLoggingTool(cherrypy.Tool):
