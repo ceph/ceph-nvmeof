@@ -24,6 +24,7 @@ setup(
         "ceph_nvmeof_gateway",
         "ceph_nvmeof_gateway.controllers",
         "ceph_nvmeof_gateway.models",
+        "ceph_nvmeof_gateway.schemas",
     ],
     package_data={
         "ceph_nvmeof_gateway": ["static/*"],
@@ -37,6 +38,8 @@ setup(
     install_requires=[
         'CherryPy',
         'CherryPy-SQLAlchemy',
+        'marshmallow',
+        'marshmallow_sqlalchemy',
         'rados',
         'rbd',
         'routes',

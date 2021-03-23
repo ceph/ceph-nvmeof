@@ -1,5 +1,7 @@
 CherryPy
 CherryPy-SQLAlchemy
+marshmallow
+marshmallow_sqlalchemy
 rados
 rbd
 routes
