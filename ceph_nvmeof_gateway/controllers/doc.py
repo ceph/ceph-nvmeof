@@ -281,6 +281,7 @@ class Docs(Controller):
                         summary = func.doc_info['summary']
                     resp = func.doc_info['response']
                     p_info = func.doc_info['parameters']
+
                 params = []
                 if endpoint.path_params:
                     params.extend(
@@ -302,7 +303,12 @@ class Docs(Controller):
 
                 if method.lower() in ['post', 'put']:
                     if endpoint.body_params:
-                        body_params = cls._add_param_info(endpoint.body_params, p_info)
+                        if hasattr(func, 'body_params_schema'):
+                            # marshmallow schema has already been processed
+                            body_params = p_info
+                        else:
+                            body_params = cls._add_param_info(endpoint.body_params, p_info)
+
                         methods[method.lower()]['requestBody'] = {
                             'content': {
                                 'application/json': {

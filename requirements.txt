@@ -1,3 +1,4 @@
+apispec
 CherryPy
 CherryPy-SQLAlchemy
 marshmallow

@@ -36,6 +36,7 @@ setup(
     },
     data_files=[("var/log/ceph-nvmeof-gw", [])],
     install_requires=[
+        'apispec',
         'CherryPy',
         'CherryPy-SQLAlchemy',
         'marshmallow',

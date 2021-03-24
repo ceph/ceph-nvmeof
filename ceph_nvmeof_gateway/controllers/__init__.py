@@ -1,3 +1,4 @@
+import apispec.ext.marshmallow.common
 import cherrypy
 import collections
 from enum import Enum
@@ -6,6 +7,8 @@ import importlib
 import inspect
 import json
 import logging
+import marshmallow.schema
+import marshmallow.fields
 import os
 import pkgutil
 import re
@@ -107,6 +110,20 @@ def json_error_page(status, message, traceback, version):
                            version=version))
 
 
+def _get_json_request_model(request, schema):
+    if request.method not in request.methods_with_bodies:
+        raise cherrypy.HTTPError(400, 'Unexpected body')
+
+    content_type = request.headers.get('Content-Type', '')
+    if content_type not in ['application/json', 'text/javascript'] or \
+            not hasattr(request, 'json'):
+        raise cherrypy.HTTPError(400, 'Expected JSON body')
+    if isinstance(request.json, str):
+        return schema.loads(request.json, session=request.db)
+    else:
+        return schema.load(request.json, session=request.db)
+
+
 def _get_request_body_params(request):
     """
     Helper function to get parameters from the request body.
@@ -165,6 +182,10 @@ def _get_function_params(func):
             })
 
     return func_params
+
+
+def _to_snake_case(name):
+    return re.sub(r'(?<!^)(?=[A-Z])', '_', name).lower()
 
 
 class ControllerRoute(object):
@@ -410,15 +431,22 @@ class Controller:
                 if isinstance(value, str):
                     kwargs[key] = unquote(value)
 
-            # Process method arguments.
-            params = _get_request_body_params(cherrypy.request)
-            kwargs.update(params)
+            if hasattr(func, 'body_params_schema'):
+                kwargs[_to_snake_case(func.body_params_schema.__class__.__name__)] = \
+                    _get_json_request_model(cherrypy.request, func.body_params_schema)
+            else:
+                # Process method arguments.
+                params = _get_request_body_params(cherrypy.request)
+                kwargs.update(params)
 
             ret = func(*args, **kwargs)
             if isinstance(ret, bytes):
                 ret = ret.decode('utf-8')
-            if json_response:
+            if json_response or hasattr(func, 'response_schema'):
                 cherrypy.response.headers['Content-Type'] = 'application/json'
+            if hasattr(func, 'response_schema'):
+                ret = func.response_schema.dumps(ret).encode('utf8')
+            elif json_response:
                 ret = json.dumps(ret).encode('utf8')
             return ret
         return inner
@@ -580,11 +608,12 @@ def EndpointDoc(description="", group="", parameters=None, responses=None):  # n
     if not isinstance(group, str):
         raise Exception("%s has been called with a groupname that is not a string: %s"
                         % (EndpointDoc.__name__, group))
-    if parameters and not isinstance(parameters, dict):
-        raise Exception("%s has been called with parameters that is not a dict: %s"
+    if parameters and not isinstance(parameters, dict) and \
+            not isinstance(parameters, marshmallow.schema.Schema):
+        raise Exception("%s has been called with parameters that is not a schema: %s"
                         % (EndpointDoc.__name__, parameters))
     if responses and not isinstance(responses, dict):
-        raise Exception("%s has been called with responses that is not a dict: %s"
+        raise Exception("%s has been called with responses that is not a schema: %s"
                         % (EndpointDoc.__name__, responses))
 
     if not parameters:
@@ -641,21 +670,55 @@ def EndpointDoc(description="", group="", parameters=None, responses=None):  # n
         return splitted
 
     # nested = True means parameters are inside a dict or array
-    def _split_parameters(data, nested=False):
+    def _split_parameters(data, nested=False, response=False):
         param_list = []  # type: List[Any]
         if isinstance(data, dict):
             param_list.extend(_split_dict(data, nested))
         elif isinstance(data, (list, tuple)):
             param_list.extend(_split_list(data, True))
+        elif isinstance(data, marshmallow.schema.Schema):
+            fields = apispec.ext.marshmallow.common.get_fields(data)
+            for name, field in fields.items():
+                if not response and field.dump_only:
+                    continue
+
+                param = {
+                    'name': name,
+                    'description': field.metadata.get('description', ''),
+                    'required': field.required,
+                    'nested': False,
+                }
+
+                field_mapping = {
+                    marshmallow.fields.List: list,
+                    marshmallow.fields.Boolean: bool,
+                    marshmallow.fields.Integer: int,
+                    marshmallow.fields.Number: float,
+                    marshmallow.fields.String: str,
+                }
+
+                for field_class in type(field).__mro__:
+                    if field_class in field_mapping:
+                        param['type'] = field_mapping[field_class]
+                        break
+
+                if field.default:
+                    param['default'] = field.default
+
+                param_list.append(param)
         return param_list
 
     resp = {}
+    resp_schema = None
     if responses:
         for status_code, response_body in responses.items():
+            if isinstance(response_body, marshmallow.schema.Schema):
+                resp_schema = response_body
+
             schema_input = SchemaInput()
             schema_input.type = SchemaType.ARRAY if \
                 isinstance(response_body, list) else SchemaType.OBJECT
-            schema_input.params = _split_parameters(response_body)
+            schema_input.params = _split_parameters(response_body, response=True)
 
             resp[str(status_code)] = schema_input
 
@@ -666,6 +729,12 @@ def EndpointDoc(description="", group="", parameters=None, responses=None):  # n
             'parameters': _split_parameters(parameters),
             'response': resp
         }
+
+        if isinstance(parameters, marshmallow.schema.Schema):
+            func.body_params_schema = parameters
+        if resp_schema:
+            func.response_schema = resp_schema
+
         return func
 
     return _wrapper
