@@ -1,0 +1,6 @@
+__pycache__
+.tox
+build
+ceph_nvmeof.egg-info
+venv
+*.swp
