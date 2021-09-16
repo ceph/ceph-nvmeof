@@ -1,0 +1,117 @@
+//
+//  Copyright (c) 2021 International Business Machines
+//  All rights reserved.
+//
+//  SPDX-License-Identifier: MIT
+//
+//  Authors: anita.shekar@ibm.com, sandy.kaur@ibm.com
+//
+
+
+syntax = "proto3";
+
+service NVMEGateway {
+	//start the SPDK target
+	rpc start_spdk(spdk_start_req) returns(spdk_status){}
+
+    	//Create Transport
+	rpc nvmf_create_transport(create_transport_req) returns(req_status) {}
+
+	// Create bdev/ NVMe Namespace from an RBD image
+	rpc bdev_rbd_create(bdev_create_req) returns (bdev_info) {}
+
+	//Create NVMf Subsystem
+	rpc nvmf_create_subsystem(subsystem_create_req) returns(subsystem_info) {}
+
+	// Add NVMf namespace to nvme subsystem
+	rpc nvmf_subsystem_add_ns(subsystem_add_ns_req) returns(nsid) {}
+
+	//Add Host to a subsystem (so all namespaces in that subsystem) 
+	rpc nvmf_subsystem_add_host(subsystem_add_host_req) returns (req_status) {}
+
+	//Allow any host access to given subsystem. #ifdef TEST
+	rpc nvmf_subsystem_allow_any_host(subsystem_allow_any_host_req) returns (req_status) {}
+
+    	//Add an SPDK-NVMf listener at a given IP addr/ tcp port
+	rpc nvmf_subsystem_add_listener(subsystem_add_listener_req) returns(req_status) {}
+}
+
+message spdk_start_req {
+}
+
+
+message spdk_status {
+	bool spdk_status = 1;
+}
+
+
+message bdev_create_req {
+	optional string bdev_name = 1; 
+	optional string user_id = 2;
+	string ceph_pool_name = 3; //required
+	string rbd_name = 4; //required
+	int32  block_size = 5; //required
+}
+
+message bdev_info {
+	string bdev_name = 1;
+}
+
+message subsystem_create_req {
+	string subsystem_nqn = 1; //required
+	optional string tgt_name = 2; //parent NVMeoF target name
+	optional string serial_number = 3; // Serial number of virtual controller
+	optional string model_number = 4; //model Number of virtual controller
+	optional int32  max_namespaces = 5; //default = 0 (unlimited)
+	optional bool   allow_any_host = 6; //Default: false.
+}
+
+message subsystem_info {
+	string subsystem_nqn = 1;
+	bool   created = 2; //Status of the create request
+}
+
+message subsystem_add_ns_req {
+	string subsystem_nqn = 1; //required
+	optional int32  nsid = 2; //Default: automaticaly assigned nsid
+	string bdev_name = 3; //required. Name of bdev to expose as namespace
+	optional string nguid = 4; 
+	optional string euid = 5;
+	optional string uuid = 6;
+	optional string ptpl_file = 7; //file path to store/ restore persistent reservation info
+	optional string tgt_name = 8; //parent NVMeoF target name
+}
+
+message nsid {
+	int32 nsid = 1; //nsid created
+}
+
+message subsystem_add_host_req {
+	string subsystem_nqn = 1; //subsystem to which host is being added 
+	string host_nqn = 2; //nqn of host requesting access
+	optional string tgt_name = 3; //Parent NVMe-oF target name
+}
+
+message req_status {
+	bool status = 1; 
+}
+
+message subsystem_allow_any_host_req {
+	string subsystem_nqn = 1; //subsystem to which promiscuous access is being set
+	bool   disable = 2; //Allow any host (true) or enforce allowed host list (false)
+	optional string tgt_name = 3; //Parent NVMe-oF target name
+}
+
+message create_transport_req {
+	string trtype = 1; //NVMe Transport Type (eg: tcp. rdma, etc)
+}
+
+message subsystem_add_listener_req {
+	string nqn = 1; //subsystem for which listener is being added
+	optional string tgt_name = 2; 
+    	string trtype = 3;
+	string adrfam = 4;
+	string traddr = 5;
+	string trsvcid = 6; 
+}
+
