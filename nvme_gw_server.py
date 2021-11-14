@@ -93,6 +93,26 @@ class GWService(pb2_grpc.NVMEGatewayServicer):
 
         return pb2.bdev_info(bdev_name=bdev_name)
 
+    def bdev_rbd_delete(self, request, context):
+        # Delete bdev
+        self.logger.info({
+            f"Received request to delete bdev: {request.bdev_name}",
+        })
+        try:
+            return_string = self.spdk_rpc.bdev.bdev_rbd_delete(
+                self.client,
+                request.bdev_name,
+            )
+            self.logger.info(f"Deleted bdev {request.bdev_name}")
+
+        except Exception as ex:
+            self.logger.error(f"bdev delete failed with: \n {ex}")
+            context.set_code(grpc.StatusCode.INTERNAL)
+            context.set_details(f"{ex}")
+            return pb2.req_status()
+
+        return pb2.req_status(status=return_string)
+
     def nvmf_create_subsystem(self, request, context):
         # Create an NVMe Subsystem
         self.logger.info({
@@ -116,6 +136,26 @@ class GWService(pb2_grpc.NVMEGatewayServicer):
 
         return pb2.subsystem_info(subsystem_nqn=request.subsystem_nqn,
                                   created=return_status)
+
+    def nvmf_delete_subsystem(self, request, context):
+        # Delete an NVMe Subsystem
+        self.logger.info({
+            f"Received request to delete: {request.subsystem_nqn}",
+        })
+
+        try:
+            return_string = self.spdk_rpc.nvmf.nvmf_delete_subsystem(
+                self.client,
+                nqn=request.subsystem_nqn,
+            )
+            self.logger.info(f"returned with status: {return_string}")
+        except Exception as ex:
+            self.logger.error(f"delete_subsystem failed with: \n {ex}")
+            context.set_code(grpc.StatusCode.INTERNAL)
+            context.set_details(f"{ex}")
+            return pb2.req_status()
+
+        return pb2.req_status(status=return_string)
 
     def nvmf_subsystem_add_ns(self, request, context):
         # Add given NS to a given subsystem

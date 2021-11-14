@@ -11,28 +11,34 @@
 syntax = "proto3";
 
 service NVMEGateway {
-	//start the SPDK target
-	rpc start_spdk(spdk_start_req) returns(spdk_status){}
+	// start the SPDK target
+	rpc start_spdk(spdk_start_req) returns(spdk_status) {}
 
-    	//Create Transport
+	// Create Transport
 	rpc nvmf_create_transport(create_transport_req) returns(req_status) {}
 
 	// Create bdev/ NVMe Namespace from an RBD image
 	rpc bdev_rbd_create(bdev_create_req) returns (bdev_info) {}
 
-	//Create NVMf Subsystem
+	// Delete RBD bdev
+	rpc bdev_rbd_delete(bdev_delete_req) returns (req_status) {}
+
+	// Create NVMf Subsystem
 	rpc nvmf_create_subsystem(subsystem_create_req) returns(subsystem_info) {}
+
+	// Delete NVMf Subsystem
+	rpc nvmf_delete_subsystem(subsystem_delete_req) returns(req_status) {}
 
 	// Add NVMf namespace to nvme subsystem
 	rpc nvmf_subsystem_add_ns(subsystem_add_ns_req) returns(nsid) {}
 
-	//Add Host to a subsystem (so all namespaces in that subsystem) 
+	// Add Host to a subsystem (so all namespaces in that subsystem)
 	rpc nvmf_subsystem_add_host(subsystem_add_host_req) returns (req_status) {}
 
-	//Allow any host access to given subsystem. #ifdef TEST
+	// Allow any host access to given subsystem. #ifdef TEST
 	rpc nvmf_subsystem_allow_any_host(subsystem_allow_any_host_req) returns (req_status) {}
 
-    	//Add an SPDK-NVMf listener at a given IP addr/ tcp port
+	// Add an SPDK-NVMf listener at a given IP addr/ tcp port
 	rpc nvmf_subsystem_add_listener(subsystem_add_listener_req) returns(req_status) {}
 }
 
@@ -46,7 +52,7 @@ message spdk_status {
 
 
 message bdev_create_req {
-	optional string bdev_name = 1; 
+	optional string bdev_name = 1;
 	optional string user_id = 2;
 	string ceph_pool_name = 3; //required
 	string rbd_name = 4; //required
@@ -54,6 +60,10 @@ message bdev_create_req {
 }
 
 message bdev_info {
+	string bdev_name = 1;
+}
+
+message bdev_delete_req {
 	string bdev_name = 1;
 }
 
@@ -71,11 +81,15 @@ message subsystem_info {
 	bool   created = 2; //Status of the create request
 }
 
+message subsystem_delete_req {
+	string subsystem_nqn = 1;
+}
+
 message subsystem_add_ns_req {
 	string subsystem_nqn = 1; //required
 	optional int32  nsid = 2; //Default: automaticaly assigned nsid
 	string bdev_name = 3; //required. Name of bdev to expose as namespace
-	optional string nguid = 4; 
+	optional string nguid = 4;
 	optional string euid = 5;
 	optional string uuid = 6;
 	optional string ptpl_file = 7; //file path to store/ restore persistent reservation info
@@ -87,13 +101,13 @@ message nsid {
 }
 
 message subsystem_add_host_req {
-	string subsystem_nqn = 1; //subsystem to which host is being added 
+	string subsystem_nqn = 1; //subsystem to which host is being added
 	string host_nqn = 2; //nqn of host requesting access
 	optional string tgt_name = 3; //Parent NVMe-oF target name
 }
 
 message req_status {
-	bool status = 1; 
+	bool status = 1;
 }
 
 message subsystem_allow_any_host_req {
@@ -108,10 +122,10 @@ message create_transport_req {
 
 message subsystem_add_listener_req {
 	string nqn = 1; //subsystem for which listener is being added
-	optional string tgt_name = 2; 
+	optional string tgt_name = 2;
     	string trtype = 3;
 	string adrfam = 4;
 	string traddr = 5;
-	string trsvcid = 6; 
+	string trsvcid = 6;
 }
 

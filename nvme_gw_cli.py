@@ -153,6 +153,21 @@ class GatewayClient:
             self.logger.error(f"Failed to create bdev: \n {error}")
 
     @cli.cmd([
+        argument("-b", "--bdev", help="Bdev name", required=True),
+    ])
+    def delete_bdev(self, args):
+        """Deletes a bdev."""
+
+        try:
+            delete_req = pb2.bdev_delete_req(
+                bdev_name=args.bdev,
+            )
+            ret = self.stub.bdev_rbd_delete(delete_req)
+            self.logger.info(f"Deleted bdev: {delete_req.bdev_name}")
+        except Exception as error:
+            self.logger.error(f"Failed to delete bdev: \n {error}")
+
+    @cli.cmd([
         argument("-n", "--subnqn", help="Subsystem NQN", required=True),
         argument("-s", "--serial", help="Serial number", required=True),
     ])
@@ -166,6 +181,19 @@ class GatewayClient:
             self.logger.info(f"Created subsystem: {ret.subsystem_nqn}")
         except Exception as error:
             self.logger.error(f"Failed to create subsystem: \n {error}")
+
+    @cli.cmd([
+        argument("-n", "--subnqn", help="Subsystem NQN", required=True),
+    ])
+    def delete_subsystem(self, args):
+        """Deletes a new subsystem."""
+
+        try:
+            delete_req = pb2.subsystem_delete_req(subsystem_nqn=args.subnqn)
+            ret = self.stub.nvmf_delete_subsystem(delete_req)
+            self.logger.info(f"Deleted subsystem: {delete_req.subsystem_nqn}")
+        except Exception as error:
+            self.logger.error(f"Failed to delete subsystem: \n {error}")
 
     @cli.cmd([
         argument("-n", "--subnqn", help="Subsystem NQN", required=True),
