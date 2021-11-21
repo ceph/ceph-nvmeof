@@ -9,6 +9,7 @@
 
 import argparse
 import grpc
+import json
 import nvme_gw_pb2_grpc as pb2_grpc
 import nvme_gw_pb2 as pb2
 import nvme_gw_config
@@ -256,6 +257,20 @@ class GatewayClient:
             self.logger.info(f"Created {args.subnqn} listener: {ret.status}")
         except Exception as error:
             self.logger.error(f"Failed to create listener: \n {error}")
+
+
+    @cli.cmd()
+    def get_subsystems(self, args):
+        """Get subsystems."""
+
+        try:
+            get_req = pb2.subsystems_get_req()
+            ret = self.stub.nvmf_get_subsystems(get_req)
+            subsystems = json.loads(ret.subsystems)
+            formatted_subsystems = json.dumps(subsystems, indent=4)
+            self.logger.info(f"Get subsystems:\n{formatted_subsystems}")
+        except Exception as error:
+            self.logger.error(f"Failed to get subsystems: \n {error}")
 
 
 def main():

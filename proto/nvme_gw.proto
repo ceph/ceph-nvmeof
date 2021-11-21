@@ -40,6 +40,9 @@ service NVMEGateway {
 
 	// Add an SPDK-NVMf listener at a given IP addr/ tcp port
 	rpc nvmf_subsystem_add_listener(subsystem_add_listener_req) returns(req_status) {}
+
+	// Get NVMf Subsystems
+	rpc nvmf_get_subsystems(subsystems_get_req) returns(subsystems_info) {}
 }
 
 message spdk_start_req {
@@ -127,5 +130,12 @@ message subsystem_add_listener_req {
 	string adrfam = 4;
 	string traddr = 5;
 	string trsvcid = 6;
+}
+
+message subsystems_get_req {
+}
+
+message subsystems_info {
+	string subsystems = 1;
 }
 

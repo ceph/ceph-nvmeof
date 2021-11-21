@@ -16,6 +16,7 @@ import nvme_gw_pb2_grpc as pb2_grpc
 import nvme_gw_pb2 as pb2
 import nvme_gw_config
 import argparse
+import json
 
 
 class GWService(pb2_grpc.NVMEGatewayServicer):
@@ -254,6 +255,24 @@ class GWService(pb2_grpc.NVMEGatewayServicer):
 
         return pb2.req_status(status=return_string)
 
+    def nvmf_get_subsystems(self, request, context):
+        # Get NVMe Subsystems
+        self.logger.info({
+            f"Received request to get subsystems",
+        })
+
+        try:
+            ret = self.spdk_rpc.nvmf.nvmf_get_subsystems(
+                self.client,
+            )
+            self.logger.info(f"returned with: {ret}")
+        except Exception as ex:
+            self.logger.error(f"get_subsystems failed with: \n {ex}")
+            context.set_code(grpc.StatusCode.INTERNAL)
+            context.set_details(f"{ex}")
+            return pb2.subsystems_info()
+
+        return pb2.subsystems_info(subsystems=json.dumps(ret))
 
 def serve(gw_config_filename):
 
