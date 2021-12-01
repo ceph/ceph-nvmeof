@@ -9,6 +9,7 @@
 
 import argparse
 import grpc
+import json
 import nvme_gw_pb2_grpc as pb2_grpc
 import nvme_gw_pb2 as pb2
 import nvme_gw_config
@@ -54,7 +55,7 @@ class Parser:
             # attribute to point to the subcommand's associated function
             for arg in args:
                 parser.add_argument(*arg[0], **arg[1])
-                parser.set_defaults(func=func)
+            parser.set_defaults(func=func)
             return func
 
         return decorator
@@ -153,6 +154,21 @@ class GatewayClient:
             self.logger.error(f"Failed to create bdev: \n {error}")
 
     @cli.cmd([
+        argument("-b", "--bdev", help="Bdev name", required=True),
+    ])
+    def delete_bdev(self, args):
+        """Deletes a bdev."""
+
+        try:
+            delete_req = pb2.bdev_delete_req(
+                bdev_name=args.bdev,
+            )
+            ret = self.stub.bdev_rbd_delete(delete_req)
+            self.logger.info(f"Deleted bdev: {delete_req.bdev_name}")
+        except Exception as error:
+            self.logger.error(f"Failed to delete bdev: \n {error}")
+
+    @cli.cmd([
         argument("-n", "--subnqn", help="Subsystem NQN", required=True),
         argument("-s", "--serial", help="Serial number", required=True),
     ])
@@ -166,6 +182,19 @@ class GatewayClient:
             self.logger.info(f"Created subsystem: {ret.subsystem_nqn}")
         except Exception as error:
             self.logger.error(f"Failed to create subsystem: \n {error}")
+
+    @cli.cmd([
+        argument("-n", "--subnqn", help="Subsystem NQN", required=True),
+    ])
+    def delete_subsystem(self, args):
+        """Deletes a new subsystem."""
+
+        try:
+            delete_req = pb2.subsystem_delete_req(subsystem_nqn=args.subnqn)
+            ret = self.stub.nvmf_delete_subsystem(delete_req)
+            self.logger.info(f"Deleted subsystem: {delete_req.subsystem_nqn}")
+        except Exception as error:
+            self.logger.error(f"Failed to delete subsystem: \n {error}")
 
     @cli.cmd([
         argument("-n", "--subnqn", help="Subsystem NQN", required=True),
@@ -228,6 +257,20 @@ class GatewayClient:
             self.logger.info(f"Created {args.subnqn} listener: {ret.status}")
         except Exception as error:
             self.logger.error(f"Failed to create listener: \n {error}")
+
+
+    @cli.cmd()
+    def get_subsystems(self, args):
+        """Get subsystems."""
+
+        try:
+            get_req = pb2.subsystems_get_req()
+            ret = self.stub.nvmf_get_subsystems(get_req)
+            subsystems = json.loads(ret.subsystems)
+            formatted_subsystems = json.dumps(subsystems, indent=4)
+            self.logger.info(f"Get subsystems:\n{formatted_subsystems}")
+        except Exception as error:
+            self.logger.error(f"Failed to get subsystems: \n {error}")
 
 
 def main():
