@@ -35,8 +35,9 @@ class GWService(pb2_grpc.NVMEGatewayServicer):
         self.spdk_rpc = spdk_rpc
         spdk_tgt = self.nvme_config.get("config", "spdk_tgt")
         spdk_cmd = os.path.join(spdk_path, spdk_tgt)
+        spdk_rpc_socket = self.nvme_config.get("spdk", "rpc_socket")
 
-        cmd = [spdk_cmd, "all", "-u"]
+        cmd = [spdk_cmd, "-u", "-r", spdk_rpc_socket]
         self.logger.info(f"Starting {' '.join(cmd)}")
 
         try:
@@ -48,20 +49,18 @@ class GWService(pb2_grpc.NVMEGatewayServicer):
             self.logger.error(f"Unable to start SPDK: \n {ex}")
             raise
 
-        spdk_server_addr = self.nvme_config.get("spdk", "spdk_server_addr")
-        spdk_port = self.nvme_config.get("spdk", "spdk_port")
         timeout = self.nvme_config.getfloat("spdk", "timeout")
         log_level = self.nvme_config.get("spdk", "log_level")
         conn_retries = self.nvme_config.getint("spdk", "conn_retries")
 
         self.logger.info(
-            f"Attempting to initialize SPDK: server_addr: {spdk_server_addr}, port: {spdk_port}, conn_retries: {conn_retries}, timeout: {timeout}"
+            f"Attempting to initialize SPDK: rpc_socket: {spdk_rpc_socket}, conn_retries: {conn_retries}, timeout: {timeout}"
         )
 
         try:
             self.client = self.spdk_rpc.client.JSONRPCClient(
-                spdk_server_addr,
-                spdk_port,
+                spdk_rpc_socket,
+                None,
                 timeout,
                 log_level=log_level,
                 conn_retries=conn_retries,
