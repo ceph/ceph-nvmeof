@@ -7,9 +7,12 @@
 #  Authors: anita.shekar@ibm.com, sandy.kaur@ibm.com
 #
 
+import ctypes
+import ctypes.util
 import os
 import shlex
 import sys
+import signal
 import subprocess
 import grpc
 from concurrent import futures
@@ -19,6 +22,12 @@ import nvme_gw_config
 import argparse
 import json
 
+libc = ctypes.CDLL(ctypes.util.find_library("c"))
+PR_SET_PDEATHSIG = 1
+def set_pdeathsig(sig = signal.SIGTERM):
+    def callable():
+        return libc.prctl(PR_SET_PDEATHSIG, sig)
+    return callable
 
 class GWService(pb2_grpc.NVMEGatewayServicer):
     def __init__(self, nvme_config):
@@ -48,7 +57,8 @@ class GWService(pb2_grpc.NVMEGatewayServicer):
         try:
             subprocess.Popen(cmd,
                              stderr=subprocess.PIPE,
-                             stdout=subprocess.PIPE)
+                             stdout=subprocess.PIPE,
+                             preexec_fn = set_pdeathsig(signal.SIGTERM))
 
         except Exception as ex:
             self.logger.error(f"Unable to start SPDK: \n {ex}")
