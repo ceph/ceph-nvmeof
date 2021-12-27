@@ -287,6 +287,15 @@ class GWService(pb2_grpc.NVMEGatewayServicer):
 
         return pb2.subsystems_info(subsystems=json.dumps(ret))
 
+    def ping(self):
+        try:
+            ret = self.spdk_rpc.spdk_get_version(self.client)
+            return True
+        except Exception as ex:
+            self.logger.error(f"spdk_get_version failed with: \n {ex}")
+            return False
+
+
 def serve(gw_config_filename):
 
     nvme_config = nvme_gw_config.NVMeGWConfig(gw_config_filename)
@@ -339,7 +348,14 @@ def serve(gw_config_filename):
         server.add_insecure_port("{}:{}".format(gateway_addr, gateway_port))
 
     server.start()
-    server.wait_for_termination()
+
+    while True:
+        timedout = server.wait_for_termination(timeout=1)
+        if not timedout:
+            break
+        alive = gw_service.ping()
+        if not alive:
+            break
 
 
 if __name__ == "__main__":
