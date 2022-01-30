@@ -47,11 +47,12 @@ class GWService(pb2_grpc.NVMEGatewayServicer):
         spdk_tgt = self.nvme_config.get("config", "spdk_tgt")
         spdk_cmd = os.path.join(spdk_path, spdk_tgt)
         spdk_rpc_socket = self.nvme_config.get("spdk", "rpc_socket")
-        spdk_tgt_cmd_args = self.nvme_config.get("spdk", "tgt_cmd_args")
+        spdk_tgt_cmd_extra_args = self.nvme_config.get("spdk",
+            "tgt_cmd_extra_args")
 
         cmd = [spdk_cmd, "-u", "-r", spdk_rpc_socket]
-        if spdk_tgt_cmd_args:
-            cmd += shlex.split(spdk_tgt_cmd_args)
+        if spdk_tgt_cmd_extra_args:
+            cmd += shlex.split(spdk_tgt_cmd_extra_args)
         self.logger.info(f"Starting {' '.join(cmd)}")
 
         try:
