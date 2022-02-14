@@ -61,12 +61,12 @@ Run the tool with the -h flag to see a list of available commands:
 	
 	$ python3 ./nvme_gw_cli.py -h
 	usage: python3 ./nvme_gw_cli.py [-h] [-c CONFIG]
-			{create_bdev,create_subsystem,create_namespace,allow_any_hosts,create_transport,create_listener} ...
+			{create_bdev,delete_bdev,create_subsystem,delete_subsystem,create_namespace,delete_namespace,add_host,delete_host,create_transport,create_listener,delete_listener,get_subsystems} ...
 
 	CLI to manage NVMe gateways
 
 	positional arguments:
-	{create_bdev,create_subsystem,create_namespace,allow_any_hosts,create_transport,create_listener}
+	{create_bdev,delete_bdev,create_subsystem,delete_subsystem,create_namespace,delete_namespace,add_host,delete_host,create_transport,create_listener,delete_listener,get_subsystems}
 
 	optional arguments:
 	-h, --help            			show this help message and exit
@@ -124,7 +124,7 @@ Indicate the location of the keys and certificates in the config file:
 
 2. Run the CLI (ensure a ceph pool 'rbd' with an rbdimage 'mytestdevimage' is created prior to this step):
 
-		$ python3 ./nvme_gw_cli.py create_bdev -i mytestdevimage -p rbd
+		$ python3 ./nvme_gw_cli.py create_bdev -i mytestdevimage -p rbd -b Ceph0
 		INFO:root:Created bdev: Ceph0
 		
 		$ python3 ./nvme_gw_cli.py create_subsystem -n nqn.2016-06.io.spdk:cnode1 -s SPDK00000000000001
@@ -133,8 +133,8 @@ Indicate the location of the keys and certificates in the config file:
 		$ python3 ./nvme_gw_cli.py create_namespace -n nqn.2016-06.io.spdk:cnode1 -b Ceph0
 		INFO:root:Added namespace 1 to nqn.2016-06.io.spdk:cnode1
 		
-		$ python3 ./nvme_gw_cli.py allow_any_hosts -n nqn.2016-06.io.spdk:cnode1
-		INFO:root:All host access to nqn.2016-06.io.spdk:cnode1: True
+		$ python3 ./nvme_gw_cli.py add_host -n nqn.2016-06.io.spdk:cnode1 -t *
+		INFO:root:Allow open host access to nqn.2016-06.io.spdk:cnode1: True
 		
 		$ python3 ./nvme_gw_cli.py create_transport -t TCP
 		INFO:root:Created TCP transport: True
