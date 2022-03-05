@@ -167,8 +167,6 @@ class GWService(pb2_grpc.NVMEGatewayServicer):
 
         try:
             self.spdk_process = subprocess.Popen(cmd,
-                                                 stderr=subprocess.PIPE,
-                                                 stdout=subprocess.PIPE,
                                                  preexec_fn=set_pdeathsig(
                                                      signal.SIGTERM))
 
