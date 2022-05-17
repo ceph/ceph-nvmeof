@@ -28,6 +28,7 @@ class Parser:
         parser: ArgumentParser object.
         subparsers: Action object to add subcommands to main argument parser.
     """
+
     def __init__(self):
         self.parser = argparse.ArgumentParser(
             prog="python3 ./nvme_gw_cli.py",
@@ -48,6 +49,7 @@ class Parser:
         The arguments to this decorator are used as arguments for the argparse
         command.
         """
+
         def decorator(func):
             parser = self.subparsers.add_parser(func.__name__,
                                                 description=func.__doc__)
@@ -135,9 +137,13 @@ class GatewayClient:
     @cli.cmd([
         argument("-i", "--image", help="RBD image name", required=True),
         argument("-p", "--pool", help="Ceph pool name", required=True),
-        argument("-b", "--bdev", help="Bdev name"),
+        argument("-b", "--bdev", help="Bdev name", required=True),
         argument("-u", "--user", help="User ID"),
-        argument("-s", "--block-size", help="Block size", default=4096),
+        argument("-s",
+                 "--block-size",
+                 help="Block size",
+                 type=int,
+                 default=4096),
     ])
     def create_bdev(self, args):
         """Creates a bdev from a Ceph RBD."""
@@ -146,7 +152,8 @@ class GatewayClient:
             create_req = pb2.bdev_create_req(
                 ceph_pool_name=args.pool,
                 rbd_name=args.image,
-                block_size=int(args.block_size),
+                block_size=args.block_size,
+                bdev_name=args.bdev,
             )
             ret = self.stub.bdev_rbd_create(create_req)
             self.logger.info(f"Created bdev: {ret.bdev_name}")
@@ -160,9 +167,7 @@ class GatewayClient:
         """Deletes a bdev."""
 
         try:
-            delete_req = pb2.bdev_delete_req(
-                bdev_name=args.bdev,
-            )
+            delete_req = pb2.bdev_delete_req(bdev_name=args.bdev)
             ret = self.stub.bdev_rbd_delete(delete_req)
             self.logger.info(f"Deleted bdev: {delete_req.bdev_name}")
         except Exception as error:
@@ -211,20 +216,64 @@ class GatewayClient:
         except Exception as error:
             self.logger.error(f"Failed to add namespace: \n {error}")
 
-    @cli.cmd([argument("-n", "--subnqn", help="Subsystem NQN", required=True)])
-    def allow_any_hosts(self, args):
-        """Allows any host to access a subsystem."""
+    @cli.cmd([
+        argument("-n", "--subnqn", help="Subsystem NQN", required=True),
+        argument("-i", "--nsid", help="Namespace ID", type=int, required=True),
+    ])
+    def delete_namespace(self, args):
+        """Deletes a namespace from a previously created subsystem."""
 
         try:
-            allow_req = pb2.subsystem_allow_any_host_req(
-                subsystem_nqn=args.subnqn, disable=0)
-            ret = self.stub.nvmf_subsystem_allow_any_host(allow_req)
-            self.logger.info(f"All host access to {args.subnqn}: {ret.status}")
+            delete_req = pb2.ns_delete_req(subsystem_nqn=args.subnqn,
+                                           nsid=args.nsid)
+            ret = self.stub.nvmf_subsystem_remove_ns(delete_req)
+            self.logger.info(f"Deleted namespace {delete_req.nsid}: {ret}")
         except Exception as error:
-            self.logger.error(f"Failed to allow any host: \n {error}")
+            self.logger.error(f"Failed to remove namespace: \n {error}")
 
-    @cli.cmd(
-        [argument("-t", "--trtype", help="Transport type", default="TCP")])
+    @cli.cmd([
+        argument("-n", "--subnqn", help="Subsystem NQN", required=True),
+        argument("-t", "--host", help="Host NQN", required=True),
+    ])
+    def add_host(self, args):
+        """Adds a host to a previously created subsystem."""
+
+        try:
+            create_req = pb2.subsystem_add_host_req(subsystem_nqn=args.subnqn,
+                                                    host_nqn=args.host)
+            ret = self.stub.nvmf_subsystem_add_host(create_req)
+            if args.host == "*":
+                self.logger.info(
+                    f"Allowed open host access to {args.subnqn}: {ret.status}")
+            else:
+                self.logger.info(
+                    f"Added host {args.host} access to {args.subnqn}: {ret.status}"
+                )
+        except Exception as error:
+            self.logger.error(f"Failed to add host: \n {error}")
+
+    @cli.cmd([
+        argument("-n", "--subnqn", help="Subsystem NQN", required=True),
+        argument("-t", "--host", help="Host NQN", required=True),
+    ])
+    def delete_host(self, args):
+        """Deletes a host from a previously created subsystem."""
+
+        try:
+            delete_req = pb2.host_delete_req(subsystem_nqn=args.subnqn,
+                                            host_nqn=args.host)
+            ret = self.stub.nvmf_subsystem_remove_host(delete_req)
+            if args.host == "*":
+                self.logger.info(
+                    f"Disabled open host access to {args.subnqn}: {ret.status}")
+            else:
+                self.logger.info(
+                    f"Removed host {args.host} access from {args.subnqn}: {ret.status}"
+                )
+        except Exception as error:
+            self.logger.error(f"Failed to remove host: \n {error}")
+
+    @cli.cmd([argument("-t", "--trtype", help="Transport type", default="TCP")])
     def create_transport(self, args):
         """Sets a transport type."""
 
@@ -258,6 +307,28 @@ class GatewayClient:
         except Exception as error:
             self.logger.error(f"Failed to create listener: \n {error}")
 
+    @cli.cmd([
+        argument("-n", "--subnqn", help="Subsystem NQN", required=True),
+        argument("-a", "--traddr", help="NVMe host IP", required=True),
+        argument("-s", "--trsvcid", help="Port number", required=True),
+        argument("-t", "--trtype", help="Transport type", default="TCP"),
+        argument("-f", "--adrfam", help="Address family", default="ipv4"),
+    ])
+    def delete_listener(self, args):
+        """Deletes a listener at a particular TCP/IP address for a given subsystem."""
+
+        try:
+            delete_req = pb2.listener_delete_req(
+                nqn=args.subnqn,
+                trtype=args.trtype,
+                adrfam=args.adrfam,
+                traddr=args.traddr,
+                trsvcid=args.trsvcid,
+            )
+            ret = self.stub.nvmf_subsystem_remove_listener(delete_req)
+            self.logger.info(f"Deleted {args.traddr} from {args.subnqn}: {ret.status}")
+        except Exception as error:
+            self.logger.error(f"Failed to delete listener: \n {error}")
 
     @cli.cmd()
     def get_subsystems(self, args):
@@ -273,16 +344,16 @@ class GatewayClient:
             self.logger.error(f"Failed to get subsystems: \n {error}")
 
 
-def main():
+def main(args=None):
     client = GatewayClient()
-    args = client.cli.parser.parse_args()
-    nvme_config = nvme_gw_config.NVMeGWConfig(args.config)
+    parsed_args = client.cli.parser.parse_args(args)
+    nvme_config = nvme_gw_config.NVMeGWConfig(parsed_args.config)
     client.connect(nvme_config)
-    if args.subcommand is None:
+    if parsed_args.subcommand is None:
         client.cli.parser.print_help()
     else:
-        call_function = getattr(client, args.func.__name__)
-        call_function(args)
+        call_function = getattr(client, parsed_args.func.__name__)
+        call_function(parsed_args)
 
 
 if __name__ == "__main__":
