@@ -499,7 +499,7 @@ class GWService(pb2_grpc.NVMEGatewayServicer):
 
         try:
             status = self.spdk_rpc.nvmf.nvmf_create_transport(
-                self.spdk_rpc_client, request.trtype)
+                self.spdk_rpc_client, trtype=request.trtype)
         except Exception as ex:
             self.logger.error(
                 f"Create Transport {request.trtype} returned with error: \n {ex}"
