@@ -59,14 +59,6 @@ class PersistentConfig(ABC):
         pass
 
     @abstractmethod
-    def set_transport(self, trtype: str, val: str):
-        pass
-
-    @abstractmethod
-    def delete_transport(self, trtype: str):
-        pass
-
-    @abstractmethod
     def delete_config(self):
         pass
 
@@ -100,7 +92,6 @@ class OmapPersistentConfig(PersistentConfig):
     NAMESPACE_PREFIX = "namespace_"
     SUBSYSTEM_PREFIX = "subsystem_"
     HOST_PREFIX = "host_"
-    TRANSPORT_PREFIX = "transport_"
     LISTENER_PREFIX = "listener_"
 
     def __init__(self, nvme_config):
@@ -275,29 +266,6 @@ class OmapPersistentConfig(PersistentConfig):
                 req = json_format.Parse(val, pb2.subsystem_add_listener_req())
                 callback(req)
 
-    def set_transport(self, trtype: str, val: str):
-        """Sets transport type in the persistent config."""
-        key = self.TRANSPORT_PREFIX + trtype
-        self._write_key(key, val)
-
-    def delete_transport(self, trtype: str):
-        """Delete transport type in the persistent config."""
-        key = self.TRANSPORT_PREFIX + trtype
-        self._delete_key(key)
-
-    def get_transport(self, trtype: str):
-        """Read existing transport type from the persistent config."""
-        key = self.TRANSPORT_PREFIX + trtype
-        return self._read_key(key)
-
-    def _restore_transports(self, omap_dict, callback):
-        """Restores a transport from the persistent config."""
-
-        for (key, val) in omap_dict.items():
-            if key.startswith(self.TRANSPORT_PREFIX):
-                req = json_format.Parse(val, pb2.create_transport_req())
-                callback(req)
-
     def _read_key(self, key) -> Optional[str]:
         """Reads single key from persistent config and returns its value."""
 
@@ -343,8 +311,6 @@ class OmapPersistentConfig(PersistentConfig):
             self._restore_namespaces(omap_dict,
                                      callbacks[self.NAMESPACE_PREFIX])
             self._restore_hosts(omap_dict, callbacks[self.HOST_PREFIX])
-            self._restore_transports(omap_dict,
-                                     callbacks[self.TRANSPORT_PREFIX])
             self._restore_listeners(omap_dict, callbacks[self.LISTENER_PREFIX])
             self.version = int(omap_dict[self.OMAP_VERSION_KEY])
             self.logger.info("Restore complete.")
