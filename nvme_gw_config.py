@@ -33,3 +33,15 @@ class NVMeGWConfig:
 
     def getfloat(self, section, param):
         return self.nvme_gw_config.getfloat(section, param)
+
+    def get_with_default(self, section, param, value):
+        return self.nvme_gw_config.get(section, param, fallback=value)
+
+    def getboolean_with_default(self, section, param, value):
+        return self.nvme_gw_config.getboolean(section, param, fallback=value)
+
+    def getint_with_default(self, section, param, value):
+        return self.nvme_gw_config.getint(section, param, fallback=value)
+
+    def getfloat_with_default(self, section, param, value):
+        return self.nvme_gw_config.getfloat(section, param, fallback=value)
