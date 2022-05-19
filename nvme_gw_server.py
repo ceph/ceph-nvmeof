@@ -48,6 +48,7 @@ class GWService(pb2_grpc.NVMEGatewayServicer):
         persistent_config: Methods for target configuration persistence
         spdk_rpc: Module methods for SPDK
         spdk_rpc_client: Client of SPDK RPC server
+        spdk_rpc_ping_client: Ping client of SPDK RPC server
         spdk_process: Subprocess running SPDK NVMEoF target application
     """
 
@@ -187,6 +188,13 @@ class GWService(pb2_grpc.NVMEGatewayServicer):
 
         try:
             self.spdk_rpc_client = self.spdk_rpc.client.JSONRPCClient(
+                spdk_rpc_socket,
+                None,
+                timeout,
+                log_level=log_level,
+                conn_retries=conn_retries,
+            )
+            self.spdk_rpc_ping_client = self.spdk_rpc.client.JSONRPCClient(
                 spdk_rpc_socket,
                 None,
                 timeout,
@@ -618,7 +626,7 @@ class GWService(pb2_grpc.NVMEGatewayServicer):
     def ping(self):
         """Confirms communication with SPDK process."""
         try:
-            ret = self.spdk_rpc.spdk_get_version(self.spdk_rpc_client)
+            ret = self.spdk_rpc.spdk_get_version(self.spdk_rpc_ping_client)
             return True
         except Exception as ex:
             self.logger.error(f"spdk_get_version failed with: \n {ex}")
