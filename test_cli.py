@@ -9,7 +9,7 @@ serial = "SPDK00000000000001"
 host_list = ["nqn.2016-06.io.spdk:host1", "*"]
 nsid = "1"
 trtype = "TCP"
-addr = "192.168.50.4"
+addr = "127.0.0.1"
 port = "5001"
 config = "nvme_gw.config"
 
@@ -40,7 +40,7 @@ class TestCreate:
         cli(["-c", config, "create_transport", "-t", trtype])
         assert "Failed to create" not in caplog.text
 
-    def create_listener(self, caplog):
+    def test_create_listener(self, caplog):
         cli(["-c", config, "create_listener", "-n", subsystem, "-a", addr, "-s", port])
         assert "Failed to create" not in caplog.text
 
@@ -49,8 +49,8 @@ class TestDelete:
     def test_delete_host(self, caplog, host):
         cli(["-c", config, "delete_host", "-n", subsystem, "-t", host])
         assert "Failed to remove" not in caplog.text
-        
-    def delete_listener(self, caplog):
+
+    def test_delete_listener(self, caplog):
         cli(["-c", config, "delete_listener", "-n", subsystem, "-a", addr, "-s", port])
         assert "Failed to delete" not in caplog.text
 
