@@ -536,11 +536,11 @@ class GWService(pb2_grpc.NVMEGatewayServicer):
         try:
             return_string = self.spdk_rpc.nvmf.nvmf_subsystem_add_listener(
                 self.spdk_rpc_client,
-                request.nqn,
-                request.trtype,
-                request.traddr,
-                request.trsvcid,
-                request.adrfam,
+                nqn=request.nqn,
+                trtype=request.trtype,
+                traddr=request.traddr,
+                trsvcid=request.trsvcid,
+                adrfam=request.adrfam,
             )
             self.logger.info(f"Status of add listener: {return_string}")
         except Exception as ex:
