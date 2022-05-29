@@ -12,7 +12,7 @@ from typing import Dict, Optional
 from abc import ABC, abstractmethod
 import nvme_gw_pb2 as pb2
 from google.protobuf import json_format
-
+from threading import Lock
 
 class PersistentConfig(ABC):
     """Persists gateway NVMeoF target configuration."""
@@ -94,6 +94,8 @@ class OmapPersistentConfig(PersistentConfig):
     HOST_PREFIX = "host_"
     LISTENER_PREFIX = "listener_"
 
+    lock = Lock()
+
     def __init__(self, nvme_config):
         self.version = 1
         self.nvme_config = nvme_config
@@ -128,36 +130,38 @@ class OmapPersistentConfig(PersistentConfig):
         """Writes key and value to the persistent config."""
 
         try:
-            version_update = self.version + 1
-            with rados.WriteOpCtx() as write_op:
-                # Compare operation failure will cause write failure
-                write_op.omap_cmp(self.OMAP_VERSION_KEY, str(self.version),
-                                  rados.LIBRADOS_CMPXATTR_OP_EQ)
-                self.ioctx.set_omap(write_op, (key,), (val,))
-                self.ioctx.set_omap(write_op, (self.OMAP_VERSION_KEY,),
-                                    (str(version_update),))
-                self.ioctx.operate_write_op(write_op, self.omap_name)
-            self.version = version_update
-            self.logger.debug(f"omap_key generated: {key}")
+            with self.lock:
+                version_update = self.version + 1
+                with rados.WriteOpCtx() as write_op:
+                    # Compare operation failure will cause write failure
+                    write_op.omap_cmp(self.OMAP_VERSION_KEY, str(self.version),
+                                      rados.LIBRADOS_CMPXATTR_OP_EQ)
+                    self.ioctx.set_omap(write_op, (key,), (val,))
+                    self.ioctx.set_omap(write_op, (self.OMAP_VERSION_KEY,),
+                                        (str(version_update),))
+                    self.ioctx.operate_write_op(write_op, self.omap_name)
+                    self.version = version_update
+                    self.logger.debug(f"omap_key generated: {key}")
         except Exception as ex:
             self.logger.error(f"Unable to write to omap: {ex}. Exiting!")
             raise
 
     def _delete_key(self, key: str):
         """Deletes key from omap persistent config."""
-    
+
         try:
-            version_update = self.version + 1
-            with rados.WriteOpCtx() as write_op:
-                # Compare operation failure will cause delete failure
-                write_op.omap_cmp(self.OMAP_VERSION_KEY, str(self.version),
-                                rados.LIBRADOS_CMPXATTR_OP_EQ)
-                self.ioctx.remove_omap_keys(write_op, (key,))
-                self.ioctx.set_omap(write_op, (self.OMAP_VERSION_KEY,),
-                                    (str(version_update),))
-                self.ioctx.operate_write_op(write_op, self.omap_name)
-            self.version = version_update
-            self.logger.debug(f"omap_key deleted: {key}")
+            with self.lock:
+                version_update = self.version + 1
+                with rados.WriteOpCtx() as write_op:
+                    # Compare operation failure will cause delete failure
+                    write_op.omap_cmp(self.OMAP_VERSION_KEY, str(self.version),
+                                      rados.LIBRADOS_CMPXATTR_OP_EQ)
+                    self.ioctx.remove_omap_keys(write_op, (key,))
+                    self.ioctx.set_omap(write_op, (self.OMAP_VERSION_KEY,),
+                                        (str(version_update),))
+                    self.ioctx.operate_write_op(write_op, self.omap_name)
+                    self.version = version_update
+                    self.logger.debug(f"omap_key deleted: {key}")
         except Exception as ex:
             self.logger.error(f"Unable to delete from omap: {ex}. Exiting!")
             raise
