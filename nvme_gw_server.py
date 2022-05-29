@@ -23,6 +23,7 @@ from nvme_gw_persistence import OmapPersistentConfig
 import argparse
 import json
 from google.protobuf import json_format
+from threading import Condition, Lock
 
 libc = ctypes.CDLL(ctypes.util.find_library("c"))
 PR_SET_PDEATHSIG = 1
@@ -36,6 +37,40 @@ def set_pdeathsig(sig=signal.SIGTERM):
     return callable
 
 
+class SharedPool(object):
+    class ItemRef:
+        def __init__(self, pool, item):
+            self.pool = pool
+            self.item = item
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, type_, value, traceback):
+            self.pool.put(self.item)
+
+        def get(self):
+            return self.item
+
+    lock = Lock()
+    cond = Condition(lock)
+
+    def __init__(self, factory, num):
+        self.pool = [factory(i) for i in range(num)]
+
+    def get(self):
+        while True:
+            with self.lock:
+                if self.pool:
+                    return SharedPool.ItemRef(self, self.pool.pop())
+                self.cond.wait()
+
+    def put(self, item):
+        with self.lock:
+            self.pool.append(item)
+            self.cond.notify()
+
+
 class GWService(pb2_grpc.NVMEGatewayServicer):
     """Implements gateway service interface.
 
@@ -47,8 +82,7 @@ class GWService(pb2_grpc.NVMEGatewayServicer):
         server: gRPC server instance to receive gateway client requests
         persistent_config: Methods for target configuration persistence
         spdk_rpc: Module methods for SPDK
-        spdk_rpc_client: Client of SPDK RPC server
-        spdk_rpc_ping_client: Ping client of SPDK RPC server
+        spdk_rpc_client_pool: Pool of SPDK RPC server clients
         spdk_process: Subprocess running SPDK NVMEoF target application
         transports: List (set) of created transports
     """
@@ -58,6 +92,7 @@ class GWService(pb2_grpc.NVMEGatewayServicer):
         self.logger = nvme_config.logger
         self.nvme_config = nvme_config
         self.persistent_config = OmapPersistentConfig(nvme_config)
+        self.spdk_rpc_client_pool = None
         self.spdk_process = None
         self.server = None
         self.transports = set()
@@ -187,19 +222,15 @@ class GWService(pb2_grpc.NVMEGatewayServicer):
         })
 
         try:
-            self.spdk_rpc_client = self.spdk_rpc.client.JSONRPCClient(
-                spdk_rpc_socket,
-                None,
-                timeout,
-                log_level=log_level,
-                conn_retries=conn_retries,
-            )
-            self.spdk_rpc_ping_client = self.spdk_rpc.client.JSONRPCClient(
-                spdk_rpc_socket,
-                None,
-                timeout,
-                log_level=log_level,
-                conn_retries=conn_retries,
+            self.spdk_rpc_client_pool = SharedPool(
+                lambda _ : self.spdk_rpc.client.JSONRPCClient(
+                    spdk_rpc_socket,
+                    None,
+                    timeout,
+                    log_level=log_level,
+                    conn_retries=conn_retries,
+                ),
+                self.nvme_config.getint("config", "spdk_rpc_client_pool_size")
             )
         except Exception as ex:
             self.logger.error(f"Unable to initialize SPDK: \n {ex}")
@@ -229,8 +260,9 @@ class GWService(pb2_grpc.NVMEGatewayServicer):
                 raise
 
         try:
-            status = self.spdk_rpc.nvmf.nvmf_create_transport(
-                self.spdk_rpc_client, **args)
+            with self.spdk_rpc_client_pool.get() as rpc_client_ref:
+                status = self.spdk_rpc.nvmf.nvmf_create_transport(
+                    rpc_client_ref.get(), **args)
         except Exception as ex:
             self.logger.error(
                 f"Create Transport {trtype} returned with error: \n {ex}"
@@ -257,13 +289,14 @@ class GWService(pb2_grpc.NVMEGatewayServicer):
             f" with block size {request.block_size}",
         })
         try:
-            bdev_name = self.spdk_rpc.bdev.bdev_rbd_create(
-                self.spdk_rpc_client,
-                name=request.bdev_name,
-                pool_name=request.ceph_pool_name,
-                rbd_name=request.rbd_name,
-                block_size=request.block_size,
-            )
+            with self.spdk_rpc_client_pool.get() as rpc_client_ref:
+                bdev_name = self.spdk_rpc.bdev.bdev_rbd_create(
+                    rpc_client_ref.get(),
+                    name=request.bdev_name,
+                    pool_name=request.ceph_pool_name,
+                    rbd_name=request.rbd_name,
+                    block_size=request.block_size,
+                )
             self.logger.info(f"Created bdev {bdev_name}")
 
         except Exception as ex:
@@ -290,10 +323,11 @@ class GWService(pb2_grpc.NVMEGatewayServicer):
             f"Received request to delete bdev: {request.bdev_name}",
         })
         try:
-            return_string = self.spdk_rpc.bdev.bdev_rbd_delete(
-                self.spdk_rpc_client,
-                request.bdev_name,
-            )
+            with self.spdk_rpc_client_pool.get() as rpc_client_ref:
+                return_string = self.spdk_rpc.bdev.bdev_rbd_delete(
+                    rpc_client_ref.get(),
+                    request.bdev_name,
+                )
             self.logger.info(f"Deleted bdev {request.bdev_name}")
 
         except Exception as ex:
@@ -320,12 +354,13 @@ class GWService(pb2_grpc.NVMEGatewayServicer):
         })
 
         try:
-            return_string = self.spdk_rpc.nvmf.nvmf_create_subsystem(
-                self.spdk_rpc_client,
-                nqn=request.subsystem_nqn,
-                serial_number=request.serial_number,
-                max_namespaces=request.max_namespaces,
-            )
+            with self.spdk_rpc_client_pool.get() as rpc_client_ref:
+                return_string = self.spdk_rpc.nvmf.nvmf_create_subsystem(
+                    rpc_client_ref.get(),
+                    nqn=request.subsystem_nqn,
+                    serial_number=request.serial_number,
+                    max_namespaces=request.max_namespaces,
+                )
             self.logger.info(f"returned with status: {return_string}")
             return_status = return_string != "none"
         except Exception as ex:
@@ -356,10 +391,11 @@ class GWService(pb2_grpc.NVMEGatewayServicer):
         })
 
         try:
-            return_string = self.spdk_rpc.nvmf.nvmf_delete_subsystem(
-                self.spdk_rpc_client,
-                nqn=request.subsystem_nqn,
-            )
+            with self.spdk_rpc_client_pool.get() as rpc_client_ref:
+                return_string = self.spdk_rpc.nvmf.nvmf_delete_subsystem(
+                    rpc_client_ref.get(),
+                    nqn=request.subsystem_nqn,
+                )
             self.logger.info(f"returned with status: {return_string}")
         except Exception as ex:
             self.logger.error(f"delete_subsystem failed with: \n {ex}")
@@ -385,12 +421,13 @@ class GWService(pb2_grpc.NVMEGatewayServicer):
         })
 
         try:
-            nsid = self.spdk_rpc.nvmf.nvmf_subsystem_add_ns(
-                self.spdk_rpc_client,
-                nqn=request.subsystem_nqn,
-                bdev_name=request.bdev_name,
-                nsid=request.nsid,
-            )
+            with self.spdk_rpc_client_pool.get() as rpc_client_ref:
+                nsid = self.spdk_rpc.nvmf.nvmf_subsystem_add_ns(
+                    rpc_client_ref.get(),
+                    nqn=request.subsystem_nqn,
+                    bdev_name=request.bdev_name,
+                    nsid=request.nsid,
+                )
             self.logger.info(f"returned with nsid: {nsid}")
         except Exception as ex:
             self.logger.error(f"Add NS returned with error: \n {ex}")
@@ -418,10 +455,11 @@ class GWService(pb2_grpc.NVMEGatewayServicer):
         })
 
         try:
-            status = self.spdk_rpc.nvmf.nvmf_subsystem_remove_ns(
-                self.spdk_rpc_client,
-                nqn=request.subsystem_nqn,
-                nsid=request.nsid)
+            with self.spdk_rpc_client_pool.get() as rpc_client_ref:
+                status = self.spdk_rpc.nvmf.nvmf_subsystem_remove_ns(
+                    rpc_client_ref.get(),
+                    nqn=request.subsystem_nqn,
+                    nsid=request.nsid)
             self.logger.info(f"Returned with status: {status}")
         except Exception as ex:
             self.logger.error(f"Remove namespace returned with error: \n {ex}")
@@ -449,20 +487,22 @@ class GWService(pb2_grpc.NVMEGatewayServicer):
                 self.logger.info({
                     f"Received request: allow any host to {request.subsystem_nqn}",
                 })
-                return_string = self.spdk_rpc.nvmf.nvmf_subsystem_allow_any_host(
-                    self.spdk_rpc_client,
-                    nqn=request.subsystem_nqn,
-                    disable=False,
-                )
+                with self.spdk_rpc_client_pool.get() as rpc_client_ref:
+                    return_string = self.spdk_rpc.nvmf.nvmf_subsystem_allow_any_host(
+                        rpc_client_ref.get(),
+                        nqn=request.subsystem_nqn,
+                        disable=False,
+                    )
             else:  # Allow single host access to subsystem
                 self.logger.info({
                     f"Received request: add host {request.host_nqn} to {request.subsystem_nqn}",
                 })
-                return_string = self.spdk_rpc.nvmf.nvmf_subsystem_add_host(
-                    self.spdk_rpc_client,
-                    nqn=request.subsystem_nqn,
-                    host=request.host_nqn,
-                )
+                with self.spdk_rpc_client_pool.get() as rpc_client_ref:
+                    return_string = self.spdk_rpc.nvmf.nvmf_subsystem_add_host(
+                        rpc_client_ref.get(),
+                        nqn=request.subsystem_nqn,
+                        host=request.host_nqn,
+                    )
         except Exception as ex:
             self.logger.error(f"Add host access returned with error: \n {ex}")
             if context:
@@ -492,21 +532,23 @@ class GWService(pb2_grpc.NVMEGatewayServicer):
                     f"Received request: disable any host access to ",
                     f"{request.subsystem_nqn}",
                 })
-                return_string = self.spdk_rpc.nvmf.nvmf_subsystem_allow_any_host(
-                    self.spdk_rpc_client,
-                    nqn=request.subsystem_nqn,
-                    disable=True,
-                )
+                with self.spdk_rpc_client_pool.get() as rpc_client_ref:
+                    return_string = self.spdk_rpc.nvmf.nvmf_subsystem_allow_any_host(
+                        rpc_client_ref.get(),
+                        nqn=request.subsystem_nqn,
+                        disable=True,
+                    )
             else:  # Remove single host access to subsystem
                 self.logger.info({
                     f"Received request: remove host {request.host_nqn} from ",
                     f"{request.subsystem_nqn}",
                 })
-                return_string = self.spdk_rpc.nvmf.nvmf_subsystem_remove_host(
-                    self.spdk_rpc_client,
-                    nqn=request.subsystem_nqn,
-                    host=request.host_nqn,
-                )
+                with self.spdk_rpc_client_pool.get() as rpc_client_ref:
+                    return_string = self.spdk_rpc.nvmf.nvmf_subsystem_remove_host(
+                        rpc_client_ref.get(),
+                        nqn=request.subsystem_nqn,
+                        host=request.host_nqn,
+                    )
         except Exception as ex:
             self.logger.error(
                 f"Remove host access returned with error: \n {ex}")
@@ -535,14 +577,15 @@ class GWService(pb2_grpc.NVMEGatewayServicer):
             if request.trtype.lower() not in self.transports:
                 raise Exception(f"{request.trtype} transport is not enabled")
 
-            return_string = self.spdk_rpc.nvmf.nvmf_subsystem_add_listener(
-                self.spdk_rpc_client,
-                nqn=request.nqn,
-                trtype=request.trtype,
-                traddr=request.traddr,
-                trsvcid=request.trsvcid,
-                adrfam=request.adrfam,
-            )
+            with self.spdk_rpc_client_pool.get() as rpc_client_ref:
+                return_string = self.spdk_rpc.nvmf.nvmf_subsystem_add_listener(
+                    rpc_client_ref.get(),
+                    nqn=request.nqn,
+                    trtype=request.trtype,
+                    traddr=request.traddr,
+                    trsvcid=request.trsvcid,
+                    adrfam=request.adrfam,
+                )
             self.logger.info(f"Status of add listener: {return_string}")
         except Exception as ex:
             self.logger.error(f"Add Listener failed: \n {ex}")
@@ -571,14 +614,15 @@ class GWService(pb2_grpc.NVMEGatewayServicer):
             {f"Removing {request.trtype} listener at {request.traddr} for {request.nqn}."})
 
         try:
-            return_string = self.spdk_rpc.nvmf.nvmf_subsystem_remove_listener(
-                self.spdk_rpc_client,
-                request.nqn,
-                request.trtype,
-                request.traddr,
-                request.trsvcid,
-                request.adrfam,
-            )
+            with self.spdk_rpc_client_pool.get() as rpc_client_ref:
+                return_string = self.spdk_rpc.nvmf.nvmf_subsystem_remove_listener(
+                    rpc_client_ref.get(),
+                    request.nqn,
+                    request.trtype,
+                    request.traddr,
+                    request.trsvcid,
+                    request.adrfam,
+                )
             self.logger.info(f"Status of remove listener: {return_string}")
         except Exception as ex:
             self.logger.error(f"Remove listener returned with error: \n {ex}")
@@ -606,7 +650,10 @@ class GWService(pb2_grpc.NVMEGatewayServicer):
         })
 
         try:
-            ret = self.spdk_rpc.nvmf.nvmf_get_subsystems(self.spdk_rpc_client)
+            with self.spdk_rpc_client_pool.get() as rpc_client_ref:
+                ret = self.spdk_rpc.nvmf.nvmf_get_subsystems(
+                    rpc_client_ref.get()
+                )
             self.logger.info(f"returned with: {ret}")
         except Exception as ex:
             self.logger.error(f"get_subsystems failed with: \n {ex}")
@@ -619,7 +666,8 @@ class GWService(pb2_grpc.NVMEGatewayServicer):
     def ping(self):
         """Confirms communication with SPDK process."""
         try:
-            ret = self.spdk_rpc.spdk_get_version(self.spdk_rpc_ping_client)
+            with self.spdk_rpc_client_pool.get() as rpc_client_ref:
+                ret = self.spdk_rpc.spdk_get_version(rpc_client_ref.get())
             return True
         except Exception as ex:
             self.logger.error(f"spdk_get_version failed with: \n {ex}")
