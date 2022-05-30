@@ -61,12 +61,12 @@ Run the tool with the -h flag to see a list of available commands:
 	
 	$ python3 ./nvme_gw_cli.py -h
 	usage: python3 ./nvme_gw_cli.py [-h] [-c CONFIG]
-			{create_bdev,delete_bdev,create_subsystem,delete_subsystem,create_namespace,delete_namespace,add_host,delete_host,create_transport,create_listener,delete_listener,get_subsystems} ...
+			{create_bdev,delete_bdev,create_subsystem,delete_subsystem,create_namespace,delete_namespace,add_host,delete_host,create_listener,delete_listener,get_subsystems} ...
 
 	CLI to manage NVMe gateways
 
 	positional arguments:
-	{create_bdev,delete_bdev,create_subsystem,delete_subsystem,create_namespace,delete_namespace,add_host,delete_host,create_transport,create_listener,delete_listener,get_subsystems}
+	{create_bdev,delete_bdev,create_subsystem,delete_subsystem,create_namespace,delete_namespace,add_host,delete_host,create_listener,delete_listener,get_subsystems}
 
 	optional arguments:
 	-h, --help            			show this help message and exit
@@ -135,9 +135,6 @@ Indicate the location of the keys and certificates in the config file:
 		
 		$ python3 ./nvme_gw_cli.py add_host -n nqn.2016-06.io.spdk:cnode1 -t *
 		INFO:root:Allow open host access to nqn.2016-06.io.spdk:cnode1: True
-		
-		$ python3 ./nvme_gw_cli.py create_transport -t TCP
-		INFO:root:Created TCP transport: True
 		
 		$ python3 ./nvme_gw_cli.py create_listener -n nqn.2016-06.io.spdk:cnode1 -a 192.168.50.4 -s 5001
 		INFO:root:Created nqn.2016-06.io.spdk:cnode1 listener: True

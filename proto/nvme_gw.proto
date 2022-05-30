@@ -14,9 +14,6 @@ service NVMEGateway {
 	// start the SPDK target
 	rpc start_spdk(spdk_start_req) returns(spdk_status) {}
 
-	// Create Transport
-	rpc nvmf_create_transport(create_transport_req) returns(req_status) {}
-
 	// Create bdev/ NVMe Namespace from an RBD image
 	rpc bdev_rbd_create(bdev_create_req) returns (bdev_info) {}
 
@@ -129,10 +126,6 @@ message host_delete_req {
 
 message req_status {
 	bool status = 1;
-}
-
-message create_transport_req {
-	string trtype = 1; //NVMe Transport Type (eg: tcp. rdma, etc)
 }
 
 message subsystem_add_listener_req {

@@ -36,10 +36,6 @@ class TestCreate:
         cli(["-c", config, "add_host", "-n", subsystem, "-t", host])
         assert "Failed to add" not in caplog.text
 
-    def test_create_transport(self, caplog):
-        cli(["-c", config, "create_transport", "-t", trtype])
-        assert "Failed to create" not in caplog.text
-
     def test_create_listener(self, caplog):
         cli(["-c", config, "create_listener", "-n", subsystem, "-a", addr, "-s", port])
         assert "Failed to create" not in caplog.text

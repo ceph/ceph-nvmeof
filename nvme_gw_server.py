@@ -50,6 +50,7 @@ class GWService(pb2_grpc.NVMEGatewayServicer):
         spdk_rpc_client: Client of SPDK RPC server
         spdk_rpc_ping_client: Ping client of SPDK RPC server
         spdk_process: Subprocess running SPDK NVMEoF target application
+        transports: List (set) of created transports
     """
 
     def __init__(self, nvme_config):
@@ -59,6 +60,7 @@ class GWService(pb2_grpc.NVMEGatewayServicer):
         self.persistent_config = OmapPersistentConfig(nvme_config)
         self.spdk_process = None
         self.server = None
+        self.transports = set()
 
     def __enter__(self):
         return self
@@ -202,7 +204,40 @@ class GWService(pb2_grpc.NVMEGatewayServicer):
         except Exception as ex:
             self.logger.error(f"Unable to initialize SPDK: \n {ex}")
             raise
-        return
+
+        spdk_transports = self.nvme_config.get_with_default(
+            "spdk", "transports", "tcp")
+
+        for trtype in spdk_transports.split():
+            self.create_transport(trtype.lower())
+
+    def create_transport(self, trtype):
+        args = {'trtype' : trtype}
+
+        name = "transport_" + trtype + "_options"
+        options = self.nvme_config.get_with_default("spdk", name, "")
+
+        self.logger.debug(f"create_transport: {trtype} options: {options}")
+
+        if options:
+            try:
+                args.update(json.loads(options))
+            except json.decoder.JSONDecodeError as ex:
+                self.logger.error(
+                    f"Failed to parse spdk {name} ({options}): \n {ex}"
+                )
+                raise
+
+        try:
+            status = self.spdk_rpc.nvmf.nvmf_create_transport(
+                self.spdk_rpc_client, **args)
+        except Exception as ex:
+            self.logger.error(
+                f"Create Transport {trtype} returned with error: \n {ex}"
+            )
+            raise
+
+        self.transports.add(trtype)
 
     def restore_config(self):
         callbacks = {
@@ -210,7 +245,6 @@ class GWService(pb2_grpc.NVMEGatewayServicer):
             self.persistent_config.SUBSYSTEM_PREFIX: self.nvmf_create_subsystem,
             self.persistent_config.NAMESPACE_PREFIX: self.nvmf_subsystem_add_ns,
             self.persistent_config.HOST_PREFIX: self.nvmf_subsystem_add_host,
-            self.persistent_config.TRANSPORT_PREFIX: self.nvmf_create_transport,
             self.persistent_config.LISTENER_PREFIX: self.nvmf_subsystem_add_listener
         }
         self.persistent_config.restore(callbacks)
@@ -491,55 +525,16 @@ class GWService(pb2_grpc.NVMEGatewayServicer):
 
         return pb2.req_status(status=return_string)
 
-    def nvmf_create_transport(self, request, context=None):
-        """Sets a transport type for device access."""
-        self.logger.info({f"Setting transport type to: {request.trtype}"})
-
-        # Check if transport type has already been created
-        if context:
-            trtype = self.persistent_config.get_transport(request.trtype)
-            if trtype is not None:
-                self.logger.info(
-                    f"Create Transport {trtype} already created.\n")
-                return pb2.req_status(status=True)
-
-        try:
-            status = self.spdk_rpc.nvmf.nvmf_create_transport(
-                self.spdk_rpc_client, trtype=request.trtype)
-        except Exception as ex:
-            self.logger.error(
-                f"Create Transport {request.trtype} returned with error: \n {ex}"
-            )
-            if context:
-                context.set_code(grpc.StatusCode.INTERNAL)
-                context.set_details(f"{ex}")
-            return pb2.req_status()
-
-        if context:
-            # Update persistent configuration
-            try:
-                json_req = json_format.MessageToJson(
-                    request, preserving_proto_field_name=True)
-                self.persistent_config.set_transport(request.trtype,
-                                                     json_req)
-            except Exception as ex:
-                self.terminate(
-                    f"Error persisting transport {request.trtype}: {ex}")
-
-        return pb2.req_status(status=status)
-
     def nvmf_subsystem_add_listener(self, request, context=None):
         """Adds a listener at the given TCP/IP address for the given subsystem."""
         self.logger.info({
-            f"Adding listener at {request.traddr} : {request.trsvcid} for {request.nqn}"
+            f"Adding {request.trtype} listener at {request.traddr} : {request.trsvcid} for {request.nqn}"
         })
 
-        # Create transport if needed
-        if context:
-            self.nvmf_create_transport(pb2.create_transport_req(trtype='TCP'),
-                                       context)
-
         try:
+            if request.trtype.lower() not in self.transports:
+                raise Exception(f"{request.trtype} transport is not enabled")
+
             return_string = self.spdk_rpc.nvmf.nvmf_subsystem_add_listener(
                 self.spdk_rpc_client,
                 nqn=request.nqn,
@@ -550,7 +545,7 @@ class GWService(pb2_grpc.NVMEGatewayServicer):
             )
             self.logger.info(f"Status of add listener: {return_string}")
         except Exception as ex:
-            self.logger.error(f"Add Listener returned with error: \n {ex}")
+            self.logger.error(f"Add Listener failed: \n {ex}")
             if context:
                 context.set_code(grpc.StatusCode.INTERNAL)
                 context.set_details(f"{ex}")
@@ -573,7 +568,7 @@ class GWService(pb2_grpc.NVMEGatewayServicer):
     def nvmf_subsystem_remove_listener(self, request, context=None):
         """Removes a listener at the given TCP/IP address for the given subsystem."""
         self.logger.info(
-            {f"Removing listener at {request.traddr} for {request.nqn}."})
+            {f"Removing {request.trtype} listener at {request.traddr} for {request.nqn}."})
 
         try:
             return_string = self.spdk_rpc.nvmf.nvmf_subsystem_remove_listener(
