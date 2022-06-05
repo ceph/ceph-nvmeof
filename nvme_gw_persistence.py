@@ -145,7 +145,7 @@ class OmapPersistentConfig(PersistentConfig):
 
     def _delete_key(self, key: str):
         """Deletes key from omap persistent config."""
-    
+
         try:
             version_update = self.version + 1
             with rados.WriteOpCtx() as write_op:
@@ -245,17 +245,18 @@ class OmapPersistentConfig(PersistentConfig):
                 req = json_format.Parse(val, pb2.subsystem_add_host_req())
                 callback(req)
 
-    def add_listener(self, subsystem_nqn: str, traddr: str, trsvcid: str,
-                     val: str):
+    def add_listener(self, subsystem_nqn: str, gateway: str, trtype: str,
+                     traddr: str, trsvcid: str, val: str):
         """Adds a listener to the persistent config."""
-        key = "{}{}_{}_{}".format(self.LISTENER_PREFIX, subsystem_nqn, traddr,
-                                  trsvcid)
+        key = "{}{}_{}_{}_{}_{}".format(self.LISTENER_PREFIX, gateway,
+                                        subsystem_nqn, trtype, traddr, trsvcid)
         self._write_key(key, val)
 
-    def delete_listener(self, subsystem_nqn: str, traddr: str, trsvcid: str):
+    def delete_listener(self, subsystem_nqn: str, gateway: str, trtype: str,
+                        traddr: str, trsvcid: str):
         """Deletes a listener from the persistent config."""
-        key = "{}{}_{}_{}".format(self.LISTENER_PREFIX, subsystem_nqn, traddr,
-                                  trsvcid)
+        key = "{}{}_{}_{}_{}_{}".format(self.LISTENER_PREFIX, gateway,
+                                        subsystem_nqn, trtype, traddr, trsvcid)
         self._delete_key(key)
 
     def _restore_listeners(self, omap_dict, callback):

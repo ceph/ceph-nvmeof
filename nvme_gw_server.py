@@ -13,6 +13,7 @@ import os
 import shlex
 import sys
 import signal
+import socket
 import subprocess
 import grpc
 from concurrent import futures
@@ -60,6 +61,10 @@ class GWService(pb2_grpc.NVMEGatewayServicer):
         self.spdk_process = None
         self.server = None
 
+        self.gateway_name = self.nvme_config.get("config", "gateway_name")
+        if not self.gateway_name:
+            self.gateway_name = socket.gethostname()
+
     def __enter__(self):
         return self
 
@@ -94,6 +99,8 @@ class GWService(pb2_grpc.NVMEGatewayServicer):
 
     def serve(self):
         """Starts gateway server."""
+
+        self.logger.info(f"Starting gateway {self.gateway_name}")
 
         enable_auth = self.nvme_config.getboolean("config", "enable_auth")
         gateway_addr = self.nvme_config.get("config", "gateway_addr")
@@ -521,19 +528,33 @@ class GWService(pb2_grpc.NVMEGatewayServicer):
     def nvmf_subsystem_add_listener(self, request, context=None):
         """Adds a listener at the given TCP/IP address for the given subsystem."""
         self.logger.info({
-            f"Adding {request.trtype} listener at {request.traddr} : {request.trsvcid} for {request.nqn}"
+            f"Adding {request.gateway_name} {request.trtype} listener at {request.traddr}:{request.trsvcid} for {request.nqn}"
         })
 
         try:
-            return_string = self.spdk_rpc.nvmf.nvmf_subsystem_add_listener(
-                self.spdk_rpc_client,
-                nqn=request.nqn,
-                trtype=request.trtype,
-                traddr=request.traddr,
-                trsvcid=request.trsvcid,
-                adrfam=request.adrfam,
-            )
-            self.logger.info(f"Status of add listener: {return_string}")
+            if (request.gateway_name and not request.traddr) or \
+               (not request.gateway_name and request.traddr):
+                raise Exception(
+                    "both gateway_name and traddr or neither must be specified")
+
+            if not request.gateway_name or \
+               request.gateway_name == self.gateway_name:
+                if not request.traddr:
+                    traddr = self.nvme_config.get("config", "gateway_addr")
+                    if not traddr:
+                        raise Exception("config.gateway_addr option is not set")
+                else:
+                    traddr = request.traddr
+
+                return_string = self.spdk_rpc.nvmf.nvmf_subsystem_add_listener(
+                    self.spdk_rpc_client,
+                    nqn=request.nqn,
+                    trtype=request.trtype,
+                    traddr=traddr,
+                    trsvcid=request.trsvcid,
+                    adrfam=request.adrfam,
+                )
+                self.logger.info(f"Status of add listener: {return_string}")
         except Exception as ex:
             self.logger.error(f"Add Listener failed: \n {ex}")
             if context:
@@ -546,30 +567,47 @@ class GWService(pb2_grpc.NVMEGatewayServicer):
             try:
                 json_req = json_format.MessageToJson(
                     request, preserving_proto_field_name=True)
-                self.persistent_config.add_listener(request.nqn, request.traddr,
+                self.persistent_config.add_listener(request.nqn,
+                                                    request.gateway_name,
+                                                    request.trtype,
+                                                    request.traddr,
                                                     request.trsvcid,
                                                     json_req)
             except Exception as ex:
                 self.terminate(
-                    f"Error persisting listener {request.traddr}: {ex}")
+                    f"Error persisting listener {request.trsvcid}: {ex}")
 
         return pb2.req_status(status=return_string)
 
     def nvmf_subsystem_remove_listener(self, request, context=None):
         """Removes a listener at the given TCP/IP address for the given subsystem."""
         self.logger.info(
-            {f"Removing {request.trtype} listener at {request.traddr} for {request.nqn}."})
+            {f"Removing {request.gateway_name} {request.trtype} listener at {request.traddr}:{request.trsvcid} for {request.nqn}"})
 
         try:
-            return_string = self.spdk_rpc.nvmf.nvmf_subsystem_remove_listener(
-                self.spdk_rpc_client,
-                request.nqn,
-                request.trtype,
-                request.traddr,
-                request.trsvcid,
-                request.adrfam,
-            )
-            self.logger.info(f"Status of remove listener: {return_string}")
+            if (request.gateway_name and not request.traddr) or \
+               (not request.gateway_name and request.traddr):
+                raise Exception(
+                    "both gateway_name and traddr or neither must be specified")
+
+            if not request.gateway_name or \
+               request.gateway_name == self.gateway_name:
+                if not request.traddr:
+                    traddr = self.nvme_config.get("config", "gateway_addr")
+                    if not traddr:
+                        raise Exception("config.gateway_addr option is not set")
+                else:
+                    traddr = request.traddr
+
+                return_string = self.spdk_rpc.nvmf.nvmf_subsystem_remove_listener(
+                    self.spdk_rpc_client,
+                    nqn=request.nqn,
+                    trtype=request.trtype,
+                    traddr=traddr,
+                    trsvcid=request.trsvcid,
+                    adrfam=request.adrfam,
+                )
+                self.logger.info(f"Status of remove listener: {return_string}")
         except Exception as ex:
             self.logger.error(f"Remove listener returned with error: \n {ex}")
             if context:
@@ -581,11 +619,13 @@ class GWService(pb2_grpc.NVMEGatewayServicer):
             # Update persistent configuration
             try:
                 self.persistent_config.delete_listener(request.nqn,
+                                                       request.gateway_name,
+                                                       request.trtype,
                                                        request.traddr,
                                                        request.trsvcid)
             except Exception as ex:
                 self.terminate(
-                    f"Error persisting listener {request.traddr} delete: {ex}")
+                    f"Error persisting listener {request.trsvcid} delete: {ex}")
 
         return pb2.req_status(status=return_string)
 
