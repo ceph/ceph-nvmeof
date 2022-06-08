@@ -50,7 +50,6 @@ class GWService(pb2_grpc.NVMEGatewayServicer):
         spdk_rpc_client: Client of SPDK RPC server
         spdk_rpc_ping_client: Ping client of SPDK RPC server
         spdk_process: Subprocess running SPDK NVMEoF target application
-        transports: List (set) of created transports
     """
 
     def __init__(self, nvme_config):
@@ -60,7 +59,6 @@ class GWService(pb2_grpc.NVMEGatewayServicer):
         self.persistent_config = OmapPersistentConfig(nvme_config)
         self.spdk_process = None
         self.server = None
-        self.transports = set()
 
     def __enter__(self):
         return self
@@ -233,8 +231,6 @@ class GWService(pb2_grpc.NVMEGatewayServicer):
                 f"Create Transport {trtype} returned with error: \n {ex}"
             )
             raise
-
-        self.transports.add(trtype)
 
     def restore_config(self):
         callbacks = {
@@ -529,9 +525,6 @@ class GWService(pb2_grpc.NVMEGatewayServicer):
         })
 
         try:
-            if request.trtype.lower() not in self.transports:
-                raise Exception(f"{request.trtype} transport is not enabled")
-
             return_string = self.spdk_rpc.nvmf.nvmf_subsystem_add_listener(
                 self.spdk_rpc_client,
                 nqn=request.nqn,
