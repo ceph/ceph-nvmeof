@@ -100,12 +100,9 @@ class GWService(pb2_grpc.NVMEGatewayServicer):
         enable_auth = self.nvme_config.getboolean("config", "enable_auth")
         gateway_addr = self.nvme_config.get("config", "gateway_addr")
         gateway_port = self.nvme_config.get("config", "gateway_port")
-        grpc_max_workers = self.nvme_config.getint("config",
-                                                   "grpc_server_max_workers")
 
         # Create server and check for existing NVMeoF target configuration
-        self.server = grpc.server(
-            futures.ThreadPoolExecutor(max_workers=grpc_max_workers))
+        self.server = grpc.server(futures.ThreadPoolExecutor(max_workers=1))
         self.start_spdk()
         self.restore_config()
         pb2_grpc.add_NVMEGatewayServicer_to_server(self, self.server)
