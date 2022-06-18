@@ -275,10 +275,11 @@ class GatewayClient:
 
     @cli.cmd([
         argument("-n", "--subnqn", help="Subsystem NQN", required=True),
-        argument("-a", "--traddr", help="NVMe host IP", required=True),
-        argument("-s", "--trsvcid", help="Port number", required=True),
+        argument("-g", "--gateway-name", help="Gateway name", default=""),
         argument("-t", "--trtype", help="Transport type", default="TCP"),
         argument("-f", "--adrfam", help="Address family", default="ipv4"),
+        argument("-a", "--traddr", help="NVMe host IP", default=""),
+        argument("-s", "--trsvcid", help="Port number", required=True),
     ])
     def create_listener(self, args):
         """Adds a listener at a particular TCP/IP address for a given subsystem."""
@@ -286,6 +287,7 @@ class GatewayClient:
         try:
             create_req = pb2.subsystem_add_listener_req(
                 nqn=args.subnqn,
+                gateway_name=args.gateway_name,
                 trtype=args.trtype,
                 adrfam=args.adrfam,
                 traddr=args.traddr,
@@ -298,10 +300,11 @@ class GatewayClient:
 
     @cli.cmd([
         argument("-n", "--subnqn", help="Subsystem NQN", required=True),
-        argument("-a", "--traddr", help="NVMe host IP", required=True),
-        argument("-s", "--trsvcid", help="Port number", required=True),
+        argument("-g", "--gateway-name", help="Gateway name", default=""),
         argument("-t", "--trtype", help="Transport type", default="TCP"),
         argument("-f", "--adrfam", help="Address family", default="ipv4"),
+        argument("-a", "--traddr", help="NVMe host IP", default=""),
+        argument("-s", "--trsvcid", help="Port number", required=True),
     ])
     def delete_listener(self, args):
         """Deletes a listener at a particular TCP/IP address for a given subsystem."""
@@ -309,6 +312,7 @@ class GatewayClient:
         try:
             delete_req = pb2.listener_delete_req(
                 nqn=args.subnqn,
+                gateway_name=args.gateway_name,
                 trtype=args.trtype,
                 adrfam=args.adrfam,
                 traddr=args.traddr,

@@ -1,4 +1,5 @@
 import pytest
+import socket
 from nvme_gw_cli import main as cli
 
 image = "iscsidevimage"
@@ -9,8 +10,9 @@ serial = "SPDK00000000000001"
 host_list = ["nqn.2016-06.io.spdk:host1", "*"]
 nsid = "1"
 trtype = "TCP"
+gateway_name = socket.gethostname()
 addr = "127.0.0.1"
-port = "5001"
+listener_list = [["-g", gateway_name, "-a", addr, "-s", "5001"], ["-s", "5002"]]
 config = "nvme_gw.config"
 
 class TestGet:
@@ -36,8 +38,9 @@ class TestCreate:
         cli(["-c", config, "add_host", "-n", subsystem, "-t", host])
         assert "Failed to add" not in caplog.text
 
-    def test_create_listener(self, caplog):
-        cli(["-c", config, "create_listener", "-n", subsystem, "-a", addr, "-s", port])
+    @pytest.mark.parametrize("listener", listener_list)
+    def test_create_listener(self, caplog, listener):
+        cli(["-c", config, "create_listener", "-n", subsystem] + listener)
         assert "Failed to create" not in caplog.text
 
 class TestDelete:
@@ -46,8 +49,9 @@ class TestDelete:
         cli(["-c", config, "delete_host", "-n", subsystem, "-t", host])
         assert "Failed to remove" not in caplog.text
 
-    def test_delete_listener(self, caplog):
-        cli(["-c", config, "delete_listener", "-n", subsystem, "-a", addr, "-s", port])
+    @pytest.mark.parametrize("listener", listener_list)
+    def test_delete_listener(self, caplog, listener):
+        cli(["-c", config, "delete_listener", "-n", subsystem] + listener)
         assert "Failed to delete" not in caplog.text
 
     def test_delete_namespace(self, caplog):

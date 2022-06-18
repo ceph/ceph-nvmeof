@@ -136,7 +136,7 @@ Indicate the location of the keys and certificates in the config file:
 		$ python3 ./nvme_gw_cli.py add_host -n nqn.2016-06.io.spdk:cnode1 -t *
 		INFO:root:Allow open host access to nqn.2016-06.io.spdk:cnode1: True
 		
-		$ python3 ./nvme_gw_cli.py create_listener -n nqn.2016-06.io.spdk:cnode1 -a 192.168.50.4 -s 5001
+		$ python3 ./nvme_gw_cli.py create_listener -n nqn.2016-06.io.spdk:cnode1 -s 5001
 		INFO:root:Created nqn.2016-06.io.spdk:cnode1 listener: True
 
 3. On the storage client system (ubuntu-21.04):

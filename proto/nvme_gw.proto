@@ -131,19 +131,21 @@ message req_status {
 message subsystem_add_listener_req {
 	string nqn = 1; //subsystem for which listener is being added
 	optional string tgt_name = 2;
-	string trtype = 3;
-	string adrfam = 4;
-	string traddr = 5;
-	string trsvcid = 6;
+	string gateway_name = 3;
+	string trtype = 4;
+	string adrfam = 5;
+	string traddr = 6;
+	string trsvcid = 7;
 }
 
 message listener_delete_req {
 	string nqn = 1;
 	optional string tgt_name = 2;
-	string trtype = 3;
-	string adrfam = 4;
-	string traddr = 5;
-	string trsvcid = 6;
+	string gateway_name = 3;
+	string trtype = 4;
+	string adrfam = 5;
+	string traddr = 6;
+	string trsvcid = 7;
 }
 
 message subsystems_get_req {
