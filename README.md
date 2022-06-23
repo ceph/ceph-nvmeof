@@ -198,4 +198,52 @@ Indicate the location of the keys and certificates in the config file:
 
 			$ ls /mnt
 			lost+found  test.txt
-			
+
+# nvmeof-gateway REST API server
+
+To access nvmeof-gateway via REST API you need to setup and run the nvmeof-gateway REST API server:
+
+1. Install fastapi python module and ASGI compatible server (in our example it is uvicorn):
+
+	$ python3 -m pip install fastapi
+	$ python3 -m pip install "uvicorn[standard]"
+
+2. Run the server:
+
+	$ uvicorn nvme_gw_rest_api:app --reload --host 192.168.50.4 --port 8001
+
+# Example NVMe volume access via REST API
+
+Create/get/delete a bdev:
+
+	$ curl -X POST -H "Content-Type: application/json" -d '{"name":"test", "pool":"rbd", "image":"test"}' http://192.168.50.4:8001/bdevs
+	$ curl -X GET http://192.168.50.4:8001/bdevs
+	$ curl -X GET http://192.168.50.4:8001/bdevs/test
+	$ curl -X DELETE http://192.168.50.4:8001/bdevs/test
+
+Create/get/delete a subsystem:
+
+	$ curl -X POST -H "Content-Type: application/json" -d '{"nqn":"nqn.2016-06.io.spdk:cnode1", "serial":"SPDK00000000000001"}' http://192.168.50.4:8001/subsystems
+	$ curl -X GET http://192.168.50.4:8001/subsystems
+	$ curl -X GET http://192.168.50.4:8001/subsystems/nqn.2016-06.io.spdk:cnode1
+	$ curl -X DELETE http://192.168.50.4:8001/subsystems/nqn.2016-06.io.spdk:cnode1
+
+Create/get/delete a subsystem namespace:
+
+	$ curl -X POST -H "Content-Type: application/json" -d '{"bdev_name":"test"}' http://192.168.50.4:8001/subsystems/nqn.2016-06.io.spdk:cnode1/namespaces
+	$ curl -X GET http://192.168.50.4:8001/subsystems/nqn.2016-06.io.spdk:cnode1/namespaces
+	$ curl -X GET http://192.168.50.4:8001/subsystems/nqn.2016-06.io.spdk:cnode1/namespaces/1
+	$ curl -X DELETE http://192.168.50.4:8001/subsystems/nqn.2016-06.io.spdk:cnode1/namespaces/1
+
+Create/get/delete a subsystem host:
+
+	$ curl -X POST -H "Content-Type: application/json" -d '{"nqn":"*"}' http://192.168.50.4:8001/subsystems/nqn.2016-06.io.spdk:cnode1/hosts
+	$ curl -X GET http://192.168.50.4:8001/subsystems/nqn.2016-06.io.spdk:cnode1/hosts
+	$ curl -X GET http://192.168.50.4:8001/subsystems/nqn.2016-06.io.spdk:cnode1/hosts/"*"
+	$ curl -X DELETE http://192.168.50.4:8001/subsystems/nqn.2016-06.io.spdk:cnode1/hosts/"*"
+
+Create/get/delete a subsystem listener:
+
+	$ curl -X POST -H "Content-Type: application/json" -d '{"trsvcid":"4400"}' http://192.168.50.4:8001/subsystems/nqn.2016-06.io.spdk:cnode1/listeners
+	$ curl -X GET http://192.168.50.4:8001/subsystems/nqn.2016-06.io.spdk:cnode1/listeners
+	$ curl -X DELETE -H "Content-Type: application/json" -d '{"trsvcid":"4400"}' http://192.168.50.4:8001/subsystems/nqn.2016-06.io.spdk:cnode1/listeners
