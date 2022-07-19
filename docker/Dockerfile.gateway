@@ -1,0 +1,24 @@
+
+ARG spdk_version
+
+FROM spdk:${spdk_version:-latest} as spdk
+
+#FROM fedora:33 AS base
+
+#COPY --from=spdk /tmp/rpms/*.rpm /tmp/
+
+
+RUN dnf update -y \
+    && dnf install -y libaio numactl-libs python3-pip librbd-devel.x86_64 python-rados \
+    && pip3 --no-cache-dir install --upgrade pip \
+    && python3 -m pip install grpcio \
+    && python3 -m pip install grpcio-tools 
+
+COPY . /app/
+
+RUN ln -s /usr/local/bin/nvmf_tgt /usr/libexec/nvmf_tgt
+
+RUN rm -rf /app/spdk
+
+CMD ["/bin/bash"]
+
