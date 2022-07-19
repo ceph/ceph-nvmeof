@@ -1,0 +1,9 @@
+grpcio
+grpcio-tools
+pytest
+nose
+requests
+pytest-mock
+pytest-grpc
+python-cephlibs
+protobuf
