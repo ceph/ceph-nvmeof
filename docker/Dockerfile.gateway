@@ -1,0 +1,22 @@
+FROM fedora:33 AS base
+
+
+RUN dnf update -y \
+    && dnf install -y libaio numactl-libs python3-pip \
+    && pip3 --no-cache-dir install --upgrade pip \
+    && python3 -m pip install grpcio \
+    && python3 -m pip install grpcio-tools 
+
+COPY output/*.rpm /tmp/
+
+COPY docker/post-install /tmp/post-install
+
+RUN /tmp/post-install
+
+COPY . /app
+
+RUN rm -rf /app/docker
+RUN rm -rf /app/output
+
+CMD ["/bin/bash"]
+

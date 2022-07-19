@@ -1,0 +1,17 @@
+FROM fedora:33 AS base
+
+# Generic args
+ARG PROXY
+ARG NO_PROXY
+
+ENV http_proxy=$PROXY
+ENV https_proxy=$PROXY
+ENV no_proxy=$NO_PROXY
+
+
+COPY ./docker/spdk.tar.gz /spdk.tar.gz
+COPY ./docker/pre-install /install
+
+RUN /install
+
+CMD ["/bin/bash"]
