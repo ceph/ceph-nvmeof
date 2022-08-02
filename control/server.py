@@ -16,14 +16,12 @@ import signal
 import socket
 import subprocess
 import grpc
-from concurrent import futures
-import nvme_gw_pb2_grpc as pb2_grpc
-import nvme_gw_pb2 as pb2
-import nvme_gw_config
-from nvme_gw_persistence import OmapPersistentConfig
-import argparse
 import json
+from concurrent import futures
 from google.protobuf import json_format
+from .proto import gateway_pb2_grpc as pb2_grpc
+from .proto import gateway_pb2 as pb2
+from .state import OmapGatewayState
 
 libc = ctypes.CDLL(ctypes.util.find_library("c"))
 PR_SET_PDEATHSIG = 1
@@ -46,7 +44,7 @@ class GWService(pb2_grpc.NVMEGatewayServicer):
         nvme_config: Basic gateway parameters
         logger: Logger instance to track server events
         server: gRPC server instance to receive gateway client requests
-        persistent_config: Methods for target configuration persistence
+        gateway_state: Methods for target state persistence
         spdk_rpc: Module methods for SPDK
         spdk_rpc_client: Client of SPDK RPC server
         spdk_rpc_ping_client: Ping client of SPDK RPC server
@@ -57,7 +55,7 @@ class GWService(pb2_grpc.NVMEGatewayServicer):
 
         self.logger = nvme_config.logger
         self.nvme_config = nvme_config
-        self.persistent_config = OmapPersistentConfig(nvme_config)
+        self.gateway_state = OmapGatewayState(nvme_config)
         self.spdk_process = None
         self.server = None
 
@@ -109,7 +107,7 @@ class GWService(pb2_grpc.NVMEGatewayServicer):
         # Create server and check for existing NVMeoF target configuration
         self.server = grpc.server(futures.ThreadPoolExecutor(max_workers=1))
         self.start_spdk()
-        self.restore_config()
+        self.restore_state()
         pb2_grpc.add_NVMEGatewayServicer_to_server(self, self.server)
 
         if enable_auth:
@@ -145,7 +143,7 @@ class GWService(pb2_grpc.NVMEGatewayServicer):
             timedout = self.server.wait_for_termination(timeout=1)
             if not timedout:
                 break
-            alive = gw_service.ping()
+            alive = self.ping()
             if not alive:
                 break
 
@@ -239,15 +237,15 @@ class GWService(pb2_grpc.NVMEGatewayServicer):
             )
             raise
 
-    def restore_config(self):
+    def restore_state(self):
         callbacks = {
-            self.persistent_config.BDEV_PREFIX: self.bdev_rbd_create,
-            self.persistent_config.SUBSYSTEM_PREFIX: self.nvmf_create_subsystem,
-            self.persistent_config.NAMESPACE_PREFIX: self.nvmf_subsystem_add_ns,
-            self.persistent_config.HOST_PREFIX: self.nvmf_subsystem_add_host,
-            self.persistent_config.LISTENER_PREFIX: self.nvmf_subsystem_add_listener
+            self.gateway_state.BDEV_PREFIX: self.bdev_rbd_create,
+            self.gateway_state.SUBSYSTEM_PREFIX: self.nvmf_create_subsystem,
+            self.gateway_state.NAMESPACE_PREFIX: self.nvmf_subsystem_add_ns,
+            self.gateway_state.HOST_PREFIX: self.nvmf_subsystem_add_host,
+            self.gateway_state.LISTENER_PREFIX: self.nvmf_subsystem_add_listener
         }
-        self.persistent_config.restore(callbacks)
+        self.gateway_state.restore(callbacks)
 
     def bdev_rbd_create(self, request, context=None):
         """Creates bdev from a given RBD image."""
@@ -274,11 +272,11 @@ class GWService(pb2_grpc.NVMEGatewayServicer):
             return pb2.bdev_info()
 
         if context:
-            # Update persistent configuration
+            # Update gateway state
             try:
                 json_req = json_format.MessageToJson(
                     request, preserving_proto_field_name=True)
-                self.persistent_config.add_bdev(bdev_name, json_req)
+                self.gateway_state.add_bdev(bdev_name, json_req)
             except Exception as ex:
                 self.terminate(f"Error persisting bdev {bdev_name}: {ex}")
 
@@ -304,9 +302,9 @@ class GWService(pb2_grpc.NVMEGatewayServicer):
             return pb2.req_status()
 
         if context:
-            # Update persistent configuration
+            # Update gateway state
             try:
-                self.persistent_config.delete_bdev(request.bdev_name)
+                self.gateway_state.delete_bdev(request.bdev_name)
             except Exception as ex:
                 self.terminate(
                     f"Error persisting {request.bdev_name} delete: {ex}")
@@ -336,11 +334,11 @@ class GWService(pb2_grpc.NVMEGatewayServicer):
             return pb2.subsystem_info()
 
         if context:
-            # Update persistent configuration
+            # Update gateway state
             try:
                 json_req = json_format.MessageToJson(
                     request, preserving_proto_field_name=True)
-                self.persistent_config.add_subsystem(request.subsystem_nqn,
+                self.gateway_state.add_subsystem(request.subsystem_nqn,
                                                      json_req)
             except Exception as ex:
                 self.terminate(
@@ -369,9 +367,9 @@ class GWService(pb2_grpc.NVMEGatewayServicer):
             return pb2.req_status()
 
         if context:
-            # Update persistent configuration
+            # Update gateway state
             try:
-                self.persistent_config.delete_subsystem(request.subsystem_nqn)
+                self.gateway_state.delete_subsystem(request.subsystem_nqn)
             except Exception as ex:
                 self.terminate(
                     f"Error persisting {request.subsystem_nqn} delete: {ex}")
@@ -400,11 +398,11 @@ class GWService(pb2_grpc.NVMEGatewayServicer):
             return pb2.nsid()
 
         if context:
-            # Update persistent configuration
+            # Update gateway state
             try:
                 json_req = json_format.MessageToJson(
                     request, preserving_proto_field_name=True)
-                self.persistent_config.add_namespace(request.subsystem_nqn,
+                self.gateway_state.add_namespace(request.subsystem_nqn,
                                                      str(nsid), json_req)
             except Exception as ex:
                 self.terminate(f"Error persisting namespace {nsid}: {ex}")
@@ -431,9 +429,9 @@ class GWService(pb2_grpc.NVMEGatewayServicer):
             return pb2.req_status()
 
         if context:
-            # Update persistent configuration
+            # Update gateway state
             try:
-                self.persistent_config.delete_namespace(request.subsystem_nqn,
+                self.gateway_state.delete_namespace(request.subsystem_nqn,
                                                         str(request.nsid))
             except Exception as ex:
                 self.terminate(
@@ -471,11 +469,11 @@ class GWService(pb2_grpc.NVMEGatewayServicer):
             return pb2.req_status()
 
         if context:
-            # Update persistent configuration
+            # Update gateway state
             try:
                 json_req = json_format.MessageToJson(
                     request, preserving_proto_field_name=True)
-                self.persistent_config.add_host(request.subsystem_nqn,
+                self.gateway_state.add_host(request.subsystem_nqn,
                                                 request.host_nqn,
                                                 json_req)
             except Exception as ex:
@@ -516,9 +514,9 @@ class GWService(pb2_grpc.NVMEGatewayServicer):
             return pb2.req_status()
 
         if context:
-            # Update persistent configuration
+            # Update gateway state
             try:
-                self.persistent_config.delete_host(request.subsystem_nqn,
+                self.gateway_state.delete_host(request.subsystem_nqn,
                                                    request.host_nqn)
             except Exception as ex:
                 self.terminate(f"Error persisting remove host: {ex}")
@@ -563,11 +561,11 @@ class GWService(pb2_grpc.NVMEGatewayServicer):
             return pb2.req_status()
 
         if context:
-            # Update persistent configuration
+            # Update gateway state
             try:
                 json_req = json_format.MessageToJson(
                     request, preserving_proto_field_name=True)
-                self.persistent_config.add_listener(request.nqn,
+                self.gateway_state.add_listener(request.nqn,
                                                     request.gateway_name,
                                                     request.trtype,
                                                     request.traddr,
@@ -616,9 +614,9 @@ class GWService(pb2_grpc.NVMEGatewayServicer):
             return pb2.req_status()
 
         if context:
-            # Update persistent configuration
+            # Update gateway state
             try:
-                self.persistent_config.delete_listener(request.nqn,
+                self.gateway_state.delete_listener(request.nqn,
                                                        request.gateway_name,
                                                        request.trtype,
                                                        request.traddr,
@@ -654,21 +652,3 @@ class GWService(pb2_grpc.NVMEGatewayServicer):
         except Exception as ex:
             self.logger.error(f"spdk_get_version failed with: \n {ex}")
             return False
-
-
-if __name__ == "__main__":
-
-    parser = argparse.ArgumentParser(prog="python3 ./nvme_gw_server",
-                                     description="Manage NVMe gateways")
-    parser.add_argument(
-        "-c",
-        "--config",
-        default="nvme_gw.config",
-        type=str,
-        help="Path to config file",
-    )
-
-    args = parser.parse_args()
-    nvme_config = nvme_gw_config.NVMeGWConfig(args.config)
-    with GWService(nvme_config) as gw_service:
-        gw_service.serve()

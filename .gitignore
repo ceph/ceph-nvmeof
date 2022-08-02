@@ -1,8 +1,8 @@
 
 __pycache__
 spdk
-nvme_gw_pb2_grpc.py
-nvme_gw_pb2.py
+control/proto/gateway_pb2_grpc.py
+control/proto/gateway_pb2.py
 server.crt
 server.key
 client.crt

@@ -10,12 +10,12 @@
 import rados
 from typing import Dict, Optional
 from abc import ABC, abstractmethod
-import nvme_gw_pb2 as pb2
+from .proto import gateway_pb2 as pb2
 from google.protobuf import json_format
 
 
-class PersistentConfig(ABC):
-    """Persists gateway NVMeoF target configuration."""
+class GatewayState(ABC):
+    """Persists gateway NVMeoF target state."""
 
     @abstractmethod
     def add_bdev(self, bdev_name: str, val: str):
@@ -59,7 +59,7 @@ class PersistentConfig(ABC):
         pass
 
     @abstractmethod
-    def delete_config(self):
+    def delete_state(self):
         pass
 
     @abstractmethod
@@ -67,10 +67,10 @@ class PersistentConfig(ABC):
         pass
 
 
-class OmapPersistentConfig(PersistentConfig):
-    """Persists NVMeoF target configuration to an OMAP object.
+class OmapGatewayState(GatewayState):
+    """Persists NVMeoF target state to an OMAP object.
 
-    Handles reads/writes of persistent NVMeoF target configuration data in 
+    Handles reads/writes of persistent NVMeoF target state data in 
     key/value format within an OMAP object.
 
     Class attributes:
@@ -78,7 +78,7 @@ class OmapPersistentConfig(PersistentConfig):
         X_PREFIX: OMAP key prefix for key of type "X"
 
     Instance attributes:
-        version: Local gateway NVMeoF target configuration version
+        version: Local gateway NVMeoF target state version
         nvme_config: Basic gateway parameters
         logger: Logger instance to track OMAP access events
         spdk_rpc: Module methods for SPDK
@@ -125,7 +125,7 @@ class OmapPersistentConfig(PersistentConfig):
             raise
 
     def _write_key(self, key: str, val: str):
-        """Writes key and value to the persistent config."""
+        """Writes key and value to the OMAP."""
 
         try:
             version_update = self.version + 1
@@ -144,7 +144,7 @@ class OmapPersistentConfig(PersistentConfig):
             raise
 
     def _delete_key(self, key: str):
-        """Deletes key from omap persistent config."""
+        """Deletes key from the OMAP."""
 
         try:
             version_update = self.version + 1
@@ -163,17 +163,17 @@ class OmapPersistentConfig(PersistentConfig):
             raise
 
     def add_bdev(self, bdev_name: str, val: str):
-        """Adds a bdev to the persistent config."""
+        """Adds a bdev to the OMAP."""
         key = self.BDEV_PREFIX + bdev_name
         self._write_key(key, val)
 
     def delete_bdev(self, bdev_name: str):
-        """Deletes a bdev from the persistent config."""
+        """Deletes a bdev from the OMAP."""
         key = self.BDEV_PREFIX + bdev_name
         self._delete_key(key)
 
     def _restore_bdevs(self, omap_dict, callback):
-        """Restores a bdev from the persistent config."""
+        """Restores a bdev from the OMAP."""
 
         for (key, val) in omap_dict.items():
             if key.startswith(self.BDEV_PREFIX):
@@ -181,17 +181,17 @@ class OmapPersistentConfig(PersistentConfig):
                 callback(req)
 
     def add_namespace(self, subsystem_nqn: str, nsid: str, val: str):
-        """Adds a namespace to the persistent config."""
+        """Adds a namespace to the OMAP."""
         key = self.NAMESPACE_PREFIX + subsystem_nqn + "_" + nsid
         self._write_key(key, val)
 
     def delete_namespace(self, subsystem_nqn: str, nsid: str):
-        """Deletes a namespace from the persistent config."""
+        """Deletes a namespace from the OMAP."""
         key = self.NAMESPACE_PREFIX + subsystem_nqn + "_" + nsid
         self._delete_key(key)
 
     def _restore_namespaces(self, omap_dict, callback):
-        """Restores a namespace from the persistent config."""
+        """Restores a namespace from the OMAP."""
 
         for (key, val) in omap_dict.items():
             if key.startswith(self.NAMESPACE_PREFIX):
@@ -202,12 +202,12 @@ class OmapPersistentConfig(PersistentConfig):
                 callback(req)
 
     def add_subsystem(self, subsystem_nqn: str, val: str):
-        """Adds a subsystem to the persistent config."""
+        """Adds a subsystem to the OMAP."""
         key = self.SUBSYSTEM_PREFIX + subsystem_nqn
         self._write_key(key, val)
 
     def delete_subsystem(self, subsystem_nqn: str):
-        """Deletes a subsystem from the persistent config."""
+        """Deletes a subsystem from the OMAP."""
         key = self.SUBSYSTEM_PREFIX + subsystem_nqn
         self._delete_key(key)
 
@@ -220,7 +220,7 @@ class OmapPersistentConfig(PersistentConfig):
                 self._delete_key(key)
 
     def _restore_subsystems(self, omap_dict, callback):
-        """Restores subsystems from the persistent config."""
+        """Restores subsystems from the OMAP."""
 
         for (key, val) in omap_dict.items():
             if key.startswith(self.SUBSYSTEM_PREFIX):
@@ -228,17 +228,17 @@ class OmapPersistentConfig(PersistentConfig):
                 callback(req)
 
     def add_host(self, subsystem_nqn: str, host_nqn: str, val: str):
-        """Adds a host to the persistent config."""
+        """Adds a host to the OMAP."""
         key = "{}{}_{}".format(self.HOST_PREFIX, subsystem_nqn, host_nqn)
         self._write_key(key, val)
 
     def delete_host(self, subsystem_nqn: str, host_nqn: str):
-        """Deletes a host from the persistent config."""
+        """Deletes a host from the OMAP."""
         key = "{}{}_{}".format(self.HOST_PREFIX, subsystem_nqn, host_nqn)
         self._delete_key(key)
 
     def _restore_hosts(self, omap_dict, callback):
-        """Restore hosts from the persistent config."""
+        """Restore hosts from the OMAP."""
 
         for (key, val) in omap_dict.items():
             if key.startswith(self.HOST_PREFIX):
@@ -247,20 +247,20 @@ class OmapPersistentConfig(PersistentConfig):
 
     def add_listener(self, subsystem_nqn: str, gateway: str, trtype: str,
                      traddr: str, trsvcid: str, val: str):
-        """Adds a listener to the persistent config."""
+        """Adds a listener to the OMAP."""
         key = "{}{}_{}_{}_{}_{}".format(self.LISTENER_PREFIX, gateway,
                                         subsystem_nqn, trtype, traddr, trsvcid)
         self._write_key(key, val)
 
     def delete_listener(self, subsystem_nqn: str, gateway: str, trtype: str,
                         traddr: str, trsvcid: str):
-        """Deletes a listener from the persistent config."""
+        """Deletes a listener from the OMAP."""
         key = "{}{}_{}_{}_{}_{}".format(self.LISTENER_PREFIX, gateway,
                                         subsystem_nqn, trtype, traddr, trsvcid)
         self._delete_key(key)
 
     def _restore_listeners(self, omap_dict, callback):
-        """Restores listeners from the persistent config."""
+        """Restores listeners from the OMAP."""
 
         for (key, val) in omap_dict.items():
             if key.startswith(self.LISTENER_PREFIX):
@@ -268,7 +268,7 @@ class OmapPersistentConfig(PersistentConfig):
                 callback(req)
 
     def _read_key(self, key) -> Optional[str]:
-        """Reads single key from persistent config and returns its value."""
+        """Reads a key from the OMAP and returns its value."""
 
         with rados.ReadOpCtx() as read_op:
             iter, _ = self.ioctx.get_omap_vals_by_keys(read_op, (key,))
@@ -281,7 +281,7 @@ class OmapPersistentConfig(PersistentConfig):
         return None
 
     def _read_all(self) -> Dict[str, str]:
-        """Reads persistent config and returns dict of all keys and values."""
+        """Reads OMAP and returns dict of all keys and values."""
 
         with rados.ReadOpCtx() as read_op:
             iter, _ = self.ioctx.get_omap_vals(read_op, "", "", -1)
@@ -289,7 +289,7 @@ class OmapPersistentConfig(PersistentConfig):
             omap_dict = dict(iter)
         return omap_dict
 
-    def delete_config(self):
+    def delete_state(self):
         """Deletes OMAP object."""
 
         try:
@@ -299,7 +299,7 @@ class OmapPersistentConfig(PersistentConfig):
             self.logger.info(f"Object {self.omap_name} not found.")
 
     def restore(self, callbacks):
-        """Restores gateway config to persistent config specifications."""
+        """Restores gateway state to OMAP specifications."""
 
         omap_version = self._read_key(self.OMAP_VERSION_KEY)
         if omap_version == "1":
