@@ -1,0 +1,17 @@
+# Ignore everything
+*
+# Don't ignore the core dirs
+!proto
+!control
+!ceph-nvmeof.conf
+!COPYING
+!LICENSE
+!README.md
+!setup.cfg
+!setup.py
+!requirements.txt
+!pyproject.toml 
+!docker/ceph.repo
+!docker/centos.repo
+!docker/dnf.conf
+!dnf.conf

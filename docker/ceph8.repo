@@ -1,0 +1,7 @@
+[ceph]
+name=Ceph packages for x86_64
+baseurl=https://download.ceph.com/rpm-CEPH_VERSION/el8/x86_64
+enabled=1
+priority=2
+gpgcheck=1
+gpgkey=https://download.ceph.com/keys/release.asc

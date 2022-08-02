@@ -1,0 +1,17 @@
+[centos9-base]
+name = CentOS 9 Base OS
+baseurl = http://mirror.stream.centos.org/9-stream/BaseOS/x86_64/os/
+gpgcheck = 0
+enabled = 1
+
+[centos9-appstream]
+name = CentOS 9 Appstream OS
+baseurl = http://mirror.stream.centos.org/9-stream/AppStream/x86_64/os/
+gpgcheck = 0
+enabled = 1
+
+[centos9-crb]
+name = CentOS 9 crb
+baseurl = https://mirror.stream.centos.org/9-stream/CRB/x86_64/os/
+gpgcheck = 0
+enabled = 1

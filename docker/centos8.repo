@@ -1,0 +1,17 @@
+[centos8-base]
+name = CentOS 8 Base OS
+baseurl = http://mirror.centos.org/centos/8-stream/BaseOS/x86_64/os/
+gpgcheck = 0
+enabled = 1
+
+[centos8-powertools]
+name = CentOS 8 Powertools OS
+baseurl = http://mirror.centos.org/centos/8-stream/PowerTools/x86_64/os
+gpgcheck = 0
+enabled = 1
+
+[centos8-appstream]
+name = CentOS 8 AppStream OS
+baseurl = http://mirror.centos.org/centos/8-stream/AppStream/x86_64/os
+gpgcheck = 0
+enabled = 1

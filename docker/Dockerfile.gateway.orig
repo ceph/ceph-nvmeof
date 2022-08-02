@@ -1,0 +1,81 @@
+# syntax = docker/dockerfile:1.2
+
+ARG spdk_version
+
+FROM registry.access.redhat.com/ubi8/ubi-minimal as python_builder
+
+RUN mkdir -p /build/proto/generated
+
+COPY ./dnf.conf /etc/dnf/dnf.conf
+COPY requirements.txt /build/
+COPY proto /build/proto
+
+RUN --mount=type=cache,target=/root/.cache,sharing=locked \
+    --mount=type=cache,target=/var/cache/yum,sharing=locked \
+    --mount=type=cache,target=/var/lib/dnf,sharing=locked \
+      set -ex \
+      && microdnf --setopt=cachedir=/var/cache/yum --config=/etc/dnf/dnf.conf install -y \
+      python36 \
+      && pip3 install --upgrade pip \
+      && pip install -r /build/requirements.txt \
+      &&  python3 -m grpc_tools.protoc \
+      --proto_path=/build/proto/ \
+      --python_out=/build/proto/generated \
+      --grpc_python_out=/build/proto/generated \
+      /build/proto/*.proto \
+     && sed -i 's/^import.*_pb2/from . \0/' /build/proto/generated/*.py 
+
+
+FROM spdk:${spdk_version:-latest} as spdk
+
+FROM registry.access.redhat.com/ubi8/ubi-minimal
+
+ARG CEPH_VERSION
+
+WORKDIR /app
+
+# Copy the rpms built in the spdk container.
+RUN mkdir -p /tmp/rpms
+
+COPY --from=python_builder /build/proto/generated  /app/control/generated
+
+COPY --from=spdk /tmp/rpms/* /tmp/rpms/
+
+COPY ./docker/centos.repo /etc/yum.repos.d/centos.repo
+COPY ./docker/ceph.repo /etc/yum.repos.d/ceph.repo
+
+RUN sed -i "s/CEPH_VERSION/${CEPH_VERSION}/g" /etc/yum.repos.d/ceph.repo
+
+COPY . /app/
+COPY ./dnf.conf /etc/dnf/dnf.conf
+
+# NOTE: protobuf 4.21 is required for using builder in protobuf. 
+RUN --mount=type=cache,from=python_builder,source=/var/cache/yum,target=/var/cache/yum \
+    --mount=type=cache,from=python_builder,source=/root/.cache,target=/root/.cache \
+    --mount=type=cache,from=python_builder,source=/var/lib/dnf,target=/var/lib/dnf \
+    set -ex \
+    && ls -Rl /var/cache/yum > /var/cache/yum/rpms.log || true \
+    && microdnf --disablerepo=centos8-base --setopt=cachedir=/var/cache/yum --config=/etc/dnf/dnf.conf update -y \
+    && microdnf --enablerepo=centos8-base --setopt=cachedir=/var/cache/yum --config=/etc/dnf/dnf.conf install -y \
+    python36 \
+    python3-pip \
+    librbd-devel-2:${CEPH_VERSION} \
+    librados-devel-2:${CEPH_VERSION} \
+    python3-rados-2:${CEPH_VERSION} \
+    glibc \
+    glibc-langpack-en \
+    cyrus-sasl \
+    cyrus-sasl-gssapi \
+    numactl-libs \
+    vim \
+    && pip3 install --upgrade pip \
+    && python3 -m pip install grpcio \
+    && python3 -m pip install protobuf==4.21.0 \
+    && pip install -e . \
+    && rpm -i /tmp/rpms/* \
+    && rm -rf /tmp/rpms \
+    && sed -i 's/^spdk_path.*$/spdk_path = \/usr\/libexec/g' /app/ceph-nvmeof.conf \
+    && sed -i 's/^tgt_path.*$/tgt_path = \/usr\/local\/bin\/nvmf_tgt/g' /app/ceph-nvmeof.conf  
+
+ENTRYPOINT ["python3", "-m", "control" , "-c", "/app/ceph-nvmeof.conf"]
+

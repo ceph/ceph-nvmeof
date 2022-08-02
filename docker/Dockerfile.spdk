@@ -1,0 +1,49 @@
+# syntax = docker/dockerfile:1.2
+ARG UBI_VERSION
+FROM registry.access.redhat.com/${UBI_VERSION}/ubi
+
+# Generic args
+ARG spdk_version
+ARG PROXY
+ARG NO_PROXY
+ARG CEPH_VERSION
+
+ENV http_proxy=$PROXY
+ENV https_proxy=$PROXY
+ENV no_proxy=$NO_PROXY
+ENV spdk_version=$spdk_version
+
+COPY ./docker/dnf.conf /etc/dnf/dnf.conf
+COPY ./docker/ceph.repo /etc/yum.repos.d/ceph.repo
+COPY ./docker/centos.repo /etc/yum.repos.d/centos.repo
+
+RUN \
+   --mount=type=cache,target=/var/cache/dnf \
+   --mount=type=cache,target=/var/lib/dnf \
+   mkdir -p /docker \
+   && sed -i "s/CEPH_VERSION/${CEPH_VERSION}/g" /etc/yum.repos.d/ceph.repo \
+   && dnf --setopt=cachedir=/var/cache/dnf --config=/etc/dnf/dnf.conf module reset ruby -y \
+   && dnf --setopt=cachedir=/var/cache/dnf --config=/etc/dnf/dnf.conf module enable ruby:3.1 -y \
+   && dnf --setopt=cachedir=/var/cache/dnf --config=/etc/dnf/dnf.conf install -y \
+      rpm-build \
+      librbd-devel \
+      git \
+      sudo \
+      ninja-build \
+      procps \
+      ruby \
+      rubygems \
+      ruby-devel \
+   && gem install rake \
+   && gem install bundler \
+   && sed -i -E 's/(^Defaults.*secure_path = )(.*)/\1\/usr\/local\/sbin:\/usr\/local\/bin:\2/g' /etc/sudoers  
+
+COPY ./spdk /tmp/spdk
+
+COPY ./docker/pre-install  /docker/
+COPY ./docker/post-install  /docker/
+
+RUN  set -ex \
+     && /docker/pre-install
+
+CMD ["/bin/bash"]

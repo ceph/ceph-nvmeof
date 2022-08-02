@@ -1,0 +1,9 @@
+# Ignore everything
+#*
+# Don't ignore the core dirs
+# !control
+!spdk
+!docker
+# !docker/ceph.repo
+# !docker/centos.repo
+# !dnf.conf
