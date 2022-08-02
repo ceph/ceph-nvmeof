@@ -1,6 +1,6 @@
 # nvmeof-gateway
 
-Management gateway daemon to setup access to Ceph storage over NVMeoF 
+Management gateway daemon to setup access to Ceph storage over NVMeoF
 
 This daemon runs as root. It provides the ability to export existing RBD images as NVMeoF namespaces. Creation of RBD images is not within the scope of this daemon.
 
@@ -9,19 +9,19 @@ This daemon runs as root. It provides the ability to export existing RBD images 
 1. The daemon is a gRPC server, so the host running the server will need to install gRPC packages:
 
 		$ make setup
-		
+
 2. Modify the config file (default ceph-nvmeof.conf) to reflect the IP/ Port where the server can be reached:
 
 		addr = <IP address at which the client can reach the gateway>
 		port = <port at which the client can reach the gateway>
-	
+
 3. To [enable mTLS](#mtls-configuration-for-testing-purposes) using self signed certificates, edit the config file to set:
 
-		enable_auth = True  # Setting this to False will open an insecure port		
+		enable_auth = True  # Setting this to False will open an insecure port
 
 4. Compile protobuf files for gRPC:
-		
-	    $ make grpc 
+
+	    $ make grpc
 
 5. SPDK is included in this repository as a submodule. Edit the config file to set:
 
@@ -48,16 +48,16 @@ This daemon runs as root. It provides the ability to export existing RBD images 
 		$ sh -c 'echo 4096 > /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages'
 
 7. Start the gateway server daemon:
-		
+
 		$ python3 -m control [-c CONFIG]
 
 
 # CLI Usage
 
-The CLI tool can be used to initiate a connection to the gateway and run commands to configure the NVMe targets. 
+The CLI tool can be used to initiate a connection to the gateway and run commands to configure the NVMe targets.
 
 Run the tool with the -h flag to see a list of available commands:
-	
+
 	$ python3 -m control.cli -h
 	usage: python3 -m control.cli [-h] [-c CONFIG]
 			{create_bdev,delete_bdev,create_subsystem,delete_subsystem,add_namespace,remove_namespace,add_host,remove_host,create_listener,delete_listener,get_subsystems} ...
@@ -124,16 +124,16 @@ Indicate the location of the keys and certificates in the config file:
 
 		$ python3 -m control.cli create_bdev -i mytestdevimage -p rbd -b Ceph0
 		INFO:root:Created bdev Ceph0: True
-		
+
 		$ python3 -m control.cli create_subsystem -n nqn.2016-06.io.spdk:cnode1 -s SPDK00000000000001
 		INFO:root:Created subsystem nqn.2016-06.io.spdk:cnode1: True
-		
+
 		$ python3 -m control.cli add_namespace -n nqn.2016-06.io.spdk:cnode1 -b Ceph0
 		INFO:root:Added namespace 1 to nqn.2016-06.io.spdk:cnode1: True
 		
 		$ python3 -m control.cli add_host -n nqn.2016-06.io.spdk:cnode1 -t '*'
 		INFO:root:Allowed open host access to nqn.2016-06.io.spdk:cnode1: True
-		
+
 		$ python3 -m control.cli create_listener -n nqn.2016-06.io.spdk:cnode1 -s 5001
 		INFO:root:Created nqn.2016-06.io.spdk:cnode1 listener: True
 
@@ -141,7 +141,7 @@ Indicate the location of the keys and certificates in the config file:
 
 	- Install requisite packages
 
-			$ apt install nvme-cli 
+			$ apt install nvme-cli
 			$ modprobe nvme-fabrics
 
 	- Run nvme command to discover available subsystems
@@ -196,4 +196,4 @@ Indicate the location of the keys and certificates in the config file:
 
 			$ ls /mnt
 			lost+found  test.txt
-			
+
