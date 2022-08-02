@@ -1,0 +1,9 @@
+# Ignore everything
+*
+# Don't ignore the core dirs
+!proto
+!control
+!ceph-nvmeof.conf
+!COPYING
+!LICENSE
+!README.md

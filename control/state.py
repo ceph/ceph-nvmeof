@@ -71,7 +71,7 @@ class GatewayState(ABC):
 class OmapGatewayState(GatewayState):
     """Persists NVMeoF target state to an OMAP object.
 
-    Handles reads/writes of persistent NVMeoF target state data in 
+    Handles reads/writes of persistent NVMeoF target state data in
     key/value format within an OMAP object.
 
     Class attributes:

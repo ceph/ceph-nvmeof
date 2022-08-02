@@ -1,0 +1,28 @@
+
+ARG spdk_version
+
+FROM spdk:${spdk_version:-latest} as spdk
+
+RUN dnf update -y \
+    && dnf install -y libaio numactl-libs python3-pip librbd-devel.x86_64 python-rados \
+    && dnf clean all \
+    && pip3 --no-cache-dir install --upgrade pip \
+    && python3 -m pip install grpcio \
+    && python3 -m pip install grpcio-tools
+
+COPY . /app/
+
+RUN ln -s /usr/local/bin/nvmf_tgt /usr/libexec/nvmf_tgt
+
+# This is a hack. The gateway code paths need to be fixed so we can get the right spdk
+# location
+#RUN rm -rf /app/spdk
+RUN ln -s /tmp/spdk /app/spdk
+
+
+# Update location of spdk in the ceph-nvmeof.conf file
+RUN sed -i 's/^spdk_path.*$/spdk_path = \/app/g' /app/ceph-nvmeof.conf
+
+WORKDIR /app
+ENTRYPOINT ["python3", "-m", "control" , "-c", "/app/ceph-nvmeof.conf"]
+

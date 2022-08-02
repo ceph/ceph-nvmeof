@@ -1,0 +1,25 @@
+FROM fedora:36 AS base
+
+# Generic args
+ARG spdk_version
+ARG PROXY
+ARG NO_PROXY
+
+ENV http_proxy=$PROXY
+ENV https_proxy=$PROXY
+ENV no_proxy=$NO_PROXY
+
+RUN dnf install -y rpm-build librbd-devel git \
+    && dnf clean all
+
+COPY ./spdk /tmp/spdk
+
+RUN ls -l
+RUN ls -l /tmp
+
+COPY . . 
+
+RUN /docker/pre-install $spdk_version
+RUN /docker/post-install
+
+CMD ["/bin/bash"]
