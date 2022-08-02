@@ -10,9 +10,9 @@
 import argparse
 import grpc
 import json
-import nvme_gw_pb2_grpc as pb2_grpc
-import nvme_gw_pb2 as pb2
-import nvme_gw_config
+from .generated import gateway_pb2_grpc as pb2_grpc
+from .generated import gateway_pb2 as pb2
+from .config import NVMeGWConfig
 
 
 def argument(*name_or_flags, **kwargs):
@@ -31,12 +31,12 @@ class Parser:
 
     def __init__(self):
         self.parser = argparse.ArgumentParser(
-            prog="python3 ./nvme_gw_cli.py",
+            prog="python3 -m control.cli",
             description="CLI to manage NVMe gateways")
         self.parser.add_argument(
             "-c",
             "--config",
-            default="nvme_gw.config",
+            default="ceph-nvmeof.conf",
             type=str,
             help="Path to config file",
         )
@@ -340,7 +340,7 @@ class GatewayClient:
 def main(args=None):
     client = GatewayClient()
     parsed_args = client.cli.parser.parse_args(args)
-    nvme_config = nvme_gw_config.NVMeGWConfig(parsed_args.config)
+    nvme_config = NVMeGWConfig(parsed_args.config)
     client.connect(nvme_config)
     if parsed_args.subcommand is None:
         client.cli.parser.print_help()

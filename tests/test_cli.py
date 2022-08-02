@@ -1,6 +1,6 @@
 import pytest
 import socket
-from nvme_gw_cli import main as cli
+from control.cli import main as cli
 
 image = "iscsidevimage"
 pool = "rbd"
@@ -13,7 +13,7 @@ trtype = "TCP"
 gateway_name = socket.gethostname()
 addr = "127.0.0.1"
 listener_list = [["-g", gateway_name, "-a", addr, "-s", "5001"], ["-s", "5002"]]
-config = "nvme_gw.config"
+config = "ceph-nvmeof.conf"
 
 class TestGet:
     def test_get_subsystems(self, caplog):
