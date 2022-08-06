@@ -10,6 +10,7 @@
 import socket
 import grpc
 import json
+import logging
 from google.protobuf import json_format
 from .generated import gateway_pb2 as pb2
 from .generated import gateway_pb2_grpc as pb2_grpc
@@ -31,7 +32,7 @@ class GatewayService(pb2_grpc.NVMEGatewayServicer):
 
     def __init__(self, nvme_config, gateway_state, spdk_rpc, spdk_rpc_client):
 
-        self.logger = nvme_config.logger
+        self.logger = logging.getLogger(__name__)
         self.nvme_config = nvme_config
         self.gateway_state = gateway_state
         self.spdk_rpc = spdk_rpc

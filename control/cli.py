@@ -10,6 +10,7 @@
 import argparse
 import grpc
 import json
+import logging
 from .generated import gateway_pb2_grpc as pb2_grpc
 from .generated import gateway_pb2 as pb2
 from .config import NVMeGWConfig
@@ -81,7 +82,8 @@ class GatewayClient:
 
     def __init__(self):
         self._stub = None
-        self._logger = None
+        logging.basicConfig(level=logging.DEBUG)
+        self.logger = logging.getLogger(__name__)
 
     @property
     def stub(self):
@@ -91,16 +93,8 @@ class GatewayClient:
             raise AttributeError("stub is None. Set with connect method.")
         return self._stub
 
-    @property
-    def logger(self):
-        """Logger instance to track client events."""
-
-        if self._logger is None:
-            raise AttributeError("logger is None. Set with connect method.")
-        return self._logger
-
     def connect(self, nvme_config):
-        """ Connects to server and sets stub and logger."""
+        """Connects to server and sets stub."""
 
         # Read in configuration parameters
         host = nvme_config.get("config", "gateway_addr")
@@ -131,8 +125,6 @@ class GatewayClient:
 
         # Bind the client and the server
         self._stub = pb2_grpc.NVMEGatewayStub(channel)
-        # Set up logging
-        self._logger = nvme_config.logger
 
     @cli.cmd([
         argument("-i", "--image", help="RBD image name", required=True),

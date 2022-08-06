@@ -17,6 +17,7 @@ import socket
 import subprocess
 import grpc
 import json
+import logging
 from concurrent import futures
 from .generated import gateway_pb2_grpc as pb2_grpc
 from .state import OmapGatewayState
@@ -50,8 +51,7 @@ class GatewayServer:
     """
 
     def __init__(self, nvme_config):
-
-        self.logger = nvme_config.logger
+        self.logger = logging.getLogger(__name__)
         self.nvme_config = nvme_config
         self.spdk_process = None
         self.server = None
