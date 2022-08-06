@@ -8,7 +8,7 @@
 #
 
 import argparse
-from .server import GWService
+from .server import GatewayServer
 from .config import NVMeGWConfig
 
 if __name__ == '__main__':
@@ -24,5 +24,5 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
     config = NVMeGWConfig(args.config)
-    with GWService(config) as gateway:
+    with GatewayServer(config) as gateway:
         gateway.serve()
