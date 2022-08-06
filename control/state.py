@@ -8,6 +8,7 @@
 #
 
 import rados
+import logging
 from typing import Dict, Optional
 from abc import ABC, abstractmethod
 from .proto import gateway_pb2 as pb2
@@ -97,7 +98,7 @@ class OmapGatewayState(GatewayState):
     def __init__(self, nvme_config):
         self.version = 1
         self.nvme_config = nvme_config
-        self.logger = nvme_config.logger
+        self.logger = logging.getLogger(__name__)
 
         gateway_group = self.nvme_config.get("config", "gateway_group")
         self.omap_name = f"nvme.{gateway_group}.config" if gateway_group else "nvme.config"

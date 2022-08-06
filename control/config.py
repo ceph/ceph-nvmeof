@@ -7,18 +7,11 @@
 #  Authors: anita.shekar@ibm.com, sandy.kaur@ibm.com
 #
 
-import os
 import configparser
-import logging
 
 
 class NVMeGWConfig:
     def __init__(self, gw_config_filename):
-        logging.basicConfig(level=logging.DEBUG)
-        self.logger = logging.getLogger()
-        if not os.path.isfile(gw_config_filename):
-            self.logger.error(f"Config file {gw_config_filename} not found.")
-            raise FileNotFoundError
         self.nvme_gw_config = configparser.ConfigParser()
         self.nvme_gw_config.read(gw_config_filename)
 
