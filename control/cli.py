@@ -130,7 +130,6 @@ class GatewayClient:
         argument("-i", "--image", help="RBD image name", required=True),
         argument("-p", "--pool", help="Ceph pool name", required=True),
         argument("-b", "--bdev", help="Bdev name", required=True),
-        argument("-u", "--user", help="User ID"),
         argument("-s",
                  "--block-size",
                  help="Block size",
@@ -138,17 +137,17 @@ class GatewayClient:
                  default=4096),
     ])
     def create_bdev(self, args):
-        """Creates a bdev from a Ceph RBD."""
+        """Creates a bdev from an RBD image."""
 
         try:
-            create_req = pb2.bdev_create_req(
+            create_req = pb2.create_bdev_req(
                 ceph_pool_name=args.pool,
                 rbd_name=args.image,
                 block_size=args.block_size,
                 bdev_name=args.bdev,
             )
-            ret = self.stub.bdev_rbd_create(create_req)
-            self.logger.info(f"Created bdev: {ret.bdev_name}")
+            ret = self.stub.create_bdev(create_req)
+            self.logger.info(f"Created bdev: {ret.status}")
         except Exception as error:
             self.logger.error(f"Failed to create bdev: \n {error}")
 
@@ -159,8 +158,8 @@ class GatewayClient:
         """Deletes a bdev."""
 
         try:
-            delete_req = pb2.bdev_delete_req(bdev_name=args.bdev)
-            ret = self.stub.bdev_rbd_delete(delete_req)
+            delete_req = pb2.delete_bdev_req(bdev_name=args.bdev)
+            ret = self.stub.delete_bdev(delete_req)
             self.logger.info(f"Deleted bdev: {delete_req.bdev_name}")
         except Exception as error:
             self.logger.error(f"Failed to delete bdev: \n {error}")
@@ -170,13 +169,13 @@ class GatewayClient:
         argument("-s", "--serial", help="Serial number", required=True),
     ])
     def create_subsystem(self, args):
-        """Creates a new subsystem."""
+        """Creates a subsystem."""
 
         try:
-            create_req = pb2.subsystem_create_req(subsystem_nqn=args.subnqn,
+            create_req = pb2.create_subsystem_req(subsystem_nqn=args.subnqn,
                                                   serial_number=args.serial)
-            ret = self.stub.nvmf_create_subsystem(create_req)
-            self.logger.info(f"Created subsystem: {ret.subsystem_nqn}")
+            ret = self.stub.create_subsystem(create_req)
+            self.logger.info(f"Created subsystem: {ret.status}")
         except Exception as error:
             self.logger.error(f"Failed to create subsystem: \n {error}")
 
@@ -184,11 +183,11 @@ class GatewayClient:
         argument("-n", "--subnqn", help="Subsystem NQN", required=True),
     ])
     def delete_subsystem(self, args):
-        """Deletes a new subsystem."""
+        """Deletes a subsystem."""
 
         try:
-            delete_req = pb2.subsystem_delete_req(subsystem_nqn=args.subnqn)
-            ret = self.stub.nvmf_delete_subsystem(delete_req)
+            delete_req = pb2.delete_subsystem_req(subsystem_nqn=args.subnqn)
+            ret = self.stub.delete_subsystem(delete_req)
             self.logger.info(f"Deleted subsystem: {delete_req.subsystem_nqn}")
         except Exception as error:
             self.logger.error(f"Failed to delete subsystem: \n {error}")
@@ -197,13 +196,13 @@ class GatewayClient:
         argument("-n", "--subnqn", help="Subsystem NQN", required=True),
         argument("-b", "--bdev", help="Bdev name", required=True),
     ])
-    def create_namespace(self, args):
-        """Adds a namespace to a previously created subsystem."""
+    def add_namespace(self, args):
+        """Adds a namespace to a subsystem."""
 
         try:
-            create_req = pb2.subsystem_add_ns_req(subsystem_nqn=args.subnqn,
-                                                  bdev_name=args.bdev)
-            ret = self.stub.nvmf_subsystem_add_ns(create_req)
+            create_req = pb2.add_namespace_req(subsystem_nqn=args.subnqn,
+                                               bdev_name=args.bdev)
+            ret = self.stub.add_namespace(create_req)
             self.logger.info(f"Added namespace {ret.nsid} to {args.subnqn}")
         except Exception as error:
             self.logger.error(f"Failed to add namespace: \n {error}")
@@ -212,13 +211,13 @@ class GatewayClient:
         argument("-n", "--subnqn", help="Subsystem NQN", required=True),
         argument("-i", "--nsid", help="Namespace ID", type=int, required=True),
     ])
-    def delete_namespace(self, args):
-        """Deletes a namespace from a previously created subsystem."""
+    def remove_namespace(self, args):
+        """Removes a namespace from a subsystem."""
 
         try:
-            delete_req = pb2.ns_delete_req(subsystem_nqn=args.subnqn,
-                                           nsid=args.nsid)
-            ret = self.stub.nvmf_subsystem_remove_ns(delete_req)
+            delete_req = pb2.remove_namespace_req(subsystem_nqn=args.subnqn,
+                                                  nsid=args.nsid)
+            ret = self.stub.remove_namespace(delete_req)
             self.logger.info(f"Deleted namespace {delete_req.nsid}: {ret}")
         except Exception as error:
             self.logger.error(f"Failed to remove namespace: \n {error}")
@@ -228,12 +227,12 @@ class GatewayClient:
         argument("-t", "--host", help="Host NQN", required=True),
     ])
     def add_host(self, args):
-        """Adds a host to a previously created subsystem."""
+        """Adds a host to a subsystem."""
 
         try:
-            create_req = pb2.subsystem_add_host_req(subsystem_nqn=args.subnqn,
-                                                    host_nqn=args.host)
-            ret = self.stub.nvmf_subsystem_add_host(create_req)
+            create_req = pb2.add_host_req(subsystem_nqn=args.subnqn,
+                                          host_nqn=args.host)
+            ret = self.stub.add_host(create_req)
             if args.host == "*":
                 self.logger.info(
                     f"Allowed open host access to {args.subnqn}: {ret.status}")
@@ -248,13 +247,13 @@ class GatewayClient:
         argument("-n", "--subnqn", help="Subsystem NQN", required=True),
         argument("-t", "--host", help="Host NQN", required=True),
     ])
-    def delete_host(self, args):
-        """Deletes a host from a previously created subsystem."""
+    def remove_host(self, args):
+        """Removes a host from a subsystem."""
 
         try:
-            delete_req = pb2.host_delete_req(subsystem_nqn=args.subnqn,
-                                            host_nqn=args.host)
-            ret = self.stub.nvmf_subsystem_remove_host(delete_req)
+            delete_req = pb2.remove_host_req(subsystem_nqn=args.subnqn,
+                                             host_nqn=args.host)
+            ret = self.stub.remove_host(delete_req)
             if args.host == "*":
                 self.logger.info(
                     f"Disabled open host access to {args.subnqn}: {ret.status}")
@@ -274,10 +273,10 @@ class GatewayClient:
         argument("-s", "--trsvcid", help="Port number", required=True),
     ])
     def create_listener(self, args):
-        """Adds a listener at a particular TCP/IP address for a given subsystem."""
+        """Creates a listener for a subsystem at a given TCP/IP address."""
 
         try:
-            create_req = pb2.subsystem_add_listener_req(
+            create_req = pb2.create_listener_req(
                 nqn=args.subnqn,
                 gateway_name=args.gateway_name,
                 trtype=args.trtype,
@@ -285,7 +284,7 @@ class GatewayClient:
                 traddr=args.traddr,
                 trsvcid=args.trsvcid,
             )
-            ret = self.stub.nvmf_subsystem_add_listener(create_req)
+            ret = self.stub.create_listener(create_req)
             self.logger.info(f"Created {args.subnqn} listener: {ret.status}")
         except Exception as error:
             self.logger.error(f"Failed to create listener: \n {error}")
@@ -299,10 +298,10 @@ class GatewayClient:
         argument("-s", "--trsvcid", help="Port number", required=True),
     ])
     def delete_listener(self, args):
-        """Deletes a listener at a particular TCP/IP address for a given subsystem."""
+        """Deletes a listener from a subsystem at a given TCP/IP address."""
 
         try:
-            delete_req = pb2.listener_delete_req(
+            delete_req = pb2.delete_listener_req(
                 nqn=args.subnqn,
                 gateway_name=args.gateway_name,
                 trtype=args.trtype,
@@ -310,7 +309,7 @@ class GatewayClient:
                 traddr=args.traddr,
                 trsvcid=args.trsvcid,
             )
-            ret = self.stub.nvmf_subsystem_remove_listener(delete_req)
+            ret = self.stub.delete_listener(delete_req)
             self.logger.info(f"Deleted {args.traddr} from {args.subnqn}: {ret.status}")
         except Exception as error:
             self.logger.error(f"Failed to delete listener: \n {error}")
@@ -320,8 +319,8 @@ class GatewayClient:
         """Get subsystems."""
 
         try:
-            get_req = pb2.subsystems_get_req()
-            ret = self.stub.nvmf_get_subsystems(get_req)
+            get_req = pb2.get_subsystems_req()
+            ret = self.stub.get_subsystems(get_req)
             subsystems = json.loads(ret.subsystems)
             formatted_subsystems = json.dumps(subsystems, indent=4)
             self.logger.info(f"Get subsystems:\n{formatted_subsystems}")
