@@ -42,8 +42,8 @@ class GatewayService(pb2_grpc.NVMEGatewayServicer):
         if not self.gateway_name:
             self.gateway_name = socket.gethostname()
 
-    def bdev_rbd_create(self, request, context=None):
-        """Creates bdev from a given RBD image."""
+    def create_bdev(self, request, context=None):
+        """Creates a bdev from an RBD image."""
         self.logger.info({
             f"Received request to create bdev {request.bdev_name} from",
             f" {request.ceph_pool_name}/{request.rbd_name}",
@@ -64,7 +64,7 @@ class GatewayService(pb2_grpc.NVMEGatewayServicer):
             if context:
                 context.set_code(grpc.StatusCode.INTERNAL)
                 context.set_details(f"{ex}")
-            return pb2.bdev_info()
+            return pb2.req_status()
 
         if context:
             # Update gateway state
@@ -77,10 +77,10 @@ class GatewayService(pb2_grpc.NVMEGatewayServicer):
                     f"Error persisting create_bdev {bdev_name}: {ex}")
                 raise
 
-        return pb2.bdev_info(bdev_name=bdev_name)
+        return pb2.req_status(status=True)
 
-    def bdev_rbd_delete(self, request, context=None):
-        """Deletes bdev."""
+    def delete_bdev(self, request, context=None):
+        """Deletes a bdev."""
         self.logger.info({
             f"Received request to delete bdev: {request.bdev_name}",
         })
@@ -109,8 +109,8 @@ class GatewayService(pb2_grpc.NVMEGatewayServicer):
 
         return pb2.req_status(status=return_string)
 
-    def nvmf_create_subsystem(self, request, context=None):
-        """Creates an NVMe subsystem."""
+    def create_subsystem(self, request, context=None):
+        """Creates a subsystem."""
         self.logger.info({
             f"Received request to create: {request.subsystem_nqn}",
         })
@@ -120,7 +120,6 @@ class GatewayService(pb2_grpc.NVMEGatewayServicer):
                 self.spdk_rpc_client,
                 nqn=request.subsystem_nqn,
                 serial_number=request.serial_number,
-                max_namespaces=request.max_namespaces,
             )
             self.logger.info(f"returned with status: {return_string}")
             return_status = return_string != "none"
@@ -129,7 +128,7 @@ class GatewayService(pb2_grpc.NVMEGatewayServicer):
             if context:
                 context.set_code(grpc.StatusCode.INTERNAL)
                 context.set_details(f"{ex}")
-            return pb2.subsystem_info()
+            return pb2.req_status()
 
         if context:
             # Update gateway state
@@ -143,11 +142,10 @@ class GatewayService(pb2_grpc.NVMEGatewayServicer):
                                   f" {request.subsystem_nqn}: {ex}")
                 raise
 
-        return pb2.subsystem_info(subsystem_nqn=request.subsystem_nqn,
-                                  created=return_status)
+        return pb2.req_status(status=return_status)
 
-    def nvmf_delete_subsystem(self, request, context=None):
-        """Deletes an NVMe subsystem."""
+    def delete_subsystem(self, request, context=None):
+        """Deletes a subsystem."""
         self.logger.info({
             f"Received request to delete: {request.subsystem_nqn}",
         })
@@ -176,8 +174,8 @@ class GatewayService(pb2_grpc.NVMEGatewayServicer):
 
         return pb2.req_status(status=return_string)
 
-    def nvmf_subsystem_add_ns(self, request, context=None):
-        """Adds a given namespace to a given subsystem."""
+    def add_namespace(self, request, context=None):
+        """Adds a namespace to a subsystem."""
         self.logger.info({
             f"Received request to add: {request.bdev_name} to {request.subsystem_nqn}",
         })
@@ -209,10 +207,10 @@ class GatewayService(pb2_grpc.NVMEGatewayServicer):
                     f"Error persisting add_namespace {nsid}: {ex}")
                 raise
 
-        return pb2.nsid(nsid=nsid)
+        return pb2.nsid(nsid=nsid, status=True)
 
-    def nvmf_subsystem_remove_ns(self, request, context=None):
-        """Removes a given namespace from a given subsystem."""
+    def remove_namespace(self, request, context=None):
+        """Removes a namespace from a subsystem."""
         self.logger.info({
             f"Received request to remove: {request.nsid} from {request.subsystem_nqn}",
         })
@@ -242,8 +240,8 @@ class GatewayService(pb2_grpc.NVMEGatewayServicer):
 
         return pb2.req_status(status=status)
 
-    def nvmf_subsystem_add_host(self, request, context=None):
-        """Grants host access to a given subsystem."""
+    def add_host(self, request, context=None):
+        """Adds a host to a subsystem."""
 
         try:
             if request.host_nqn == "*":  # Allow any host access to subsystem
@@ -286,8 +284,8 @@ class GatewayService(pb2_grpc.NVMEGatewayServicer):
 
         return pb2.req_status(status=return_string)
 
-    def nvmf_subsystem_remove_host(self, request, context=None):
-        """Removes host access from a given subsystem."""
+    def remove_host(self, request, context=None):
+        """Removes a host from a subsystem."""
 
         try:
             if request.host_nqn == "*":  # Disable allow any host access
@@ -329,8 +327,8 @@ class GatewayService(pb2_grpc.NVMEGatewayServicer):
 
         return pb2.req_status(status=return_string)
 
-    def nvmf_subsystem_add_listener(self, request, context=None):
-        """Adds a listener at the given TCP/IP address for the given subsystem."""
+    def create_listener(self, request, context=None):
+        """Creates a listener for a subsystem at a given TCP/IP address."""
         self.logger.info({
             f"Adding {request.gateway_name} {request.trtype} listener at {request.traddr}:{request.trsvcid} for {request.nqn}"
         })
@@ -384,8 +382,8 @@ class GatewayService(pb2_grpc.NVMEGatewayServicer):
 
         return pb2.req_status(status=return_string)
 
-    def nvmf_subsystem_remove_listener(self, request, context=None):
-        """Removes a listener at the given TCP/IP address for the given subsystem."""
+    def delete_listener(self, request, context=None):
+        """Deletes a listener from a subsystem at a given TCP/IP address."""
         self.logger.info(
             {f"Removing {request.gateway_name} {request.trtype} listener at {request.traddr}:{request.trsvcid} for {request.nqn}"})
 
@@ -435,8 +433,8 @@ class GatewayService(pb2_grpc.NVMEGatewayServicer):
 
         return pb2.req_status(status=return_string)
 
-    def nvmf_get_subsystems(self, request, context):
-        """Gets NVMe subsystems."""
+    def get_subsystems(self, request, context):
+        """Gets subsystems."""
         self.logger.info({
             f"Received request to get subsystems",
         })

@@ -227,11 +227,11 @@ class GatewayServer:
     def _restore_state(self):
         """Restores NVMeoF target state."""
         callbacks = {
-            self.gateway_state.BDEV_PREFIX: self.gateway_rpc.bdev_rbd_create,
-            self.gateway_state.SUBSYSTEM_PREFIX: self.gateway_rpc.nvmf_create_subsystem,
-            self.gateway_state.NAMESPACE_PREFIX: self.gateway_rpc.nvmf_subsystem_add_ns,
-            self.gateway_state.HOST_PREFIX: self.gateway_rpc.nvmf_subsystem_add_host,
-            self.gateway_state.LISTENER_PREFIX: self.gateway_rpc.nvmf_subsystem_add_listener
+            self.gateway_state.BDEV_PREFIX: self.gateway_rpc.create_bdev,
+            self.gateway_state.SUBSYSTEM_PREFIX: self.gateway_rpc.create_subsystem,
+            self.gateway_state.NAMESPACE_PREFIX: self.gateway_rpc.add_namespace,
+            self.gateway_state.HOST_PREFIX: self.gateway_rpc.add_host,
+            self.gateway_state.LISTENER_PREFIX: self.gateway_rpc.create_listener
         }
         self.gateway_state.restore(callbacks)
 

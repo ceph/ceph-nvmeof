@@ -178,7 +178,7 @@ class OmapGatewayState(GatewayState):
 
         for (key, val) in omap_dict.items():
             if key.startswith(self.BDEV_PREFIX):
-                req = json_format.Parse(val, pb2.bdev_create_req())
+                req = json_format.Parse(val, pb2.create_bdev_req())
                 callback(req)
 
     def add_namespace(self, subsystem_nqn: str, nsid: str, val: str):
@@ -198,7 +198,7 @@ class OmapGatewayState(GatewayState):
             if key.startswith(self.NAMESPACE_PREFIX):
                 # Get NSID from end of key
                 nsid = key.rsplit("_", 1)[1]
-                req = json_format.Parse(val, pb2.subsystem_add_ns_req())
+                req = json_format.Parse(val, pb2.add_namespace_req())
                 req.nsid = int(nsid)
                 callback(req)
 
@@ -225,7 +225,7 @@ class OmapGatewayState(GatewayState):
 
         for (key, val) in omap_dict.items():
             if key.startswith(self.SUBSYSTEM_PREFIX):
-                req = json_format.Parse(val, pb2.subsystem_create_req())
+                req = json_format.Parse(val, pb2.create_subsystem_req())
                 callback(req)
 
     def add_host(self, subsystem_nqn: str, host_nqn: str, val: str):
@@ -243,7 +243,7 @@ class OmapGatewayState(GatewayState):
 
         for (key, val) in omap_dict.items():
             if key.startswith(self.HOST_PREFIX):
-                req = json_format.Parse(val, pb2.subsystem_add_host_req())
+                req = json_format.Parse(val, pb2.add_host_req())
                 callback(req)
 
     def add_listener(self, subsystem_nqn: str, gateway: str, trtype: str,
@@ -265,7 +265,7 @@ class OmapGatewayState(GatewayState):
 
         for (key, val) in omap_dict.items():
             if key.startswith(self.LISTENER_PREFIX):
-                req = json_format.Parse(val, pb2.subsystem_add_listener_req())
+                req = json_format.Parse(val, pb2.create_listener_req())
                 callback(req)
 
     def _read_key(self, key) -> Optional[str]:

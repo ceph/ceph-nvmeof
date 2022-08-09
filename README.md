@@ -60,12 +60,12 @@ Run the tool with the -h flag to see a list of available commands:
 	
 	$ python3 -m control.cli -h
 	usage: python3 -m control.cli [-h] [-c CONFIG]
-			{create_bdev,delete_bdev,create_subsystem,delete_subsystem,create_namespace,delete_namespace,add_host,delete_host,create_listener,delete_listener,get_subsystems} ...
+			{create_bdev,delete_bdev,create_subsystem,delete_subsystem,add_namespace,remove_namespace,add_host,remove_host,create_listener,delete_listener,get_subsystems} ...
 
 	CLI to manage NVMe gateways
 
 	positional arguments:
-	{create_bdev,delete_bdev,create_subsystem,delete_subsystem,create_namespace,delete_namespace,add_host,delete_host,create_listener,delete_listener,get_subsystems}
+	{create_bdev,delete_bdev,create_subsystem,delete_subsystem,add_namespace,remove_namespace,add_host,remove_host,create_listener,delete_listener,get_subsystems}
 
 	optional arguments:
 	-h, --help            			show this help message and exit
@@ -75,7 +75,7 @@ Run the tool with the -h flag to see a list of available commands:
 Example:
 
 	$ python3 -m control.cli create_bdev -h
-	usage: python3 -m control.cli create_bdev [-h] -i IMAGE -p POOL [-b BDEV_NAME] [-u USER] [-s BLOCK_SIZE]
+	usage: python3 -m control.cli create_bdev [-h] -i IMAGE -p POOL [-b BDEV_NAME] [-s BLOCK_SIZE]
 
 	optional arguments:
 	-h, --help            			show this help message and exit
@@ -84,7 +84,6 @@ Example:
 	-p POOL, --pool POOL  			Ceph pool name
 	-b BDEV_NAME, --bdev BDEV_NAME
 						Bdev name
-	-u USER, --user USER  			User ID
 	-s BLOCK_SIZE, --block_size BLOCK_SIZE
 						Block size
 
@@ -129,7 +128,7 @@ Indicate the location of the keys and certificates in the config file:
 		$ python3 -m control.cli create_subsystem -n nqn.2016-06.io.spdk:cnode1 -s SPDK00000000000001
 		INFO:root:Created subsystem: nqn.2016-06.io.spdk:cnode1
 		
-		$ python3 -m control.cli create_namespace -n nqn.2016-06.io.spdk:cnode1 -b Ceph0
+		$ python3 -m control.cli add_namespace -n nqn.2016-06.io.spdk:cnode1 -b Ceph0
 		INFO:root:Added namespace 1 to nqn.2016-06.io.spdk:cnode1
 		
 		$ python3 -m control.cli add_host -n nqn.2016-06.io.spdk:cnode1 -t *
