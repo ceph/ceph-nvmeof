@@ -4,14 +4,17 @@
 
 set -e
 
-spdk_repo=$(mktemp -dt "spdk.XXXXXX")
+# spdk_repo=$(mktemp -dt "spdk.XXXXXX")
+mkdir -p /tmp/spdk_build
+spdk_repo=/tmp/spdk_build
 spdk_tar=/spdk.tar.gz
+spdk_version=$1
 
 cleanup() {
 
 	rm -f "$HOME/rpmbuild/rpm/x86_64/"*.rpm
 	rm -f "$spdk_tar"
-	rm -rf "$spdk_repo"
+	# rm -rf "$spdk_repo"
 }
 
 trap 'cleanup' EXIT
@@ -41,11 +44,14 @@ echo "dnf install -y rpm-build"
 # needed since we execute inside a different mount namespace so we won't be
 # able to find any absolute paths that were used prior creating the .tar.
 "$spdk_repo/spdk/configure" --with-rbd > /dev/null
-spdk_version=$(cat $spdk_repo/spdk/VERSION)
+# spdk_version=$(cat $spdk_repo/spdk/VERSION)
+echo "spdk_version is $spdk_version"
 # Deploy SPDK inside the container
 SPDK_VERSION="${spdk_version}" DEPS="no" "$spdk_repo/spdk/rpmbuild/rpm.sh"
 
 mkdir -p /tmp/rpms
-mv "$HOME/rpmbuild/RPMS/x86_64/"*.rpm /tmp/rpms/
+echo "spdk_version is $spdk_version"
+ls -Rl "$HOME/rpmbuild"
+mv "$HOME/rpmbuild/rpm/x86_64/"*.rpm /tmp/rpms/
 # dnf clean all
 echo "dnf clean all"

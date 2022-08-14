@@ -1,4 +1,13 @@
+
+ARG spdk_version
+
+FROM spdk:${spdk_version:-latest} as spdk
+
+RUN echo "spdk_version is $spdk_version"
+
 FROM fedora:33 AS base
+
+COPY --from=spdk /tmp/rpms/*.rpm /tmp/
 
 
 RUN dnf update -y \
@@ -7,7 +16,7 @@ RUN dnf update -y \
     && python3 -m pip install grpcio \
     && python3 -m pip install grpcio-tools 
 
-COPY output/*.rpm /tmp/
+#COPY output/*.rpm /tmp/
 
 COPY docker/post-install /tmp/post-install
 
