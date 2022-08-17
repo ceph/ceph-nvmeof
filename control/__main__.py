@@ -10,7 +10,7 @@
 import logging
 import argparse
 from .server import GatewayServer
-from .config import NVMeGWConfig
+from .config import GatewayConfig
 
 if __name__ == '__main__':
     # Set up root logger
@@ -28,7 +28,7 @@ if __name__ == '__main__':
         help="Path to config file",
     )
     args = parser.parse_args()
-    
-    config = NVMeGWConfig(args.config)
+
+    config = GatewayConfig(args.config)
     with GatewayServer(config) as gateway:
         gateway.serve()

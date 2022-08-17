@@ -15,10 +15,12 @@ addr = "127.0.0.1"
 listener_list = [["-g", gateway_name, "-a", addr, "-s", "5001"], ["-s", "5002"]]
 config = "ceph-nvmeof.conf"
 
+
 class TestGet:
     def test_get_subsystems(self, caplog):
         cli(["-c", config, "get_subsystems"])
         assert "Failed to get" not in caplog.text
+
 
 class TestCreate:
     def test_create_bdev(self, caplog):
@@ -42,6 +44,7 @@ class TestCreate:
     def test_create_listener(self, caplog, listener):
         cli(["-c", config, "create_listener", "-n", subsystem] + listener)
         assert "Failed to create" not in caplog.text
+
 
 class TestDelete:
     @pytest.mark.parametrize("host", host_list)

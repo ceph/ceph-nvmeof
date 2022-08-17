@@ -10,32 +10,37 @@
 import configparser
 
 
-class NVMeGWConfig:
-    def __init__(self, gw_config_filename):
-        with open(gw_config_filename) as f:
-            self.nvme_gw_config = configparser.ConfigParser()
-            self.nvme_gw_config.read_file(f)
+class GatewayConfig:
+    """Loads and returns config file settings.
+
+    Instance attributes:
+        config: Config parser object
+    """
+    def __init__(self, conffile):
+        with open(conffile) as f:
+            self.config = configparser.ConfigParser()
+            self.config.read_file(f)
 
     def get(self, section, param):
-        return self.nvme_gw_config.get(section, param)
+        return self.config.get(section, param)
 
     def getboolean(self, section, param):
-        return self.nvme_gw_config.getboolean(section, param)
+        return self.config.getboolean(section, param)
 
     def getint(self, section, param):
-        return self.nvme_gw_config.getint(section, param)
+        return self.config.getint(section, param)
 
     def getfloat(self, section, param):
-        return self.nvme_gw_config.getfloat(section, param)
+        return self.config.getfloat(section, param)
 
     def get_with_default(self, section, param, value):
-        return self.nvme_gw_config.get(section, param, fallback=value)
+        return self.config.get(section, param, fallback=value)
 
     def getboolean_with_default(self, section, param, value):
-        return self.nvme_gw_config.getboolean(section, param, fallback=value)
+        return self.config.getboolean(section, param, fallback=value)
 
     def getint_with_default(self, section, param, value):
-        return self.nvme_gw_config.getint(section, param, fallback=value)
+        return self.config.getint(section, param, fallback=value)
 
     def getfloat_with_default(self, section, param, value):
-        return self.nvme_gw_config.getfloat(section, param, fallback=value)
+        return self.config.getfloat(section, param, fallback=value)
