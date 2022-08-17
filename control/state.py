@@ -23,7 +23,7 @@ class GatewayState(ABC):
         pass
 
     @abstractmethod
-    def delete_bdev(self, bdev_name: str):
+    def remove_bdev(self, bdev_name: str):
         pass
 
     @abstractmethod
@@ -31,7 +31,7 @@ class GatewayState(ABC):
         pass
 
     @abstractmethod
-    def delete_namespace(self, subsystem_nqn: str, bdev_name: str):
+    def remove_namespace(self, subsystem_nqn: str, bdev_name: str):
         pass
 
     @abstractmethod
@@ -39,7 +39,7 @@ class GatewayState(ABC):
         pass
 
     @abstractmethod
-    def delete_subsystem(self, subsystem_nqn: str):
+    def remove_subsystem(self, subsystem_nqn: str):
         pass
 
     @abstractmethod
@@ -47,7 +47,7 @@ class GatewayState(ABC):
         pass
 
     @abstractmethod
-    def delete_host(self, subsystem_nqn: str, host_nqn: str):
+    def remove_host(self, subsystem_nqn: str, host_nqn: str):
         pass
 
     @abstractmethod
@@ -56,7 +56,7 @@ class GatewayState(ABC):
         pass
 
     @abstractmethod
-    def delete_listener(self, subsystem_nqn: str, traddr: str, trsvcid: str):
+    def remove_listener(self, subsystem_nqn: str, traddr: str, trsvcid: str):
         pass
 
     @abstractmethod
@@ -80,7 +80,7 @@ class OmapGatewayState(GatewayState):
 
     Instance attributes:
         version: Local gateway NVMeoF target state version
-        nvme_config: Basic gateway parameters
+        config: Basic gateway parameters
         logger: Logger instance to track OMAP access events
         spdk_rpc: Module methods for SPDK
         spdk_rpc_client: Client of SPDK RPC server
@@ -95,16 +95,16 @@ class OmapGatewayState(GatewayState):
     HOST_PREFIX = "host_"
     LISTENER_PREFIX = "listener_"
 
-    def __init__(self, nvme_config):
+    def __init__(self, config):
         self.version = 1
-        self.nvme_config = nvme_config
+        self.config = config
         self.logger = logging.getLogger(__name__)
 
-        gateway_group = self.nvme_config.get("config", "gateway_group")
+        gateway_group = self.config.get("gateway", "group")
         self.omap_name = f"nvme.{gateway_group}.config" if gateway_group else "nvme.config"
 
-        ceph_pool = self.nvme_config.get("ceph", "pool")
-        ceph_conf = self.nvme_config.get("ceph", "config_file")
+        ceph_pool = self.config.get("ceph", "pool")
+        ceph_conf = self.config.get("ceph", "config_file")
         conn = rados.Rados(conffile=ceph_conf)
         conn.connect()
         self.ioctx = conn.open_ioctx(ceph_pool)
@@ -122,11 +122,11 @@ class OmapGatewayState(GatewayState):
         except rados.ObjectExists:
             self.logger.info(f"{self.omap_name} omap object already exists.")
         except Exception as ex:
-            self.logger.error(f"Unable to write to omap: {ex}. Exiting!")
+            self.logger.error(f"Unable to create omap: {ex}. Exiting!")
             raise
 
-    def _write_key(self, key: str, val: str):
-        """Writes key and value to the OMAP."""
+    def _add_key(self, key: str, val: str):
+        """Adds key and value to the OMAP."""
 
         try:
             version_update = self.version + 1
@@ -141,37 +141,37 @@ class OmapGatewayState(GatewayState):
             self.version = version_update
             self.logger.debug(f"omap_key generated: {key}")
         except Exception as ex:
-            self.logger.error(f"Unable to write to omap: {ex}. Exiting!")
+            self.logger.error(f"Unable to add key to omap: {ex}. Exiting!")
             raise
 
-    def _delete_key(self, key: str):
-        """Deletes key from the OMAP."""
+    def _remove_key(self, key: str):
+        """Removes key from the OMAP."""
 
         try:
             version_update = self.version + 1
             with rados.WriteOpCtx() as write_op:
-                # Compare operation failure will cause delete failure
+                # Compare operation failure will cause remove failure
                 write_op.omap_cmp(self.OMAP_VERSION_KEY, str(self.version),
-                                rados.LIBRADOS_CMPXATTR_OP_EQ)
+                                  rados.LIBRADOS_CMPXATTR_OP_EQ)
                 self.ioctx.remove_omap_keys(write_op, (key,))
                 self.ioctx.set_omap(write_op, (self.OMAP_VERSION_KEY,),
                                     (str(version_update),))
                 self.ioctx.operate_write_op(write_op, self.omap_name)
             self.version = version_update
-            self.logger.debug(f"omap_key deleted: {key}")
+            self.logger.debug(f"omap_key removed: {key}")
         except Exception as ex:
-            self.logger.error(f"Unable to delete from omap: {ex}. Exiting!")
+            self.logger.error(f"Unable to remove key from omap: {ex}. Exiting!")
             raise
 
     def add_bdev(self, bdev_name: str, val: str):
         """Adds a bdev to the OMAP."""
         key = self.BDEV_PREFIX + bdev_name
-        self._write_key(key, val)
+        self._add_key(key, val)
 
-    def delete_bdev(self, bdev_name: str):
-        """Deletes a bdev from the OMAP."""
+    def remove_bdev(self, bdev_name: str):
+        """Removes a bdev from the OMAP."""
         key = self.BDEV_PREFIX + bdev_name
-        self._delete_key(key)
+        self._remove_key(key)
 
     def _restore_bdevs(self, omap_dict, callback):
         """Restores a bdev from the OMAP."""
@@ -184,12 +184,12 @@ class OmapGatewayState(GatewayState):
     def add_namespace(self, subsystem_nqn: str, nsid: str, val: str):
         """Adds a namespace to the OMAP."""
         key = self.NAMESPACE_PREFIX + subsystem_nqn + "_" + nsid
-        self._write_key(key, val)
+        self._add_key(key, val)
 
-    def delete_namespace(self, subsystem_nqn: str, nsid: str):
-        """Deletes a namespace from the OMAP."""
+    def remove_namespace(self, subsystem_nqn: str, nsid: str):
+        """Removes a namespace from the OMAP."""
         key = self.NAMESPACE_PREFIX + subsystem_nqn + "_" + nsid
-        self._delete_key(key)
+        self._remove_key(key)
 
     def _restore_namespaces(self, omap_dict, callback):
         """Restores a namespace from the OMAP."""
@@ -205,12 +205,12 @@ class OmapGatewayState(GatewayState):
     def add_subsystem(self, subsystem_nqn: str, val: str):
         """Adds a subsystem to the OMAP."""
         key = self.SUBSYSTEM_PREFIX + subsystem_nqn
-        self._write_key(key, val)
+        self._add_key(key, val)
 
-    def delete_subsystem(self, subsystem_nqn: str):
-        """Deletes a subsystem from the OMAP."""
+    def remove_subsystem(self, subsystem_nqn: str):
+        """Removes a subsystem from the OMAP."""
         key = self.SUBSYSTEM_PREFIX + subsystem_nqn
-        self._delete_key(key)
+        self._remove_key(key)
 
         # Delete all keys related to subsystem
         omap_dict = self._read_all()
@@ -218,7 +218,7 @@ class OmapGatewayState(GatewayState):
             if (key.startswith(self.NAMESPACE_PREFIX + subsystem_nqn) or
                     key.startswith(self.HOST_PREFIX + subsystem_nqn) or
                     key.startswith(self.LISTENER_PREFIX + subsystem_nqn)):
-                self._delete_key(key)
+                self._remove_key(key)
 
     def _restore_subsystems(self, omap_dict, callback):
         """Restores subsystems from the OMAP."""
@@ -231,12 +231,12 @@ class OmapGatewayState(GatewayState):
     def add_host(self, subsystem_nqn: str, host_nqn: str, val: str):
         """Adds a host to the OMAP."""
         key = "{}{}_{}".format(self.HOST_PREFIX, subsystem_nqn, host_nqn)
-        self._write_key(key, val)
+        self._add_key(key, val)
 
-    def delete_host(self, subsystem_nqn: str, host_nqn: str):
-        """Deletes a host from the OMAP."""
+    def remove_host(self, subsystem_nqn: str, host_nqn: str):
+        """Removes a host from the OMAP."""
         key = "{}{}_{}".format(self.HOST_PREFIX, subsystem_nqn, host_nqn)
-        self._delete_key(key)
+        self._remove_key(key)
 
     def _restore_hosts(self, omap_dict, callback):
         """Restore hosts from the OMAP."""
@@ -251,14 +251,14 @@ class OmapGatewayState(GatewayState):
         """Adds a listener to the OMAP."""
         key = "{}{}_{}_{}_{}_{}".format(self.LISTENER_PREFIX, gateway,
                                         subsystem_nqn, trtype, traddr, trsvcid)
-        self._write_key(key, val)
+        self._add_key(key, val)
 
-    def delete_listener(self, subsystem_nqn: str, gateway: str, trtype: str,
+    def remove_listener(self, subsystem_nqn: str, gateway: str, trtype: str,
                         traddr: str, trsvcid: str):
-        """Deletes a listener from the OMAP."""
+        """Removes a listener from the OMAP."""
         key = "{}{}_{}_{}_{}_{}".format(self.LISTENER_PREFIX, gateway,
                                         subsystem_nqn, trtype, traddr, trsvcid)
-        self._delete_key(key)
+        self._remove_key(key)
 
     def _restore_listeners(self, omap_dict, callback):
         """Restores listeners from the OMAP."""

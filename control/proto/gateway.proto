@@ -10,7 +10,7 @@
 
 syntax = "proto3";
 
-service NVMEGateway {
+service Gateway {
 	// Creates a bdev from an RBD image
 	rpc create_bdev(create_bdev_req) returns (req_status) {}
 
@@ -35,10 +35,10 @@ service NVMEGateway {
 	// Removes a host from a subsystem
 	rpc remove_host(remove_host_req) returns (req_status) {}
 
-	// Creates a listener for a subsystem at a given TCP/IP address
+	// Creates a listener for a subsystem at a given IP/Port
 	rpc create_listener(create_listener_req) returns(req_status) {}
 
-	// Deletes a listener from a subsystem at a given TCP/IP address
+	// Deletes a listener from a subsystem at a given IP/Port
 	rpc delete_listener(delete_listener_req) returns(req_status) {}
 
 	// Gets subsystems

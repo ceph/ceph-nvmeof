@@ -13,7 +13,7 @@ import json
 import logging
 from .proto import gateway_pb2_grpc as pb2_grpc
 from .proto import gateway_pb2 as pb2
-from .config import NVMeGWConfig
+from .config import GatewayConfig
 
 
 def argument(*name_or_flags, **kwargs):
@@ -93,23 +93,23 @@ class GatewayClient:
             raise AttributeError("stub is None. Set with connect method.")
         return self._stub
 
-    def connect(self, nvme_config):
+    def connect(self, config):
         """Connects to server and sets stub."""
 
         # Read in configuration parameters
-        host = nvme_config.get("config", "gateway_addr")
-        port = nvme_config.get("config", "gateway_port")
-        enable_auth = nvme_config.getboolean("config", "enable_auth")
+        host = config.get("gateway", "addr")
+        port = config.get("gateway", "port")
+        enable_auth = config.getboolean("gateway", "enable_auth")
         server = "{}:{}".format(host, port)
 
         if enable_auth:
 
             # Create credentials for mutual TLS and a secure channel
-            with open(nvme_config.get("mtls", "client_cert"), "rb") as f:
+            with open(config.get("mtls", "client_cert"), "rb") as f:
                 client_cert = f.read()
-            with open(nvme_config.get("mtls", "client_key"), "rb") as f:
+            with open(config.get("mtls", "client_key"), "rb") as f:
                 client_key = f.read()
-            with open(nvme_config.get("mtls", "server_cert"), "rb") as f:
+            with open(config.get("mtls", "server_cert"), "rb") as f:
                 server_cert = f.read()
 
             credentials = grpc.ssl_channel_credentials(
@@ -119,12 +119,11 @@ class GatewayClient:
             )
             channel = grpc.secure_channel(server, credentials)
         else:
-
             # Instantiate a channel without credentials
             channel = grpc.insecure_channel(server)
 
         # Bind the client and the server
-        self._stub = pb2_grpc.NVMEGatewayStub(channel)
+        self._stub = pb2_grpc.GatewayStub(channel)
 
     @cli.cmd([
         argument("-i", "--image", help="RBD image name", required=True),
@@ -140,14 +139,14 @@ class GatewayClient:
         """Creates a bdev from an RBD image."""
 
         try:
-            create_req = pb2.create_bdev_req(
+            req = pb2.create_bdev_req(
                 ceph_pool_name=args.pool,
                 rbd_name=args.image,
                 block_size=args.block_size,
                 bdev_name=args.bdev,
             )
-            ret = self.stub.create_bdev(create_req)
-            self.logger.info(f"Created bdev: {ret.status}")
+            ret = self.stub.create_bdev(req)
+            self.logger.info(f"Created bdev {args.bdev}: {ret.status}")
         except Exception as error:
             self.logger.error(f"Failed to create bdev: \n {error}")
 
@@ -158,9 +157,9 @@ class GatewayClient:
         """Deletes a bdev."""
 
         try:
-            delete_req = pb2.delete_bdev_req(bdev_name=args.bdev)
-            ret = self.stub.delete_bdev(delete_req)
-            self.logger.info(f"Deleted bdev: {delete_req.bdev_name}")
+            req = pb2.delete_bdev_req(bdev_name=args.bdev)
+            ret = self.stub.delete_bdev(req)
+            self.logger.info(f"Deleted bdev {args.bdev}: {ret.status}")
         except Exception as error:
             self.logger.error(f"Failed to delete bdev: \n {error}")
 
@@ -172,10 +171,10 @@ class GatewayClient:
         """Creates a subsystem."""
 
         try:
-            create_req = pb2.create_subsystem_req(subsystem_nqn=args.subnqn,
-                                                  serial_number=args.serial)
-            ret = self.stub.create_subsystem(create_req)
-            self.logger.info(f"Created subsystem: {ret.status}")
+            req = pb2.create_subsystem_req(subsystem_nqn=args.subnqn,
+                                           serial_number=args.serial)
+            ret = self.stub.create_subsystem(req)
+            self.logger.info(f"Created subsystem {args.subnqn}: {ret.status}")
         except Exception as error:
             self.logger.error(f"Failed to create subsystem: \n {error}")
 
@@ -186,9 +185,9 @@ class GatewayClient:
         """Deletes a subsystem."""
 
         try:
-            delete_req = pb2.delete_subsystem_req(subsystem_nqn=args.subnqn)
-            ret = self.stub.delete_subsystem(delete_req)
-            self.logger.info(f"Deleted subsystem: {delete_req.subsystem_nqn}")
+            req = pb2.delete_subsystem_req(subsystem_nqn=args.subnqn)
+            ret = self.stub.delete_subsystem(req)
+            self.logger.info(f"Deleted subsystem {args.subnqn}: {ret.status}")
         except Exception as error:
             self.logger.error(f"Failed to delete subsystem: \n {error}")
 
@@ -200,10 +199,11 @@ class GatewayClient:
         """Adds a namespace to a subsystem."""
 
         try:
-            create_req = pb2.add_namespace_req(subsystem_nqn=args.subnqn,
-                                               bdev_name=args.bdev)
-            ret = self.stub.add_namespace(create_req)
-            self.logger.info(f"Added namespace {ret.nsid} to {args.subnqn}")
+            req = pb2.add_namespace_req(subsystem_nqn=args.subnqn,
+                                        bdev_name=args.bdev)
+            ret = self.stub.add_namespace(req)
+            self.logger.info(
+                f"Added namespace {ret.nsid} to {args.subnqn}: {ret.status}")
         except Exception as error:
             self.logger.error(f"Failed to add namespace: \n {error}")
 
@@ -215,10 +215,12 @@ class GatewayClient:
         """Removes a namespace from a subsystem."""
 
         try:
-            delete_req = pb2.remove_namespace_req(subsystem_nqn=args.subnqn,
-                                                  nsid=args.nsid)
-            ret = self.stub.remove_namespace(delete_req)
-            self.logger.info(f"Deleted namespace {delete_req.nsid}: {ret}")
+            req = pb2.remove_namespace_req(subsystem_nqn=args.subnqn,
+                                           nsid=args.nsid)
+            ret = self.stub.remove_namespace(req)
+            self.logger.info(
+                f"Removed namespace {args.nsid} from {args.subnqn}:" +
+                f" {ret.status}")
         except Exception as error:
             self.logger.error(f"Failed to remove namespace: \n {error}")
 
@@ -230,16 +232,16 @@ class GatewayClient:
         """Adds a host to a subsystem."""
 
         try:
-            create_req = pb2.add_host_req(subsystem_nqn=args.subnqn,
-                                          host_nqn=args.host)
-            ret = self.stub.add_host(create_req)
+            req = pb2.add_host_req(subsystem_nqn=args.subnqn,
+                                   host_nqn=args.host)
+            ret = self.stub.add_host(req)
             if args.host == "*":
                 self.logger.info(
                     f"Allowed open host access to {args.subnqn}: {ret.status}")
             else:
                 self.logger.info(
-                    f"Added host {args.host} access to {args.subnqn}: {ret.status}"
-                )
+                    f"Added host {args.host} access to {args.subnqn}:" +
+                    f" {ret.status}")
         except Exception as error:
             self.logger.error(f"Failed to add host: \n {error}")
 
@@ -251,16 +253,16 @@ class GatewayClient:
         """Removes a host from a subsystem."""
 
         try:
-            delete_req = pb2.remove_host_req(subsystem_nqn=args.subnqn,
-                                             host_nqn=args.host)
-            ret = self.stub.remove_host(delete_req)
+            req = pb2.remove_host_req(subsystem_nqn=args.subnqn,
+                                      host_nqn=args.host)
+            ret = self.stub.remove_host(req)
             if args.host == "*":
                 self.logger.info(
                     f"Disabled open host access to {args.subnqn}: {ret.status}")
             else:
                 self.logger.info(
-                    f"Removed host {args.host} access from {args.subnqn}: {ret.status}"
-                )
+                    f"Removed host {args.host} access from {args.subnqn}:" +
+                    f" {ret.status}")
         except Exception as error:
             self.logger.error(f"Failed to remove host: \n {error}")
 
@@ -273,10 +275,10 @@ class GatewayClient:
         argument("-s", "--trsvcid", help="Port number", required=True),
     ])
     def create_listener(self, args):
-        """Creates a listener for a subsystem at a given TCP/IP address."""
+        """Creates a listener for a subsystem at a given IP/Port."""
 
         try:
-            create_req = pb2.create_listener_req(
+            req = pb2.create_listener_req(
                 nqn=args.subnqn,
                 gateway_name=args.gateway_name,
                 trtype=args.trtype,
@@ -284,7 +286,7 @@ class GatewayClient:
                 traddr=args.traddr,
                 trsvcid=args.trsvcid,
             )
-            ret = self.stub.create_listener(create_req)
+            ret = self.stub.create_listener(req)
             self.logger.info(f"Created {args.subnqn} listener: {ret.status}")
         except Exception as error:
             self.logger.error(f"Failed to create listener: \n {error}")
@@ -298,10 +300,10 @@ class GatewayClient:
         argument("-s", "--trsvcid", help="Port number", required=True),
     ])
     def delete_listener(self, args):
-        """Deletes a listener from a subsystem at a given TCP/IP address."""
+        """Deletes a listener from a subsystem at a given IP/Port."""
 
         try:
-            delete_req = pb2.delete_listener_req(
+            req = pb2.delete_listener_req(
                 nqn=args.subnqn,
                 gateway_name=args.gateway_name,
                 trtype=args.trtype,
@@ -309,18 +311,19 @@ class GatewayClient:
                 traddr=args.traddr,
                 trsvcid=args.trsvcid,
             )
-            ret = self.stub.delete_listener(delete_req)
-            self.logger.info(f"Deleted {args.traddr} from {args.subnqn}: {ret.status}")
+            ret = self.stub.delete_listener(req)
+            self.logger.info(
+                f"Deleted {args.traddr} from {args.subnqn}: {ret.status}")
         except Exception as error:
             self.logger.error(f"Failed to delete listener: \n {error}")
 
     @cli.cmd()
     def get_subsystems(self, args):
-        """Get subsystems."""
+        """Gets subsystems."""
 
         try:
-            get_req = pb2.get_subsystems_req()
-            ret = self.stub.get_subsystems(get_req)
+            req = pb2.get_subsystems_req()
+            ret = self.stub.get_subsystems(req)
             subsystems = json.loads(ret.subsystems)
             formatted_subsystems = json.dumps(subsystems, indent=4)
             self.logger.info(f"Get subsystems:\n{formatted_subsystems}")
@@ -331,8 +334,8 @@ class GatewayClient:
 def main(args=None):
     client = GatewayClient()
     parsed_args = client.cli.parser.parse_args(args)
-    nvme_config = NVMeGWConfig(parsed_args.config)
-    client.connect(nvme_config)
+    config = GatewayConfig(parsed_args.config)
+    client.connect(config)
     if parsed_args.subcommand is None:
         client.cli.parser.print_help()
     else:

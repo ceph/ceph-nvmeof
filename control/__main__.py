@@ -11,7 +11,7 @@ import os
 import logging
 import argparse
 from .server import GatewayServer
-from .config import NVMeGWConfig
+from .config import GatewayConfig
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(prog="python3 -m control",
@@ -30,7 +30,7 @@ if __name__ == '__main__':
     if not os.path.isfile(args.config):
         logger.error(f"Config file {args.config} not found.")
         raise FileNotFoundError
-    
-    config = NVMeGWConfig(args.config)
+
+    config = GatewayConfig(args.config)
     with GatewayServer(config) as gateway:
         gateway.serve()

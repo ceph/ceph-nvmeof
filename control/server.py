@@ -39,7 +39,7 @@ class GatewayServer:
     """Runs SPDK and receives client requests for the gateway service.
 
     Instance attributes:
-        nvme_config: Basic gateway parameters
+        config: Basic gateway parameters
         logger: Logger instance to track server events
         gateway_state: Methods for target state persistence
         gateway_rpc: GatewayService object on which to make RPC calls directly
@@ -50,21 +50,21 @@ class GatewayServer:
         spdk_process: Subprocess running SPDK NVMEoF target application
     """
 
-    def __init__(self, nvme_config):
+    def __init__(self, config):
 
         self.logger = logging.getLogger(__name__)
-        self.nvme_config = nvme_config
+        self.config = config
         self.spdk_process = None
         self.server = None
 
-        gateway_name = self.nvme_config.get("config", "gateway_name")
+        gateway_name = self.config.get("gateway", "name")
         if not gateway_name:
             gateway_name = socket.gethostname()
         self.logger.info(f"Starting gateway {gateway_name}")
 
         self._start_spdk()
-        self.gateway_state = OmapGatewayState(self.nvme_config)
-        self.gateway_rpc = GatewayService(self.nvme_config, self.gateway_state,
+        self.gateway_state = OmapGatewayState(self.config)
+        self.gateway_rpc = GatewayService(self.config, self.gateway_state,
                                           self.spdk_rpc, self.spdk_rpc_client)
 
     def __enter__(self):
@@ -77,7 +77,7 @@ class GatewayServer:
             self.logger.info("Terminating SPDK...")
             self.spdk_process.terminate()
             try:
-                timeout = self.nvme_config.getfloat("spdk", "timeout")
+                timeout = self.config.getfloat("spdk", "timeout")
                 self.spdk_process.communicate(timeout=timeout)
             except subprocess.TimeoutExpired:
                 self.spdk_process.kill()
@@ -94,17 +94,17 @@ class GatewayServer:
 
         # Register service implementation with server
         self.server = grpc.server(futures.ThreadPoolExecutor(max_workers=1))
-        pb2_grpc.add_NVMEGatewayServicer_to_server(self.gateway_rpc, self.server)
+        pb2_grpc.add_GatewayServicer_to_server(self.gateway_rpc, self.server)
 
-        enable_auth = self.nvme_config.getboolean("config", "enable_auth")
-        gateway_addr = self.nvme_config.get("config", "gateway_addr")
-        gateway_port = self.nvme_config.get("config", "gateway_port")
+        enable_auth = self.config.getboolean("gateway", "enable_auth")
+        gateway_addr = self.config.get("gateway", "addr")
+        gateway_port = self.config.get("gateway", "port")
 
         if enable_auth:
             # Read in key and certificates for authentication
-            server_key = self.nvme_config.get("mtls", "server_key")
-            server_cert = self.nvme_config.get("mtls", "server_cert")
-            client_cert = self.nvme_config.get("mtls", "client_cert")
+            server_key = self.config.get("mtls", "server_key")
+            server_cert = self.config.get("mtls", "server_cert")
+            client_cert = self.config.get("mtls", "client_cert")
             with open(server_key, "rb") as f:
                 private_key = f.read()
             with open(server_cert, "rb") as f:
@@ -144,17 +144,17 @@ class GatewayServer:
         """Starts SPDK process."""
 
         # Get path and import SPDK's RPC modules
-        spdk_path = self.nvme_config.get("spdk", "spdk_path")
+        spdk_path = self.config.get("spdk", "spdk_path")
         sys.path.append(spdk_path)
         self.logger.info(f"SPDK PATH: {spdk_path}")
         import spdk.scripts.rpc as spdk_rpc
         self.spdk_rpc = spdk_rpc
 
         # Start target
-        tgt_path = self.nvme_config.get("spdk", "tgt_path")
-        spdk_rpc_socket = self.nvme_config.get("spdk", "rpc_socket")
-        spdk_tgt_cmd_extra_args = self.nvme_config.get("spdk",
-                                                       "tgt_cmd_extra_args")
+        tgt_path = self.config.get("spdk", "tgt_path")
+        spdk_rpc_socket = self.config.get("spdk", "rpc_socket")
+        spdk_tgt_cmd_extra_args = self.config.get("spdk",
+                                                  "tgt_cmd_extra_args")
         spdk_cmd = os.path.join(spdk_path, tgt_path)
         cmd = [spdk_cmd, "-u", "-r", spdk_rpc_socket]
         if spdk_tgt_cmd_extra_args:
@@ -169,9 +169,9 @@ class GatewayServer:
             raise
 
         # Initialization
-        timeout = self.nvme_config.getfloat("spdk", "timeout")
-        log_level = self.nvme_config.get("spdk", "log_level")
-        conn_retries = self.nvme_config.getint("spdk", "conn_retries")
+        timeout = self.config.getfloat("spdk", "timeout")
+        log_level = self.config.get("spdk", "log_level")
+        conn_retries = self.config.getint("spdk", "conn_retries")
         self.logger.info({
             f"Attempting to initialize SPDK: rpc_socket: {spdk_rpc_socket},",
             f" conn_retries: {conn_retries}, timeout: {timeout}",
@@ -196,7 +196,7 @@ class GatewayServer:
             raise
 
         # Implicitly create transports
-        spdk_transports = self.nvme_config.get_with_default(
+        spdk_transports = self.config.get_with_default(
             "spdk", "transports", "tcp")
         for trtype in spdk_transports.split():
             self._create_transport(trtype.lower())
@@ -205,7 +205,7 @@ class GatewayServer:
         """Initializes a transport type."""
         args = {'trtype': trtype}
         name = "transport_" + trtype + "_options"
-        options = self.nvme_config.get_with_default("spdk", name, "")
+        options = self.config.get_with_default("spdk", name, "")
 
         self.logger.debug(f"create_transport: {trtype} options: {options}")
 
