@@ -4,36 +4,18 @@
 
 set -e
 
-# spdk_repo=$(mktemp -dt "spdk.XXXXXX")
-mkdir -p /tmp/spdk_build
-spdk_repo=/tmp/spdk_build
-spdk_tar=/spdk.tar.gz
-spdk_version=$1
+spdk_repo=/tmp/spdk
 
 cleanup() {
 
 	rm -f "$HOME/rpmbuild/rpm/x86_64/"*.rpm
 	rm -f "$spdk_tar"
-	# rm -rf "$spdk_repo"
 }
 
 trap 'cleanup' EXIT
 
-if [[ ! -e $spdk_tar ]]; then
-	printf 'Missing %s\n' "$spdk_tar" >&2
-	exit 1
-fi
-
-tar -C "$spdk_repo" -xf "$spdk_tar"
-
-# Required for building RPM
-dnf install -y rpm-build
-dnf install -y librbd-devel
-
-echo "dnf install -y rpm-build"
-
 # Spice it a bit with supported sources
-"$spdk_repo/spdk/scripts/pkgdep.sh" -d
+"$spdk_repo/scripts/pkgdep.sh" -d
 
 
 # "$spdk_repo/test/common/config/vm_setup.sh" --test-conf=fio
@@ -43,11 +25,13 @@ echo "dnf install -y rpm-build"
 # configuration to update all the paths make would need to lookup - this is
 # needed since we execute inside a different mount namespace so we won't be
 # able to find any absolute paths that were used prior creating the .tar.
-"$spdk_repo/spdk/configure" --with-rbd > /dev/null
+
+"$spdk_repo/configure" --with-rbd > /dev/null
 # spdk_version=$(cat $spdk_repo/spdk/VERSION)
-echo "spdk_version is $spdk_version"
+
 # Deploy SPDK inside the container
-SPDK_VERSION="${spdk_version}" DEPS="no" "$spdk_repo/spdk/rpmbuild/rpm.sh"
+echo "running rpm build, ${spdk_version}"
+SPDK_VERSION="${spdk_version}" DEPS="no" "$spdk_repo/rpmbuild/rpm.sh"
 
 mkdir -p /tmp/rpms
 echo "spdk_version is $spdk_version"

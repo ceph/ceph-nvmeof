@@ -6,6 +6,7 @@ CONT_NAME := nvme
 CONT_VERS := latest
 REMOTE_REPO :=
 SPDK_VERSION := $(shell cd spdk;git -C . describe --tags --abbrev=0 | sed -r 's/-/\./g')
+DOCKER_VERSION := $(shell docker image ls | grep spdk | tr -s ' ' | cut -d ' ' -f2)
 
 ## init: Initialize the spdk submodule
 .PHONY: init
@@ -14,15 +15,19 @@ init:
 	cd $(curr_dir)/spdk && \
 	git submodule update --init --recursive
 
-## image: Build spdk image and rpms
+## image: Build spdk image if it does not exist
 .PHONY: spdk
 spdk:
-	tar -czf docker/spdk.tar.gz -C . spdk
+ifneq ($(DOCKER_VERSION), $(SPDK_VERSION))
 	docker build \
 	--network=host \
 	--build-arg spdk_version=$(SPDK_VERSION) \
+	--build-arg spdk_branch=ceph-nvmeof \
 	${DOCKER_NO_CACHE} \
 	-t spdk:$(SPDK_VERSION) -f docker/Dockerfile.spdk .
+else
+	@echo "Docker image for version: $(SPDK_VERSION) exists"
+endif
 
 ## spdk_rpms: Copy the rpms from spdk container in output directory 
 .PHONY: spdk_rpms
@@ -33,7 +38,6 @@ spdk_rpms:
 ## image: Build the nvme gateway image. The spdk image needs to be built first.
 .PHONY: image
 image:
-	@echo "spdk_version is $(SPDK_VERSION)" 
 	docker build \
 	--network=host \
 	${DOCKER_NO_CACHE} \

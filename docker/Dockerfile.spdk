@@ -9,8 +9,10 @@ ENV http_proxy=$PROXY
 ENV https_proxy=$PROXY
 ENV no_proxy=$NO_PROXY
 
+RUN dnf install -y rpm-build librbd-devel git
 
-COPY ./docker/spdk.tar.gz /spdk.tar.gz
+COPY ./spdk /tmp/spdk
+
 COPY ./docker/pre-install /install
 
 RUN /install $spdk_version
