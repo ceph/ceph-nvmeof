@@ -35,9 +35,17 @@ spdk_rpms:
 	docker run --rm -v $(curr_dir)/output:/output spdk:$(SPDK_VERSION) \
 	bash -c "cp -f /tmp/rpms/*.rpm /output/"
 
+grpc:
+	@python3 -m grpc_tools.protoc \
+		--proto_path=./$(MODULE)/proto \
+		--python_out=./$(MODULE)/proto \
+		--grpc_python_out=./$(MODULE)/proto \
+		./$(MODULE)/proto/*.proto
+	@sed -E -i 's/^import.*_pb2/from . \0/' ./$(MODULE)/proto/*.py
+
 ## image: Build the nvme gateway image. The spdk image needs to be built first.
 .PHONY: image
-image:
+image: spdk grpc
 	docker build \
 	--network=host \
 	${DOCKER_NO_CACHE} \
