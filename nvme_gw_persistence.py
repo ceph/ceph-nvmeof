@@ -104,9 +104,9 @@ class OmapPersistentConfig(PersistentConfig):
 
         ceph_pool = self.nvme_config.get("ceph", "pool")
         ceph_conf = self.nvme_config.get("ceph", "config_file")
-        conn = rados.Rados(conffile=ceph_conf)
-        conn.connect()
-        self.ioctx = conn.open_ioctx(ceph_pool)
+        self.cluster = rados.Rados(conffile=ceph_conf)
+        self.cluster.connect()
+        self.ioctx = self.cluster.open_ioctx(ceph_pool)
 
         try:
             # Create a new gateway persistence OMAP object
@@ -131,8 +131,8 @@ class OmapPersistentConfig(PersistentConfig):
             version_update = self.version + 1
             with rados.WriteOpCtx() as write_op:
                 # Compare operation failure will cause write failure
-                write_op.omap_cmp(self.OMAP_VERSION_KEY, str(self.version),
-                                  rados.LIBRADOS_CMPXATTR_OP_EQ)
+                # write_op.omap_cmp(self.OMAP_VERSION_KEY, str(self.version),
+                #                  rados.LIBRADOS_CMPXATTR_OP_EQ)
                 self.ioctx.set_omap(write_op, (key,), (val,))
                 self.ioctx.set_omap(write_op, (self.OMAP_VERSION_KEY,),
                                     (str(version_update),))
@@ -315,3 +315,6 @@ class OmapPersistentConfig(PersistentConfig):
             self._restore_listeners(omap_dict, callbacks[self.LISTENER_PREFIX])
             self.version = int(omap_dict[self.OMAP_VERSION_KEY])
             self.logger.info("Restore complete.")
+
+    def pool_exists(self, pool_name):
+        return self.cluster.pool_exists(pool_name)

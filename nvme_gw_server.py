@@ -256,6 +256,14 @@ class GWService(pb2_grpc.NVMEGatewayServicer):
             f" {request.ceph_pool_name}/{request.rbd_name}",
             f" with block size {request.block_size}",
         })
+
+        if (self.persistent_config.pool_exists(request.ceph_pool_name)==False):
+            self.logger.error(f"bdev create failed with: \n POOL {request.ceph_pool_name} not found")
+            if context:
+                context.set_code(grpc.StatusCode.INTERNAL)
+                context.set_details("pool not found")
+            return pb2.bdev_info()
+
         try:
             bdev_name = self.spdk_rpc.bdev.bdev_rbd_create(
                 self.spdk_rpc_client,
