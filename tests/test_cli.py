@@ -1,6 +1,6 @@
 import pytest
 import socket
-from nvme_gw_cli import main as cli
+from control.cli import main as cli
 
 image = "iscsidevimage"
 pool = "rbd"
@@ -13,12 +13,14 @@ trtype = "TCP"
 gateway_name = socket.gethostname()
 addr = "127.0.0.1"
 listener_list = [["-g", gateway_name, "-a", addr, "-s", "5001"], ["-s", "5002"]]
-config = "nvme_gw.config"
+config = "ceph-nvmeof.conf"
+
 
 class TestGet:
     def test_get_subsystems(self, caplog):
         cli(["-c", config, "get_subsystems"])
         assert "Failed to get" not in caplog.text
+
 
 class TestCreate:
     def test_create_bdev(self, caplog):
@@ -29,8 +31,8 @@ class TestCreate:
         cli(["-c", config, "create_subsystem", "-n", subsystem, "-s", serial])
         assert "Failed to create" not in caplog.text
 
-    def test_create_namespace(self, caplog):
-        cli(["-c", config, "create_namespace", "-n", subsystem, "-b", bdev])
+    def test_add_namespace(self, caplog):
+        cli(["-c", config, "add_namespace", "-n", subsystem, "-b", bdev])
         assert "Failed to add" not in caplog.text
 
     @pytest.mark.parametrize("host", host_list)
@@ -43,10 +45,11 @@ class TestCreate:
         cli(["-c", config, "create_listener", "-n", subsystem] + listener)
         assert "Failed to create" not in caplog.text
 
+
 class TestDelete:
     @pytest.mark.parametrize("host", host_list)
-    def test_delete_host(self, caplog, host):
-        cli(["-c", config, "delete_host", "-n", subsystem, "-t", host])
+    def test_remove_host(self, caplog, host):
+        cli(["-c", config, "remove_host", "-n", subsystem, "-t", host])
         assert "Failed to remove" not in caplog.text
 
     @pytest.mark.parametrize("listener", listener_list)
@@ -54,8 +57,8 @@ class TestDelete:
         cli(["-c", config, "delete_listener", "-n", subsystem] + listener)
         assert "Failed to delete" not in caplog.text
 
-    def test_delete_namespace(self, caplog):
-        cli(["-c", config, "delete_namespace", "-n", subsystem, "-i", nsid])
+    def test_remove_namespace(self, caplog):
+        cli(["-c", config, "remove_namespace", "-n", subsystem, "-i", nsid])
         assert "Failed to remove" not in caplog.text
 
     def test_delete_bdev(self, caplog):

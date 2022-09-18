@@ -4,7 +4,7 @@ Source: http://github.com/ceph/ceph-nvmeof
 Files: *
 License: LGPL-3.0-or-later (see LICENSE)
 
-Files: proto/nvme_gw.proto
+Files: proto/gateway.proto
 License: MIT
 Copyright: Copyright (c) 2021 International Business Machines
 

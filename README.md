@@ -8,13 +8,12 @@ This daemon runs as root. It provides the ability to export existing RBD images 
 
 1. The daemon is a gRPC server, so the host running the server will need to install gRPC packages:
 
-		$ python3 -m pip install grpcio
-		$ python3 -m pip install grpcio-tools
+		$ make setup
 		
-2. Modify the config file (default nvme_gw.config) to reflect the IP/ Port where the server can be reached:
+2. Modify the config file (default ceph-nvmeof.conf) to reflect the IP/ Port where the server can be reached:
 
-		gateway_addr = <IP address at which the client can reach the gateway>
-		gateway_port = <port at which the client can reach the gateway>
+		addr = <IP address at which the client can reach the gateway>
+		port = <port at which the client can reach the gateway>
 	
 3. To [enable mTLS](#mtls-configuration-for-testing-purposes) using self signed certificates, edit the config file to set:
 
@@ -22,7 +21,7 @@ This daemon runs as root. It provides the ability to export existing RBD images 
 
 4. Compile protobuf files for gRPC:
 		
-	    $ python3 -m grpc_tools.protoc --proto_path=./proto ./proto/nvme_gw.proto --python_out=. --grpc_python_out=.   
+	    $ make grpc 
 
 5. SPDK v21.04 is included in this repository. Edit the config file to set:
 
@@ -50,7 +49,7 @@ This daemon runs as root. It provides the ability to export existing RBD images 
 
 7. Start the gateway server daemon:
 		
-		$ python3 nvme_gw_server.py [-c config_filename]
+		$ python3 -m control [-c CONFIG]
 
 
 # CLI Usage
@@ -59,14 +58,14 @@ The CLI tool can be used to initiate a connection to the gateway and run command
 
 Run the tool with the -h flag to see a list of available commands:
 	
-	$ python3 ./nvme_gw_cli.py -h
-	usage: python3 ./nvme_gw_cli.py [-h] [-c CONFIG]
-			{create_bdev,delete_bdev,create_subsystem,delete_subsystem,create_namespace,delete_namespace,add_host,delete_host,create_listener,delete_listener,get_subsystems} ...
+	$ python3 -m control.cli -h
+	usage: python3 -m control.cli [-h] [-c CONFIG]
+			{create_bdev,delete_bdev,create_subsystem,delete_subsystem,add_namespace,remove_namespace,add_host,remove_host,create_listener,delete_listener,get_subsystems} ...
 
 	CLI to manage NVMe gateways
 
 	positional arguments:
-	{create_bdev,delete_bdev,create_subsystem,delete_subsystem,create_namespace,delete_namespace,add_host,delete_host,create_listener,delete_listener,get_subsystems}
+	{create_bdev,delete_bdev,create_subsystem,delete_subsystem,add_namespace,remove_namespace,add_host,remove_host,create_listener,delete_listener,get_subsystems}
 
 	optional arguments:
 	-h, --help            			show this help message and exit
@@ -75,8 +74,8 @@ Run the tool with the -h flag to see a list of available commands:
 
 Example:
 
-	$ python3 ./nvme_gw_cli.py create_bdev -h
-	usage: python3 ./nvme_gw_cli.py create_bdev [-h] -i IMAGE -p POOL [-b BDEV_NAME] [-u USER] [-s BLOCK_SIZE]
+	$ python3 -m control.cli create_bdev -h
+	usage: python3 -m control.cli create_bdev [-h] -i IMAGE -p POOL [-b BDEV_NAME] [-s BLOCK_SIZE]
 
 	optional arguments:
 	-h, --help            			show this help message and exit
@@ -85,7 +84,6 @@ Example:
 	-p POOL, --pool POOL  			Ceph pool name
 	-b BDEV_NAME, --bdev BDEV_NAME
 						Bdev name
-	-u USER, --user USER  			User ID
 	-s BLOCK_SIZE, --block_size BLOCK_SIZE
 						Block size
 
@@ -114,7 +112,7 @@ Indicate the location of the keys and certificates in the config file:
 
 1. Start the gateway server:
 
-		$ python3 nvme_gw_server.py
+		$ python3 -m control
 		INFO:root:SPDK PATH: /path/to/spdk
 		INFO:root:Starting /path/to/spdk/tgt/nvmf_tgt all -u
 		INFO:root:Attempting to initialize SPDK: server_addr: /var/tmp/spdk.sock, port: 5260, conn_retries: 3, timeout: 60.0
@@ -124,19 +122,19 @@ Indicate the location of the keys and certificates in the config file:
 
 2. Run the CLI (ensure a ceph pool 'rbd' with an rbdimage 'mytestdevimage' is created prior to this step):
 
-		$ python3 ./nvme_gw_cli.py create_bdev -i mytestdevimage -p rbd -b Ceph0
-		INFO:root:Created bdev: Ceph0
+		$ python3 -m control.cli create_bdev -i mytestdevimage -p rbd -b Ceph0
+		INFO:root:Created bdev Ceph0: True
 		
-		$ python3 ./nvme_gw_cli.py create_subsystem -n nqn.2016-06.io.spdk:cnode1 -s SPDK00000000000001
-		INFO:root:Created subsystem: nqn.2016-06.io.spdk:cnode1
+		$ python3 -m control.cli create_subsystem -n nqn.2016-06.io.spdk:cnode1 -s SPDK00000000000001
+		INFO:root:Created subsystem nqn.2016-06.io.spdk:cnode1: True
 		
-		$ python3 ./nvme_gw_cli.py create_namespace -n nqn.2016-06.io.spdk:cnode1 -b Ceph0
-		INFO:root:Added namespace 1 to nqn.2016-06.io.spdk:cnode1
+		$ python3 -m control.cli add_namespace -n nqn.2016-06.io.spdk:cnode1 -b Ceph0
+		INFO:root:Added namespace 1 to nqn.2016-06.io.spdk:cnode1: True
 		
-		$ python3 ./nvme_gw_cli.py add_host -n nqn.2016-06.io.spdk:cnode1 -t *
-		INFO:root:Allow open host access to nqn.2016-06.io.spdk:cnode1: True
+		$ python3 -m control.cli add_host -n nqn.2016-06.io.spdk:cnode1 -t *
+		INFO:root:Allowed open host access to nqn.2016-06.io.spdk:cnode1: True
 		
-		$ python3 ./nvme_gw_cli.py create_listener -n nqn.2016-06.io.spdk:cnode1 -s 5001
+		$ python3 -m control.cli create_listener -n nqn.2016-06.io.spdk:cnode1 -s 5001
 		INFO:root:Created nqn.2016-06.io.spdk:cnode1 listener: True
 
 3. On the storage client system (ubuntu-21.04):

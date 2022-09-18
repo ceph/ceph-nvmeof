@@ -1,0 +1,125 @@
+//
+//  Copyright (c) 2021 International Business Machines
+//  All rights reserved.
+//
+//  SPDX-License-Identifier: MIT
+//
+//  Authors: anita.shekar@ibm.com, sandy.kaur@ibm.com
+//
+
+
+syntax = "proto3";
+
+service Gateway {
+	// Creates a bdev from an RBD image
+	rpc create_bdev(create_bdev_req) returns (req_status) {}
+
+	// Deletes a bdev
+	rpc delete_bdev(delete_bdev_req) returns (req_status) {}
+
+	// Creates a subsystem
+	rpc create_subsystem(create_subsystem_req) returns(req_status) {}
+
+	// Deletes a subsystem
+	rpc delete_subsystem(delete_subsystem_req) returns(req_status) {}
+
+	// Adds a namespace to a subsystem
+	rpc add_namespace(add_namespace_req) returns(nsid) {}
+
+	// Removes a namespace from a subsystem
+	rpc remove_namespace(remove_namespace_req) returns(req_status) {}
+
+	// Adds a host to a subsystem
+	rpc add_host(add_host_req) returns (req_status) {}
+
+	// Removes a host from a subsystem
+	rpc remove_host(remove_host_req) returns (req_status) {}
+
+	// Creates a listener for a subsystem at a given IP/Port
+	rpc create_listener(create_listener_req) returns(req_status) {}
+
+	// Deletes a listener from a subsystem at a given IP/Port
+	rpc delete_listener(delete_listener_req) returns(req_status) {}
+
+	// Gets subsystems
+	rpc get_subsystems(get_subsystems_req) returns(subsystems_info) {}
+}
+
+// Request messages
+
+message create_bdev_req {
+	string bdev_name = 1;
+	string ceph_pool_name = 2;
+	string rbd_name = 3;
+	int32 block_size = 4;
+}
+
+message delete_bdev_req {
+	string bdev_name = 1;
+}
+
+message create_subsystem_req {
+	string subsystem_nqn = 1;
+	string serial_number = 2;
+}
+
+message delete_subsystem_req {
+	string subsystem_nqn = 1;
+}
+
+message add_namespace_req {
+	string subsystem_nqn = 1;
+	string bdev_name = 2;
+	optional int32 nsid = 3;
+}
+
+message remove_namespace_req {
+	string subsystem_nqn = 1;
+	int32 nsid = 2;
+}
+
+message add_host_req {
+	string subsystem_nqn = 1;
+	string host_nqn = 2;
+}
+
+message remove_host_req {
+	string subsystem_nqn = 1;
+	string host_nqn = 2;
+}
+
+message create_listener_req {
+	string nqn = 1;
+	string gateway_name = 2;
+	string trtype = 3;
+	string adrfam = 4;
+	string traddr = 5;
+	string trsvcid = 6;
+}
+
+message delete_listener_req {
+	string nqn = 1;
+	string gateway_name = 2;
+	string trtype = 3;
+	string adrfam = 4;
+	string traddr = 5;
+	string trsvcid = 6;
+}
+
+message get_subsystems_req {
+}
+
+// Return messages 
+
+message req_status {
+	bool status = 1;
+}
+
+message nsid {
+	int32 nsid = 1;
+	bool status = 2;
+}
+
+message subsystems_info {
+	string subsystems = 1;
+}
