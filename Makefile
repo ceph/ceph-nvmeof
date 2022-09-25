@@ -9,33 +9,42 @@
 
 # MThis is the Makefile for acadia-platform. Based on from genctl/Acadia-service-workspace
 
-MODULE := control
 CONFIG ?= ceph-nvmeof.conf
+TEST_IMAGE := $(shell docker image ls | grep test_image | tr -s ' ' | cut -d ' ' -f1 )
+SHELL := /bin/bash
+PROJDIR := $(dir $(realpath $(firstword $(MAKEFILE_LIST))))
+MODULE := control
 curr_dir := $(shell pwd)
-DOCKER_NO_CACHE := --no-cache
-CONT_NAME := nvme
+DOCKER_NO_CACHE :=
+CONT_NAME := ceph-nvmeof
 CONT_VERS := latest
 REMOTE_REPO ?= ""
 SPDK_VERSION := $(shell cd spdk;git -C . describe --tags --abbrev=0 | sed -r 's/-/\./g')
 DOCKER_VERSION := $(shell docker image ls | grep spdk | tr -s ' ' | cut -d ' ' -f2)
+PYVENV := $(PROJDIR)/venv
+CEPH_VERSION := 17.2.5
+UBI_VERSION ?= ubi8
+PYTHON_VERSION := 36
+
+# Utility Function to activate the Python Virtual Environment
+define callpyvenv =
+        (source ${PYVENV}/bin/activate; export PATH=$(PYVENV)/bin; $(1))
+endef
 
 ## setup: setup add requirements
 .PHONY: setup
-setup: requirements.txt
-	pip3 install -r requirements.txt
-	@echo "dir: $(curr_dir)/spdk"
-	cd $(curr_dir)/spdk && \
+setup:
 	git submodule update --init --recursive
 
 ## grpc: Compile grpc code
 .PHONY: grpc
-grpc:
+grpc: $(PYVENV)
 	@mkdir -p $(MODULE)/generated
-	@python3 -m grpc_tools.protoc \
-			--proto_path=./proto \
-			--python_out=./$(MODULE)/generated \
-			--grpc_python_out=./$(MODULE)/generated \
-			./proto/*.proto
+	$(call callpyvenv, python3 -m grpc_tools.protoc \
+		--proto_path=./proto \
+		--python_out=./$(MODULE)/generated \
+		--grpc_python_out=./$(MODULE)/generated \
+		./proto/*.proto)
 	@sed -i 's/^import.*_pb2/from . \0/' ./$(MODULE)/generated/*.py
 
 ## run: Run the gateway server
@@ -45,8 +54,25 @@ run:
 
 ## test: Run tests
 .PHONY: test
-test:
+test: $(PYVENV)
 	@pytest
+
+## test_image: Build a test container for unit tests
+.PHONY: test_image
+test_image:
+ifeq ($(TEST_IMAGE),test_image)
+	@echo "test_image: Reusing existing test_image:latest"
+else
+	@echo mode is development
+	docker build --network=host -t test_image:latest -f docker/Dockerfile.test .
+endif
+
+## unittests: Run unit tests for gateway
+.PHONY: unittests
+unittests: $(PYVENV) test_image
+	@docker run -it -v $${PWD}:/src -w /src -e HOME=/src \
+		test_image:latest ./test.sh
+
 
 ## image: Build spdk image if it does not exist
 .PHONY: spdk
@@ -96,3 +122,9 @@ help:
 	@echo "Usage: \n"
 	@sed -n 's/^##//p' ${MAKEFILE_LIST} | column -t -s ':' |  sed -e 's/^/ /'
 
+# Setup a Python Virtual Environment to use for running the static analysis and unit tests
+$(PYVENV):
+	[ -d $(PYVENV) ] || (mkdir -p $(PYVENV); python3 -m venv $(PYVENV))
+	$(PYVENV)/bin/pip3 install --upgrade pip==20.3.3
+	$(PYVENV)/bin/pip3 install -r $(PROJDIR)/requirements.txt
+	$(PYVENV)/bin/pip3 install -e $(PROJDIR)
