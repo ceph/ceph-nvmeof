@@ -1,4 +1,5 @@
-FROM fedora:36 AS base
+ARG SPDK_IMAGE=fedora:36
+FROM $SPDK_IMAGE AS base
 
 # Generic args
 ARG spdk_version
@@ -17,7 +18,7 @@ COPY ./spdk /tmp/spdk
 RUN ls -l
 RUN ls -l /tmp
 
-COPY . . 
+COPY . .
 
 RUN /docker/pre-install $spdk_version
 RUN /docker/post-install
