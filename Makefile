@@ -6,8 +6,8 @@
 #
 #  Authors: anita.shekar@ibm.com, sandy.kaur@ibm.com, guptsanj@us.ibm.com
 #
-
-
+SHELL := /bin/bash
+PROJDIR := $(dir $(realpath $(firstword $(MAKEFILE_LIST))))
 MODULE := control
 CONFIG ?= ceph-nvmeof.conf
 curr_dir := $(shell pwd)
@@ -18,35 +18,41 @@ REMOTE_REPO ?= ""
 SPDK_VERSION := $(shell cd spdk;git -C . describe --tags --abbrev=0 | sed -r 's/-/\./g')
 DOCKER_VERSION := $(shell docker image ls | grep spdk | tr -s ' ' | cut -d ' ' -f2)
 SPDK_IMAGE ?= fedora:36
+PYVENV := $(PROJDIR)/venv
+
+# Utility Function to activate the Python Virtual Environment
+define callpyvenv =
+	(source ${PYVENV}/bin/activate; export PATH=$(PYVENV)/bin; $(1))
+endef
 
 ## setup: setup add requirements
 .PHONY: setup
-setup: requirements.txt
-	pip3 install -r requirements.txt
+setup:
 	@echo "dir: $(curr_dir)/spdk"
 	cd $(curr_dir)/spdk && \
 	git submodule update --init --recursive
 
 ## grpc: Compile grpc code
 .PHONY: grpc
-grpc: setup
+grpc: $(PYVENV)
 	@mkdir -p $(MODULE)/generated
-	@python3 -m grpc_tools.protoc \
+	$(call callpyvenv, python3 -m grpc_tools.protoc \
 			--proto_path=./proto \
 			--python_out=./$(MODULE)/generated \
 			--grpc_python_out=./$(MODULE)/generated \
-			./proto/*.proto
+			./proto/*.proto)
 	@sed -i 's/^import.*_pb2/from . \0/' ./$(MODULE)/generated/*.py
 
 ## run: Run the gateway server
 .PHONY: run
-run:
-	@python3 -m $(MODULE) -c $(CONFIG)
+run: $(PYVENV)
+	@echo "Executing PEP8 on python files..."
+	$(call callpyvenv,python3 -m $(MODULE) -c $(CONFIG))
 
 ## test: Run tests
 .PHONY: test
-test:
-	@pytest
+test: $(PYVENV)
+	$(call callpyvenv,pytest)
 
 ## spdk-image: Build spdk image if it does not exist
 .PHONY: spdk-image
@@ -92,6 +98,19 @@ push-gateway-image: gateway-image
 clean:
 	find control -name __pycache__ -type d -exec rm -rf "{}" \;
 	rm -rf output
+	rm -rf $(PYVENV)
+
+.PHONY: test1
+test1: $(PYVENV)
+	@echo "This is a test"
+
+
+# Setup a Python Virtual Environment to use for running the static analysis and unit tests
+$(PYVENV):
+	[ -d $(PYVENV) ] || (mkdir -p $(PYVENV); python3 -m venv $(PYVENV))
+	$(PYVENV)/bin/pip3 install --upgrade pip==20.3.3
+	$(PYVENV)/bin/pip3 install -r $(PROJDIR)/requirements.txt
+	$(PYVENV)/bin/pip3 install -e $(PROJDIR)
 
 ## help: Describes the help
 .PHONY: help
