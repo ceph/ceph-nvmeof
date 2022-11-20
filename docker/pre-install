@@ -26,7 +26,7 @@ trap 'cleanup' EXIT
 
 # Deploy SPDK inside the container
 
-SPDK_VERSION="${spdk_version}" DEPS="no" "$spdk_repo/rpmbuild/rpm.sh"
+SPDK_VERSION="${spdk_version}" DEPS="no" "$spdk_repo/rpmbuild/rpm.sh" "--with-rbd"
 
 mkdir -p /tmp/rpms
 

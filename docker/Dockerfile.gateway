@@ -1,16 +1,40 @@
 
 ARG spdk_version
 
+FROM python:3.7 as python_builder
+
+RUN mkdir -p /build/proto/generated
+
+COPY requirements.txt /build/
+COPY proto /build/proto
+
+RUN apt-get -y update && \
+ apt-get install -y vim && \
+ pip3 --no-cache-dir install --upgrade pip
+
+RUN pip install -r /build/requirements.txt
+
+RUN python3 -m grpc_tools.protoc \
+			--proto_path=/build/proto/ \
+			--python_out=/build/proto/generated \
+			--grpc_python_out=/build/proto/generated \
+			/build/proto/*.proto
+
+RUN sed -i 's/^import.*_pb2/from . \0/' /build/proto/generated/*.py
+
 FROM spdk:${spdk_version:-latest} as spdk
 
+WORKDIR /app
+
 RUN dnf update -y \
-    && dnf install -y libaio numactl-libs python3-pip librbd-devel.x86_64 python-rados \
+    && dnf install -y libaio numactl-libs librbd-devel.x86_64 python-rados \
     && dnf clean all \
     && pip3 --no-cache-dir install --upgrade pip \
-    && python3 -m pip install grpcio \
-    && python3 -m pip install grpcio-tools
+    && python3 -m pip install grpcio
 
 COPY . /app/
+
+RUN pip install -e .
 
 RUN ln -s /usr/local/bin/nvmf_tgt /usr/libexec/nvmf_tgt
 
@@ -18,11 +42,11 @@ RUN ln -s /usr/local/bin/nvmf_tgt /usr/libexec/nvmf_tgt
 # location
 #RUN rm -rf /app/spdk
 RUN ln -s /tmp/spdk /app/spdk
-
+COPY --from=python_builder /build/proto/generated  /app/control/generated
 
 # Update location of spdk in the ceph-nvmeof.conf file
 RUN sed -i 's/^spdk_path.*$/spdk_path = \/app/g' /app/ceph-nvmeof.conf
 
-WORKDIR /app
+
 ENTRYPOINT ["python3", "-m", "control" , "-c", "/app/ceph-nvmeof.conf"]
 

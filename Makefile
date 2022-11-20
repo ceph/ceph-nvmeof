@@ -79,7 +79,7 @@ spdk_rpms:
 
 ## gateway-image: Build the ceph-nvme gateway image. The spdk image needs to be built first.
 .PHONY: gateway-image
-gateway-image: spdk-image grpc
+gateway-image: spdk-image
 	ln -sf  docker/.dockerignore.gateway .dockerignore
 	docker build \
 	--network=host \
