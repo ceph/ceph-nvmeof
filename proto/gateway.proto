@@ -12,7 +12,7 @@ syntax = "proto3";
 
 service Gateway {
 	// Creates a bdev from an RBD image
-	rpc create_bdev(create_bdev_req) returns (req_status) {}
+	rpc create_bdev(create_bdev_req) returns (bdev) {}
 
 	// Deletes a bdev
 	rpc delete_bdev(delete_bdev_req) returns (req_status) {}
@@ -49,8 +49,8 @@ service Gateway {
 
 message create_bdev_req {
 	string bdev_name = 1;
-	string ceph_pool_name = 2;
-	string rbd_name = 3;
+	string rbd_pool_name = 2;
+	string rbd_image_name = 3;
 	int32 block_size = 4;
 }
 
@@ -110,6 +110,11 @@ message get_subsystems_req {
 }
 
 // Return messages 
+
+message bdev {
+	string bdev_name = 1;
+	bool status = 2;
+}
 
 message req_status {
 	bool status = 1;

@@ -127,8 +127,8 @@ class GatewayClient:
 
     @cli.cmd([
         argument("-i", "--image", help="RBD image name", required=True),
-        argument("-p", "--pool", help="Ceph pool name", required=True),
-        argument("-b", "--bdev", help="Bdev name", required=True),
+        argument("-p", "--pool", help="RBD pool name", required=True),
+        argument("-b", "--bdev", help="Bdev name"),
         argument("-s",
                  "--block-size",
                  help="Block size",
@@ -140,13 +140,13 @@ class GatewayClient:
 
         try:
             req = pb2.create_bdev_req(
-                ceph_pool_name=args.pool,
-                rbd_name=args.image,
+                rbd_pool_name=args.pool,
+                rbd_image_name=args.image,
                 block_size=args.block_size,
                 bdev_name=args.bdev,
             )
             ret = self.stub.create_bdev(req)
-            self.logger.info(f"Created bdev {args.bdev}: {ret.status}")
+            self.logger.info(f"Created bdev {ret.bdev_name}: {ret.status}")
         except Exception as error:
             self.logger.error(f"Failed to create bdev: \n {error}")
 

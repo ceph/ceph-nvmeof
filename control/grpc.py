@@ -10,6 +10,7 @@
 import socket
 import grpc
 import json
+import uuid
 import logging
 from google.protobuf import json_format
 from .generated import gateway_pb2 as pb2
@@ -45,16 +46,17 @@ class GatewayService(pb2_grpc.GatewayServicer):
     def create_bdev(self, request, context=None):
         """Creates a bdev from an RBD image."""
 
+        name = str(uuid.uuid4()) if not request.bdev_name else request.bdev_name
         self.logger.info(
-            f"Received request to create bdev {request.bdev_name} from"
-            f" {request.ceph_pool_name}/{request.rbd_name}"
+            f"Received request to create bdev {name} from"
+            f" {request.rbd_pool_name}/{request.rbd_image_name}"
             f" with block size {request.block_size}")
         try:
             bdev_name = self.spdk_rpc.bdev.bdev_rbd_create(
                 self.spdk_rpc_client,
-                name=request.bdev_name,
-                pool_name=request.ceph_pool_name,
-                rbd_name=request.rbd_name,
+                name=name,
+                pool_name=request.rbd_pool_name,
+                rbd_name=request.rbd_image_name,
                 block_size=request.block_size,
             )
             self.logger.info(f"create_bdev: {bdev_name}")
@@ -63,7 +65,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
             if context:
                 context.set_code(grpc.StatusCode.INTERNAL)
                 context.set_details(f"{ex}")
-            return pb2.req_status()
+            return pb2.bdev()
 
         if context:
             # Update gateway state
@@ -76,7 +78,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     f"Error persisting create_bdev {bdev_name}: {ex}")
                 raise
 
-        return pb2.req_status(status=True)
+        return pb2.bdev(bdev_name=bdev_name, status=True)
 
     def delete_bdev(self, request, context=None):
         """Deletes a bdev."""
