@@ -178,7 +178,10 @@ class OmapGatewayState(GatewayState):
 
         for (key, val) in omap_dict.items():
             if key.startswith(self.BDEV_PREFIX):
+                # Get bdev_name from end of key
+                bdev_name = key.split("_", 1)[1]
                 req = json_format.Parse(val, pb2.create_bdev_req())
+                req.bdev_name = bdev_name
                 callback(req)
 
     def add_namespace(self, subsystem_nqn: str, nsid: str, val: str):
