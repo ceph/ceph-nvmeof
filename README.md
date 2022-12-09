@@ -131,7 +131,7 @@ Indicate the location of the keys and certificates in the config file:
 		$ python3 -m control.cli add_namespace -n nqn.2016-06.io.spdk:cnode1 -b Ceph0
 		INFO:root:Added namespace 1 to nqn.2016-06.io.spdk:cnode1: True
 		
-		$ python3 -m control.cli add_host -n nqn.2016-06.io.spdk:cnode1 -t *
+		$ python3 -m control.cli add_host -n nqn.2016-06.io.spdk:cnode1 -t '*'
 		INFO:root:Allowed open host access to nqn.2016-06.io.spdk:cnode1: True
 		
 		$ python3 -m control.cli create_listener -n nqn.2016-06.io.spdk:cnode1 -s 5001
