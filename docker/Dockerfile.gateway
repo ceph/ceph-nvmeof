@@ -24,29 +24,31 @@ RUN sed -i 's/^import.*_pb2/from . \0/' /build/proto/generated/*.py
 
 FROM spdk:${spdk_version:-latest} as spdk
 
+FROM fedora:37
+
 WORKDIR /app
 
-RUN dnf update -y \
-    && dnf install -y libaio numactl-libs librbd-devel.x86_64 python-rados \
-    && dnf clean all \
-    && pip3 --no-cache-dir install --upgrade pip \
-    && python3 -m pip install grpcio
+# Copy the rpms built in the spdk container. 
+RUN mkdir -p /tmp/rpms
+COPY --from=python_builder /build/proto/generated  /app/control/generated
+COPY --from=spdk /tmp/rpms/* /tmp/rpms/
 
 COPY . /app/
 
-RUN pip install -e .
-
-RUN ln -s /usr/local/bin/nvmf_tgt /usr/libexec/nvmf_tgt
-
-# This is a hack. The gateway code paths need to be fixed so we can get the right spdk
-# location
-#RUN rm -rf /app/spdk
-RUN ln -s /tmp/spdk /app/spdk
-COPY --from=python_builder /build/proto/generated  /app/control/generated
+RUN dnf update -y \
+    && dnf install -y python3-pip \
+    && dnf install -y libaio numactl-libs librbd-devel-17.2.3-5.fc37.x86_64 python3-rados \
+    && pip3 --no-cache-dir install --upgrade pip \
+    && python3 -m pip install grpcio \
+    && python3 -m pip install protobuf \
+    && dnf clean all \
+    && pip install -e . \
+    && rpm -i /tmp/rpms/*.rpm \
+    && rm -rf /tmp/rpms \
+    && sed -i 's/^spdk_path.*$/spdk_path = \/usr\/libexec/g' /app/ceph-nvmeof.conf \
+    && sed -i 's/^tgt_path.*$/tgt_path = \/usr\/local\/bin\/nvmf_tgt/g' /app/ceph-nvmeof.conf
 
 # Update location of spdk in the ceph-nvmeof.conf file
-RUN sed -i 's/^spdk_path.*$/spdk_path = \/app/g' /app/ceph-nvmeof.conf
-
 
 ENTRYPOINT ["python3", "-m", "control" , "-c", "/app/ceph-nvmeof.conf"]
 

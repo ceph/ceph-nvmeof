@@ -10,7 +10,9 @@ ENV http_proxy=$PROXY
 ENV https_proxy=$PROXY
 ENV no_proxy=$NO_PROXY
 
-RUN dnf install -y rpm-build librbd-devel git \
+RUN \
+    --mount=type=cache,target=/var/cache/dnf \
+    dnf install -y rpm-build librbd-devel git \
     && dnf clean all
 
 COPY ./spdk /tmp/spdk

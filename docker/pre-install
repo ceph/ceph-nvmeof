@@ -32,5 +32,4 @@ mkdir -p /tmp/rpms
 
 ls -Rl "$HOME/rpmbuild"
 mv "$HOME/rpmbuild/rpm/x86_64/"*.rpm /tmp/rpms/
-dnf clean all
 
