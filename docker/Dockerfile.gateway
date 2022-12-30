@@ -44,7 +44,9 @@ RUN sed -i "s/CEPH_VERSION/${CEPH_VERSION}/g" /etc/yum.repos.d/ceph.repo
 
 COPY . /app/
 # RUN yum update -y && yum --disableplugin=subscription-manager install -y \
-RUN microdnf update -y && microdnf --disableplugin=subscription-manager install -y \
+RUN --mount=type=cache,target=/var/cache \
+        microdnf update -y \
+        && microdnf --disableplugin=subscription-manager install -y \
 	python3-pip \
 	librbd-devel-2:${CEPH_VERSION} \
 	librados-devel-2:${CEPH_VERSION} \

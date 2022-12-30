@@ -19,7 +19,7 @@ COPY ./docker/rocky.repo /etc/yum.repos.d/rocky.repo
 RUN sed -i "s/CEPH_VERSION/${CEPH_VERSION}/g" /etc/yum.repos.d/ceph.repo
 
 RUN \
-   --mount=type=cache,target=/var/cache/dnf \
+   --mount=type=cache,target=/var/cache \
    dnf update --disablerepo=* --enablerepo=ubi-8-appstream-rpms --enablerepo=ubi-8-baseos-rpms -y \
    && dnf update --disablerepo=* --enablerepo=rocky-appstream --enablerepo=rocky-baseos --enablerepo=rocky-powertools -y \
    &&  dnf install -y rpm-build librbd-devel git sudo \
