@@ -1,6 +1,8 @@
 # Ignore everything
- *
- # Don't ignore the core dirs
- # !control
- !spdk
- !docker
+*
+# Don't ignore the core dirs
+# !control
+!spdk
+!docker
+!docker/ceph.repo
+!docker/rocky.repo

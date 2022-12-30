@@ -11,3 +11,6 @@
 !setup.py
 !requirements.txt
 !pyproject.toml 
+!docker/nextgen-sync-rpm.repo
+!docker/ceph.repo
+!docker/rocky.repo

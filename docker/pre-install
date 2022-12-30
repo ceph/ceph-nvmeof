@@ -15,14 +15,14 @@ cleanup() {
 trap 'cleanup' EXIT
 
 # Spice it a bit with supported sources
-"$spdk_repo/scripts/pkgdep.sh" -d
+"$spdk_repo/scripts/pkgdep.sh" -d -R
 
 # HACK: In case we received a .tar with built SPDK we need to overwrite the
 # configuration to update all the paths make would need to lookup - this is
 # needed since we execute inside a different mount namespace so we won't be
 # able to find any absolute paths that were used prior creating the .tar.
 
-"$spdk_repo/configure" --with-rbd > /dev/null
+"$spdk_repo/configure" --with-rbd 
 
 # Deploy SPDK inside the container
 

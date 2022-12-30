@@ -1,7 +1,6 @@
-
 ARG spdk_version
 
-FROM python:3.7 as python_builder
+FROM python:3.6 as python_builder
 
 RUN mkdir -p /build/proto/generated
 
@@ -24,27 +23,42 @@ RUN sed -i 's/^import.*_pb2/from . \0/' /build/proto/generated/*.py
 
 FROM spdk:${spdk_version:-latest} as spdk
 
-FROM fedora:37
+# FROM registry.access.redhat.com/ubi8
+FROM registry.access.redhat.com/ubi8/ubi-minimal
+
+ARG CEPH_VERSION
 
 WORKDIR /app
 
-# Copy the rpms built in the spdk container. 
+# Copy the rpms built in the spdk container.
 RUN mkdir -p /tmp/rpms
+
 COPY --from=python_builder /build/proto/generated  /app/control/generated
+
 COPY --from=spdk /tmp/rpms/* /tmp/rpms/
 
-COPY . /app/
+COPY ./docker/ceph.repo /etc/yum.repos.d/ceph.repo
+COPY ./docker/rocky.repo /etc/yum.repos.d/rocky.repo
 
-RUN dnf update -y \
-    && dnf install -y python3-pip \
-    && dnf install -y libaio numactl-libs librbd-devel-17.2.3-5.fc37.x86_64 python3-rados \
-    && pip3 --no-cache-dir install --upgrade pip \
-    && python3 -m pip install grpcio \
-    && python3 -m pip install protobuf \
-    && dnf clean all \
-    && pip install -e . \
+RUN sed -i "s/CEPH_VERSION/${CEPH_VERSION}/g" /etc/yum.repos.d/ceph.repo
+
+COPY . /app/
+# RUN yum update -y && yum --disableplugin=subscription-manager install -y \
+RUN microdnf update -y && microdnf --disableplugin=subscription-manager install -y \
+	python3-pip \
+	librbd-devel-2:${CEPH_VERSION} \
+	librados-devel-2:${CEPH_VERSION} \
+	python3-rados-2:${CEPH_VERSION} \
+	glibc \
+	glibc-langpack-en \
+	cyrus-sasl \
+	cyrus-sasl-gssapi \
+	numactl-libs \
+	&& pip3 --no-cache-dir install --upgrade pip \
+	&& python3 -m pip install grpcio \
+	&& python3 -m pip install protobuf==4.21 \
+	&& pip install -e . \
     && rpm -i /tmp/rpms/*.rpm \
-    && rm -rf /tmp/rpms \
     && sed -i 's/^spdk_path.*$/spdk_path = \/usr\/libexec/g' /app/ceph-nvmeof.conf \
     && sed -i 's/^tgt_path.*$/tgt_path = \/usr\/local\/bin\/nvmf_tgt/g' /app/ceph-nvmeof.conf
 

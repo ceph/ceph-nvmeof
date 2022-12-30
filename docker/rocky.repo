@@ -1,0 +1,25 @@
+[rocky-baseos]
+name=Rocky Linux $releasever - BaseOS
+mirrorlist=http://mirrors.rockylinux.org/mirrorlist?release=$releasever&arch=$basearch&repo=rocky-BaseOS-8.6
+enabled=1
+gpgcheck=1
+gpgkey=https://dl.rockylinux.org/pub/rocky/RPM-GPG-KEY-rockyofficial
+# gpgkey=https://dl.rockylinux.org/pub/rocky/RPM-GPG-KEY-Rocky-9
+exclude=basesystem* yum*
+
+[rocky-appstream]
+name=Rocky Linux $releasever - AppStream
+mirrorlist=http://mirrors.rockylinux.org/mirrorlist?release=$releasever&arch=$basearch&repo=rocky-AppStream-8.6
+gpgcheck=1
+enabled=1
+gpgkey=https://dl.rockylinux.org/pub/rocky/RPM-GPG-KEY-rockyofficial
+# gpgkey=https://dl.rockylinux.org/pub/rocky/RPM-GPG-KEY-Rocky-9
+
+[rocky-powertools]
+name=Rocky Linux $releasever - PowerTools
+mirrorlist=http://mirrors.rockylinux.org/mirrorlist?release=$releasever&arch=$basearch&repo=rocky-PowerTools-8.6
+gpgcheck=1
+enabled=1
+gpgkey=https://dl.rockylinux.org/pub/rocky/RPM-GPG-KEY-rockyofficial
+# gpgkey=https://dl.rockylinux.org/pub/rocky/RPM-GPG-KEY-Rocky-9
+

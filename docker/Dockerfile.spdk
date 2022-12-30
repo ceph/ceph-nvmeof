@@ -1,24 +1,40 @@
-ARG SPDK_IMAGE=fedora:36
-FROM $SPDK_IMAGE AS base
+FROM registry.access.redhat.com/ubi8/ubi
 
 # Generic args
 ARG spdk_version
 ARG PROXY
 ARG NO_PROXY
+ARG CEPH_VERSION
 
 ENV http_proxy=$PROXY
 ENV https_proxy=$PROXY
 ENV no_proxy=$NO_PROXY
+ENV spdk_version=$spdk_version
+ENV spdk_repo=/tmp/spdk
+
+# COPY ./nextgen-sync-rpm.repo /etc/yum.repos.d/nextgen-sync-rpm.repo
+COPY ./docker/ceph.repo /etc/yum.repos.d/ceph.repo
+COPY ./docker/rocky.repo /etc/yum.repos.d/rocky.repo
+
+RUN sed -i "s/CEPH_VERSION/${CEPH_VERSION}/g" /etc/yum.repos.d/ceph.repo
 
 RUN \
-    --mount=type=cache,target=/var/cache/dnf \
-    dnf install -y rpm-build librbd-devel git \
-    && dnf clean all
-
+   --mount=type=cache,target=/var/cache/dnf \
+   dnf update --disablerepo=* --enablerepo=ubi-8-appstream-rpms --enablerepo=ubi-8-baseos-rpms -y \
+   && dnf update --disablerepo=* --enablerepo=rocky-appstream --enablerepo=rocky-baseos --enablerepo=rocky-powertools -y \
+   &&  dnf install -y rpm-build librbd-devel git sudo \
+   && dnf install -y ninja-build \
+   && dnf module reset ruby -y \
+   && dnf module enable ruby:2.6 -y \
+   && dnf module update ruby:2.6 -y  \
+   && dnf install -y procps \
+   && yum install rubygems ruby-devel -y \
+   && gem install rake \
+   && gem install bundler \
+   && sed -i -E 's/(^Defaults.*secure_path = )(.*)/\1\/usr\/local\/sbin:\/usr\/local\/bin:\2/g' /etc/sudoers \
+   && dnf clean all
+#
 COPY ./spdk /tmp/spdk
-
-RUN ls -l
-RUN ls -l /tmp
 
 COPY . .
 

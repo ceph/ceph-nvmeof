@@ -17,8 +17,8 @@ CONT_VERS := latest
 REMOTE_REPO ?= ""
 SPDK_VERSION := $(shell cd spdk;git -C . describe --tags --abbrev=0 | sed -r 's/-/\./g')
 DOCKER_VERSION := $(shell docker image ls | grep spdk | tr -s ' ' | cut -d ' ' -f2)
-SPDK_IMAGE ?= fedora:36
 PYVENV := $(PROJDIR)/venv
+CEPH_VERSION := 17.2.5
 
 # Utility Function to activate the Python Virtual Environment
 define callpyvenv =
@@ -61,10 +61,11 @@ ifneq ($(DOCKER_VERSION), $(SPDK_VERSION))
 	ln -sf docker/.dockerignore.spdk .dockerignore
 	docker build \
 	--network=host \
-	--build-arg SPDK_IMAGE=$(SPDK_IMAGE) \
 	--build-arg spdk_version=$(SPDK_VERSION) \
+	--build-arg CEPH_VERSION=$(CEPH_VERSION) \
 	--build-arg spdk_branch=ceph-nvmeof \
 	${DOCKER_NO_CACHE} \
+	--progress=plain \
 	-t spdk:$(SPDK_VERSION) -f docker/Dockerfile.spdk .
 else
 	@echo "Docker image for version: $(SPDK_VERSION) exists"
@@ -85,6 +86,7 @@ gateway-image: spdk-image
 	--network=host \
 	${DOCKER_NO_CACHE} \
 	--build-arg spdk_version=$(SPDK_VERSION) \
+	--build-arg CEPH_VERSION=$(CEPH_VERSION) \
 	-t ${CONT_NAME}:${CONT_VERS} -f docker/Dockerfile.gateway .
 
 ## push-gateway-image: Publish container into the docker registry for devs
