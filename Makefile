@@ -59,7 +59,7 @@ test: $(PYVENV)
 spdk-image:
 ifneq ($(DOCKER_VERSION), $(SPDK_VERSION))
 	ln -sf docker/.dockerignore.spdk .dockerignore
-	docker build \
+	docker buildx build \
 	--network=host \
 	--build-arg spdk_version=$(SPDK_VERSION) \
 	--build-arg CEPH_VERSION=$(CEPH_VERSION) \
@@ -82,7 +82,7 @@ spdk_rpms:
 .PHONY: gateway-image
 gateway-image: spdk-image
 	ln -sf  docker/.dockerignore.gateway .dockerignore
-	docker build \
+	docker buildx build \
 	--network=host \
 	${DOCKER_NO_CACHE} \
 	--build-arg spdk_version=$(SPDK_VERSION) \
