@@ -14,3 +14,4 @@
 !docker/nextgen-sync-rpm.repo
 !docker/ceph.repo
 !docker/rocky.repo
+!dnf.conf

@@ -64,11 +64,12 @@ ifneq ($(DOCKER_VERSION), $(SPDK_VERSION))
 	--build-arg spdk_version=$(SPDK_VERSION) \
 	--build-arg CEPH_VERSION=$(CEPH_VERSION) \
 	--build-arg spdk_branch=ceph-nvmeof \
-	${DOCKER_NO_CACHE} \
 	--progress=plain \
+	${DOCKER_NO_CACHE} \
 	-t spdk:$(SPDK_VERSION) -f docker/Dockerfile.spdk .
+	@touch .spdk-image
 else
-	@echo "Docker image for version: $(SPDK_VERSION) exists"
+ 	@echo "Docker image for version: $(SPDK_VERSION) exists"
 endif
 
 ## spdk-rpms: Copy the rpms from spdk container in output directory
@@ -87,6 +88,7 @@ gateway-image: spdk-image
 	${DOCKER_NO_CACHE} \
 	--build-arg spdk_version=$(SPDK_VERSION) \
 	--build-arg CEPH_VERSION=$(CEPH_VERSION) \
+	--progress=plain \
 	-t ${CONT_NAME}:${CONT_VERS} -f docker/Dockerfile.gateway .
 
 ## push-gateway-image: Publish container into the docker registry for devs

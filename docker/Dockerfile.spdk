@@ -1,3 +1,4 @@
+# syntax = docker/dockerfile:1.2
 FROM registry.access.redhat.com/ubi8/ubi
 
 # Generic args
@@ -10,35 +11,40 @@ ENV http_proxy=$PROXY
 ENV https_proxy=$PROXY
 ENV no_proxy=$NO_PROXY
 ENV spdk_version=$spdk_version
-ENV spdk_repo=/tmp/spdk
 
-# COPY ./nextgen-sync-rpm.repo /etc/yum.repos.d/nextgen-sync-rpm.repo
+COPY ./dnf.conf /etc/dnf/dnf.conf
 COPY ./docker/ceph.repo /etc/yum.repos.d/ceph.repo
 COPY ./docker/rocky.repo /etc/yum.repos.d/rocky.repo
-
-RUN sed -i "s/CEPH_VERSION/${CEPH_VERSION}/g" /etc/yum.repos.d/ceph.repo
+#   && dnf update --setopt=cachedir=/var/cache/dnf --config=/etc/dnf/dnf.conf --disablerepo=* --enablerepo=ubi-8-appstream-rpms --enablerepo=ubi-8-baseos-rpms -y \
+#   && dnf update --setopt=cachedir=/var/cache/dnf --config=/etc/dnf/dnf.conf --disablerepo=* --enablerepo=rocky-appstream --enablerepo=rocky-baseos --enablerepo=rocky-powertools -y \
 
 RUN \
-   --mount=type=cache,target=/var/cache \
-   dnf update --disablerepo=* --enablerepo=ubi-8-appstream-rpms --enablerepo=ubi-8-baseos-rpms -y \
-   && dnf update --disablerepo=* --enablerepo=rocky-appstream --enablerepo=rocky-baseos --enablerepo=rocky-powertools -y \
-   &&  dnf install -y rpm-build librbd-devel git sudo \
-   && dnf install -y ninja-build \
-   && dnf module reset ruby -y \
-   && dnf module enable ruby:2.6 -y \
-   && dnf module update ruby:2.6 -y  \
-   && dnf install -y procps \
-   && yum install rubygems ruby-devel -y \
+   --mount=type=cache,target=/var/cache/dnf \
+   --mount=type=cache,target=/var/lib/dnf \
+   mkdir -p /docker \
+   && sed -i "s/CEPH_VERSION/${CEPH_VERSION}/g" /etc/yum.repos.d/ceph.repo \
+   && dnf --setopt=cachedir=/var/cache/dnf --config=/etc/dnf/dnf.conf module reset ruby -y \
+   && dnf --setopt=cachedir=/var/cache/dnf --config=/etc/dnf/dnf.conf module enable ruby:2.6 -y \
+   && dnf --setopt=cachedir=/var/cache/dnf --config=/etc/dnf/dnf.conf module update ruby:2.6 -y  \
+   && dnf --setopt=cachedir=/var/cache/dnf --config=/etc/dnf/dnf.conf install -y \
+      rpm-build \
+      librbd-devel \
+      git \
+      sudo \
+      ninja-build \
+      procps \
+      rubygems \
+      ruby-devel \
    && gem install rake \
    && gem install bundler \
-   && sed -i -E 's/(^Defaults.*secure_path = )(.*)/\1\/usr\/local\/sbin:\/usr\/local\/bin:\2/g' /etc/sudoers \
-   && dnf clean all
-#
+   && sed -i -E 's/(^Defaults.*secure_path = )(.*)/\1\/usr\/local\/sbin:\/usr\/local\/bin:\2/g' /etc/sudoers  
+
 COPY ./spdk /tmp/spdk
 
-COPY . .
+COPY ./docker/pre-install  /docker/
+COPY ./docker/post-install  /docker/
 
-RUN /docker/pre-install $spdk_version
-RUN /docker/post-install
+RUN  set -ex \
+     && /docker/pre-install
 
 CMD ["/bin/bash"]
