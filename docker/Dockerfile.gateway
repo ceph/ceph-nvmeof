@@ -70,6 +70,8 @@ RUN --mount=type=cache,from=python_builder,source=/var/cache/yum,target=/var/cac
     && python3 -m pip install grpcio \
     && python3 -m pip install protobuf==4.21 \
     && pip install -e . \
+    && rpm -i /tmp/rpms/* \
+    && rm -rf /tmp/rpms \
     && sed -i 's/^spdk_path.*$/spdk_path = \/usr\/libexec/g' /app/ceph-nvmeof.conf \
     && sed -i 's/^tgt_path.*$/tgt_path = \/usr\/local\/bin\/nvmf_tgt/g' /app/ceph-nvmeof.conf  
 
