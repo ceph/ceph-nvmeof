@@ -5,5 +5,5 @@
 !spdk
 !docker
 !docker/ceph.repo
-!docker/rocky.repo
+!docker/centos.repo
 !dnf.conf

@@ -41,7 +41,7 @@ COPY --from=python_builder /build/proto/generated  /app/control/generated
 
 COPY --from=spdk /tmp/rpms/* /tmp/rpms/
 
-COPY ./docker/rocky.repo /etc/yum.repos.d/rocky.repo
+COPY ./docker/centos.repo /etc/yum.repos.d/centos.repo
 COPY ./docker/ceph.repo /etc/yum.repos.d/ceph.repo
 
 RUN sed -i "s/CEPH_VERSION/${CEPH_VERSION}/g" /etc/yum.repos.d/ceph.repo
@@ -49,13 +49,15 @@ RUN sed -i "s/CEPH_VERSION/${CEPH_VERSION}/g" /etc/yum.repos.d/ceph.repo
 COPY . /app/
 COPY ./dnf.conf /etc/dnf/dnf.conf
 
+# NOTE: protobuf 4.21 is required for using builder in protobuf. 
 RUN --mount=type=cache,from=python_builder,source=/var/cache/yum,target=/var/cache/yum \
     --mount=type=cache,from=python_builder,source=/root/.cache,target=/root/.cache \
     --mount=type=cache,from=python_builder,source=/var/lib/dnf,target=/var/lib/dnf \
     set -ex \
     && ls -Rl /var/cache/yum > /var/cache/yum/rpms.log || true \
-    && microdnf --setopt=cachedir=/var/cache/yum --config=/etc/dnf/dnf.conf update -y \
-    && microdnf --setopt=cachedir=/var/cache/yum --config=/etc/dnf/dnf.conf install -y \
+    && microdnf --disablerepo=centos8-base --setopt=cachedir=/var/cache/yum --config=/etc/dnf/dnf.conf update -y \
+    && microdnf --enablerepo=centos8-base --setopt=cachedir=/var/cache/yum --config=/etc/dnf/dnf.conf install -y \
+    python36 \
     python3-pip \
     librbd-devel-2:${CEPH_VERSION} \
     librados-devel-2:${CEPH_VERSION} \
@@ -66,9 +68,9 @@ RUN --mount=type=cache,from=python_builder,source=/var/cache/yum,target=/var/cac
     cyrus-sasl-gssapi \
     numactl-libs \
     vim \
-    && pip3 install --upgrade pip  \
+    && pip3 install --upgrade pip \
     && python3 -m pip install grpcio \
-    && python3 -m pip install protobuf==4.21 \
+    && python3 -m pip install protobuf==4.21.0 \
     && pip install -e . \
     && rpm -i /tmp/rpms/* \
     && rm -rf /tmp/rpms \

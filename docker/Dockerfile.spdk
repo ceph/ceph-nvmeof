@@ -14,9 +14,7 @@ ENV spdk_version=$spdk_version
 
 COPY ./dnf.conf /etc/dnf/dnf.conf
 COPY ./docker/ceph.repo /etc/yum.repos.d/ceph.repo
-COPY ./docker/rocky.repo /etc/yum.repos.d/rocky.repo
-#   && dnf update --setopt=cachedir=/var/cache/dnf --config=/etc/dnf/dnf.conf --disablerepo=* --enablerepo=ubi-8-appstream-rpms --enablerepo=ubi-8-baseos-rpms -y \
-#   && dnf update --setopt=cachedir=/var/cache/dnf --config=/etc/dnf/dnf.conf --disablerepo=* --enablerepo=rocky-appstream --enablerepo=rocky-baseos --enablerepo=rocky-powertools -y \
+COPY ./docker/centos.repo /etc/yum.repos.d/centos.repo
 
 RUN \
    --mount=type=cache,target=/var/cache/dnf \
