@@ -57,7 +57,6 @@ test: $(PYVENV)
 ## spdk-image: Build spdk image if it does not exist
 .PHONY: spdk-image
 spdk-image:
-ifneq ($(DOCKER_VERSION), $(SPDK_VERSION))
 	ln -sf docker/.dockerignore.spdk .dockerignore
 	docker buildx build \
 	--network=host \
@@ -68,9 +67,6 @@ ifneq ($(DOCKER_VERSION), $(SPDK_VERSION))
 	${DOCKER_NO_CACHE} \
 	-t spdk:$(SPDK_VERSION) -f docker/Dockerfile.spdk .
 	@touch .spdk-image
-else
- 	@echo "Docker image for version: $(SPDK_VERSION) exists"
-endif
 
 ## spdk-rpms: Copy the rpms from spdk container in output directory
 .PHONY: spdk-rpms
@@ -121,4 +117,3 @@ $(PYVENV):
 help:
 	@echo "Usage: \n"
 	@sed -n 's/^##//p' ${MAKEFILE_LIST} | column -t -s ':' |  sed -e 's/^/ /'
-
