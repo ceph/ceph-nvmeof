@@ -7,11 +7,11 @@ from control.server import GatewayServer
 from control.generated import gateway_pb2 as pb2
 from control.generated import gateway_pb2_grpc as pb2_grpc
 
-update_notify = True
-update_interval_sec = 5
+update_notify = False
+update_interval_sec = 30
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 def conn(config):
     """Sets up and tears down Gateways A and B."""
     # Setup GatewayA and GatewayB configs
@@ -105,3 +105,40 @@ def test_multi_gateway_coordination(config, image, conn):
     assert listB[1]["serial_number"] == serial
     assert listB[1]["namespaces"][0]["nsid"] == nsid
     assert listB[1]["namespaces"][0]["bdev_name"] == bdev
+
+
+def test_multi_gateway_coordination_race(conn):
+    """Tests state coordination in a gateway group.
+    
+    Sends requests to GatewayA to set up a subsystem with a single namespace
+    and checks if GatewayB has the the identical state after watch/notify and/or
+    periodic polling.
+    """
+    stubA, stubB = conn
+    nqnA = "nqn.2016-06.io.spdk:cnode1"
+    serialA = "SPDK00000000000001"
+    nqnB = "nqn.2016-06.io.spdk:cnode2"
+    serialB = "SPDK00000000000002"
+    start = time.time()
+
+    # Send request to create a subsystem to GatewayA
+    subsystemA_req = pb2.create_subsystem_req(subsystem_nqn=nqnA,
+                                              serial_number=serialA)
+    retA_subsystem = stubA.create_subsystem(subsystemA_req)
+
+    # GatewayB hasn't gotten an update
+    pollB = stubB.get_subsystems(pb2.get_subsystems_req())
+    listB = json.loads(pollB.subsystems)
+    assert len(listB) == 1
+
+    # Send a new subystem request to GatewayB
+    subsystemB_req = pb2.create_subsystem_req(subsystem_nqn=nqnB,
+                                              serial_number=serialB)
+    retB_subsystem = stubB.create_subsystem(subsystemB_req)
+
+    # GatewayB has 2 new subsystems before a periodic polling update
+    pollB = stubB.get_subsystems(pb2.get_subsystems_req())
+    listB = json.loads(pollB.subsystems)
+    assert len(listB) == 3
+    assert update_notify == False
+    assert (time.time() - start) < update_interval_sec

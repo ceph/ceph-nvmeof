@@ -1,7 +1,81 @@
 import pytest
 import time
 import rados
+from unittest import mock
+from control.state import RequestStatus
 from control.state import LocalGatewayState, OmapGatewayState, GatewayStateHandler
+
+
+@pytest.fixture
+def local():
+    """Returns local state object with mocked config."""
+    state = LocalGatewayState(mock.Mock())
+    state.gateway_name = "gateway"
+    return state
+
+
+def test_state_local_add_bdev_init(local):
+    """Confirms key add of ADD_PREFIX on add_bdev init."""
+    bdev_name = "test"
+    with mock.patch('control.state.LocalGatewayState._add_key') as add_key:
+        local.add_bdev(bdev_name, "", RequestStatus.INIT)
+        key = add_key.call_args[0][0]
+        assert key.startswith(local.ADD_PREFIX)
+
+
+def test_state_local_add_bdev_abort(local):
+    """Confirms key removal of ADD_PREFIX on add_bdev abort."""
+    bdev_name = "test"
+    with mock.patch(
+            'control.state.LocalGatewayState._remove_key') as remove_key:
+        local.add_bdev(bdev_name, "", RequestStatus.ABORT)
+        key = remove_key.call_args[0][0]
+        assert key.startswith(local.ADD_PREFIX)
+
+
+def test_state_local_add_bdev_success(local):
+    """Confirms key add/remove of appropriate prefixes on add_bdev success."""
+    bdev_name = "test"
+    with mock.patch.multiple(local,
+                             _add_key=mock.Mock(),
+                             _remove_key=mock.Mock()):
+        local.add_bdev(bdev_name, "", RequestStatus.SUCCESS)
+        key_added = local._add_key.call_args[0][0]
+        key_removed = local._remove_key.call_args[0][0]
+        assert key_added.startswith(
+            local.BDEV_PREFIX) and key_removed.startswith(local.ADD_PREFIX)
+
+
+def test_state_local_remove_bdev_init(local):
+    """Confirms key add of REMOVE_PREFIX on remove_bdev init."""
+    bdev_name = "test"
+    with mock.patch('control.state.LocalGatewayState._add_key') as add_key:
+        local.remove_bdev(bdev_name, RequestStatus.INIT)
+        key = add_key.call_args[0][0]
+        assert key.startswith(local.REMOVE_PREFIX)
+
+
+def test_state_local_remove_bdev_abort(local):
+    """Confirms key removal of REMOVE_PREFIX on remove_bdev abort."""
+    bdev_name = "test"
+    with mock.patch(
+            'control.state.LocalGatewayState._remove_key') as remove_key:
+        local.remove_bdev(bdev_name, RequestStatus.ABORT)
+        key = remove_key.call_args[0][0]
+        assert key.startswith(local.REMOVE_PREFIX)
+
+
+def test_state_local_remove_bdev_success(local):
+    """Confirms key add/remove of appropriate prefixes on remove_bdev success."""
+    bdev_name = "test"
+    with mock.patch(
+            'control.state.LocalGatewayState._remove_key') as remove_key:
+        local.remove_bdev(bdev_name, RequestStatus.SUCCESS)
+        key_removed = remove_key.call_args_list[0][0][0]
+        init_key_removed = remove_key.call_args_list[1][0][0]
+        assert key_removed.startswith(
+            local.BDEV_PREFIX) and init_key_removed.startswith(
+                local.REMOVE_PREFIX)
 
 
 @pytest.fixture(scope="module")
