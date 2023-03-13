@@ -24,8 +24,8 @@ PYTHON_VERSION := 36
 
 # Switch the python version to 39 if this is a ubi9 build as 
 # python3-rados-2 needs > python36
-ifeq ($(UBI_VERSION), ubi9))
-	PYTHON_VERSION = 39
+ifeq ($(UBI_VERSION),ubi9)
+	PYTHON_VERSION=39
 endif
 
 # Utility Function to activate the Python Virtual Environment
@@ -36,7 +36,6 @@ endef
 ## setup: setup add requirements
 .PHONY: setup
 setup:
-	@echo "dir: $(curr_dir)/spdk"
 	git submodule update --init --recursive
 
 ## grpc: Compile grpc code
@@ -64,7 +63,7 @@ test: $(PYVENV)
 ## spdk-image: Build spdk image if it does not exist
 .PHONY: spdk-image
 spdk-image:
-ifneq ($(DOCKER_VERSION), $(SPDK_VERSION))
+#ifneq ($(DOCKER_VERSION), $(SPDK_VERSION))
 ifeq ($(UBI_VERSION), ubi8)
 		cp docker/centos8.repo docker/centos.repo
 		cp docker/ceph8.repo docker/ceph.repo
@@ -84,9 +83,9 @@ endif
 	rm docker/centos.repo
 	rm docker/ceph.repo
 	@touch .spdk-image
-else
- 	@echo "Docker image for version: $(SPDK_VERSION) exists"
-endif
+#else
+# 	@echo "Docker image for version: $(SPDK_VERSION) exists"
+#endif
 
 ## spdk-rpms: Copy the rpms from spdk container in output directory
 .PHONY: spdk-rpms
@@ -94,6 +93,28 @@ spdk_rpms:
 	docker run --rm -v $(curr_dir)/output:/output spdk:$(SPDK_VERSION) \
 	bash -c "cp -f /tmp/rpms/*.rpm /output/"
 
+
+## gateway-test: Build the ceph-nvme gateway image. The spdk image needs to be built first.
+.PHONY: gateway-test
+gateway-test: 
+ifeq ($(UBI_VERSION), ubi8)
+		cp docker/centos8.repo docker/centos.repo
+		cp docker/ceph8.repo docker/ceph.repo
+else
+		cp docker/centos9.repo docker/centos.repo
+		cp docker/ceph9.repo docker/ceph.repo
+endif
+	docker buildx build \
+	--network=host \
+	--build-arg spdk_version=$(SPDK_VERSION) \
+	--build-arg CEPH_VERSION=${CEPH_VERSION} \
+	--build-arg UBI_VERSION=$(UBI_VERSION) \
+	--build-arg PYTHON_VERSION=$(PYTHON_VERSION) \
+	--no-cache \
+	--progress=plain \
+	-t ${CONT_NAME}:${CONT_VERS} -f docker/Dockerfile.gwtest .
+	rm docker/centos.repo
+	rm docker/ceph.repo
 
 ## gateway-image: Build the ceph-nvme gateway image. The spdk image needs to be built first.
 .PHONY: gateway-image
@@ -112,6 +133,7 @@ endif
 	--build-arg UBI_VERSION=$(UBI_VERSION) \
 	--build-arg PYTHON_VERSION=$(PYTHON_VERSION) \
 	${DOCKER_NO_CACHE} \
+	--no-cache \
 	--progress=plain \
 	-t ${CONT_NAME}:${CONT_VERS} -f docker/Dockerfile.gateway .
 	rm docker/centos.repo
