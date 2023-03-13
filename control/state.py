@@ -239,6 +239,8 @@ class OmapGatewayState(GatewayState):
         except Exception as ex:
             self.logger.error(f"Unable to create omap: {ex}. Exiting!")
             raise
+        # Cleanup leftover init keys
+        self._remove_outdated_keys()
 
     def __exit__(self, exc_type, exc_value, traceback):
         if self.watch is not None:
@@ -307,6 +309,16 @@ class OmapGatewayState(GatewayState):
                 self.ioctx.notify(self.omap_name)
             except Exception as ex:
                 self.logger.info(f"Failed to notify.")
+
+    def _remove_outdated_keys(self):
+        """Removes outdated init keys matching gateway name."""
+        with rados.ReadOpCtx() as read_op:
+            i, _ = self.ioctx.get_omap_keys(read_op, "", -1)
+            self.ioctx.operate_read_op(read_op, self.omap_name)
+        for key in i:
+            if str(key).startswith(self.ADD_PREFIX + self.gateway_name) or str(
+                    key).startswith(self.REMOVE_PREFIX + self.gateway_name):
+                self._remove_key(str(key))
 
     def _remove_key(self, key: str, status: RequestStatus):
         """Removes key from the OMAP."""
