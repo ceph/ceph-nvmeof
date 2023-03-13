@@ -17,9 +17,9 @@ def ioctx(config):
 
 
 @pytest.fixture
-def local_state():
+def local_state(config):
     """Returns local state object."""
-    return LocalGatewayState()
+    return LocalGatewayState(config)
 
 
 @pytest.fixture

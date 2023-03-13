@@ -92,7 +92,7 @@ class GatewayServer:
 
         # Register service implementation with server
         omap_state = OmapGatewayState(self.config)
-        local_state = LocalGatewayState()
+        local_state = LocalGatewayState(self.config)
         gateway_state = GatewayStateHandler(self.config, local_state,
                                             omap_state, self.gateway_rpc_caller)
         self.gateway_rpc = GatewayService(self.config, gateway_state,
