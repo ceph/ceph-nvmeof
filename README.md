@@ -62,7 +62,7 @@ This daemon runs as root. It provides the ability to export existing RBD images 
 
 # Docker build and usage
 
-In order to build and run the gateway in a docker container, please follow following steps
+In order to build and run the gateway in a docker container, please follow these steps:
 
 1. Follow steps #1 to #4 in section `Initial configuration`
 
@@ -176,6 +176,11 @@ Indicate the location of the keys and certificates in the config file:
 		$ python3 -m control.cli add_host -n nqn.2016-06.io.spdk:cnode1 -t '*'
 		INFO:root:Allowed open host access to nqn.2016-06.io.spdk:cnode1: True
 
+		** NOTE ** If running against the gateway container, add the following
+			   -a "The ip address of the nvme client"
+			   -g "The name of the gateway"
+		$ python3 -m control.cli create_listener -n nqn.2016-06.io.spdk:cnode1 -s 5001 -a 10.22.64.1 -g gateway1
+		-or- 
 		$ python3 -m control.cli create_listener -n nqn.2016-06.io.spdk:cnode1 -s 5001
 		INFO:root:Created nqn.2016-06.io.spdk:cnode1 listener: True
 
