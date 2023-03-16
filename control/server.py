@@ -144,9 +144,9 @@ class GatewayServer:
 
         # Get path and import SPDK's RPC modules
         spdk_path = self.config.get("spdk", "spdk_path")
-        sys.path.append(spdk_path)
+        sys.path.append(os.path.join(spdk_path, "spdk/python"))
         self.logger.info(f"SPDK PATH: {spdk_path}")
-        import spdk.scripts.rpc as spdk_rpc
+        import spdk.rpc as spdk_rpc
         self.spdk_rpc = spdk_rpc
 
         # Start target
