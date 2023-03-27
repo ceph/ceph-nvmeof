@@ -1,8 +1,8 @@
-
+*.swp
+*_pb2*.py*
 __pycache__
-spdk
-control/generated/gateway_pb2_grpc.py
-control/generated/gateway_pb2.py
+__pypackages__
+.pdm-python
 server.crt
 server.key
 client.crt

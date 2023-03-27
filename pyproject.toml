@@ -1,0 +1,36 @@
+[build-system]
+requires = ["pdm-backend"]
+build-backend = "pdm.backend"
+
+[project]
+name = "ceph-nvmeof"
+dynamic = ["version"]
+description = "Service to provide Ceph storage over NVMe-oF protocol"
+readme = "README.md"
+requires-python = "~=3.9"
+license = {file = "LICENSE"}
+authors = [
+  {name = "Ilya Dryomov",   email = "idryomov@gmail.com"},
+  {name = "Mykola Golub",   email = "mykola.golub@clyso.com"},
+  {name = "Sandy Kaur",     email = "sandy.kaur@ibm.com"},
+  {name = "Ernesto Puerta", email = "epuertat@redhat.com"},
+  {name = "Yin Congmin",    email = "congmin.yin@intel.com"},
+  {name = "Scott Peterson", email = "scott.d.peterson@intel.com"},
+  {name = "Jason Dillaman", email = "dillaman@redhat.com"},
+  {name = "Anita Shekar",   email = "anita.shekar@ibm.com"},
+]
+keywords = []
+classifiers = [] # https://pypi.org/classifiers/
+dependencies = [
+  "grpcio == 1.51.3",
+  "grpcio_tools == 1.51.3"
+]
+
+[tool.pdm.scripts]
+protoc = {call = "grpc_tools.command:build_package_protos('proto')"}
+
+[project.urls]
+#homepage = ""
+# documentation = ""
+repository = "https://github.com/ceph/ceph-nvmeof.git"
+# changelog = ""

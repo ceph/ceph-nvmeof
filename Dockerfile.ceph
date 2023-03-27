@@ -1,0 +1,90 @@
+# syntax = docker/dockerfile:1.4
+FROM quay.io/centos/centos:stream9-minimal AS build
+
+ARG CEPH_CLUSTER_VERSION
+
+COPY <<EOF /etc/yum.repos.d/ceph.repo
+[Ceph]
+name=Ceph packages for \$basearch
+baseurl=https://download.ceph.com/rpm-$CEPH_CLUSTER_VERSION/el\$releasever/\$basearch
+enabled=1
+priority=2
+gpgcheck=1
+gpgkey=https://download.ceph.com/keys/release.asc
+
+[Ceph-noarch]
+name=Ceph noarch packages
+baseurl=https://download.ceph.com/rpm-$CEPH_CLUSTER_VERSION/el\$releasever/noarch
+enabled=1
+priority=2
+gpgcheck=1
+gpgkey=https://download.ceph.com/keys/release.asc
+EOF
+
+ARG CEPH_PACKAGES="\
+    ceph-common \
+    ceph-mon \
+    ceph-osd \
+    ceph-mds \
+    ceph-mgr \
+    ceph-radosgw \
+    ceph-exporter \
+    hostname \
+    jq \
+    net-tools \
+    "
+
+RUN rpm -vih https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
+RUN rpm --import 'https://download.ceph.com/keys/release.asc'
+RUN cd /etc/yum.repos.d/ && curl -O https://copr.fedorainfracloud.org/coprs/ceph/el9/repo/epel-9/ceph-el9-epel-9.repo
+RUN \
+    --mount=type=cache,target=/var/cache/microdnf \
+    microdnf install -y \
+        --nodocs \
+        --setopt=install_weak_deps=0 \
+        --setopt=keepcache=1 \
+        --setopt=cachedir=/var/cache/microdnf \
+        $CEPH_PACKAGES
+
+#------------------------------------------------------------------------------
+FROM build
+
+LABEL maintainer \
+      ceph=True \
+      RELEASE \
+      GIT_REPO \
+      GIT_BRANCH \
+      GIT_COMMIT
+
+ENV MON=1 \
+    MGR=1 \
+    OSD=3 \
+    MDS=0 \
+    FS=0 \
+    RGW=0 \
+    NFS=0 \
+    CEPH_PORT=10000 \
+    CEPH_VSTART_ARGS="--without-dashboard"
+
+ENV CEPH_BIN=/usr/bin \
+    CEPH_LIB=/usr/lib64/ceph \
+    CEPH_CONF_PATH=/etc/ceph \
+    EC_PATH=/usr/lib64/ceph/erasure-code \
+    OBJCLASS_PATH=/usr/lib64/rados-classes \
+    MGR_PYTHON_PATH=/usr/share/ceph/mgr \
+    PYBIND=/usr/share/ceph/mgr
+
+VOLUME $CEPH_CONF_PATH
+RUN chown ceph:ceph $CEPH_CONF_PATH
+
+RUN ln -sf $EC_PATH/* $CEPH_LIB && \
+    ln -sf $OBJCLASS_PATH/* $CEPH_LIB && \
+    ln -sf $CEPH_LIB/compressor/* $CEPH_LIB
+
+USER ceph
+WORKDIR /ceph
+ADD --chown=ceph:ceph --chmod=755 https://raw.githubusercontent.com/ceph/ceph/v$CEPH_CLUSTER_VERSION/src/vstart.sh .
+
+ENTRYPOINT \
+    ./vstart.sh --new $CEPH_VSTART_ARGS && \
+    sleep infinity

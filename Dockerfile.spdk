@@ -1,0 +1,114 @@
+# syntax = docker/dockerfile:1.4
+FROM quay.io/centos/centos:stream9 AS build
+
+ARG SPDK_CEPH_VERSION \
+    SPDK_VERSION
+
+COPY <<EOF /etc/yum.repos.d/ceph.repo
+[Ceph]
+name=Ceph packages for \$basearch
+baseurl=https://download.ceph.com/rpm-${SPDK_CEPH_VERSION?}/el\$releasever/\$basearch
+enabled=1
+priority=2
+gpgcheck=1
+gpgkey=https://download.ceph.com/keys/release.asc
+
+[Ceph-noarch]
+name=Ceph noarch packages
+baseurl=https://download.ceph.com/rpm-$SPDK_CEPH_VERSION/el\$releasever/noarch
+enabled=1
+priority=2
+gpgcheck=1
+gpgkey=https://download.ceph.com/keys/release.asc
+EOF
+
+ARG SPDK_PKGDEP_ARGS \
+    SPDK_CONFIGURE_ARGS \
+    SPDK_MAKEFLAGS
+
+WORKDIR /src
+COPY . .
+
+RUN \
+    --mount=type=cache,target=/var/cache/dnf \
+    --mount=type=cache,target=/var/lib/dnf \
+    --mount=type=cache,target=/root/.cache/pip \
+    dnf install -y 'dnf-command(config-manager)' \
+    && dnf config-manager --set-enabled crb \
+    && dnf install -y \
+        rpm-build \
+        git-core \
+    && scripts/pkgdep.sh $SPDK_PKGDEP_ARGS \
+    && dnf update -y
+
+RUN \
+    --mount=type=cache,target=/var/cache/dnf \
+    --mount=type=cache,target=/var/lib/dnf \
+    DEPS="no" \
+    SPDK_VERSION=${SPDK_VERSION?} \
+    RPM_RELEASE=0 \
+    MAKEFLAGS=$SPDK_MAKEFLAGS \
+    rpmbuild/rpm.sh $SPDK_CONFIGURE_ARGS
+
+#------------------------------------------------------------------------------
+FROM registry.access.redhat.com/ubi9/ubi
+
+ARG SPDK_CEPH_VERSION \
+    SPDK_VERSION
+
+ARG SPDK_CENTOS_BASE="https://mirror.stream.centos.org/9-stream/BaseOS/x86_64/os/Packages/"
+# This would become obsolete as the release rolls out new packages
+ARG SPDK_CENTOS_REPO_VER="9.0-21.el9"
+
+ARG SPDK_PKGDEP_ARGS \
+    SPDK_CONFIGURE_ARGS \
+    SPDK_MAKEFLAGS
+
+ARG SPDK_NAME \
+    SPDK_SUMMARY \
+    SPDK_DESCRIPTION \
+    SPDK_URL \
+    SPDK_MAINTAINER \
+    BUILD_DATE \
+    SPDK_GIT_REPO \
+    SPDK_GIT_BRANCH \
+    SPDK_GIT_COMMIT
+
+# Generic labels
+LABEL name="$SPDK_NAME" \
+      version="$SPDK_VERSION" \
+      summary="$SPDK_SUMMARY" \
+      description="$SPDK_DESCRIPTION" \
+      maintainer="$SPDK_MAINTAINER" \
+      release="" \
+      url="$SPDK_URL" \
+      build-date="$BUILD_DATE" \
+      vcs-ref="$SPDK_GIT_COMMIT"
+
+# SPDK-specific labels
+LABEL io.spdk.version="$SPDK_VERSION" \
+      io.spdk.build.pkgdep-args="$SPDK_PKGDEP_ARGS" \
+      io.spdk.build.configure-args="$SPDK_CONFIGURE_ARGS" \
+      io.spdk.build.makeflags="$SPDK_MAKEFLAGS" \
+      io.spdk.build.ceph-release="$SPDK_CEPH_VERSION" \
+      io.spdk.git.repo="$SPDK_GIT_REPO" \
+      io.spdk.git.branch="$SPDK_GIT_BRANCH" \
+      io.spdk.git.commit="$SPDK_GIT_COMMIT"
+
+# CentOS-specific labels
+LABEL org.centos.url="$SPDK_CENTOS_BASE" \
+      org.centos.version="$SPDK_CENTOS_REPO_VER"
+
+COPY --from=build /etc/yum.repos.d/ceph.repo /etc/yum.repos.d/ceph.repo
+
+RUN \
+    --mount=type=bind,from=build,source=/root/rpmbuild/rpm,target=/rpm \
+    --mount=type=cache,target=/var/cache/dnf \
+    --mount=type=cache,target=/var/lib/dnf \
+    rpm -vih $SPDK_CENTOS_BASE/centos-stream-repos-$SPDK_CENTOS_REPO_VER.noarch.rpm \
+             $SPDK_CENTOS_BASE/centos-gpg-keys-$SPDK_CENTOS_REPO_VER.noarch.rpm \
+    && dnf install -y /rpm/$(uname -m)/*.rpm \
+    && dnf update -y
+
+ENTRYPOINT [ "/usr/local/bin/nvmf_tgt" ]
+CMD [ "-u", "-r", "/var/tmp/spdk.sock" ]

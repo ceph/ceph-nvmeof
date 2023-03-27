@@ -1,0 +1,9 @@
+**
+# Exclude everything except:
+!control/*.py
+!proto/*.proto
+!pyproject.toml
+!pdm.lock
+!pdm.toml
+!README.md
+!LICENSE
