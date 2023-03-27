@@ -19,7 +19,8 @@ if __name__ == '__main__':
     logger.setLevel(logging.DEBUG)
 
     parser = argparse.ArgumentParser(prog="python3 -m control",
-                                     description="Manage NVMe gateways")
+                                     description="Manage NVMe gateways",
+                                     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument(
         "-c",
         "--config",

@@ -12,9 +12,13 @@ import grpc
 import json
 import uuid
 import logging
+
+import spdk.rpc.bdev as rpc_bdev
+import spdk.rpc.nvmf as rpc_nvmf
+
 from google.protobuf import json_format
-from .generated import gateway_pb2 as pb2
-from .generated import gateway_pb2_grpc as pb2_grpc
+from .proto import gateway_pb2 as pb2
+from .proto import gateway_pb2_grpc as pb2_grpc
 
 
 class GatewayService(pb2_grpc.GatewayServicer):
@@ -27,16 +31,14 @@ class GatewayService(pb2_grpc.GatewayServicer):
         logger: Logger instance to track server events
         gateway_name: Gateway identifier
         gateway_state: Methods for target state persistence
-        spdk_rpc: Module methods for SPDK
         spdk_rpc_client: Client of SPDK RPC server
     """
 
-    def __init__(self, config, gateway_state, spdk_rpc, spdk_rpc_client):
+    def __init__(self, config, gateway_state, spdk_rpc_client):
 
         self.logger = logging.getLogger(__name__)
         self.config = config
         self.gateway_state = gateway_state
-        self.spdk_rpc = spdk_rpc
         self.spdk_rpc_client = spdk_rpc_client
 
         self.gateway_name = self.config.get("gateway", "name")
@@ -51,7 +53,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                          f" {request.rbd_pool_name}/{request.rbd_image_name}"
                          f" with block size {request.block_size}")
         try:
-            bdev_name = self.spdk_rpc.bdev.bdev_rbd_create(
+            bdev_name = rpc_bdev.bdev_rbd_create(
                 self.spdk_rpc_client,
                 name=name,
                 pool_name=request.rbd_pool_name,
@@ -84,7 +86,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         self.logger.info(f"Received request to delete bdev {request.bdev_name}")
         try:
-            ret = self.spdk_rpc.bdev.bdev_rbd_delete(
+            ret = rpc_bdev.bdev_rbd_delete(
                 self.spdk_rpc_client,
                 request.bdev_name,
             )
@@ -113,7 +115,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         self.logger.info(
             f"Received request to create subsystem {request.subsystem_nqn}")
         try:
-            ret = self.spdk_rpc.nvmf.nvmf_create_subsystem(
+            ret = rpc_nvmf.nvmf_create_subsystem(
                 self.spdk_rpc_client,
                 nqn=request.subsystem_nqn,
                 serial_number=request.serial_number,
@@ -146,7 +148,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         self.logger.info(
             f"Received request to delete subsystem {request.subsystem_nqn}")
         try:
-            ret = self.spdk_rpc.nvmf.nvmf_delete_subsystem(
+            ret = rpc_nvmf.nvmf_delete_subsystem(
                 self.spdk_rpc_client,
                 nqn=request.subsystem_nqn,
             )
@@ -175,7 +177,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         self.logger.info(f"Received request to add {request.bdev_name} to"
                          f" {request.subsystem_nqn}")
         try:
-            nsid = self.spdk_rpc.nvmf.nvmf_subsystem_add_ns(
+            nsid = rpc_nvmf.nvmf_subsystem_add_ns(
                 self.spdk_rpc_client,
                 nqn=request.subsystem_nqn,
                 bdev_name=request.bdev_name,
@@ -211,7 +213,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         self.logger.info(f"Received request to remove {request.nsid} from"
                          f" {request.subsystem_nqn}")
         try:
-            ret = self.spdk_rpc.nvmf.nvmf_subsystem_remove_ns(
+            ret = rpc_nvmf.nvmf_subsystem_remove_ns(
                 self.spdk_rpc_client,
                 nqn=request.subsystem_nqn,
                 nsid=request.nsid,
@@ -243,7 +245,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
             if request.host_nqn == "*":  # Allow any host access to subsystem
                 self.logger.info(f"Received request to allow any host to"
                                  f" {request.subsystem_nqn}")
-                ret = self.spdk_rpc.nvmf.nvmf_subsystem_allow_any_host(
+                ret = rpc_nvmf.nvmf_subsystem_allow_any_host(
                     self.spdk_rpc_client,
                     nqn=request.subsystem_nqn,
                     disable=False,
@@ -253,7 +255,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 self.logger.info(
                     f"Received request to add host {request.host_nqn} to"
                     f" {request.subsystem_nqn}")
-                ret = self.spdk_rpc.nvmf.nvmf_subsystem_add_host(
+                ret = rpc_nvmf.nvmf_subsystem_add_host(
                     self.spdk_rpc_client,
                     nqn=request.subsystem_nqn,
                     host=request.host_nqn,
@@ -288,7 +290,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 self.logger.info(
                     f"Received request to disable any host access to"
                     f" {request.subsystem_nqn}")
-                ret = self.spdk_rpc.nvmf.nvmf_subsystem_allow_any_host(
+                ret = rpc_nvmf.nvmf_subsystem_allow_any_host(
                     self.spdk_rpc_client,
                     nqn=request.subsystem_nqn,
                     disable=True,
@@ -298,7 +300,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 self.logger.info(
                     f"Received request to remove host_{request.host_nqn} from"
                     f" {request.subsystem_nqn}")
-                ret = self.spdk_rpc.nvmf.nvmf_subsystem_remove_host(
+                ret = rpc_nvmf.nvmf_subsystem_remove_host(
                     self.spdk_rpc_client,
                     nqn=request.subsystem_nqn,
                     host=request.host_nqn,
@@ -344,7 +346,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 else:
                     traddr = request.traddr
 
-                ret = self.spdk_rpc.nvmf.nvmf_subsystem_add_listener(
+                ret = rpc_nvmf.nvmf_subsystem_add_listener(
                     self.spdk_rpc_client,
                     nqn=request.nqn,
                     trtype=request.trtype,
@@ -398,7 +400,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 else:
                     traddr = request.traddr
 
-                ret = self.spdk_rpc.nvmf.nvmf_subsystem_remove_listener(
+                ret = rpc_nvmf.nvmf_subsystem_remove_listener(
                     self.spdk_rpc_client,
                     nqn=request.nqn,
                     trtype=request.trtype,
@@ -434,7 +436,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         self.logger.info(f"Received request to get subsystems")
         try:
-            ret = self.spdk_rpc.nvmf.nvmf_get_subsystems(self.spdk_rpc_client)
+            ret = rpc_nvmf.nvmf_get_subsystems(self.spdk_rpc_client)
             self.logger.info(f"get_subsystems: {ret}")
         except Exception as ex:
             self.logger.error(f"get_subsystems failed with: \n {ex}")

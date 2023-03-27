@@ -146,7 +146,7 @@ class LocalGatewayState(GatewayState):
 class OmapGatewayState(GatewayState):
     """Persists gateway NVMeoF target state to an OMAP object.
 
-    Handles reads/writes of persistent NVMeoF target state data in key/value 
+    Handles reads/writes of persistent NVMeoF target state data in key/value
     format within an OMAP object.
 
     Class attributes:

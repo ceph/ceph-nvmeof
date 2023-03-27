@@ -11,9 +11,9 @@ import argparse
 import grpc
 import json
 import logging
-from .generated import gateway_pb2_grpc as pb2_grpc
-from .generated import gateway_pb2 as pb2
-from .config import GatewayConfig
+import sys
+from .proto import gateway_pb2_grpc as pb2_grpc
+from .proto import gateway_pb2 as pb2
 
 
 def argument(*name_or_flags, **kwargs):
@@ -35,11 +35,29 @@ class Parser:
             prog="python3 -m control.cli",
             description="CLI to manage NVMe gateways")
         self.parser.add_argument(
-            "-c",
-            "--config",
-            default="ceph-nvmeof.conf",
+            "--server-address",
+            default="localhost",
             type=str,
-            help="Path to config file",
+            help="Server address",
+        )
+        self.parser.add_argument(
+            "--server-port",
+            default=5500,
+            type=int,
+            help="Server port",
+        )
+        self.parser.add_argument(
+            "--client-key",
+            type=argparse.FileType("rb"),
+            help="Path to the client key file")
+        self.parser.add_argument(
+            "--client-cert",
+            type=argparse.FileType("rb"),
+            help="Path to the client certificate file")
+        self.parser.add_argument(
+            "--server-cert",
+            type=argparse.FileType("rb"),
+            help="Path to the server certificate file"
         )
 
         self.subparsers = self.parser.add_subparsers(dest="subcommand")
@@ -93,24 +111,22 @@ class GatewayClient:
             raise AttributeError("stub is None. Set with connect method.")
         return self._stub
 
-    def connect(self, config):
+    def connect(self, host, port, client_key, client_cert, server_cert):
         """Connects to server and sets stub."""
-
-        # Read in configuration parameters
-        host = config.get("gateway", "addr")
-        port = config.get("gateway", "port")
-        enable_auth = config.getboolean("gateway", "enable_auth")
         server = "{}:{}".format(host, port)
 
-        if enable_auth:
-
+        if client_key and client_cert:
             # Create credentials for mutual TLS and a secure channel
-            with open(config.get("mtls", "client_cert"), "rb") as f:
+            self.logger.info("Enable server auth since both --client-key and --client-cert are provided")
+            with client_cert as f:
                 client_cert = f.read()
-            with open(config.get("mtls", "client_key"), "rb") as f:
+            with client_key as f:
                 client_key = f.read()
-            with open(config.get("mtls", "server_cert"), "rb") as f:
-                server_cert = f.read()
+            if server_cert:
+                with server_cert as f:
+                    server_cert = f.read()
+            else:
+                self.logger.warn("No server certificate file was provided")
 
             credentials = grpc.ssl_channel_credentials(
                 root_certificates=server_cert,
@@ -336,14 +352,18 @@ class GatewayClient:
 def main(args=None):
     client = GatewayClient()
     parsed_args = client.cli.parser.parse_args(args)
-    config = GatewayConfig(parsed_args.config)
-    client.connect(config)
     if parsed_args.subcommand is None:
         client.cli.parser.print_help()
-    else:
-        call_function = getattr(client, parsed_args.func.__name__)
-        call_function(parsed_args)
+        return 0
+    server_address = parsed_args.server_address
+    server_port = parsed_args.server_port
+    client_key = parsed_args.client_key
+    client_cert = parsed_args.client_cert
+    server_cert = parsed_args.server_cert
+    client.connect(server_address, server_port, client_key, client_cert, server_cert)
+    call_function = getattr(client, parsed_args.func.__name__)
+    call_function(parsed_args)
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

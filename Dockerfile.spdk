@@ -1,0 +1,65 @@
+# syntax = docker/dockerfile:1.4
+FROM quay.io/centos/centos:stream9 AS build
+
+ARG CEPH_VERSION \
+    SPDK_VERSION
+ENV CEPH_VERSION=${CEPH_VERSION?} \
+    SPDK_VERSION=${SPDK_VERSION?}
+
+COPY <<EOF /etc/yum.repos.d/ceph.repo
+[Ceph]
+name=Ceph packages for \$basearch
+baseurl=https://download.ceph.com/rpm-${CEPH_VERSION?}/el\$releasever/\$basearch
+enabled=1
+priority=2
+gpgcheck=1
+gpgkey=https://download.ceph.com/keys/release.asc
+
+[Ceph-noarch]
+name=Ceph noarch packages
+baseurl=https://download.ceph.com/rpm-$CEPH_VERSION/el\$releasever/noarch
+enabled=1
+priority=2
+gpgcheck=1
+gpgkey=https://download.ceph.com/keys/release.asc
+EOF
+
+ARG PKGDEP_ARGS
+ARG CONFIGURE_ARGS
+ARG MAKEFLAGS
+ARG RPM_RELEASE="0"
+
+WORKDIR /src
+COPY . .
+
+RUN \
+    --mount=type=cache,target=/var/cache/dnf \
+    --mount=type=cache,target=/var/lib/dnf \
+    --mount=type=cache,target=/root/.cache/pip \
+    dnf install -y 'dnf-command(config-manager)' \
+    && dnf config-manager --set-enabled crb \
+    && dnf install -y \
+        rpm-build \
+        git-core \
+    && scripts/pkgdep.sh $PKGDEP_ARGS \
+    && dnf update -y
+
+RUN DEPS="no" rpmbuild/rpm.sh $CONFIGURE_ARGS
+
+#------------------------------------------------------------------------------
+FROM registry.access.redhat.com/ubi9/ubi
+
+ARG CENTOS_BASE="https://mirror.stream.centos.org/9-stream/BaseOS/x86_64/os/Packages/"
+# This would become obsolete as the release rolls out new packages
+ARG CENTOS_REPO_VER="9.0-21.el9"
+
+COPY --from=build /etc/yum.repos.d/ceph.repo /etc/yum.repos.d/ceph.repo
+
+RUN \
+    --mount=type=bind,from=build,source=/root/rpmbuild/rpm,target=/rpm \
+    --mount=type=cache,target=/var/cache/dnf \
+    --mount=type=cache,target=/var/lib/dnf \
+    rpm -vih $CENTOS_BASE/centos-stream-repos-$CENTOS_REPO_VER.noarch.rpm \
+             $CENTOS_BASE/centos-gpg-keys-$CENTOS_REPO_VER.noarch.rpm \
+    && dnf install -y /rpm/$(uname -m)/*.rpm \
+    && dnf update -y

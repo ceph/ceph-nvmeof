@@ -20,8 +20,13 @@ import json
 import logging
 from concurrent import futures
 from google.protobuf import json_format
-from .generated import gateway_pb2 as pb2
-from .generated import gateway_pb2_grpc as pb2_grpc
+
+import spdk.rpc
+import spdk.rpc.client as rpc_client
+import spdk.rpc.nvmf as rpc_nvmf
+
+from .proto import gateway_pb2 as pb2
+from .proto import gateway_pb2_grpc as pb2_grpc
 from .state import GatewayState, LocalGatewayState, OmapGatewayState, GatewayStateHandler
 from .grpc import GatewayService
 
@@ -45,7 +50,6 @@ class GatewayServer:
         logger: Logger instance to track server events
         gateway_rpc: GatewayService implementation
         server: gRPC server instance to receive gateway client requests
-        spdk_rpc: Module methods for SPDK
         spdk_rpc_client: Client of SPDK RPC server
         spdk_rpc_ping_client: Ping client of SPDK RPC server
         spdk_process: Subprocess running SPDK NVMEoF target application
@@ -86,6 +90,7 @@ class GatewayServer:
 
     def serve(self):
         """Starts gateway server."""
+        self.logger.debug("Starting serve")
 
         # Start SPDK
         self._start_spdk()
@@ -96,7 +101,7 @@ class GatewayServer:
         gateway_state = GatewayStateHandler(self.config, local_state,
                                             omap_state, self.gateway_rpc_caller)
         self.gateway_rpc = GatewayService(self.config, gateway_state,
-                                          self.spdk_rpc, self.spdk_rpc_client)
+                                          self.spdk_rpc_client)
         self.server = grpc.server(futures.ThreadPoolExecutor(max_workers=1))
         pb2_grpc.add_GatewayServicer_to_server(self.gateway_rpc, self.server)
 
@@ -145,20 +150,15 @@ class GatewayServer:
     def _start_spdk(self):
         """Starts SPDK process."""
 
-        # Get path and import SPDK's RPC modules
-        spdk_path = self.config.get("spdk", "spdk_path")
-        sys.path.append(os.path.join(spdk_path, "spdk/python"))
-        self.logger.info(f"SPDK PATH: {spdk_path}")
-        import spdk.rpc as spdk_rpc
-        self.spdk_rpc = spdk_rpc
-
         # Start target
-        tgt_path = self.config.get("spdk", "tgt_path")
+        self.logger.debug("Configuring server")
+        spdk_tgt_path = self.config.get("spdk", "tgt_path")
+        self.logger.info(f"SPDK Target Path: {spdk_tgt_path}")
         spdk_rpc_socket = self.config.get("spdk", "rpc_socket")
+        self.logger.info(f"SPDK Socket: {spdk_rpc_socket}")
         spdk_tgt_cmd_extra_args = self.config.get_with_default(
             "spdk", "tgt_cmd_extra_args", "")
-        spdk_cmd = os.path.join(spdk_path, tgt_path)
-        cmd = [spdk_cmd, "-u", "-r", spdk_rpc_socket]
+        cmd = [spdk_tgt_path, "-u", "-r", spdk_rpc_socket]
         if spdk_tgt_cmd_extra_args:
             cmd += shlex.split(spdk_tgt_cmd_extra_args)
         self.logger.info(f"Starting {' '.join(cmd)}")
@@ -180,14 +180,14 @@ class GatewayServer:
             f" conn_retries: {conn_retries}, timeout: {timeout}",
         })
         try:
-            self.spdk_rpc_client = self.spdk_rpc.client.JSONRPCClient(
+            self.spdk_rpc_client = rpc_client.JSONRPCClient(
                 spdk_rpc_socket,
                 None,
                 timeout,
                 log_level=log_level,
                 conn_retries=conn_retries,
             )
-            self.spdk_rpc_ping_client = self.spdk_rpc.client.JSONRPCClient(
+            self.spdk_rpc_ping_client = rpc_client.JSONRPCClient(
                 spdk_rpc_socket,
                 None,
                 timeout,
@@ -221,7 +221,7 @@ class GatewayServer:
                 raise
 
         try:
-            status = self.spdk_rpc.nvmf.nvmf_create_transport(
+            status = rpc_nvmf.nvmf_create_transport(
                 self.spdk_rpc_client, **args)
         except Exception as ex:
             self.logger.error(
@@ -241,7 +241,7 @@ class GatewayServer:
     def _ping(self):
         """Confirms communication with SPDK process."""
         try:
-            ret = self.spdk_rpc.spdk_get_version(self.spdk_rpc_ping_client)
+            ret = spdk.rpc.spdk_get_version(self.spdk_rpc_ping_client)
             return True
         except Exception as ex:
             self.logger.error(f"spdk_get_version failed with: \n {ex}")

@@ -1,32 +1,22 @@
-#
-#  Copyright (c) 2021 International Business Machines
-#  All rights reserved.
-#
-#  SPDX-License-Identifier: LGPL-3.0-or-later
-#
-#  Authors: anita.shekar@ibm.com, sandy.kaur@ibm.com
-#
+HUGEPAGES_2MB = 2048 # 4 GB
 
-MODULE := control
-CONFIG ?= ceph-nvmeof.conf
+# Includes
+include mk/containerized.mk
+include mk/demo.mk
+include mk/misc.mk
+include mk/autohelp.mk
 
-setup: requirements.txt
-	pip3 install -r requirements.txt
+## Basic targets:
+.DEFAULT_GOAL := all
+all: setup $(ALL)
 
-grpc:
-	@mkdir -p $(MODULE)/generated
-	@python3 -m grpc_tools.protoc \
-			--proto_path=./proto \
-			--python_out=./$(MODULE)/generated \
-			--grpc_python_out=./$(MODULE)/generated \
-			./proto/*.proto
-	@sed -i 's/^import.*_pb2/from . \0/' ./$(MODULE)/generated/*.py
+setup: ## Configure huge-pages (requires sudo/root password)
+	sudo bash -c 'echo $(HUGEPAGES_2MB) > /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages'
+	cat /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages
 
-run:
-	@python3 -m $(MODULE) -c $(CONFIG)
+clean: $(CLEAN)  ## Clean-up environment
 
-test:
-	@pytest
+help: AUTOHELP_SUMMARY = Makefile to build and deploy the Ceph NVMe-oF Gateway
+help: autohelp
 
-clean:
-	rm -rf .pytest_cache __pycache__
+.PHONY: all setup clean help

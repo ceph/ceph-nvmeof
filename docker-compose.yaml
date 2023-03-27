@@ -1,0 +1,127 @@
+version: "3.8"
+services:
+  spdk:
+    image: "quay.io/ceph/spdk:$SPDK_VERSION"
+    profiles:
+      - build
+    build:
+      context: spdk/
+      dockerfile: ../Dockerfile.spdk
+      args:
+        PKGDEP_ARGS: --rbd
+        CEPH_VERSION: $CEPH_VERSION
+        SPDK_VERSION: $SPDK_VERSION
+        CONFIGURE_ARGS: >-
+          --with-rbd
+          --disable-tests
+          --disable-unit-tests
+          --disable-examples
+      labels:
+        io.ceph.nvmeof: ""
+  ceph:
+    image: "quay.io/ceph/vstart-cluster:$CEPH_VERSION"
+    container_name: ceph
+    build:
+      context: .
+      dockerfile: Dockerfile.ceph
+      args:
+        RELEASE: $CEPH_VERSION
+      labels:
+        io.ceph.nvmeof: ""
+    environment:
+      VSTART_ARGS: >-
+        --without-dashboard
+        --memstore
+      TOUCHFILE: /tmp/ceph.touch
+    entrypoint: |
+      sh -c './vstart.sh --new $$VSTART_ARGS &&
+      ceph osd pool create rbd &&
+      sleep infinity'
+    healthcheck:
+      test: ceph osd pool stats rbd
+      start_period: 5s
+      interval: 5s
+    volumes:
+      - ceph-conf:/etc/ceph
+    networks:
+      default:
+        ipv4_address: 192.168.13.2
+  nvmeof-base:
+    image: "quay.io/ceph/nvmeof:${VERSION?}"
+    build:
+      context: .
+      args:
+        SPDK_VERSION: "$SPDK_VERSION"
+        TARGET: gateway
+        NAME: ceph-nvmeof
+        SUMMARY: Ceph NVMe over Fabrics Gateway
+        DESCRIPTION: |
+          Service to provide block storage on top of Ceph for platforms
+          (e.g.: VMWare) without native Ceph support (RBD), replacing
+          existing approaches (iSCSI) with a newer and more versatile
+          standard (NVMe-oF).
+        URL: https://github.com/ceph/ceph-nvmeof
+        MAINTAINER: Ceph Developers <dev@ceph.io>
+        GIT_REPO: https://github.com/ceph/ceph-nvmeof.git
+      labels:
+        io.ceph.nvmeof: ""
+    hostname: nvmeof
+    volumes:
+      # sudo bash -c 'echo 1024 > /sys/devices/system/node/node0/hugepages/hugepages-2048kB/nr_hugepages'
+      # https://spdk.io/doc/containers.html
+      # TODO: Pending of https://github.com/spdk/spdk/issues/2973
+      - /dev/hugepages:/dev/hugepages
+      - ceph-conf:/etc/ceph:ro
+    cap_add:
+      - SYS_ADMIN # huge-pages
+      - CAP_SYS_NICE # RTE
+      - SYS_PTRACE # gdb
+    networks:
+      default:
+        ipv4_address: 192.168.13.3
+    ports:
+      - "4420:4420" # I/O controllers
+      - "5500:5500" # Gateway
+      - "8009:8009" # Discovery
+  nvmeof:
+    extends:
+      service: nvmeof-base
+    depends_on:
+      ceph:
+        condition: service_healthy
+  nvmeof-devel:
+    # Runs from source code in current dir
+    extends:
+      service: nvmeof-base
+    depends_on:
+      ceph:
+        condition: service_healthy
+    volumes:
+      - .:/src
+  nvmeof-cli:
+    image: "quay.io/ceph/nvmeof-cli:${VERSION?}"
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        TARGET: cli
+        NAME: ceph-nvmeof-cli
+        SUMMARY: Ceph NVMe over Fabrics CLI
+        DESCRIPTION: |
+          Command line interface for Ceph NVMe over Fabrics Gateway.
+        URL: https://github.com/ceph/ceph-nvmeof
+        MAINTAINER: Ceph Developers <dev@ceph.io>
+        GIT_REPO: https://github.com/ceph/ceph-nvmeof.git
+      labels:
+        io.ceph.nvmeof: ""
+volumes:
+  ceph-conf:
+    labels:
+      io.ceph.nvmeof: ""
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: 192.168.13.0/24
+    labels:
+      io.ceph.nvmeof: ""

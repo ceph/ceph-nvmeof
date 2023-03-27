@@ -1,0 +1,36 @@
+# syntax = docker/dockerfile:1.4
+
+ARG RELEASE
+FROM quay.io/ceph/daemon:latest
+ENV MON=1 \
+    MGR=1 \
+    OSD=3 \
+    MDS=0 \
+    FS=0 \
+    RGW=0 \
+    NFS=0 \
+    CEPH_PORT=10000 \
+    VSTART_ARGS="--without-dashboard"
+
+ENV CEPH_BIN=/usr/bin \
+    CEPH_LIB=/usr/lib64/ceph \
+    CEPH_CONF_PATH=/etc/ceph \
+    EC_PATH=/usr/lib64/ceph/erasure-code \
+    OBJCLASS_PATH=/usr/lib64/rados-classes \
+    MGR_PYTHON_PATH=/usr/share/ceph/mgr \
+    PYBIND=/usr/share/ceph/mgr
+
+VOLUME $CEPH_CONF_PATH
+RUN chown ceph:ceph $CEPH_CONF_PATH
+
+RUN ln -sf $EC_PATH/* $CEPH_LIB && \
+    ln -sf $OBJCLASS_PATH/* $CEPH_LIB && \
+    ln -sf $CEPH_LIB/compressor/* $CEPH_LIB
+
+USER ceph
+WORKDIR /ceph
+ADD --chown=ceph:ceph --chmod=755 https://raw.githubusercontent.com/ceph/ceph/main/src/vstart.sh .
+
+ENTRYPOINT \
+    ./vstart.sh --new $VSTART_ARGS && \
+    sleep infinity
