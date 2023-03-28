@@ -23,7 +23,7 @@ This daemon runs as root. It provides the ability to export existing RBD images 
 		
 	    $ make grpc 
 
-5. SPDK v21.04 is included in this repository. Edit the config file to set:
+5. SPDK is included in this repository as a submodule. Edit the config file to set:
 
 		spdk_path = <complete path to SPDK parent directory>
 		spdk_tgt = <relative path to SPDK target executable>
