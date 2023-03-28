@@ -32,3 +32,4 @@ if __name__ == '__main__':
     config = GatewayConfig(args.config)
     with GatewayServer(config) as gateway:
         gateway.serve()
+        gateway.keep_alive()

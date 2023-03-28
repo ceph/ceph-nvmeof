@@ -7,109 +7,176 @@
 #  Authors: anita.shekar@ibm.com, sandy.kaur@ibm.com
 #
 
+import time
+import threading
 import rados
 import logging
-from typing import Dict, Optional
+from typing import Dict
+from collections import defaultdict
 from abc import ABC, abstractmethod
-from .generated import gateway_pb2 as pb2
-from google.protobuf import json_format
 
 
 class GatewayState(ABC):
-    """Persists gateway NVMeoF target state."""
-
-    @abstractmethod
-    def add_bdev(self, bdev_name: str, val: str):
-        pass
-
-    @abstractmethod
-    def remove_bdev(self, bdev_name: str):
-        pass
-
-    @abstractmethod
-    def add_namespace(self, subsystem_nqn: str, bdev_name: str, val: str):
-        pass
-
-    @abstractmethod
-    def remove_namespace(self, subsystem_nqn: str, bdev_name: str):
-        pass
-
-    @abstractmethod
-    def add_subsystem(self, subsystem_nqn: str, val: str):
-        pass
-
-    @abstractmethod
-    def remove_subsystem(self, subsystem_nqn: str):
-        pass
-
-    @abstractmethod
-    def add_host(self, subsystem_nqn: str, host_nqn: str, val: str):
-        pass
-
-    @abstractmethod
-    def remove_host(self, subsystem_nqn: str, host_nqn: str):
-        pass
-
-    @abstractmethod
-    def add_listener(self, subsystem_nqn: str, traddr: str, trsvcid: str,
-                     val: str):
-        pass
-
-    @abstractmethod
-    def remove_listener(self, subsystem_nqn: str, traddr: str, trsvcid: str):
-        pass
-
-    @abstractmethod
-    def delete_state(self):
-        pass
-
-    @abstractmethod
-    def restore(self, callbacks):
-        pass
-
-
-class OmapGatewayState(GatewayState):
-    """Persists NVMeoF target state to an OMAP object.
-
-    Handles reads/writes of persistent NVMeoF target state data in 
-    key/value format within an OMAP object.
+    """Persists gateway NVMeoF target state.
 
     Class attributes:
-        X_KEY: OMAP key name for "X"
-        X_PREFIX: OMAP key prefix for key of type "X"
-
-    Instance attributes:
-        version: Local gateway NVMeoF target state version
-        config: Basic gateway parameters
-        logger: Logger instance to track OMAP access events
-        spdk_rpc: Module methods for SPDK
-        spdk_rpc_client: Client of SPDK RPC server
-        omap_name: OMAP object name
-        ioctx: I/O context which allows OMAP access
+        X_PREFIX: Key prefix for key of type "X"
     """
 
-    OMAP_VERSION_KEY = "omap_version"
     BDEV_PREFIX = "bdev_"
     NAMESPACE_PREFIX = "namespace_"
     SUBSYSTEM_PREFIX = "subsystem_"
     HOST_PREFIX = "host_"
     LISTENER_PREFIX = "listener_"
 
-    def __init__(self, config):
-        self.version = 1
-        self.config = config
-        self.logger = logging.getLogger(__name__)
+    @abstractmethod
+    def get_state(self) -> Dict[str, str]:
+        """Returns the state dictionary."""
+        pass
 
+    @abstractmethod
+    def _add_key(self, key: str, val: str):
+        """Adds key to state data store."""
+        pass
+
+    @abstractmethod
+    def _remove_key(self, key: str):
+        """Removes key from state data store."""
+        pass
+
+    def add_bdev(self, bdev_name: str, val: str):
+        """Adds a bdev to the state data store."""
+        key = self.BDEV_PREFIX + bdev_name
+        self._add_key(key, val)
+
+    def remove_bdev(self, bdev_name: str):
+        """Removes a bdev from the state data store."""
+        key = self.BDEV_PREFIX + bdev_name
+        self._remove_key(key)
+
+    def add_namespace(self, subsystem_nqn: str, nsid: str, val: str):
+        """Adds a namespace to the state data store."""
+        key = self.NAMESPACE_PREFIX + subsystem_nqn + "_" + nsid
+        self._add_key(key, val)
+
+    def remove_namespace(self, subsystem_nqn: str, nsid: str):
+        """Removes a namespace from the state data store."""
+        key = self.NAMESPACE_PREFIX + subsystem_nqn + "_" + nsid
+        self._remove_key(key)
+
+    def add_subsystem(self, subsystem_nqn: str, val: str):
+        """Adds a subsystem to the state data store."""
+        key = self.SUBSYSTEM_PREFIX + subsystem_nqn
+        self._add_key(key, val)
+
+    def remove_subsystem(self, subsystem_nqn: str):
+        """Removes a subsystem from the state data store."""
+        key = self.SUBSYSTEM_PREFIX + subsystem_nqn
+        self._remove_key(key)
+
+        # Delete all keys related to subsystem
+        state = self.get_state()
+        for key in state.keys():
+            if (key.startswith(self.NAMESPACE_PREFIX + subsystem_nqn) or
+                    key.startswith(self.HOST_PREFIX + subsystem_nqn) or
+                    key.startswith(self.LISTENER_PREFIX + subsystem_nqn)):
+                self._remove_key(key)
+
+    def add_host(self, subsystem_nqn: str, host_nqn: str, val: str):
+        """Adds a host to the state data store."""
+        key = "{}{}_{}".format(self.HOST_PREFIX, subsystem_nqn, host_nqn)
+        self._add_key(key, val)
+
+    def remove_host(self, subsystem_nqn: str, host_nqn: str):
+        """Removes a host from the state data store."""
+        key = "{}{}_{}".format(self.HOST_PREFIX, subsystem_nqn, host_nqn)
+        self._remove_key(key)
+
+    def add_listener(self, subsystem_nqn: str, gateway: str, trtype: str,
+                     traddr: str, trsvcid: str, val: str):
+        """Adds a listener to the state data store."""
+        key = "{}{}_{}_{}_{}_{}".format(self.LISTENER_PREFIX, gateway,
+                                        subsystem_nqn, trtype, traddr, trsvcid)
+        self._add_key(key, val)
+
+    def remove_listener(self, subsystem_nqn: str, gateway: str, trtype: str,
+                        traddr: str, trsvcid: str):
+        """Removes a listener from the state data store."""
+        key = "{}{}_{}_{}_{}_{}".format(self.LISTENER_PREFIX, gateway,
+                                        subsystem_nqn, trtype, traddr, trsvcid)
+        self._remove_key(key)
+
+    @abstractmethod
+    def delete_state(self):
+        """Deletes state data store."""
+        pass
+
+
+class LocalGatewayState(GatewayState):
+    """Records gateway NVMeoF target state in a dictionary.
+
+    Instance attributes:
+        state: Local gateway NVMeoF target state
+    """
+
+    def __init__(self):
+        self.state = {}
+
+    def get_state(self) -> Dict[str, str]:
+        """Returns local state dictionary."""
+        return self.state.copy()
+
+    def _add_key(self, key: str, val: str):
+        """Adds key and value to the local state dictionary."""
+        self.state[key] = val
+
+    def _remove_key(self, key: str):
+        """Removes key from the local state dictionary."""
+        self.state.pop(key)
+
+    def delete_state(self):
+        """Deletes contents of local state dictionary."""
+        self.state.clear()
+
+    def reset(self, omap_state):
+        """Resets dictionary with OMAP state."""
+        self.state = omap_state
+
+
+class OmapGatewayState(GatewayState):
+    """Persists gateway NVMeoF target state to an OMAP object.
+
+    Handles reads/writes of persistent NVMeoF target state data in key/value 
+    format within an OMAP object.
+
+    Class attributes:
+        X_KEY: Key name for "X"
+
+    Instance attributes:
+        config: Basic gateway parameters
+        version: Local gateway NVMeoF target state version
+        logger: Logger instance to track OMAP access events
+        omap_name: OMAP object name
+        ioctx: I/O context which allows OMAP access
+        watch: Watcher for the OMAP object
+    """
+
+    OMAP_VERSION_KEY = "omap_version"
+
+    def __init__(self, config):
+        self.config = config
+        self.version = 1
+        self.logger = logging.getLogger(__name__)
+        self.watch = None
         gateway_group = self.config.get("gateway", "group")
         self.omap_name = f"nvmeof.{gateway_group}.state" if gateway_group else "nvmeof.state"
-
         ceph_pool = self.config.get("ceph", "pool")
         ceph_conf = self.config.get("ceph", "config_file")
-        conn = rados.Rados(conffile=ceph_conf)
-        conn.connect()
-        self.ioctx = conn.open_ioctx(ceph_pool)
 
         try:
+            conn = rados.Rados(conffile=ceph_conf)
+            conn.connect()
+            self.ioctx = conn.open_ioctx(ceph_pool)
             # Create a new gateway persistence OMAP object
             with rados.WriteOpCtx() as write_op:
                 # Set exclusive parameter to fail write_op if object exists
@@ -125,9 +192,45 @@ class OmapGatewayState(GatewayState):
             self.logger.error(f"Unable to create omap: {ex}. Exiting!")
             raise
 
+    def __exit__(self, exc_type, exc_value, traceback):
+        if self.watch is not None:
+            self.watch.close()
+        self.ioctx.close()
+
+    def get_local_version(self) -> int:
+        """Returns local version."""
+        return self.version
+
+    def set_local_version(self, version_update: int):
+        """Sets local version."""
+        self.version = version_update
+
+    def get_omap_version(self) -> int:
+        """Returns OMAP version."""
+        with rados.ReadOpCtx() as read_op:
+            i, _ = self.ioctx.get_omap_vals_by_keys(read_op,
+                                                    (self.OMAP_VERSION_KEY,))
+            self.ioctx.operate_read_op(read_op, self.omap_name)
+        value_list = list(dict(i).values())
+        if len(value_list) == 1:
+            val = int(value_list[0])
+            return val
+        else:
+            self.logger.error(
+                f"Read of OMAP version key ({self.OMAP_VERSION_KEY}) returns"
+                f" invalid number of values ({value_list}).")
+            raise
+
+    def get_state(self) -> Dict[str, str]:
+        """Returns dict of all OMAP keys and values."""
+        with rados.ReadOpCtx() as read_op:
+            i, _ = self.ioctx.get_omap_vals(read_op, "", "", -1)
+            self.ioctx.operate_read_op(read_op, self.omap_name)
+            omap_dict = dict(i)
+        return omap_dict
+
     def _add_key(self, key: str, val: str):
         """Adds key and value to the OMAP."""
-
         try:
             version_update = self.version + 1
             with rados.WriteOpCtx() as write_op:
@@ -144,9 +247,14 @@ class OmapGatewayState(GatewayState):
             self.logger.error(f"Unable to add key to omap: {ex}. Exiting!")
             raise
 
+        # Notify other gateways within the group of change
+        try:
+            self.ioctx.notify(self.omap_name)
+        except Exception as ex:
+            self.logger.info(f"Failed to notify.")
+
     def _remove_key(self, key: str):
         """Removes key from the OMAP."""
-
         try:
             version_update = self.version + 1
             with rados.WriteOpCtx() as write_op:
@@ -163,159 +271,221 @@ class OmapGatewayState(GatewayState):
             self.logger.error(f"Unable to remove key from omap: {ex}. Exiting!")
             raise
 
+        # Notify other gateways within the group of change
+        try:
+            self.ioctx.notify(self.omap_name)
+        except Exception as ex:
+            self.logger.info(f"Failed to notify.")
+
+    def delete_state(self):
+        """Deletes OMAP object contents."""
+        try:
+            with rados.WriteOpCtx() as write_op:
+                self.ioctx.clear_omap(write_op)
+                self.ioctx.operate_write_op(write_op, self.omap_name)
+                self.ioctx.set_omap(write_op, (self.OMAP_VERSION_KEY,),
+                                    (str(1),))
+                self.ioctx.operate_write_op(write_op, self.omap_name)
+                self.logger.info(f"Deleted OMAP contents.")
+        except Exception as ex:
+            self.logger.error(f"Error deleting OMAP contents: {ex}. Exiting!")
+            raise
+
+    def register_watch(self, notify_event):
+        """Sets a watch on the OMAP object for changes."""
+
+        def _watcher_callback(notify_id, notifier_id, watch_id, data):
+            notify_event.set()
+
+        if self.watch is None:
+            try:
+                self.watch = self.ioctx.watch(self.omap_name, _watcher_callback)
+            except Exception as ex:
+                self.logger.error(f"Unable to initiate watch: {ex}")
+        else:
+            self.logger.info(f"Watch already exists.")
+
+
+class GatewayStateHandler:
+    """Maintains consistency in NVMeoF target state store instances.
+
+    Instance attributes:
+        config: Basic gateway parameters
+        logger: Logger instance to track events
+        local: Local GatewayState instance
+        gateway_rpc_caller: Callback to GatewayServer.gateway_rpc_caller
+        omap: OMAP GatewayState instance
+        update_interval: Interval to periodically poll for updates
+        update_timer: Timer to check for gateway state updates
+        use_notify: Flag to indicate use of OMAP watch/notify
+    """
+
+    def __init__(self, config, local, omap, gateway_rpc_caller):
+        self.config = config
+        self.local = local
+        self.omap = omap
+        self.gateway_rpc_caller = gateway_rpc_caller
+        self.update_timer = None
+        self.logger = logging.getLogger(__name__)
+        self.update_interval = self.config.getint("gateway",
+                                                  "state_update_interval_sec")
+        if self.update_interval < 1:
+            self.logger.info("Invalid state_update_interval_sec. Setting to 1.")
+            self.update_interval = 1
+        self.use_notify = self.config.getboolean("gateway",
+                                                 "state_update_notify")
+
     def add_bdev(self, bdev_name: str, val: str):
-        """Adds a bdev to the OMAP."""
-        key = self.BDEV_PREFIX + bdev_name
-        self._add_key(key, val)
+        """Adds a bdev to the state data stores."""
+        self.omap.add_bdev(bdev_name, val)
+        self.local.add_bdev(bdev_name, val)
 
     def remove_bdev(self, bdev_name: str):
-        """Removes a bdev from the OMAP."""
-        key = self.BDEV_PREFIX + bdev_name
-        self._remove_key(key)
-
-    def _restore_bdevs(self, omap_dict, callback):
-        """Restores a bdev from the OMAP."""
-
-        for (key, val) in omap_dict.items():
-            if key.startswith(self.BDEV_PREFIX):
-                # Get bdev_name from end of key
-                bdev_name = key.split("_", 1)[1]
-                req = json_format.Parse(val, pb2.create_bdev_req())
-                req.bdev_name = bdev_name
-                callback(req)
+        """Removes a bdev from the state data stores."""
+        self.omap.remove_bdev(bdev_name)
+        self.local.remove_bdev(bdev_name)
 
     def add_namespace(self, subsystem_nqn: str, nsid: str, val: str):
-        """Adds a namespace to the OMAP."""
-        key = self.NAMESPACE_PREFIX + subsystem_nqn + "_" + nsid
-        self._add_key(key, val)
+        """Adds a namespace to the state data store."""
+        self.omap.add_namespace(subsystem_nqn, nsid, val)
+        self.local.add_namespace(subsystem_nqn, nsid, val)
 
     def remove_namespace(self, subsystem_nqn: str, nsid: str):
-        """Removes a namespace from the OMAP."""
-        key = self.NAMESPACE_PREFIX + subsystem_nqn + "_" + nsid
-        self._remove_key(key)
-
-    def _restore_namespaces(self, omap_dict, callback):
-        """Restores a namespace from the OMAP."""
-
-        for (key, val) in omap_dict.items():
-            if key.startswith(self.NAMESPACE_PREFIX):
-                # Get NSID from end of key
-                nsid = key.rsplit("_", 1)[1]
-                req = json_format.Parse(val, pb2.add_namespace_req())
-                req.nsid = int(nsid)
-                callback(req)
+        """Removes a namespace from the state data store."""
+        self.omap.remove_namespace(subsystem_nqn, nsid)
+        self.local.remove_namespace(subsystem_nqn, nsid)
 
     def add_subsystem(self, subsystem_nqn: str, val: str):
-        """Adds a subsystem to the OMAP."""
-        key = self.SUBSYSTEM_PREFIX + subsystem_nqn
-        self._add_key(key, val)
+        """Adds a subsystem to the state data store."""
+        self.omap.add_subsystem(subsystem_nqn, val)
+        self.local.add_subsystem(subsystem_nqn, val)
 
     def remove_subsystem(self, subsystem_nqn: str):
-        """Removes a subsystem from the OMAP."""
-        key = self.SUBSYSTEM_PREFIX + subsystem_nqn
-        self._remove_key(key)
-
-        # Delete all keys related to subsystem
-        omap_dict = self._read_all()
-        for key in omap_dict.keys():
-            if (key.startswith(self.NAMESPACE_PREFIX + subsystem_nqn) or
-                    key.startswith(self.HOST_PREFIX + subsystem_nqn) or
-                    key.startswith(self.LISTENER_PREFIX + subsystem_nqn)):
-                self._remove_key(key)
-
-    def _restore_subsystems(self, omap_dict, callback):
-        """Restores subsystems from the OMAP."""
-
-        for (key, val) in omap_dict.items():
-            if key.startswith(self.SUBSYSTEM_PREFIX):
-                req = json_format.Parse(val, pb2.create_subsystem_req())
-                callback(req)
+        """Removes a subsystem from the state data store."""
+        self.omap.remove_subsystem(subsystem_nqn)
+        self.local.remove_subsystem(subsystem_nqn)
 
     def add_host(self, subsystem_nqn: str, host_nqn: str, val: str):
-        """Adds a host to the OMAP."""
-        key = "{}{}_{}".format(self.HOST_PREFIX, subsystem_nqn, host_nqn)
-        self._add_key(key, val)
+        """Adds a host to the state data store."""
+        self.omap.add_host(subsystem_nqn, host_nqn, val)
+        self.local.add_host(subsystem_nqn, host_nqn, val)
 
     def remove_host(self, subsystem_nqn: str, host_nqn: str):
-        """Removes a host from the OMAP."""
-        key = "{}{}_{}".format(self.HOST_PREFIX, subsystem_nqn, host_nqn)
-        self._remove_key(key)
-
-    def _restore_hosts(self, omap_dict, callback):
-        """Restore hosts from the OMAP."""
-
-        for (key, val) in omap_dict.items():
-            if key.startswith(self.HOST_PREFIX):
-                req = json_format.Parse(val, pb2.add_host_req())
-                callback(req)
+        """Removes a host from the state data store."""
+        self.omap.remove_host(subsystem_nqn, host_nqn)
+        self.local.remove_host(subsystem_nqn, host_nqn)
 
     def add_listener(self, subsystem_nqn: str, gateway: str, trtype: str,
                      traddr: str, trsvcid: str, val: str):
-        """Adds a listener to the OMAP."""
-        key = "{}{}_{}_{}_{}_{}".format(self.LISTENER_PREFIX, gateway,
-                                        subsystem_nqn, trtype, traddr, trsvcid)
-        self._add_key(key, val)
+        """Adds a listener to the state data store."""
+        self.omap.add_listener(subsystem_nqn, gateway, trtype, traddr, trsvcid,
+                               val)
+        self.local.add_listener(subsystem_nqn, gateway, trtype, traddr, trsvcid,
+                                val)
 
     def remove_listener(self, subsystem_nqn: str, gateway: str, trtype: str,
                         traddr: str, trsvcid: str):
-        """Removes a listener from the OMAP."""
-        key = "{}{}_{}_{}_{}_{}".format(self.LISTENER_PREFIX, gateway,
-                                        subsystem_nqn, trtype, traddr, trsvcid)
-        self._remove_key(key)
-
-    def _restore_listeners(self, omap_dict, callback):
-        """Restores listeners from the OMAP."""
-
-        for (key, val) in omap_dict.items():
-            if key.startswith(self.LISTENER_PREFIX):
-                req = json_format.Parse(val, pb2.create_listener_req())
-                callback(req)
-
-    def _read_key(self, key) -> Optional[str]:
-        """Reads a key from the OMAP and returns its value."""
-
-        with rados.ReadOpCtx() as read_op:
-            iter, _ = self.ioctx.get_omap_vals_by_keys(read_op, (key,))
-            self.ioctx.operate_read_op(read_op, self.omap_name)
-            value_list = list(dict(iter).values())
-            if len(value_list) == 1:
-                val = str(value_list[0], "utf-8")
-                self.logger.debug(f"Read key: {key} -> {val}")
-                return val
-        return None
-
-    def _read_all(self) -> Dict[str, str]:
-        """Reads OMAP and returns dict of all keys and values."""
-
-        with rados.ReadOpCtx() as read_op:
-            iter, _ = self.ioctx.get_omap_vals(read_op, "", "", -1)
-            self.ioctx.operate_read_op(read_op, self.omap_name)
-            omap_dict = dict(iter)
-        return omap_dict
+        """Removes a listener from the state data store."""
+        self.omap.remove_listener(subsystem_nqn, gateway, trtype, traddr,
+                                  trsvcid)
+        self.local.remove_listener(subsystem_nqn, gateway, trtype, traddr,
+                                   trsvcid)
 
     def delete_state(self):
-        """Deletes OMAP object."""
+        """Deletes state data stores."""
+        self.omap.delete_state()
+        self.local.delete_state()
 
-        try:
-            self.ioctx.remove_object(self.omap_name)
-            self.logger.info(f"Object {self.omap_name} deleted.")
-        except rados.ObjectNotFound:
-            self.logger.info(f"Object {self.omap_name} not found.")
+    def start_update(self):
+        """Initiates periodic polling and watch/notify for updates."""
+        notify_event = threading.Event()
+        if self.use_notify:
+            # Register a watch on omap state
+            self.omap.register_watch(notify_event)
 
-    def restore(self, callbacks):
-        """Restores gateway state to OMAP specifications."""
-
-        omap_version = self._read_key(self.OMAP_VERSION_KEY)
-        if omap_version == "1":
-            self.logger.info("This omap was just created. Nothing to restore")
+        # Start polling for state updates
+        if self.update_timer is None:
+            self.update_timer = threading.Thread(target=self._update_caller,
+                                                 daemon=True,
+                                                 args=(notify_event,))
+            self.update_timer.start()
         else:
-            omap_dict = self._read_all()
-            self._restore_bdevs(omap_dict, callbacks[self.BDEV_PREFIX])
-            self._restore_subsystems(omap_dict,
-                                     callbacks[self.SUBSYSTEM_PREFIX])
-            self._restore_namespaces(omap_dict,
-                                     callbacks[self.NAMESPACE_PREFIX])
-            self._restore_hosts(omap_dict, callbacks[self.HOST_PREFIX])
-            self._restore_listeners(omap_dict, callbacks[self.LISTENER_PREFIX])
-            self.version = int(omap_dict[self.OMAP_VERSION_KEY])
-            self.logger.info("Restore complete.")
+            self.logger.info("Update timer already set.")
+
+    def _update_caller(self, notify_event):
+        """Periodically calls for update."""
+        while True:
+            update_time = time.time() + self.update_interval
+            self.update()
+            notify_event.wait(max(update_time - time.time(), 0))
+            notify_event.clear()
+
+    def update(self):
+        """Checks for updated omap state and initiates local update."""
+        prefix_list = [
+            GatewayState.BDEV_PREFIX, GatewayState.SUBSYSTEM_PREFIX,
+            GatewayState.NAMESPACE_PREFIX, GatewayState.HOST_PREFIX,
+            GatewayState.LISTENER_PREFIX
+        ]
+
+        # Get version and state from OMAP
+        omap_state_dict = self.omap.get_state()
+        omap_version = int(omap_state_dict[self.omap.OMAP_VERSION_KEY])
+
+        if self.omap.get_local_version() < omap_version:
+            local_state_dict = self.local.get_state()
+            local_state_keys = local_state_dict.keys()
+            omap_state_keys = omap_state_dict.keys()
+
+            # Find OMAP additions
+            added_keys = omap_state_keys - local_state_keys
+            added = {key: omap_state_dict[key] for key in added_keys}
+            grouped_added = self._group_by_prefix(added, prefix_list)
+            # Find OMAP changes
+            same_keys = omap_state_keys & local_state_keys
+            changed = {
+                key: omap_state_dict[key]
+                for key in same_keys
+                if omap_state_dict[key] != local_state_dict[key]
+            }
+            grouped_changed = self._group_by_prefix(changed, prefix_list)
+            # Find OMAP removals
+            removed_keys = local_state_keys - omap_state_keys
+            removed = {key: local_state_dict[key] for key in removed_keys}
+            grouped_removed = self._group_by_prefix(removed, prefix_list)
+
+            # Handle OMAP removals and remove outdated changed components
+            grouped_removed.update(grouped_changed)
+            if grouped_removed:
+                self._update_call_rpc(grouped_removed, False, prefix_list)
+            # Handle OMAP additions and add updated changed components
+            grouped_added.update(grouped_changed)
+            if grouped_added:
+                self._update_call_rpc(grouped_added, True, prefix_list)
+
+            # Update local state and version
+            self.local.reset(omap_state_dict)
+            self.omap.set_local_version(omap_version)
+            self.logger.debug("Update complete.")
+
+    def _group_by_prefix(self, state_update, prefix_list):
+        """Groups state update by key prefixes."""
+        grouped_state_update = defaultdict(dict)
+        for key, val in state_update.items():
+            for prefix in prefix_list:
+                if key.startswith(prefix):
+                    grouped_state_update[prefix][key] = val
+        return grouped_state_update
+
+    def _update_call_rpc(self, grouped_state_update, is_add_req, prefix_list):
+        """Calls to initiate gateway RPCs in necessary component order."""
+        if is_add_req:
+            for prefix in prefix_list:
+                component_update = grouped_state_update.get(prefix, {})
+                if component_update:
+                    self.gateway_rpc_caller(component_update, True)
+        else:
+            for prefix in list(reversed(prefix_list)):
+                component_update = grouped_state_update.get(prefix, {})
+                if component_update:
+                    self.gateway_rpc_caller(component_update, False)

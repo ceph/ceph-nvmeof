@@ -47,10 +47,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
         """Creates a bdev from an RBD image."""
 
         name = str(uuid.uuid4()) if not request.bdev_name else request.bdev_name
-        self.logger.info(
-            f"Received request to create bdev {name} from"
-            f" {request.rbd_pool_name}/{request.rbd_image_name}"
-            f" with block size {request.block_size}")
+        self.logger.info(f"Received request to create bdev {name} from"
+                         f" {request.rbd_pool_name}/{request.rbd_image_name}"
+                         f" with block size {request.block_size}")
         try:
             bdev_name = self.spdk_rpc.bdev.bdev_rbd_create(
                 self.spdk_rpc_client,
@@ -83,8 +82,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
     def delete_bdev(self, request, context=None):
         """Deletes a bdev."""
 
-        self.logger.info(
-            f"Received request to delete bdev {request.bdev_name}")
+        self.logger.info(f"Received request to delete bdev {request.bdev_name}")
         try:
             ret = self.spdk_rpc.bdev.bdev_rbd_delete(
                 self.spdk_rpc_client,
@@ -146,7 +144,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         """Deletes a subsystem."""
 
         self.logger.info(
-            f"Received request to delete {request.subsystem_nqn}")
+            f"Received request to delete subsystem {request.subsystem_nqn}")
         try:
             ret = self.spdk_rpc.nvmf.nvmf_delete_subsystem(
                 self.spdk_rpc_client,
@@ -194,6 +192,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
         if context:
             # Update gateway state
             try:
+                if not request.nsid:
+                    request.nsid = nsid
                 json_req = json_format.MessageToJson(
                     request, preserving_proto_field_name=True)
                 self.gateway_state.add_namespace(request.subsystem_nqn,
@@ -272,8 +272,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 json_req = json_format.MessageToJson(
                     request, preserving_proto_field_name=True)
                 self.gateway_state.add_host(request.subsystem_nqn,
-                                            request.host_nqn,
-                                            json_req)
+                                            request.host_nqn, json_req)
             except Exception as ex:
                 self.logger.error(
                     f"Error persisting add_host {request.host_nqn}: {ex}")
@@ -326,10 +325,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
     def create_listener(self, request, context=None):
         """Creates a listener for a subsystem at a given IP/Port."""
 
-        self.logger.info(
-            f"Received request to create {request.gateway_name}"
-            f" {request.trtype} listener for {request.nqn} at"
-            f" {request.traddr}:{request.trsvcid}.")
+        ret = True
+        self.logger.info(f"Received request to create {request.gateway_name}"
+                         f" {request.trtype} listener for {request.nqn} at"
+                         f" {request.traddr}:{request.trsvcid}.")
         try:
             if (request.gateway_name and not request.traddr) or \
                (not request.gateway_name and request.traddr):
@@ -368,10 +367,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     request, preserving_proto_field_name=True)
                 self.gateway_state.add_listener(request.nqn,
                                                 request.gateway_name,
-                                                request.trtype,
-                                                request.traddr,
-                                                request.trsvcid,
-                                                json_req)
+                                                request.trtype, request.traddr,
+                                                request.trsvcid, json_req)
             except Exception as ex:
                 self.logger.error(
                     f"Error persisting add_listener {request.trsvcid}: {ex}")
@@ -382,10 +379,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
     def delete_listener(self, request, context=None):
         """Deletes a listener from a subsystem at a given IP/Port."""
 
-        self.logger.info(
-            f"Received request to delete {request.gateway_name}"
-            f" {request.trtype} listener for {request.nqn} at"
-            f" {request.traddr}:{request.trsvcid}.")
+        ret = True
+        self.logger.info(f"Received request to delete {request.gateway_name}"
+                         f" {request.trtype} listener for {request.nqn} at"
+                         f" {request.traddr}:{request.trsvcid}.")
         try:
             if (request.gateway_name and not request.traddr) or \
                (not request.gateway_name and request.traddr):

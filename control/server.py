@@ -19,8 +19,10 @@ import grpc
 import json
 import logging
 from concurrent import futures
+from google.protobuf import json_format
+from .generated import gateway_pb2 as pb2
 from .generated import gateway_pb2_grpc as pb2_grpc
-from .state import OmapGatewayState
+from .state import GatewayState, LocalGatewayState, OmapGatewayState, GatewayStateHandler
 from .grpc import GatewayService
 
 libc = ctypes.CDLL(ctypes.util.find_library("c"))
@@ -41,8 +43,7 @@ class GatewayServer:
     Instance attributes:
         config: Basic gateway parameters
         logger: Logger instance to track server events
-        gateway_state: Methods for target state persistence
-        gateway_rpc: GatewayService object on which to make RPC calls directly
+        gateway_rpc: GatewayService implementation
         server: gRPC server instance to receive gateway client requests
         spdk_rpc: Module methods for SPDK
         spdk_rpc_client: Client of SPDK RPC server
@@ -54,17 +55,13 @@ class GatewayServer:
         self.logger = logging.getLogger(__name__)
         self.config = config
         self.spdk_process = None
+        self.gateway_rpc = None
         self.server = None
 
         gateway_name = self.config.get("gateway", "name")
         if not gateway_name:
             gateway_name = socket.gethostname()
         self.logger.info(f"Starting gateway {gateway_name}")
-
-        self._start_spdk()
-        self.gateway_state = OmapGatewayState(self.config)
-        self.gateway_rpc = GatewayService(self.config, self.gateway_state,
-                                          self.spdk_rpc, self.spdk_rpc_client)
 
     def __enter__(self):
         return self
@@ -91,14 +88,34 @@ class GatewayServer:
     def serve(self):
         """Starts gateway server."""
 
+        # Start SPDK
+        self._start_spdk()
+
         # Register service implementation with server
+        omap_state = OmapGatewayState(self.config)
+        local_state = LocalGatewayState()
+        gateway_state = GatewayStateHandler(self.config, local_state,
+                                            omap_state, self.gateway_rpc_caller)
+        self.gateway_rpc = GatewayService(self.config, gateway_state,
+                                          self.spdk_rpc, self.spdk_rpc_client)
         self.server = grpc.server(futures.ThreadPoolExecutor(max_workers=1))
         pb2_grpc.add_GatewayServicer_to_server(self.gateway_rpc, self.server)
+
+        # Add listener port
+        self._add_server_listener()
+
+        # Check for existing NVMeoF target state
+        gateway_state.start_update()
+
+        # Start server
+        self.server.start()
+
+    def _add_server_listener(self):
+        """Adds listener port to server."""
 
         enable_auth = self.config.getboolean("gateway", "enable_auth")
         gateway_addr = self.config.get("gateway", "addr")
         gateway_port = self.config.get("gateway", "port")
-
         if enable_auth:
             # Read in key and certificates for authentication
             server_key = self.config.get("mtls", "server_key")
@@ -126,19 +143,6 @@ class GatewayServer:
             self.server.add_insecure_port("{}:{}".format(
                 gateway_addr, gateway_port))
 
-        # Check for existing NVMeoF target state
-        self._restore_state()
-        # Start server
-        self.logger.info("Starting server...")
-        self.server.start()
-        while True:
-            timedout = self.server.wait_for_termination(timeout=1)
-            if not timedout:
-                break
-            alive = self._ping()
-            if not alive:
-                break
-
     def _start_spdk(self):
         """Starts SPDK process."""
 
@@ -152,8 +156,7 @@ class GatewayServer:
         # Start target
         tgt_path = self.config.get("spdk", "tgt_path")
         spdk_rpc_socket = self.config.get("spdk", "rpc_socket")
-        spdk_tgt_cmd_extra_args = self.config.get("spdk",
-                                                  "tgt_cmd_extra_args")
+        spdk_tgt_cmd_extra_args = self.config.get("spdk", "tgt_cmd_extra_args")
         spdk_cmd = os.path.join(spdk_path, tgt_path)
         cmd = [spdk_cmd, "-u", "-r", spdk_rpc_socket]
         if spdk_tgt_cmd_extra_args:
@@ -196,8 +199,8 @@ class GatewayServer:
             raise
 
         # Implicitly create transports
-        spdk_transports = self.config.get_with_default(
-            "spdk", "transports", "tcp")
+        spdk_transports = self.config.get_with_default("spdk", "transports",
+                                                       "tcp")
         for trtype in spdk_transports.split():
             self._create_transport(trtype.lower())
 
@@ -225,16 +228,15 @@ class GatewayServer:
                 f"Create Transport {trtype} returned with error: \n {ex}")
             raise
 
-    def _restore_state(self):
-        """Restores NVMeoF target state."""
-        callbacks = {
-            self.gateway_state.BDEV_PREFIX: self.gateway_rpc.create_bdev,
-            self.gateway_state.SUBSYSTEM_PREFIX: self.gateway_rpc.create_subsystem,
-            self.gateway_state.NAMESPACE_PREFIX: self.gateway_rpc.add_namespace,
-            self.gateway_state.HOST_PREFIX: self.gateway_rpc.add_host,
-            self.gateway_state.LISTENER_PREFIX: self.gateway_rpc.create_listener
-        }
-        self.gateway_state.restore(callbacks)
+    def keep_alive(self):
+        """Continuously confirms communication with SPDK process."""
+        while True:
+            timedout = self.server.wait_for_termination(timeout=1)
+            if not timedout:
+                break
+            alive = self._ping()
+            if not alive:
+                break
 
     def _ping(self):
         """Confirms communication with SPDK process."""
@@ -244,3 +246,48 @@ class GatewayServer:
         except Exception as ex:
             self.logger.error(f"spdk_get_version failed with: \n {ex}")
             return False
+
+    def gateway_rpc_caller(self, requests, is_add_req):
+        """Passes RPC requests to gateway service."""
+        for key, val in requests.items():
+            if key.startswith(GatewayState.BDEV_PREFIX):
+                if is_add_req:
+                    req = json_format.Parse(val, pb2.create_bdev_req())
+                    self.gateway_rpc.create_bdev(req)
+                else:
+                    req = json_format.Parse(val,
+                                            pb2.delete_bdev_req(),
+                                            ignore_unknown_fields=True)
+                    self.gateway_rpc.delete_bdev(req)
+            elif key.startswith(GatewayState.SUBSYSTEM_PREFIX):
+                if is_add_req:
+                    req = json_format.Parse(val, pb2.create_subsystem_req())
+                    self.gateway_rpc.create_subsystem(req)
+                else:
+                    req = json_format.Parse(val,
+                                            pb2.delete_subsystem_req(),
+                                            ignore_unknown_fields=True)
+                    self.gateway_rpc.delete_subsystem(req)
+            elif key.startswith(GatewayState.NAMESPACE_PREFIX):
+                if is_add_req:
+                    req = json_format.Parse(val, pb2.add_namespace_req())
+                    self.gateway_rpc.add_namespace(req)
+                else:
+                    req = json_format.Parse(val,
+                                            pb2.remove_namespace_req(),
+                                            ignore_unknown_fields=True)
+                    self.gateway_rpc.remove_namespace(req)
+            elif key.startswith(GatewayState.HOST_PREFIX):
+                if is_add_req:
+                    req = json_format.Parse(val, pb2.add_host_req())
+                    self.gateway_rpc.add_host(req)
+                else:
+                    req = json_format.Parse(val, pb2.remove_host_req())
+                    self.gateway_rpc.remove_host(req)
+            elif key.startswith(GatewayState.LISTENER_PREFIX):
+                if is_add_req:
+                    req = json_format.Parse(val, pb2.create_listener_req())
+                    self.gateway_rpc.create_listener(req)
+                else:
+                    req = json_format.Parse(val, pb2.delete_listener_req())
+                    self.gateway_rpc.delete_listener(req)
