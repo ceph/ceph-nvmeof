@@ -170,7 +170,8 @@ class GatewayServer:
         # Initialization
         timeout = self.config.getfloat("spdk", "timeout")
         log_level = self.config.get("spdk", "log_level")
-        conn_retries = self.config.getint("spdk", "conn_retries")
+        conn_retries = self.config.getint_with_default("spdk",
+                                                       "conn_retries", 10)
         self.logger.info({
             f"Attempting to initialize SPDK: rpc_socket: {spdk_rpc_socket},",
             f" conn_retries: {conn_retries}, timeout: {timeout}",
