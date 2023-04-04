@@ -194,13 +194,15 @@ class GatewayClient:
     @cli.cmd([
         argument("-n", "--subnqn", help="Subsystem NQN", required=True),
         argument("-b", "--bdev", help="Bdev name", required=True),
+        argument("-i", "--nsid", help="Namespace ID", type=int),
     ])
     def add_namespace(self, args):
         """Adds a namespace to a subsystem."""
 
         try:
             req = pb2.add_namespace_req(subsystem_nqn=args.subnqn,
-                                        bdev_name=args.bdev)
+                                        bdev_name=args.bdev,
+                                        nsid=args.nsid)
             ret = self.stub.add_namespace(req)
             self.logger.info(
                 f"Added namespace {ret.nsid} to {args.subnqn}: {ret.status}")
