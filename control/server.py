@@ -156,7 +156,8 @@ class GatewayServer:
         # Start target
         tgt_path = self.config.get("spdk", "tgt_path")
         spdk_rpc_socket = self.config.get("spdk", "rpc_socket")
-        spdk_tgt_cmd_extra_args = self.config.get("spdk", "tgt_cmd_extra_args")
+        spdk_tgt_cmd_extra_args = self.config.get_with_default(
+            "spdk", "tgt_cmd_extra_args", "")
         spdk_cmd = os.path.join(spdk_path, tgt_path)
         cmd = [spdk_cmd, "-u", "-r", spdk_rpc_socket]
         if spdk_tgt_cmd_extra_args:
