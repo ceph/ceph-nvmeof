@@ -83,7 +83,6 @@ class GatewayServer:
             self.server.stop(None)
 
         self.logger.info("Exiting the gateway process.")
-        return True
 
     def serve(self):
         """Starts gateway server."""
