@@ -1,10 +1,13 @@
+
 import copy
 import pytest
 import time
 import re
 import os
+import sys
 import unittest
 from control.server import GatewayServer
+from unittest import mock
 
 class TestServer(unittest.TestCase):
     @pytest.fixture(autouse=True)
@@ -67,6 +70,45 @@ class TestServer(unittest.TestCase):
                 gatewayA.serve()
                 gatewayB.serve()
         self.validate_exception(cm.exception)
+
+class TestGatewayServer(unittest.TestCase):
+    """Tests for GatewayServer."""
+    @pytest.fixture(autouse=True)
+    def _config(self, config):
+        self.config = config
+
+    @pytest.fixture(autouse=True)
+    def server(self):
+        self.server = GatewayServer(self.config)
+
+    def test_ping_pass(self):
+        """Confirm ping returns True on successful communication with SPDK."""
+        self.server.rpc = mock.Mock(return_value=True)
+        self.server.spdk_rpc_ping_client = None
+        assert self.server._ping()
+
+    def test_ping_fail(self):
+        """Confirm ping returns False on failed communication with SPDK."""
+        self.server.rpc = mock.Mock(side_effect=Exception())
+        assert not self.server._ping()
+
+    def test_exit_pass(self):
+        """Confirms GW is able to shut down the SPDK"""
+        self.server.spdk_process = mock.Mock()
+        self.server.__exit__("exc_type", "exc_value", "traceback")
+        self.server.spdk_process.terminate.assert_called_once()
+        self.server.spdk_process.communicate = mock.Mock(side_effect=Exception())
+        assert self.server.spdk_process.kill()
+
+    def test_server_start_spdk_pass(self):
+        """Confirms GW is able to successfully start the SPDK"""
+
+        sys.modules['spdk.rpc'] = mock.Mock()
+        self.server.config.get = mock.Mock(return_value="" )
+        self.server.config.get_with_default = mock.Mock(return_value="" )
+        with mock.patch('subprocess.Popen', return_value = mock.Mock()) as mock_Popen:
+            self.server._start_spdk()
+        assert self.server.spdk_process
 
 if __name__ == '__main__':
     unittest.main()
