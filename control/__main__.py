@@ -9,6 +9,8 @@
 
 import logging
 import argparse
+import configparser
+from pydantic import ValidationError
 from .server import GatewayServer
 from .config import GatewayConfig
 
@@ -28,8 +30,19 @@ if __name__ == '__main__':
         help="Path to config file",
     )
     args = parser.parse_args()
+    conf = configparser.ConfigParser()
+    file_list = conf.read(args.config)
+    if not file_list:
+        logger.error(f"Config file empty or not found: {args.config}")
+        exit()
 
-    config = GatewayConfig(args.config)
+    # Validate config
+    try:
+        config = GatewayConfig(**conf)
+    except ValidationError as e:
+        logger.error(f"Invalid config file: {e}")
+        exit()
+
     with GatewayServer(config) as gateway:
         gateway.serve()
         gateway.keep_alive()

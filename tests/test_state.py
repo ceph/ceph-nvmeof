@@ -7,8 +7,8 @@ from control.state import LocalGatewayState, OmapGatewayState, GatewayStateHandl
 @pytest.fixture(scope="module")
 def ioctx(config):
     """Opens IO context to ceph pool."""
-    ceph_pool = config.get("ceph", "pool")
-    ceph_conf = config.get("ceph", "config_file")
+    ceph_pool = config.ceph.pool
+    ceph_conf = config.ceph.config_file
     conn = rados.Rados(conffile=ceph_conf)
     conn.connect()
     ioctx = conn.open_ioctx(ceph_pool)

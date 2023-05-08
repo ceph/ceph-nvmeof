@@ -1,2 +1,4 @@
 grpcio
 grpcio-tools
+pydantic
+typing-extensions

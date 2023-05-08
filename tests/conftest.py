@@ -1,5 +1,6 @@
 import pytest
 import rados
+import configparser
 from control.config import GatewayConfig
 from control.state import OmapGatewayState
 
@@ -26,7 +27,9 @@ def conffile(request):
 @pytest.fixture(scope="session")
 def config(conffile):
     """Returns config file settings."""
-    return GatewayConfig(conffile)
+    conf = configparser.ConfigParser()
+    conf.read(conffile)
+    return GatewayConfig(**conf)
 
 
 @pytest.fixture(scope="session")

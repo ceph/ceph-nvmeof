@@ -25,7 +25,6 @@ class GatewayService(pb2_grpc.GatewayServicer):
     Instance attributes:
         config: Basic gateway parameters
         logger: Logger instance to track server events
-        gateway_name: Gateway identifier
         gateway_state: Methods for target state persistence
         spdk_rpc: Module methods for SPDK
         spdk_rpc_client: Client of SPDK RPC server
@@ -38,10 +37,6 @@ class GatewayService(pb2_grpc.GatewayServicer):
         self.gateway_state = gateway_state
         self.spdk_rpc = spdk_rpc
         self.spdk_rpc_client = spdk_rpc_client
-
-        self.gateway_name = self.config.get("gateway", "name")
-        if not self.gateway_name:
-            self.gateway_name = socket.gethostname()
 
     def create_bdev(self, request, context=None):
         """Creates a bdev from an RBD image."""
@@ -336,11 +331,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     "both gateway_name and traddr or neither must be specified")
 
             if not request.gateway_name or \
-               request.gateway_name == self.gateway_name:
+               request.gateway_name == self.config.gateway.name:
                 if not request.traddr:
-                    traddr = self.config.get("gateway", "addr")
-                    if not traddr:
-                        raise Exception("gateway.addr option is not set")
+                    traddr = self.config.gateway.addr
                 else:
                     traddr = request.traddr
 
@@ -390,11 +383,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     "both gateway_name and traddr or neither must be specified")
 
             if not request.gateway_name or \
-               request.gateway_name == self.gateway_name:
+               request.gateway_name == self.config.gateway.name:
                 if not request.traddr:
-                    traddr = self.config.get("gateway", "addr")
-                    if not traddr:
-                        raise Exception("gateway.addr option is not set")
+                    traddr = self.config.gateway.addr
                 else:
                     traddr = request.traddr
 

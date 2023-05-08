@@ -11,6 +11,7 @@ import argparse
 import grpc
 import json
 import logging
+import configparser
 from .generated import gateway_pb2_grpc as pb2_grpc
 from .generated import gateway_pb2 as pb2
 from .config import GatewayConfig
@@ -96,20 +97,15 @@ class GatewayClient:
     def connect(self, config):
         """Connects to server and sets stub."""
 
-        # Read in configuration parameters
-        host = config.get("gateway", "addr")
-        port = config.get("gateway", "port")
-        enable_auth = config.getboolean("gateway", "enable_auth")
-        server = "{}:{}".format(host, port)
+        server = "{}:{}".format(config.gateway.addr, config.gateway.port)
 
-        if enable_auth:
-
+        if config.gateway.enable_auth:
             # Create credentials for mutual TLS and a secure channel
-            with open(config.get("mtls", "client_cert"), "rb") as f:
+            with open(config.mtls.client_cert, "rb") as f:
                 client_cert = f.read()
-            with open(config.get("mtls", "client_key"), "rb") as f:
+            with open(config.mtls.client_key, "rb") as f:
                 client_key = f.read()
-            with open(config.get("mtls", "server_cert"), "rb") as f:
+            with open(config.mtls.server_cert, "rb") as f:
                 server_cert = f.read()
 
             credentials = grpc.ssl_channel_credentials(
@@ -336,7 +332,9 @@ class GatewayClient:
 def main(args=None):
     client = GatewayClient()
     parsed_args = client.cli.parser.parse_args(args)
-    config = GatewayConfig(parsed_args.config)
+    conf = configparser.ConfigParser()
+    conf.read(parsed_args.config)
+    config = GatewayConfig(**conf)
     client.connect(config)
     if parsed_args.subcommand is None:
         client.cli.parser.print_help()

@@ -16,19 +16,18 @@ def conn(config):
     """Sets up and tears down Gateways A and B."""
     # Setup GatewayA and GatewayB configs
     configA = copy.deepcopy(config)
-    configA.config["gateway"]["name"] = "GatewayA"
-    configA.config["gateway"]["group"] = "Group1"
-    configA.config["gateway"]["state_update_notify"] = str(update_notify)
+    configA.gateway.name = "GatewayA"
+    configA.gateway.group = "Group1"
+    configA.gateway.state_update_notify = update_notify
     configB = copy.deepcopy(configA)
-    addr = configA.get("gateway", "addr")
-    portA = configA.getint("gateway", "port")
+    addr = configA.gateway.addr
+    portA = configA.gateway.port
     portB = portA + 1
-    configB.config["gateway"]["name"] = "GatewayB"
-    configB.config["gateway"]["port"] = str(portB)
-    configB.config["gateway"]["state_update_interval_sec"] = str(
-        update_interval_sec)
-    configB.config["spdk"]["rpc_socket"] = "/var/tmp/spdk_GatewayB.sock"
-    configB.config["spdk"]["tgt_cmd_extra_args"] = "-m 0x02"
+    configB.gateway.name = "GatewayB"
+    configB.gateway.port = portB
+    configB.gateway.state_update_interval_sec = update_interval_sec
+    configB.spdk.rpc_socket = "/var/tmp/spdk_GatewayB.sock"
+    configB.spdk.tgt_cmd_extra_args = "-m 0x02"
 
     # Start servers
     gatewayA = GatewayServer(configA)
@@ -65,7 +64,7 @@ def test_multi_gateway_coordination(config, image, conn):
     nqn = "nqn.2016-06.io.spdk:cnode1"
     serial = "SPDK00000000000001"
     nsid = 10
-    pool = config.get("ceph", "pool")
+    pool = config.ceph.pool
 
     # Send requests to create a subsytem with one namespace to GatewayA
     bdev_req = pb2.create_bdev_req(bdev_name=bdev,

@@ -58,11 +58,6 @@ class GatewayServer:
         self.gateway_rpc = None
         self.server = None
 
-        gateway_name = self.config.get("gateway", "name")
-        if not gateway_name:
-            gateway_name = socket.gethostname()
-        self.logger.info(f"Starting gateway {gateway_name}")
-
     def __enter__(self):
         return self
 
@@ -73,7 +68,7 @@ class GatewayServer:
             self.logger.info("Terminating SPDK...")
             self.spdk_process.terminate()
             try:
-                timeout = self.config.getfloat("spdk", "timeout")
+                timeout = self.config.spdk.timeout
                 self.spdk_process.communicate(timeout=timeout)
             except subprocess.TimeoutExpired:
                 self.spdk_process.kill()
@@ -86,6 +81,8 @@ class GatewayServer:
 
     def serve(self):
         """Starts gateway server."""
+
+        self.logger.info(f"Starting gateway {self.config.gateway.name}")
 
         # Start SPDK
         self._start_spdk()
@@ -112,14 +109,13 @@ class GatewayServer:
     def _add_server_listener(self):
         """Adds listener port to server."""
 
-        enable_auth = self.config.getboolean("gateway", "enable_auth")
-        gateway_addr = self.config.get("gateway", "addr")
-        gateway_port = self.config.get("gateway", "port")
-        if enable_auth:
+        addr = "{}:{}".format(self.config.gateway.addr, self.config.gateway.port)
+
+        if self.config.gateway.enable_auth:
             # Read in key and certificates for authentication
-            server_key = self.config.get("mtls", "server_key")
-            server_cert = self.config.get("mtls", "server_cert")
-            client_cert = self.config.get("mtls", "client_cert")
+            server_key = self.config.mtls.server_key
+            server_cert = self.config.mtls.server_cert
+            client_cert = self.config.mtls.client_cert
             with open(server_key, "rb") as f:
                 private_key = f.read()
             with open(server_cert, "rb") as f:
@@ -135,28 +131,25 @@ class GatewayServer:
             )
 
             # Add secure port using crendentials
-            self.server.add_secure_port(
-                "{}:{}".format(gateway_addr, gateway_port), server_credentials)
+            self.server.add_secure_port(addr, server_credentials)
         else:
             # Authentication is not enabled
-            self.server.add_insecure_port("{}:{}".format(
-                gateway_addr, gateway_port))
+            self.server.add_insecure_port(addr)
 
     def _start_spdk(self):
         """Starts SPDK process."""
 
         # Get path and import SPDK's RPC modules
-        spdk_path = self.config.get("spdk", "spdk_path")
+        spdk_path = self.config.spdk.spdk_path
         sys.path.append(os.path.join(spdk_path, "spdk/python"))
         self.logger.info(f"SPDK PATH: {spdk_path}")
         import spdk.rpc as spdk_rpc
         self.spdk_rpc = spdk_rpc
 
         # Start target
-        tgt_path = self.config.get("spdk", "tgt_path")
-        spdk_rpc_socket = self.config.get("spdk", "rpc_socket")
-        spdk_tgt_cmd_extra_args = self.config.get_with_default(
-            "spdk", "tgt_cmd_extra_args", "")
+        tgt_path = self.config.spdk.tgt_path
+        spdk_rpc_socket = self.config.spdk.rpc_socket
+        spdk_tgt_cmd_extra_args = self.config.spdk.tgt_cmd_extra_args
         spdk_cmd = os.path.join(spdk_path, tgt_path)
         cmd = [spdk_cmd, "-u", "-r", spdk_rpc_socket]
         if spdk_tgt_cmd_extra_args:
@@ -171,10 +164,9 @@ class GatewayServer:
             raise
 
         # Initialization
-        timeout = self.config.getfloat("spdk", "timeout")
-        log_level = self.config.get("spdk", "log_level")
-        conn_retries = self.config.getint_with_default("spdk",
-                                                       "conn_retries", 10)
+        timeout = self.config.spdk.timeout
+        log_level = self.config.spdk.log_level
+        conn_retries = self.config.spdk.conn_retries
         self.logger.info({
             f"Attempting to initialize SPDK: rpc_socket: {spdk_rpc_socket},",
             f" conn_retries: {conn_retries}, timeout: {timeout}",
@@ -199,27 +191,19 @@ class GatewayServer:
             raise
 
         # Implicitly create transports
-        spdk_transports = self.config.get_with_default("spdk", "transports",
-                                                       "tcp")
+        spdk_transports = self.config.spdk.transports
         for trtype in spdk_transports.split():
-            self._create_transport(trtype.lower())
+            self._create_transport(trtype)
 
     def _create_transport(self, trtype):
         """Initializes a transport type."""
         args = {'trtype': trtype}
         name = "transport_" + trtype + "_options"
-        options = self.config.get_with_default("spdk", name, "")
+        options = getattr(self.config.spdk, name)
 
         self.logger.debug(f"create_transport: {trtype} options: {options}")
-
         if options:
-            try:
-                args.update(json.loads(options))
-            except json.decoder.JSONDecodeError as ex:
-                self.logger.error(
-                    f"Failed to parse spdk {name} ({options}): \n {ex}")
-                raise
-
+            args.update(json.loads(options))
         try:
             status = self.spdk_rpc.nvmf.nvmf_create_transport(
                 self.spdk_rpc_client, **args)

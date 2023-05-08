@@ -168,10 +168,10 @@ class OmapGatewayState(GatewayState):
         self.version = 1
         self.logger = logging.getLogger(__name__)
         self.watch = None
-        gateway_group = self.config.get("gateway", "group")
+        gateway_group = self.config.gateway.group
         self.omap_name = f"nvmeof.{gateway_group}.state" if gateway_group else "nvmeof.state"
-        ceph_pool = self.config.get("ceph", "pool")
-        ceph_conf = self.config.get("ceph", "config_file")
+        ceph_pool = self.config.ceph.pool
+        ceph_conf = self.config.ceph.config_file
 
         try:
             conn = rados.Rados(conffile=ceph_conf)
@@ -327,13 +327,11 @@ class GatewayStateHandler:
         self.gateway_rpc_caller = gateway_rpc_caller
         self.update_timer = None
         self.logger = logging.getLogger(__name__)
-        self.update_interval = self.config.getint("gateway",
-                                                  "state_update_interval_sec")
+        self.update_interval = self.config.gateway.state_update_interval_sec
         if self.update_interval < 1:
             self.logger.info("Invalid state_update_interval_sec. Setting to 1.")
             self.update_interval = 1
-        self.use_notify = self.config.getboolean("gateway",
-                                                 "state_update_notify")
+        self.use_notify = self.config.gateway.state_update_notify
 
     def add_bdev(self, bdev_name: str, val: str):
         """Adds a bdev to the state data stores."""
