@@ -18,8 +18,9 @@ authors = [
 keywords = []
 classifiers = [] # https://pypi.org/classifiers/
 dependencies = [
-  "grpcio == 1.51.3",
-  "grpcio_tools == 1.51.3"
+    "grpcio == 1.51.3",
+    "grpcio_tools == 1.51.3",
+    "pytest>=7.3.1",
 ]
 
 [tool.pdm.scripts]

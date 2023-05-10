@@ -1,0 +1,67 @@
+name: Run pytest
+on: [push, pull_request, workflow_dispatch]
+
+jobs:
+  pytest:
+    strategy:
+      matrix:
+        test: ["cli", "state", "multi-gateway"]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          # git submodule update --init --recursive
+          submodules: recursive
+
+      - name: Build images
+        run: |
+          make build
+
+      - name: Setup huge pages
+        run: |
+          make setup
+
+      - name: Start ceph-cluster
+        run: |
+          SVC=ceph OPTS="--detach" make up
+
+      - name: Wait for the ceph-cluster container to become healthy
+        run: |
+          while true; do
+            container_status=$(docker inspect --format='{{.State.Health.Status}}' ceph)
+            if [[ $container_status == "healthy" ]]; then
+            break
+          else
+            # Wait for a specific time before checking again
+            sleep 1
+            echo -n .
+          fi
+          done
+          echo
+
+      - name: Create RBD image
+        run: |
+          echo "💁 ceph list pools:"
+          SVC=ceph OPTS="-T" CMD="ceph osd lspools" make exec
+          echo "💁 rbd create:"
+          SVC=ceph OPTS="-T" CMD="rbd create rbd/mytestdevimage --size 16" make exec
+          echo "💁 ls rbd:"
+          SVC=ceph OPTS="-T" CMD="rbd ls rbd" make exec
+
+      - name: Run ${{ matrix.test }} test
+        run: |
+          SVC="nvmeof-pytest-${{ matrix.test }}" make run || (OPTS="" make logs; exit 1)
+
+      - name: Display Logs
+        run: |
+          OPTS="" make logs
+
+      - name: Compose Down
+        run: make down
+
+      - name: Compose Stop
+        run: make stop
+
+      - name: Compose Clean
+        run: make clean

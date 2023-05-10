@@ -21,7 +21,6 @@ def argument(*name_or_flags, **kwargs):
 
     return (list(name_or_flags), kwargs)
 
-
 class Parser:
     """Class to simplify creation of client CLI.
 
@@ -36,7 +35,7 @@ class Parser:
             description="CLI to manage NVMe gateways")
         self.parser.add_argument(
             "--server-address",
-            default="localhost",
+            default="ceph-nvmeof_nvmeof_1",
             type=str,
             help="Server address",
         )
@@ -165,6 +164,7 @@ class GatewayClient:
             self.logger.info(f"Created bdev {ret.bdev_name}: {ret.status}")
         except Exception as error:
             self.logger.error(f"Failed to create bdev: \n {error}")
+            sys.exit(1)
 
     @cli.cmd([
         argument("-b", "--bdev", help="Bdev name", required=True),
@@ -178,6 +178,7 @@ class GatewayClient:
             self.logger.info(f"Deleted bdev {args.bdev}: {ret.status}")
         except Exception as error:
             self.logger.error(f"Failed to delete bdev: \n {error}")
+            sys.exit(1)
 
     @cli.cmd([
         argument("-n", "--subnqn", help="Subsystem NQN", required=True),
@@ -193,6 +194,7 @@ class GatewayClient:
             self.logger.info(f"Created subsystem {args.subnqn}: {ret.status}")
         except Exception as error:
             self.logger.error(f"Failed to create subsystem: \n {error}")
+            sys.exit(1)
 
     @cli.cmd([
         argument("-n", "--subnqn", help="Subsystem NQN", required=True),
@@ -206,6 +208,7 @@ class GatewayClient:
             self.logger.info(f"Deleted subsystem {args.subnqn}: {ret.status}")
         except Exception as error:
             self.logger.error(f"Failed to delete subsystem: \n {error}")
+            sys.exit(1)
 
     @cli.cmd([
         argument("-n", "--subnqn", help="Subsystem NQN", required=True),
@@ -224,6 +227,7 @@ class GatewayClient:
                 f"Added namespace {ret.nsid} to {args.subnqn}: {ret.status}")
         except Exception as error:
             self.logger.error(f"Failed to add namespace: \n {error}")
+            sys.exit(1)
 
     @cli.cmd([
         argument("-n", "--subnqn", help="Subsystem NQN", required=True),
@@ -241,6 +245,7 @@ class GatewayClient:
                 f" {ret.status}")
         except Exception as error:
             self.logger.error(f"Failed to remove namespace: \n {error}")
+            sys.exit(1)
 
     @cli.cmd([
         argument("-n", "--subnqn", help="Subsystem NQN", required=True),
@@ -262,6 +267,7 @@ class GatewayClient:
                     f" {ret.status}")
         except Exception as error:
             self.logger.error(f"Failed to add host: \n {error}")
+            sys.exit(1)
 
     @cli.cmd([
         argument("-n", "--subnqn", help="Subsystem NQN", required=True),
@@ -283,6 +289,7 @@ class GatewayClient:
                     f" {ret.status}")
         except Exception as error:
             self.logger.error(f"Failed to remove host: \n {error}")
+            sys.exit(1)
 
     @cli.cmd([
         argument("-n", "--subnqn", help="Subsystem NQN", required=True),
@@ -308,6 +315,7 @@ class GatewayClient:
             self.logger.info(f"Created {args.subnqn} listener: {ret.status}")
         except Exception as error:
             self.logger.error(f"Failed to create listener: \n {error}")
+            sys.exit(1)
 
     @cli.cmd([
         argument("-n", "--subnqn", help="Subsystem NQN", required=True),
@@ -334,6 +342,7 @@ class GatewayClient:
                 f"Deleted {args.traddr} from {args.subnqn}: {ret.status}")
         except Exception as error:
             self.logger.error(f"Failed to delete listener: \n {error}")
+            sys.exit(1)
 
     @cli.cmd()
     def get_subsystems(self, args):
@@ -347,6 +356,7 @@ class GatewayClient:
             self.logger.info(f"Get subsystems:\n{formatted_subsystems}")
         except Exception as error:
             self.logger.error(f"Failed to get subsystems: \n {error}")
+            sys.exit(1)
 
 
 def main(args=None):

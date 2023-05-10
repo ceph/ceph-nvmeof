@@ -4,8 +4,8 @@ import grpc
 import json
 import time
 from control.server import GatewayServer
-from control.generated import gateway_pb2 as pb2
-from control.generated import gateway_pb2_grpc as pb2_grpc
+from control.proto import gateway_pb2 as pb2
+from control.proto import gateway_pb2_grpc as pb2_grpc
 
 update_notify = True
 update_interval_sec = 5
@@ -20,6 +20,7 @@ def conn(config):
     configA.config["gateway"]["group"] = "Group1"
     configA.config["gateway"]["state_update_notify"] = str(update_notify)
     configB = copy.deepcopy(configA)
+    extra_args = configA.get("spdk", "tgt_cmd_extra_args")
     addr = configA.get("gateway", "addr")
     portA = configA.getint("gateway", "port")
     portB = portA + 1
@@ -28,7 +29,7 @@ def conn(config):
     configB.config["gateway"]["state_update_interval_sec"] = str(
         update_interval_sec)
     configB.config["spdk"]["rpc_socket"] = "/var/tmp/spdk_GatewayB.sock"
-    configB.config["spdk"]["tgt_cmd_extra_args"] = "-m 0x02"
+    configB.config["spdk"]["tgt_cmd_extra_args"] = extra_args + " -m 0x02"
 
     # Start servers
     gatewayA = GatewayServer(configA)
@@ -50,7 +51,6 @@ def conn(config):
     gatewayA.server.stop(grace=1)
     gatewayB.server.stop(grace=1)
     gatewayB.gateway_rpc.gateway_state.delete_state()
-
 
 def test_multi_gateway_coordination(config, image, conn):
     """Tests state coordination in a gateway group.

@@ -1,0 +1,72 @@
+name: Build container Test
+on: [push, pull_request, workflow_dispatch]
+env:
+  # Control gRPC port
+  PORT: 5500
+
+jobs:
+  build-container-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          # git submodule update --init --recursive
+          submodules: recursive
+
+      - name: Build container images
+        run: make build
+
+      - name: Setup huge pages
+        run: make setup
+
+      - name: Compose Up
+        run: |
+          SVC=nvmeof OPTS="--detach --scale nvmeof=1" make up || (OPTS="" make logs; exit 1)
+
+      - name: Wait for controller to start
+        run: |
+          until nc -z localhost $PORT; do
+            echo -n .
+            sleep 1
+          done
+          echo
+
+      - name: List containers
+        run: |
+          make ps
+
+      - name: Create RBD image
+        run: |
+          echo "💁 ceph list pools:"
+          SVC=ceph OPTS="-T" CMD="ceph osd lspools" make exec
+          echo "💁 rbd create:"
+          SVC=ceph OPTS="-T" CMD="rbd create rbd/mytestdevimage --size 16" make exec
+          echo "💁 ls rbd:"
+          SVC=ceph OPTS="-T" CMD="rbd ls rbd" make exec
+
+      - name: Run CLI
+        run: |
+          make run
+
+          CMD="create_bdev -i mytestdevimage -p rbd -b Ceph0" make run
+          CMD="create_subsystem -n nqn.2016-06.io.spdk:cnode1 -s SPDK00000000000001" make run
+          CMD="add_namespace -n nqn.2016-06.io.spdk:cnode1 -b Ceph0" make run
+          CMD="add_host -n nqn.2016-06.io.spdk:cnode1 -t '*'" make run
+          CMD="create_listener -n nqn.2016-06.io.spdk:cnode1 -s 5001" make run
+          # should fail https://github.com/ceph/ceph-nvmeof/issues/137
+          if CMD="create_bdev -i mytestdevimage -p rbd -b Ceph0" make run; then exit 1; fi
+          if CMD="create_bdev -i wrongimage -p rbd -b Ceph0" make run; then exit 1; fi
+
+      - name: Display Logs
+        run: |
+          OPTS="" make logs
+
+      - name: Compose Down
+        run: make down
+
+      - name: Compose Stop
+        run: make stop
+
+      - name: Compose Clean
+        run: make clean
