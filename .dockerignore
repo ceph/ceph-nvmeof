@@ -1,6 +1,0 @@
-env
-docker/Dockerfile.gateway
-docker/Dockerfile.spdk
-venv
-*.log
-README*

@@ -15,16 +15,7 @@ SHELL := /bin/bash
 PROJDIR := $(dir $(realpath $(firstword $(MAKEFILE_LIST))))
 MODULE := control
 curr_dir := $(shell pwd)
-DOCKER_NO_CACHE :=
-CONT_NAME := ceph-nvmeof
-CONT_VERS := latest
-REMOTE_REPO ?= ""
-SPDK_VERSION := $(shell cd spdk;git -C . describe --tags --abbrev=0 | sed -r 's/-/\./g')
-DOCKER_VERSION := $(shell docker image ls | grep spdk | tr -s ' ' | cut -d ' ' -f2)
 PYVENV := $(PROJDIR)/venv
-CEPH_VERSION := 17.2.5
-UBI_VERSION ?= ubi8
-PYTHON_VERSION := 36
 
 # Utility Function to activate the Python Virtual Environment
 define callpyvenv =
@@ -72,43 +63,6 @@ endif
 unittests: $(PYVENV) test_image
 	@docker run -it -v $${PWD}:/src -w /src -e HOME=/src \
 		test_image:latest ./test.sh
-
-
-## image: Build spdk image if it does not exist
-.PHONY: spdk
-spdk:
-ifneq ($(DOCKER_VERSION), $(SPDK_VERSION))
-	docker build \
-	--network=host \
-	--build-arg spdk_version=$(SPDK_VERSION) \
-	--build-arg spdk_branch=ceph-nvmeof \
-	${DOCKER_NO_CACHE} \
-	-t spdk:$(SPDK_VERSION) -f docker/Dockerfile.spdk .
-else
-	@echo "Docker image for version: $(SPDK_VERSION) exists"
-endif
-
-## spdk_rpms: Copy the rpms from spdk container in output directory
-.PHONY: spdk_rpms
-spdk_rpms:
-	docker run --rm -v $(curr_dir)/output:/output spdk:$(SPDK_VERSION) \
-	bash -c "cp -f /tmp/rpms/*.rpm /output/"
-
-
-## gateway: Build the nvme gateway image. The spdk image needs to be built first.
-.PHONY: gateway
-gateway: spdk grpc
-	docker build \
-	--network=host \
-	${DOCKER_NO_CACHE} \
-	--build-arg spdk_version=$(SPDK_VERSION) \
-	-t ${CONT_NAME}:${CONT_VERS} -f docker/Dockerfile.gateway .
-
-## push_gateway: Publish container into the docker registry for devs
-.PHONY: push_gateway
-push_gateway: gateway
-	docker tag ${CONT_NAME}:${CONT_VERS} ${REMOTE_REPO}/${CONT_NAME}:${CONT_VERS}
-	docker push ${REMOTE_REPO}/${CONT_NAME}:${CONT_VERS}
 
 ## clean: Clean local images and rpms
 .PHONY: clean
