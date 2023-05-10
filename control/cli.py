@@ -267,10 +267,10 @@ class GatewayClient:
 
     @cli.cmd([
         argument("-n", "--subnqn", help="Subsystem NQN", required=True),
-        argument("-g", "--gateway-name", help="Gateway name", default=""),
+        argument("-g", "--gateway-name", help="Gateway name", required=True),
         argument("-t", "--trtype", help="Transport type", default="TCP"),
         argument("-f", "--adrfam", help="Address family", default="ipv4"),
-        argument("-a", "--traddr", help="NVMe host IP", default=""),
+        argument("-a", "--traddr", help="NVMe host IP", required=True),
         argument("-s", "--trsvcid", help="Port number", required=True),
     ])
     def create_listener(self, args):
@@ -288,10 +288,10 @@ class GatewayClient:
 
     @cli.cmd([
         argument("-n", "--subnqn", help="Subsystem NQN", required=True),
-        argument("-g", "--gateway-name", help="Gateway name", default=""),
+        argument("-g", "--gateway-name", help="Gateway name", required=True),
         argument("-t", "--trtype", help="Transport type", default="TCP"),
         argument("-f", "--adrfam", help="Address family", default="ipv4"),
-        argument("-a", "--traddr", help="NVMe host IP", default=""),
+        argument("-a", "--traddr", help="NVMe host IP", required=True),
         argument("-s", "--trsvcid", help="Port number", required=True),
     ])
     def delete_listener(self, args):

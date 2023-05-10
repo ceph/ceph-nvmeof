@@ -107,7 +107,7 @@ DOCKER_BUILDKIT=1 docker-compose run --rm ceph-nvmeof-cli --server-address ceph-
 Creating nvmeof_ceph-nvmeof-cli_run ... done
 INFO:__main__:Added namespace 1 to nqn.2016-06.io.spdk:cnode1: True
 
-DOCKER_BUILDKIT=1 docker-compose run --rm ceph-nvmeof-cli --server-address ceph-nvmeof --server-port 5500 create_listener --subnqn nqn.2016-06.io.spdk:cnode1 -s 4420
+DOCKER_BUILDKIT=1 docker-compose run --rm ceph-nvmeof-cli --server-address ceph-nvmeof --server-port 5500 create_listener --subnqn nqn.2016-06.io.spdk:cnode1 -g gateway_name -a gateway_addr -s 4420
 Creating nvmeof_ceph-nvmeof-cli_run ... done
 INFO:__main__:Created nqn.2016-06.io.spdk:cnode1 listener: True
 
@@ -153,7 +153,7 @@ The same configuration can also be manually run:
 1. Create a listener so that NVMe initiators can connect to:
 
     ```bash
-    nvmeof-cli create_listener ---subnqn nqn.2016-06.io.spdk:cnode1 -s 4420
+    nvmeof-cli create_listener ---subnqn nqn.2016-06.io.spdk:cnode1 -g gateway_name -a gateway_addr -s 4420
     ```
 
 1. Define which hosts can connect:
