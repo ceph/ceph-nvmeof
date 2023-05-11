@@ -1,0 +1,26 @@
+# Runs unit-style tests when a PR is opened/reopened/updated on the devel branch
+
+name: Test components
+on:
+  pull_request:
+    branches:
+      - devel
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python 3.9
+        uses: actions/setup-python@v1
+        with:
+          python-version: 3.9
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install .[test]
+
+      - name: Run component tests with pytest
+        run: pytest tests/component
