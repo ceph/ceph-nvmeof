@@ -79,6 +79,8 @@ class GatewayServer:
         if exc_type is not None:
             self.logger.exception("GatewayServer exception occurred:")
 
+        self.gateway_state.stop_event.set()  # Stop updates
+
         if self.spdk_process is not None:
             self._stop_spdk()
 

@@ -319,6 +319,8 @@ class GatewayStateHandler:
         update_interval: Interval to periodically poll for updates
         update_timer: Timer to check for gateway state updates
         use_notify: Flag to indicate use of OMAP watch/notify
+        notify_event: Event to trigger immediate update
+        stop_event: Event to stop updates
     """
 
     def __init__(self, config, local, omap, gateway_rpc_caller):
@@ -335,6 +337,8 @@ class GatewayStateHandler:
             self.update_interval = 1
         self.use_notify = self.config.getboolean("gateway",
                                                  "state_update_notify")
+        self.notify_event = threading.Event()
+        self.stop_event = threading.Event()
 
     def add_bdev(self, bdev_name: str, val: str):
         """Adds a bdev to the state data stores."""
@@ -399,27 +403,27 @@ class GatewayStateHandler:
 
     def start_update(self):
         """Initiates periodic polling and watch/notify for updates."""
-        notify_event = threading.Event()
         if self.use_notify:
             # Register a watch on omap state
-            self.omap.register_watch(notify_event)
+            self.omap.register_watch(self.notify_event)
 
         # Start polling for state updates
         if self.update_timer is None:
             self.update_timer = threading.Thread(target=self._update_caller,
-                                                 daemon=True,
-                                                 args=(notify_event,))
+                                                 daemon=True)
             self.update_timer.start()
         else:
             self.logger.info("Update timer already set.")
 
-    def _update_caller(self, notify_event):
+    def _update_caller(self):
         """Periodically calls for update."""
         while True:
             update_time = time.time() + self.update_interval
             self.update()
-            notify_event.wait(max(update_time - time.time(), 0))
-            notify_event.clear()
+            self.notify_event.wait(max(update_time - time.time(), 0))
+            self.notify_event.clear()
+            if self.stop_event.is_set():
+                break
 
     def update(self):
         """Checks for updated omap state and initiates local update."""
