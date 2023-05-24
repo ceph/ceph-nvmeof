@@ -95,15 +95,15 @@ class GatewayState(ABC):
     def add_listener(self, subsystem_nqn: str, gateway: str, trtype: str,
                      traddr: str, trsvcid: str, val: str):
         """Adds a listener to the state data store."""
-        key = "{}{}_{}_{}_{}_{}".format(self.LISTENER_PREFIX, gateway,
-                                        subsystem_nqn, trtype, traddr, trsvcid)
+        key = "{}{}_{}_{}_{}_{}".format(self.LISTENER_PREFIX, subsystem_nqn,
+                                        gateway, trtype, traddr, trsvcid)
         self._add_key(key, val)
 
     def remove_listener(self, subsystem_nqn: str, gateway: str, trtype: str,
                         traddr: str, trsvcid: str):
         """Removes a listener from the state data store."""
-        key = "{}{}_{}_{}_{}_{}".format(self.LISTENER_PREFIX, gateway,
-                                        subsystem_nqn, trtype, traddr, trsvcid)
+        key = "{}{}_{}_{}_{}_{}".format(self.LISTENER_PREFIX, subsystem_nqn,
+                                        gateway, trtype, traddr, trsvcid)
         self._remove_key(key)
 
     @abstractmethod
