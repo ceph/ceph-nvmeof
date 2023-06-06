@@ -166,13 +166,15 @@ class GatewayClient:
     @cli.cmd([
         argument("-n", "--subnqn", help="Subsystem NQN", required=True),
         argument("-s", "--serial", help="Serial number", required=True),
+        argument("-m", "--max-namespaces", help="Maximum number of namespaces", type=int, default=0, required=False),
     ])
     def create_subsystem(self, args):
         """Creates a subsystem."""
 
         try:
             req = pb2.create_subsystem_req(subsystem_nqn=args.subnqn,
-                                           serial_number=args.serial)
+                                           serial_number=args.serial,
+                                           max_namespaces=args.max_namespaces)
             ret = self.stub.create_subsystem(req)
             self.logger.info(f"Created subsystem {args.subnqn}: {ret.status}")
         except Exception as error:

@@ -117,6 +117,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 self.spdk_rpc_client,
                 nqn=request.subsystem_nqn,
                 serial_number=request.serial_number,
+                max_namespaces=request.max_namespaces,
             )
             self.logger.info(f"create_subsystem {request.subsystem_nqn}: {ret}")
         except Exception as ex:
