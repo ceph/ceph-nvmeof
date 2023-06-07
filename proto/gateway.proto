@@ -61,6 +61,7 @@ message delete_bdev_req {
 message create_subsystem_req {
 	string subsystem_nqn = 1;
 	string serial_number = 2;
+	int32 max_namespaces = 3;
 }
 
 message delete_subsystem_req {
