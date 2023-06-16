@@ -391,6 +391,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     adrfam=request.adrfam,
                 )
                 self.logger.info(f"create_listener: {ret}")
+            else:
+                raise Exception(f"Gateway name must match current gateway"
+                                f" ({self.gateway_name})")
         except Exception as ex:
             self.logger.error(f"create_listener failed with: \n {ex}")
             if context:
@@ -432,6 +435,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     adrfam=request.adrfam,
                 )
                 self.logger.info(f"delete_listener: {ret}")
+            else:
+                raise Exception(f"Gateway name must match current gateway"
+                                f" ({self.gateway_name})")
         except Exception as ex:
             self.logger.error(f"delete_listener failed with: \n {ex}")
             if context:
