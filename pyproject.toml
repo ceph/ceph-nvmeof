@@ -19,6 +19,7 @@ authors = [
   {name = "Jason Dillaman", email = "dillaman@redhat.com"},
   {name = "Anita Shekar",   email = "anita.shekar@ibm.com"},
 ]
+maintainers = []
 keywords = []
 classifiers = [] # https://pypi.org/classifiers/
 dependencies = [
