@@ -85,6 +85,8 @@ services:
       - SYS_ADMIN # huge-pages
       - CAP_SYS_NICE # RTE
       - SYS_PTRACE # gdb
+    ulimits:
+      nofile: $NVMEOF_NOFILE
     networks:
       default:
         ipv4_address: 192.168.13.3
