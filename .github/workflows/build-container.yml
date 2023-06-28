@@ -18,7 +18,7 @@ jobs:
         run: make build
 
       - name: Setup huge pages
-        run: make setup
+        run: make setup HUGEPAGES=1024
 
       - name: Compose Up
         run: |
