@@ -27,7 +27,8 @@ build: export BUILD_DATE != date -u +"%Y-%m-%dT%H:%M:%SZ"
 
 
 up: SVC = nvmeof ## Services
-up: override OPTS += --no-build --abort-on-container-exit --remove-orphans --scale nvmeof=$(SCALE)
+up: OPTS ?= --abort-on-container-exit
+up: override OPTS += --no-build --remove-orphans --scale nvmeof=$(SCALE)
 
 clean: $(CLEAN)  ## Clean-up environment
 

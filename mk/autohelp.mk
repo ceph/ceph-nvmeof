@@ -4,8 +4,8 @@
 # hello: ## This target prints Hello World
 # LANGUAGE := esperanto ## Set the language for the Hello World message
 
-autohelp: BOLD != tput bold
-autohelp: NORMAL != tput sgr0
+autohelp: BOLD != [ -z "$$PS1" ] && tput bold
+autohelp: NORMAL != [ -z "$$PS1" ] && tput sgr0
 autohelp:
 	@echo $(AUTOHELP_SUMMARY)
 	@echo

@@ -89,11 +89,11 @@ services:
       nofile: $NVMEOF_NOFILE
     networks:
       default:
-        ipv4_address: 192.168.13.3
+        ipv4_address: $NVMEOF_IP_ADDRESS
     ports:
-      - "4420:4420" # I/O controllers
-      - "5500:5500" # Gateway
-      - "8009:8009" # Discovery
+      - "$NVMEOF_IO_PORT:$NVMEOF_IO_PORT" # I/O controllers
+      - "$NVMEOF_GW_PORT:$NVMEOF_GW_PORT" # Gateway
+      - "$NVMEOF_DISC_PORT:$NVMEOF_DISC_PORT" # Discovery
   nvmeof:
     extends:
       service: nvmeof-base
@@ -132,12 +132,8 @@ services:
         io.ceph.nvmeof:
 volumes:
   ceph-conf:
-    labels:
-      io.ceph.nvmeof:
 networks:
   default:
     ipam:
       config:
         - subnet: 192.168.13.0/24
-    labels:
-      io.ceph.nvmeof:

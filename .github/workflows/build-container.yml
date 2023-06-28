@@ -1,72 +1,65 @@
-name: Build container Test
-on: [push, pull_request, workflow_dispatch]
+name: Build, Deploy and Test Containers
+on:
+  push:
+    branches:
+      - devel
+  pull_request:
+    branches:
+      - devel
+  schedule:
+    - cron: '0 0 * * *'
+  workflow_dispatch:
 env:
-  # Control gRPC port
-  PORT: 5500
+  HUGEPAGES: 256
 
 jobs:
-  build-container-test:
+  build:
+    name: Build and test
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
         with:
-          # git submodule update --init --recursive
           submodules: recursive
 
       - name: Build container images
         run: make build
 
-      - name: Setup huge pages
-        run: make setup HUGEPAGES=1024
+      - name: Setup huge-pages
+        run: make setup HUGEPAGES=$HUGEPAGES
 
-      - name: Compose Up
+      - name: Start containers
         run: |
-          SVC=nvmeof OPTS="--detach --scale nvmeof=1" make up || (OPTS="" make logs; exit 1)
+          make up OPTS=--detach || (make logs OPTS=''; exit 1)
 
-      - name: Wait for controller to start
+      - name: Wait for the Gateway to be listening
+        timeout-minutes: 1
         run: |
-          until nc -z localhost $PORT; do
+          . .env
+          until nc -z localhost $NVMEOF_GW_PORT; do
             echo -n .
             sleep 1
           done
           echo
 
       - name: List containers
+        run: make ps
+
+      - name: List processes
+        run: make top
+
+      - name: Ping
         run: |
-          make ps
+          make run SVC=nvmeof-cli OPTS=--entrypoint=bash CMD='-c "dnf install -y iputils; ping -c1 nvmeof"'
+        
+      - name: Run test
+        run: . .env && make demo OPTS=-T # Disable TTY
 
-      - name: Create RBD image
-        run: |
-          echo "💁 ceph list pools:"
-          SVC=ceph OPTS="-T" CMD="ceph osd lspools" make exec
-          echo "💁 rbd create:"
-          SVC=ceph OPTS="-T" CMD="rbd create rbd/mytestdevimage --size 16" make exec
-          echo "💁 ls rbd:"
-          SVC=ceph OPTS="-T" CMD="rbd ls rbd" make exec
+      - name: Display logs
+        run: make logs OPTS=''
 
-      - name: Run CLI
-        run: |
-          make run
-
-          CMD="create_bdev -i mytestdevimage -p rbd -b Ceph0" make run
-          CMD="create_subsystem -n nqn.2016-06.io.spdk:cnode1 -s SPDK00000000000001" make run
-          CMD="add_namespace -n nqn.2016-06.io.spdk:cnode1 -b Ceph0" make run
-          CMD="add_host -n nqn.2016-06.io.spdk:cnode1 -t '*'" make run
-          CMD="create_listener -n nqn.2016-06.io.spdk:cnode1 -s 5001" make run
-          # should fail https://github.com/ceph/ceph-nvmeof/issues/137
-          if CMD="create_bdev -i mytestdevimage -p rbd -b Ceph0" make run; then exit 1; fi
-          if CMD="create_bdev -i wrongimage -p rbd -b Ceph0" make run; then exit 1; fi
-
-      - name: Display Logs
-        run: |
-          OPTS="" make logs
-
-      - name: Compose Down
+      - name: Shut containers down
         run: make down
 
-      - name: Compose Stop
-        run: make stop
-
-      - name: Compose Clean
+      - name: Clean up environment
         run: make clean

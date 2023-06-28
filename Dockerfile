@@ -6,6 +6,7 @@ ARG NVMEOF_TARGET  # either 'gateway' or 'cli'
 #------------------------------------------------------------------------------
 # Base image for NVMEOF_TARGET=cli (nvmeof-cli)
 FROM registry.access.redhat.com/ubi9/ubi AS base-cli
+ENV GRPC_DNS_RESOLVER=native
 ENTRYPOINT ["python3", "-m", "control.cli"]
 CMD []
 
