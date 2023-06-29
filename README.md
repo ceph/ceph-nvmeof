@@ -14,13 +14,17 @@ The [creation and management of RBD images](https://docs.ceph.com/en/latest/rbd/
 * Linux-based system with at least 16 GB of available RAM. [Fedora 37](https://fedoraproject.org/) is recommended.
 * `moby-engine` (`docker-engine`) (v20.10) and `docker-compose` (v1.29). These versions are just indicative.
 * `make` (only needed to launch `docker-compose` commands).
-* SELinux in permissive mode.
+* SELinux in permissive mode:
+  ```bash
+  sed -i s/^SELINUX=.*$/SELINUX=permissive/ /etc/selinux/config
+  setenforce 0
+  ```
 
 To install these dependencies in Fedora:
 ```bash
 sudo dnf install -y make moby-engine docker-compose
 ```
-Some [post-installation steps](https://docs.docker.com/engine/install/linux-postinstall/) are be required to use `docker` with regular users:
+Some [post-installation steps](https://docs.docker.com/engine/install/linux-postinstall/) are required to use `docker` with regular users:
 ```bash
 sudo groupadd docker
 sudo usermod -aG docker $USER

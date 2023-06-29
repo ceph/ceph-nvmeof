@@ -1,4 +1,4 @@
-name: Build, Deploy and Test Containers
+name: "Container: Build, Deploy, Test"
 on:
   push:
     branches:
@@ -48,12 +48,14 @@ jobs:
       - name: List processes
         run: make top
 
-      - name: Ping
-        run: |
-          make run SVC=nvmeof-cli OPTS=--entrypoint=bash CMD='-c "dnf install -y iputils; ping -c1 nvmeof"'
-        
+      - name: Print hosts
+        run: make run SVC=nvmeof-cli OPTS=--entrypoint=bash CMD='-c "cat /etc/hosts"'
+
+      - name: Print DNS config
+        run: make run SVC=nvmeof-cli OPTS=--entrypoint=bash CMD='-c "cat /etc/resolv.conf"'
+
       - name: Run test
-        run: . .env && make demo OPTS=-T # Disable TTY
+        run: . .env && make demo SERVER_ADDRESS=$NVMEOF_IP_ADDRESS OPTS=-T # Disable TTY
 
       - name: Display logs
         run: make logs OPTS=''
