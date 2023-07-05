@@ -13,7 +13,7 @@ env:
   HUGEPAGES: 256
 
 jobs:
-  build:
+  build-and-test:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -53,13 +53,13 @@ jobs:
       - name: Print DNS config
         run: make run SVC=nvmeof-cli OPTS=--entrypoint=bash CMD='-c "cat /etc/resolv.conf"'
 
+      - name: Run test
+        run: . .env && make demo SERVER_ADDRESS=$NVMEOF_IP_ADDRESS OPTS=-T # Disable TTY
+
       #- name: Setup tmate session
       #  uses: mxschmitt/action-tmate@v3
       #  with:
       #    limit-access-to-actor: true
-
-      - name: Run test
-        run: . .env && make demo SERVER_ADDRESS=$NVMEOF_IP_ADDRESS OPTS=-T # Disable TTY
 
       - name: Display logs
         run: make logs OPTS=''
