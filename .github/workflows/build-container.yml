@@ -47,14 +47,31 @@ jobs:
       - name: List processes
         run: make top
 
-      - name: Print hosts
-        run: make run SVC=nvmeof-cli OPTS=--entrypoint=bash CMD='-c "cat /etc/hosts"'
+      - name: Test
+        run: |
+          . .env
+          make demo SERVER_ADDRESS=$NVMEOF_IP_ADDRESS OPTS=-T # Disable TTY
 
-      - name: Print DNS config
-        run: make run SVC=nvmeof-cli OPTS=--entrypoint=bash CMD='-c "cat /etc/resolv.conf"'
+      - name: Get subsystems
+        run: |
+          eval $(make alias)
+          nvmeof-cli get_subsystems
 
-      - name: Run test
-        run: . .env && make demo SERVER_ADDRESS=$NVMEOF_IP_ADDRESS OPTS=-T # Disable TTY
+      - name: Test mounting nvmeof device locally
+        run: |
+          . .env
+          sudo modprobe nvme-fabrics
+          sudo apt install -y nvme-cli
+          sudo nvme list
+          sudo nvme discover -t tcp -a $NVMEOF_IP_ADDRESS -s $NVMEOF_IO_PORT
+          sudo nvme connect -t tcp --traddr $NVMEOF_IP_ADDRESS -s $NVMEOF_IO_PORT -n nqn.2016-06.io.spdk:cnode1
+          sudo nvme list
+          NVMEOF_DEVICE=$(sudo nvme list -o json | jq '.Devices[] | select(.ModelNumber=="SPDK bdev Controller").DevicePath')
+          sudo mkfs $NVMEOF_DEVICE
+          MOUNT_POINT=$(mktemp -d)
+          sudo mount $NVMEOF_DEVICE $MOUNT_POINT
+          cd $MOUNT_POINT
+          touch test
 
       #- name: Setup tmate session
       #  uses: mxschmitt/action-tmate@v3
