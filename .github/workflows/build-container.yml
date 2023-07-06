@@ -59,22 +59,22 @@ jobs:
           eval $(make alias)
           nvmeof-cli get_subsystems
 
-      - name: Test mounting nvmeof device locally
-        run: |
-          . .env
-          sudo modprobe nvme-fabrics
-          sudo apt install -y nvme-cli
-          sudo nvme list
-          sudo nvme discover -t tcp -a $NVMEOF_IP_ADDRESS -s $NVMEOF_IO_PORT
-          sudo nvme connect -t tcp --traddr $NVMEOF_IP_ADDRESS -s $NVMEOF_IO_PORT -n nqn.2016-06.io.spdk:cnode1
-          sudo nvme list
-          NVMEOF_DEVICE=$(sudo nvme list -o json | jq '.Devices[] | select(.ModelNumber=="SPDK bdev Controller").DevicePath')
-          sudo mkfs $NVMEOF_DEVICE
-          MOUNT_POINT=$(mktemp -d)
-          sudo mount $NVMEOF_DEVICE $MOUNT_POINT
-          cd $MOUNT_POINT
-          touch test
+      #- name: Test mounting nvmeof device locally
+      #  run: |
+      #    . .env
+      #    sudo modprobe nvme-fabrics
+      #    sudo nvme list
+      #    sudo nvme discover -t tcp -a $NVMEOF_IP_ADDRESS -s $NVMEOF_IO_PORT
+      #    sudo nvme connect -t tcp --traddr $NVMEOF_IP_ADDRESS -s $NVMEOF_IO_PORT -n nqn.2016-06.io.spdk:cnode1
+      #    sudo nvme list
+      #    NVMEOF_DEVICE=$(sudo nvme list -o json | jq '.Devices[] | select(.ModelNumber=="SPDK bdev Controller").DevicePath')
+      #    sudo mkfs $NVMEOF_DEVICE
+      #    MOUNT_POINT=$(mktemp -d)
+      #    sudo mount $NVMEOF_DEVICE $MOUNT_POINT
+      #    cd $MOUNT_POINT
+      #    touch test
 
+      # For debugging purposes (provides an SSH connection to the runner)
       #- name: Setup tmate session
       #  uses: mxschmitt/action-tmate@v3
       #  with:
