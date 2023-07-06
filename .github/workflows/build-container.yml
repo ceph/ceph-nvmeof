@@ -54,6 +54,8 @@ jobs:
 
       - name: Get subsystems
         run: |
+          # https://github.com/actions/toolkit/issues/766
+          shopt -s expand_aliases
           eval $(make alias)
           nvmeof-cli get_subsystems
 
