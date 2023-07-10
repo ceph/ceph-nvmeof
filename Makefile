@@ -2,6 +2,7 @@ HUGEPAGES = 2048 # 4 GB
 HUGEPAGES_DIR = /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages
 
 # Includes
+include .env
 include mk/containerized.mk
 include mk/demo.mk
 include mk/misc.mk
