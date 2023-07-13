@@ -1,4 +1,4 @@
-HUGEPAGES = 2048 # 4 GB
+HUGEPAGES = 1024 # 2 GB
 HUGEPAGES_DIR = /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages
 
 # Includes
@@ -31,7 +31,8 @@ up: SVC = nvmeof ## Services
 up: OPTS ?= --abort-on-container-exit
 up: override OPTS += --no-build --remove-orphans --scale nvmeof=$(SCALE)
 
-clean: $(CLEAN)  ## Clean-up environment
+clean: override HUGEPAGES = 0
+clean: $(CLEAN) setup  ## Clean-up environment
 
 help: AUTOHELP_SUMMARY = Makefile to build and deploy the Ceph NVMe-oF Gateway
 help: autohelp
