@@ -348,6 +348,17 @@ make up SVC="nvmeof-devel"
 
 Devel containers provide the same base layer as the production containers but with the source code mounted at run-time.
 
+### Adding, removing or updating Python depedencies
+
+Python dependencies are specified in the file `pyproject.toml`
+([PEP-621](https://peps.python.org/pep-0621/)), specifically under the `dependencies` list.
+
+After modifying it, the dependency lockfile (`pdm.lock`) needs to be updated accordingly (otherwise container image builds will fail):
+
+```bash
+make update-lockfile
+git add pdm.lock
+```
 
 ## Help
 
@@ -365,6 +376,7 @@ Targets:
       clean           Clean-up environment
       setup           Configure huge-pages (requires sudo/root password)
       up              Services
+      update-lockfile Update dependencies in lockfile (pdm.lock)
 
     Options:
       up: SVC         Services (Default: nvmeof)
@@ -399,20 +411,8 @@ Targets:
   Demo:
       demo            Expose RBD_IMAGE_NAME as NVMe-oF target
 
-    Options:
-      BDEV_NAME       Name of the bdev (Default: demo_bdev)
-      LISTENER_PORT   Listener port (Default: 4420)
-      NQN             NVMe Qualified Name address (Default: nqn.2016-06.io.spdk:cnode1)
-      RBD_IMAGE_NAME  Name of the RBD image (Default: demo_image)
-      RBD_IMAGE_SIZE  Size of the RBD image (Default: 10M)
-      SERIAL          Serial number (Default: SPDK00000000000001)
-
   Miscellaneous:
       alias           Print bash alias command for the nvmeof-cli. Usage: "eval $(make alias)"
-
-    Options:
-      SERVER_ADDRESS  Address of the nvmeof gateway (Default: nvmeof)
-      SERVER_PORT     Port of the nvmeof gateway (Default: 5500)
 ```
 
 Targets may accept options: `make run SVC=nvme OPTS=--entrypoint=bash`.
