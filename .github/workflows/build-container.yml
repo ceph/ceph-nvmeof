@@ -35,7 +35,8 @@ jobs:
         timeout-minutes: 1
         run: |
           . .env
-          until nc -z localhost $NVMEOF_GW_PORT; do
+          HOST_PORT=$(make -s port OPTS="--index=1" CMD="nvmeof $NVMEOF_GW_PORT" | tr ":" " ")
+          until nc -z $HOST_PORT; do
             echo -n .
             sleep 1
           done
