@@ -17,16 +17,17 @@ $(DOCKER_COMPOSE_COMMANDS):
 
 pull: ## Download SVC images
 
-build: ## Build SVC images
-build: DOCKER_COMPOSE_ENV = DOCKER_BUILDKIT=1
+build:  ## Build SVC images
+build: DOCKER_COMPOSE_ENV = DOCKER_BUILDKIT=1 COMPOSE_DOCKER_CLI_BUILD=1
 
 push: ## Push SVC container images to a registry. Requires previous "docker login"
 
 up: ## Launch services
 
 run: ## Run command CMD inside SVC containers
-run: SVC =
+run: SVC ?=
 run: override OPTS += --rm
+run: DOCKER_COMPOSE_ENV = DOCKER_BUILDKIT=1 COMPOSE_DOCKER_CLI_BUILD=1
 
 shell: ## Exec shell inside running SVC containers
 shell: CMD = bash

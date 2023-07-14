@@ -16,7 +16,7 @@ autohelp:
 	@for file in $(MAKEFILE_LIST); do \
 		awk 'BEGIN {FS = "## "}; /^##/ {printf "\n  %s\n", $$2}' $$file; \
 		awk 'BEGIN {FS = ":.*?## "}; \
-		  /^\w+:.*##/ {printf "      $(BOLD)%-15s$(NORMAL) %s\n", $$1, $$2}' $$file | sort; \
+		  /^\w.*:.*##/ {printf "      $(BOLD)%-15s$(NORMAL) %s\n", $$1, $$2}' $$file | sort; \
 		grep -q "^\w.*=.*## " $$file && echo -e "\n    Options:"; \
 		awk 'BEGIN {FS = "( [!?]?= | ?## )"}; \
 			/^\w.*=.*## / {printf "      $(BOLD)%-15s$(NORMAL) %s (Default: %s)\n", $$1, $$3, $$2} \

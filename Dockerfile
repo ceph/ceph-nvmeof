@@ -1,7 +1,7 @@
 # syntax = docker/dockerfile:1.4
 
-ARG NVMEOF_SPDK_VERSION
-ARG NVMEOF_TARGET  # either 'gateway' or 'cli'
+ARG NVMEOF_SPDK_VERSION \
+    NVMEOF_TARGET  # either 'gateway' or 'cli'
 
 #------------------------------------------------------------------------------
 # Base image for NVMEOF_TARGET=cli (nvmeof-cli)
@@ -90,9 +90,11 @@ ENV PYTHONPATH=$APPDIR/proto:$APPDIR/__pypackages__/$PYTHON_MAJOR.$PYTHON_MINOR/
 WORKDIR $APPDIR
 
 #------------------------------------------------------------------------------
-FROM python-intermediate AS builder
-
-ENV PDM_SYNC_FLAGS="-v --no-isolation --no-self --no-editable"
+FROM python-intermediate AS builder-base
+ARG PDM_VERSION=2.7.4 \
+    PDM_INSTALL_CMD=sync \
+    PDM_INSTALL_FLAGS="-v --no-isolation --no-self --no-editable"
+ENV PDM_INSTALL_FLAGS=$PDM_INSTALL_FLAGS
 
 # https://pdm.fming.dev/latest/usage/advanced/#use-pdm-in-a-multi-stage-dockerfile
 RUN \
@@ -105,11 +107,15 @@ RUN \
 
 RUN \
     --mount=type=cache,target=/root/.cache/pip \
-    pip install pdm
+    pip install pdm==$PDM_VERSION
+
+#------------------------------------------------------------------------------
+FROM builder-base AS builder
+
 COPY pyproject.toml pdm.lock pdm.toml ./
 RUN \
     --mount=type=cache,target=/root/.cache/pdm \
-    pdm sync $PDM_SYNC_FLAGS
+    pdm "$PDM_INSTALL_CMD" $PDM_INSTALL_FLAGS
 
 COPY . .
 RUN pdm run protoc

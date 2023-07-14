@@ -52,7 +52,6 @@ services:
       default:
         ipv4_address: 192.168.13.2
   nvmeof-base:
-    image: quay.io/ceph/nvmeof:$NVMEOF_VERSION
     build:
       context: .
       args:
@@ -89,23 +88,30 @@ services:
     ulimits:
       nofile: $NVMEOF_NOFILE
       memlock: -1
-    networks:
-      default:
-        ipv4_address: $NVMEOF_IP_ADDRESS
     ports:
-      - "$NVMEOF_IO_PORT:$NVMEOF_IO_PORT" # I/O controllers
-      - "$NVMEOF_GW_PORT:$NVMEOF_GW_PORT" # Gateway
-      - "$NVMEOF_DISC_PORT:$NVMEOF_DISC_PORT" # Discovery
+      - "$NVMEOF_IO_PORT" # I/O controllers
+      - "$NVMEOF_GW_PORT" # Gateway
+      - "$NVMEOF_DISC_PORT" # Discovery
   nvmeof:
     extends:
       service: nvmeof-base
+    image: quay.io/ceph/nvmeof:$NVMEOF_VERSION
     depends_on:
       ceph:
         condition: service_healthy
+  nvmeof-builder:
+    extends:
+      service: nvmeof-base
+    image: nvmeof-builder
+    build:
+      target: builder-base
+    volumes:
+      - .:/src
   nvmeof-devel:
     # Runs from source code in current dir
     extends:
       service: nvmeof-base
+    image: quay.io/ceph/nvmeof:$NVMEOF_VERSION
     depends_on:
       ceph:
         condition: service_healthy
