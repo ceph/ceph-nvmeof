@@ -1,199 +1,432 @@
-# nvmeof-gateway
+# Ceph NVMe over Fabrics (NVMe-oF) Gateway
 
-Management gateway daemon to setup access to Ceph storage over NVMeoF 
+This project provides block storage on top of Ceph for platforms (e.g.: VMWare) without
+native Ceph support (RBD), replacing existing approaches (iSCSI) with a newer and [more
+versatile standard (NVMe-oF)](https://nvmexpress.org/specification/nvme-of-specification/).
 
-This daemon runs as root. It provides the ability to export existing RBD images as NVMeoF namespaces. Creation of RBD images is not within the scope of this daemon.
+Essentially, it allows to export existing RBD images as NVMe-oF namespaces.
+The [creation and management of RBD images](https://docs.ceph.com/en/latest/rbd/) is not within the scope of this component.
 
-# Initial configuration
+## Installation
 
-1. The daemon is a gRPC server, so the host running the server will need to install gRPC packages:
+### Requirements
 
-		$ make setup
-		
-2. Modify the config file (default ceph-nvmeof.conf) to reflect the IP/ Port where the server can be reached:
+* Linux-based system with at least 16 GB of available RAM. [Fedora 37](https://fedoraproject.org/) is recommended.
+* SELinux in permissive mode:
 
-		addr = <IP address at which the client can reach the gateway>
-		port = <port at which the client can reach the gateway>
-	
-3. To [enable mTLS](#mtls-configuration-for-testing-purposes) using self signed certificates, edit the config file to set:
+  ```bash
+  sed -i s/^SELINUX=.*$/SELINUX=permissive/ /etc/selinux/config
+  setenforce 0
+  ```
 
-		enable_auth = True  # Setting this to False will open an insecure port		
+### Dependencies
 
-4. Compile protobuf files for gRPC:
-		
-	    $ make grpc 
+* `moby-engine` (`docker-engine`) (v20.10) and `docker-compose` (v1.29). These versions are just indicative
+*  `make` (only needed to launch `docker-compose` commands).
 
-5. SPDK is included in this repository as a submodule. Edit the config file to set:
+To install these dependencies in Fedora:
 
-		spdk_path = <complete path to SPDK parent directory>
-		spdk_tgt = <relative path to SPDK target executable>
+```bash
+sudo dnf install -y make moby-engine docker-compose
+```
 
-6. Setup SPDK
+Some [post-installation steps](https://docs.docker.com/engine/install/linux-postinstall/) are required to use `docker` with regular users:
 
-	Navigate to the spdk folder & install dependencies:
+```bash
+sudo groupadd docker
+sudo usermod -aG docker $USER
+```
 
-		$ ./scripts/pkgdep.sh
+### Steps
 
-	Initialize configuration:
+To launch a containerized environment with a Ceph cluster and a NVMe-oF gateway (this is not the [prescribed deployment for production purposes](https://docs.ceph.com/en/quincy/install/#recommended-methods), but for testing and development tasks alone):
 
-		$ apt install librbd-dev
-		$ ./configure --with-rbd
+1. Get this repo:
 
-	Build the SPDK app:
+    ```bash
+    git clone https://github.com/ceph/ceph-nvmeof.git
+    cd ceph-nvmeof
+    git submodule update --init --recursive
+    ```
 
-	    $ make
+1. Configure the environment (basically to allocate huge-pages, which requires entering the user password):
 
-	SPDK requires hugepages to be set up:
+    ```bash
+    make setup
+    ```
 
-		$ sh -c 'echo 4096 > /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages'
+1. Download the container images:
 
-7. Start the gateway server daemon:
-		
-		$ python3 -m control [-c CONFIG]
+    ```bash
+    make pull
+    ```
+
+1. Deploy the containers locally:
+
+    ```bash
+    make up
+    ```
+
+1. Check that the deployment is up and running:
+
+    ```bash
+    $ make ps
+
+        Name                    Command                  State                               Ports
+    -----------------------------------------------------------------------------------------------------------------------
+    ceph              sh -c ./vstart.sh --new $V ...   Up (healthy)   5000/tcp, 6789/tcp, 6800/tcp, 6801/tcp, 6802/tcp,
+                                                                      6803/tcp, 6804/tcp, 6805/tcp, 80/tcp
+    nvmeof_nvmeof_1   python3 -m control -c ceph ...   Up             0.0.0.0:4420->4420/tcp,:::4420->4420/tcp,
+                                                                      0.0.0.0:5500->5500/tcp,:::5500->5500/tcp,
+                                                                      0.0.0.0:8009->8009/tcp,:::8009->8009/tcp
+    ```
+
+1. The environment is ready to provide block storage on Ceph via NVMe-oF.
+
+## Usage Demo
+
+### Configuring the NVMe-oF Gateway
+
+The following command executes all the steps required to set up the NVMe-oF environment:
+
+```bash
+$ make demo
+
+DOCKER_BUILDKIT=1 docker-compose exec ceph-vstart-cluster bash -c "rbd info demo_image || rbd create demo_image --size 10M"
+rbd: error opening image demo_image: (2) No such file or directory
+
+DOCKER_BUILDKIT=1 docker-compose run --rm ceph-nvmeof-cli --server-address ceph-nvmeof --server-port 5500 create_bdev --pool rbd --image demo_image --bdev demo_bdev
+Creating nvmeof_ceph-nvmeof-cli_run ... done
+INFO:__main__:Created bdev demo_bdev: True
+
+DOCKER_BUILDKIT=1 docker-compose run --rm ceph-nvmeof-cli --server-address ceph-nvmeof --server-port 5500 create_subsystem --subnqn nqn.2016-06.io.spdk:cnode1 --serial SPDK00000000000001
+Creating nvmeof_ceph-nvmeof-cli_run ... done
+INFO:__main__:Created subsystem nqn.2016-06.io.spdk:cnode1: True
+
+DOCKER_BUILDKIT=1 docker-compose run --rm ceph-nvmeof-cli --server-address ceph-nvmeof --server-port 5500 add_namespace --subnqn nqn.2016-06.io.spdk:cnode1 --bdev demo_bdev
+Creating nvmeof_ceph-nvmeof-cli_run ... done
+INFO:__main__:Added namespace 1 to nqn.2016-06.io.spdk:cnode1: True
+
+DOCKER_BUILDKIT=1 docker-compose run --rm ceph-nvmeof-cli --server-address ceph-nvmeof --server-port 5500 create_listener --subnqn nqn.2016-06.io.spdk:cnode1 -s 4420
+Creating nvmeof_ceph-nvmeof-cli_run ... done
+INFO:__main__:Created nqn.2016-06.io.spdk:cnode1 listener: True
+
+DOCKER_BUILDKIT=1 docker-compose run --rm ceph-nvmeof-cli --server-address ceph-nvmeof --server-port 5500 add_host --subnqn nqn.2016-06.io.spdk:cnode1 --host "*"
+Creating nvmeof_ceph-nvmeof-cli_run ... done
+INFO:__main__:Allowed open host access to nqn.2016-06.io.spdk:cnode1: True
+```
+
+#### Manual Steps
+
+The same configuration can also be manually run:
+
+1. First of all, let's create the `nvmeof-cli` shortcut to interact with the NVMe-oF gateway:
+
+    ```bash
+    eval $(make alias)
+    ```
+
+1.  In order to start working with the NVMe-oF gateway, we need to create an RBD image first (`demo_image` in the `rbd` pool):
+
+    ```bash
+    make rbd
+    ```
+
+1. Create a bdev (Block Device) from an RBD image:
+
+    ```bash
+    nvmeof-cli create_bdev --pool rbd --image demo_image --bdev demo_bdev
+    ```
+
+1. Create a subsystem:
+
+    ```bash
+    nvmeof-cli create_subsystem --subnqn nqn.2016-06.io.spdk:cnode1 --serial SPDK00000000000001
+    ```
+
+1. Add a namespace:
+
+    ```bash
+    nvmeof-cli add_namespace --subnqn nqn.2016-06.io.spdk:cnode1 --bdev demo_bdev
+    ```
+
+1. Create a listener so that NVMe initiators can connect to:
+
+    ```bash
+    nvmeof-cli create_listener ---subnqn nqn.2016-06.io.spdk:cnode1 -s 4420
+    ```
+
+1. Define which hosts can connect:
+
+    ```bash
+    nvmeof-cli add_host --subnqn nqn.2016-06.io.spdk:cnode1 --host "*"
+    ```
 
 
-# CLI Usage
+### Mounting the NVMe-oF volume
 
-The CLI tool can be used to initiate a connection to the gateway and run commands to configure the NVMe targets. 
+Once the NVMe-oF target is
 
-Run the tool with the -h flag to see a list of available commands:
-	
-	$ python3 -m control.cli -h
-	usage: python3 -m control.cli [-h] [-c CONFIG]
-			{create_bdev,delete_bdev,create_subsystem,delete_subsystem,add_namespace,remove_namespace,add_host,remove_host,create_listener,delete_listener,get_subsystems} ...
+1. Install requisite packages:
 
-	CLI to manage NVMe gateways
+    ```bash
+    sudo dnf install nvme-cli
+    sudo modprobe nvme-fabrics
+    ```
 
-	positional arguments:
-	{create_bdev,delete_bdev,create_subsystem,delete_subsystem,add_namespace,remove_namespace,add_host,remove_host,create_listener,delete_listener,get_subsystems}
+1. Ensure that the listener is reachable from the NVMe-oF initiator:
 
-	optional arguments:
-	-h, --help            			show this help message and exit
-	-c CONFIG, --config CONFIG
-			      			Path to config file
+    ```bash
+    $ sudo nvme discover -t tcp -a 192.168.13.3 -s 4420
 
-Example:
+    Discovery Log Number of Records 1, Generation counter 2
+    =====Discovery Log Entry 0======
+    trtype:  tcp
+    adrfam:  ipv4
+    subtype: nvme subsystem
+    treq:    not required
+    portid:  0
+    trsvcid: 4420
+    subnqn:  nqn.2016-06.io.spdk:cnode1
+    traddr:  192.168.13.3
+    eflags:  not specified
+    sectype: none
+    ```
 
-	$ python3 -m control.cli create_bdev -h
-	usage: python3 -m control.cli create_bdev [-h] -i IMAGE -p POOL [-b BDEV_NAME] [-s BLOCK_SIZE]
+1. Connect to desired subsystem:
 
-	optional arguments:
-	-h, --help            			show this help message and exit
-	-i IMAGE, --image IMAGE
-			      			RBD image name
-	-p POOL, --pool POOL  			Ceph pool name
-	-b BDEV_NAME, --bdev BDEV_NAME
-						Bdev name
-	-s BLOCK_SIZE, --block_size BLOCK_SIZE
-						Block size
+    ```bash
+    sudo nvme connect -t tcp --traddr 192.168.13.3 -s 4420 -n nqn.2016-06.io.spdk:cnode1
+    ```
 
-# mTLS Configuration for testing purposes
+1. List the available NVMe targets:
+
+    ```bash
+    $ sudo nvme list
+    Node                  Generic               SN                   Model                                    Namespace Usage                      Format           FW Rev
+    --------------------- --------------------- -------------------- ---------------------------------------- --------- -------------------------- ---------------- --------
+    /dev/nvme1n1          /dev/ng1n1            SPDK00000000000001   SPDK bdev Controller                     1          10,49  MB /  10,49  MB      4 KiB +  0 B   23.01
+    ...
+    ```
+
+1. Create a filesystem on the desired target:
+
+    ```bash
+    $  sudo mkfs /dev/nvme1n1
+    mke2fs 1.46.5 (30-Dec-2021)
+    Discarding device blocks: done
+    Creating filesystem with 2560 4k blocks and 2560 inodes
+
+    Allocating group tables: done
+    Writing inode tables: done
+    Writing superblocks and filesystem accounting information: done
+    ```
+
+1. Mount and use the storage volume
+
+    ```bash
+    $ mkdir /mnt/nvmeof
+    $ sudo mount /dev/nvme1n1 /mnt/nvmeof
+
+    $ ls /mnt/nvmeof
+    lost+found
+
+    $ sudo bash -c "echo Hello NVMe-oF > /mnt/nvmeof/hello.txt"
+
+    $ cat /mnt/nvmeof/hello.txt
+    Hello NVMe-oF
+    ```
+
+## Advanced
+
+### Configuration
+
+This service comes with a pre-defined configuration that matches the most common use cases. For advanced configuration, please update the settings at the `.env` file. That file is automatically read by `docker-compose`. However, it's a perfectly valid bash source, so that it can also be used as:
+
+```bash
+source .env
+echo $NVMEOF_VERSION...
+```
+
+### mTLS Configuration for testing purposes
 
 For testing purposes, self signed certificates and keys can be generated locally using OpenSSL.
 
 For the server, generate credentials for server name 'my.server' in files called server.key and server.crt:
 
-  	$ openssl req -x509 -newkey rsa:4096 -nodes -keyout server.key -out server.crt -days 3650 -subj '/CN=my.server'
+```bash
+$ openssl req -x509 -newkey rsa:4096 -nodes -keyout server.key -out server.crt -days 3650 -subj '/CN=my.server'
+```
 
 For client:
 
-  	$ openssl req -x509 -newkey rsa:4096 -nodes -keyout client.key -out client.crt -days 3650 -subj '/CN=client1'
+```bash
+$ openssl req -x509 -newkey rsa:4096 -nodes -keyout client.key -out client.crt -days 3650 -subj '/CN=client1'
+```
 
 Indicate the location of the keys and certificates in the config file:
 
-	[mtls]
+```ini
+[mtls]
 
-	server_key = ./server.key
-	client_key = ./client.key
-	server_cert = ./server.crt
-	client_cert = ./client.crt
+server_key = ./server.key
+client_key = ./client.key
+server_cert = ./server.crt
+client_cert = ./client.crt
+```
 
-# Example NVMe volume access
+### Huge-Pages
 
-1. Start the gateway server:
+[DPDK requires hugepages](https://doc.dpdk.org/guides/linux_gsg/sys_reqs.html#linux-gsg-hugepages) to be set up:
 
-		$ python3 -m control
-		INFO:root:SPDK PATH: /path/to/spdk
-		INFO:root:Starting /path/to/spdk/tgt/nvmf_tgt all -u
-		INFO:root:Attempting to initialize SPDK: server_addr: /var/tmp/spdk.sock, port: 5260, conn_retries: 3, timeout: 60.0
-		INFO: Setting log level to ERROR
-		INFO:JSONRPCClient(/var/tmp/spdk.sock):Setting log level to ERROR
+```bash
+sh -c 'echo 4096 > /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages'
+```
 
+This is automatically done in the `make setup` step. The amount of hugepages can be configured with `make setup HUGEPAGES=512`.
 
-2. Run the CLI (ensure a ceph pool 'rbd' with an rbdimage 'mytestdevimage' is created prior to this step):
+## Development
 
-		$ python3 -m control.cli create_bdev -i mytestdevimage -p rbd -b Ceph0
-		INFO:root:Created bdev Ceph0: True
-		
-		$ python3 -m control.cli create_subsystem -n nqn.2016-06.io.spdk:cnode1 -s SPDK00000000000001
-		INFO:root:Created subsystem nqn.2016-06.io.spdk:cnode1: True
-		
-		$ python3 -m control.cli add_namespace -n nqn.2016-06.io.spdk:cnode1 -b Ceph0
-		INFO:root:Added namespace 1 to nqn.2016-06.io.spdk:cnode1: True
-		
-		$ python3 -m control.cli add_host -n nqn.2016-06.io.spdk:cnode1 -t '*'
-		INFO:root:Allowed open host access to nqn.2016-06.io.spdk:cnode1: True
-		
-		$ python3 -m control.cli create_listener -n nqn.2016-06.io.spdk:cnode1 -s 5001
-		INFO:root:Created nqn.2016-06.io.spdk:cnode1 listener: True
+### Set-up
+The development environment relies on containers (specifically `docker-compose`) for building and running the components. This has the benefit that, besides `docker` and `docker-compose`, no more dependencies need to be installed in the host environment.
 
-3. On the storage client system (ubuntu-21.04):
+Once the GitHub repo has been cloned, remember to initialize its git submodules (`spdk`, which in turn depends on other submodules):
 
-	- Install requisite packages
+```bash
+git submodule update --init --recursive
+```
 
-			$ apt install nvme-cli 
-			$ modprobe nvme-fabrics
+For building, SELinux might cause issues, so it's better to set it to permissive mode:
 
-	- Run nvme command to discover available subsystems
+```bash
+# Change it for the running session
+sudo setenforce 0
 
-			$ nvme discover -t tcp -a 192.168.50.4 -s 5001
+# Persist the change across boots
+sudo sed -i -E 's/^SELINUX=enforcing$/SELINUX=permissive/' /etc/selinux/config
+```
 
-			Discovery Log Number of Records 1, Generation counter 6
-			=====Discovery Log Entry 0======
-			trtype:  tcp
-			adrfam:  ipv4
-			subtype: nvme subsystem
-			treq:    not required
-			portid:  0
-			trsvcid: 5001
-			subnqn:  nqn.2016-06.io.spdk:cnode1
-			traddr:  192.168.50.4
-			sectype: none
+### Building
 
-	- Connect to desired subsystem
+To avoid having to deal with `docker-compose` commands, this provides a `Makefile` that wraps those as regular `make` targets:
 
-			$ nvme connect -t tcp --traddr 192.168.50.4 -s 5001 -n nqn.2016-06.io.spdk:cnode1
+To build the container images from the local sources:
 
-	- List targets that are available
+```bash
+make build
+```
 
-			$ nvme list
-			Node             SN                   Model                                    Namespace Usage                      Format           FW Rev
-			---------------- -------------------- ---------------------------------------- --------- -------------------------- ---------------- --------
-			/dev/nvme0n1     SPDK00000000000001   SPDK bdev Controller                     1           6.44  GB /   6.44  GB      4 KiB +  0 B   21.04
+The resulting images should be like these:
 
-	- Create a filesystem on the desired target
+```bash
+$ docker images
+REPOSITORY                    TAG       IMAGE ID       CREATED         SIZE
+quay.io/ceph/nvmeof-cli       0.0.1     8277cd0cce2d   7 minutes ago   995MB
+quay.io/ceph/nvmeof           0.0.1     34d7230dcce8   7 minutes ago   439MB
+quay.io/ceph/vstart-cluster   17.2.6    cb2560975055   8 minutes ago   1.27GB
+quay.io/ceph/spdk             23.01     929e22e22ffd   8 minutes ago   342MB
+```
 
-			$  mkfs /dev/nvme0n1
+* `spdk` is an intermediate image that contains an RPM-based installation of spdk with `rbd` support enabled.
+* `nvmeof` is built from the `spdk` container by installing the Python package.
+* `nvmeof-cli` provides a containerized environment to run CLI commands that manage the `nvmeof` service via gRPC.
+* `ceph` is a sandboxed (vstart-based) Ceph cluster for testing purposes.
 
-			mke2fs 1.45.7 (28-Jan-2021)
-			Creating filesystem with 1572864 4k blocks and 393216 inodes
-			Filesystem UUID: 1308f6ff-621b-4d17-b127-65eded31abe2
-			Superblock backups stored on blocks:
-				32768, 98304, 163840, 229376, 294912, 819200, 884736
+For building a specific service:
 
-			Allocating group tables: done
-			Writing inode tables: done
-			Writing superblocks and filesystem accounting information: done
+```bash
+make build SVC=nvmeof
+```
 
-	- Mount and use the storage volume
+### Development containers
 
-			$ mount /dev/nvme0n1 /mnt
+To avoid having to re-build container on every code change, developer friendly containers are provided:
 
-			$ ls /mnt
-			lost+found
+```bash
+make up SVC="nvmeof-devel"
+```
 
-			$ echo "NVMe volume" > /mnt/test.txt
+Devel containers provide the same base layer as the production containers but with the source code mounted at run-time.
 
-			$ ls /mnt
-			lost+found  test.txt
-			
+### Adding, removing or updating Python depedencies
+
+Python dependencies are specified in the file `pyproject.toml`
+([PEP-621](https://peps.python.org/pep-0621/)), specifically under the `dependencies` list.
+
+After modifying it, the dependency lockfile (`pdm.lock`) needs to be updated accordingly (otherwise container image builds will fail):
+
+```bash
+make update-lockfile
+git add pdm.lock
+```
+
+## Help
+
+To obtain a detailed list of `make` targets, run `make help`:
+
+```
+Makefile to build and deploy the Ceph NVMe-oF Gateway
+
+Usage:
+    make [target] [target] ... OPTION=value ...
+
+Targets:
+
+  Basic targets:
+      clean           Clean-up environment
+      setup           Configure huge-pages (requires sudo/root password)
+      up              Services
+      update-lockfile Update dependencies in lockfile (pdm.lock)
+
+    Options:
+      up: SVC         Services (Default: nvmeof)
+
+  Deployment commands (docker-compose):
+      build           Build SVC images
+      down            Shut down deployment
+      events          Receive real-time events from containers
+      exec            Run command inside an existing container
+      images          List images
+      logs            View SVC logs
+      pause           Pause running deployment
+      port            Print public port for a port binding
+      ps              Display status of SVC containers
+      pull            Download SVC images
+      push            Push SVC container images to a registry. Requires previous "docker login"
+      restart         Restart SVC
+      run             Run command CMD inside SVC containers
+      shell           Exec shell inside running SVC containers
+      stop            Stop SVC
+      top             Display running processes in SVC containers
+      unpause         Resume paused deployment
+      up              Launch services
+
+    Options:
+      CMD             Command to run with run/exec targets (Default: )
+      DOCKER_COMPOSE  Docker-compose command (Default: docker-compose)
+      OPTS            Docker-compose subcommand options (Default: )
+      SCALE           Number of instances (Default: 1)
+      SVC             Docker-compose services (Default: )
+
+  Demo:
+      demo            Expose RBD_IMAGE_NAME as NVMe-oF target
+
+  Miscellaneous:
+      alias           Print bash alias command for the nvmeof-cli. Usage: "eval $(make alias)"
+```
+
+Targets may accept options: `make run SVC=nvme OPTS=--entrypoint=bash`.
+
+## Troubleshooting
+
+## Contributing and Support
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md).
+
+## Code of Conduct
+
+See [Ceph's Code of Conduct](https://ceph.io/en/code-of-conduct/).
+
+## License
+
+See [`LICENSE`](LICENSE).

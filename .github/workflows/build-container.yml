@@ -1,0 +1,91 @@
+name: "CI"
+on:
+  push:
+    branches:
+      - devel
+  pull_request:
+    branches:
+      - devel
+  schedule:
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+env:
+  HUGEPAGES: 256
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          submodules: recursive
+
+      - name: Build container images
+        run: make build
+
+      - name: Setup huge-pages
+        run: make setup HUGEPAGES=$HUGEPAGES
+
+      - name: Start containers
+        run: |
+          make up OPTS=--detach || (make logs OPTS=''; exit 1)
+
+      - name: Wait for the Gateway to be listening
+        timeout-minutes: 1
+        run: |
+          . .env
+          HOST_PORT=$(make -s port OPTS="--index=1" CMD="nvmeof $NVMEOF_GW_PORT" | tr ":" " ")
+          until nc -z $HOST_PORT; do
+            echo -n .
+            sleep 1
+          done
+          echo
+
+      - name: List containers
+        run: make ps
+
+      - name: List processes
+        run: make top
+
+      - name: Test
+        run: |
+          . .env
+          make demo SERVER_ADDRESS=$NVMEOF_IP_ADDRESS OPTS=-T # Disable TTY
+
+      - name: Get subsystems
+        run: |
+          # https://github.com/actions/toolkit/issues/766
+          shopt -s expand_aliases
+          eval $(make alias)
+          nvmeof-cli get_subsystems
+
+      #- name: Test mounting nvmeof device locally
+      #  run: |
+      #    . .env
+      #    sudo modprobe nvme-fabrics
+      #    sudo nvme list
+      #    sudo nvme discover -t tcp -a $NVMEOF_IP_ADDRESS -s $NVMEOF_IO_PORT
+      #    sudo nvme connect -t tcp --traddr $NVMEOF_IP_ADDRESS -s $NVMEOF_IO_PORT -n nqn.2016-06.io.spdk:cnode1
+      #    sudo nvme list
+      #    NVMEOF_DEVICE=$(sudo nvme list -o json | jq '.Devices[] | select(.ModelNumber=="SPDK bdev Controller").DevicePath')
+      #    sudo mkfs $NVMEOF_DEVICE
+      #    MOUNT_POINT=$(mktemp -d)
+      #    sudo mount $NVMEOF_DEVICE $MOUNT_POINT
+      #    cd $MOUNT_POINT
+      #    touch test
+
+      # For debugging purposes (provides an SSH connection to the runner)
+      #- name: Setup tmate session
+      #  uses: mxschmitt/action-tmate@v3
+      #  with:
+      #    limit-access-to-actor: true
+
+      - name: Display logs
+        run: make logs OPTS=''
+
+      - name: Shut containers down
+        run: make down
+
+      - name: Clean up environment
+        run: make clean
