@@ -6,7 +6,6 @@ DOCKER_COMPOSE = docker-compose ## Docker-compose command
 DOCKER_COMPOSE_COMMANDS = pull build push up run exec ps top images logs port \
 	pause unpause stop restart down events
 
-SVC ?= ## Docker-compose services
 OPTS ?= ## Docker-compose subcommand options
 SCALE ?= 1 ## Number of instances
 CMD ?= ## Command to run with run/exec targets
@@ -22,10 +21,7 @@ build: DOCKER_COMPOSE_ENV = DOCKER_BUILDKIT=1 COMPOSE_DOCKER_CLI_BUILD=1
 
 push: ## Push SVC container images to a registry. Requires previous "docker login"
 
-up: ## Launch services
-
 run: ## Run command CMD inside SVC containers
-run: SVC ?=
 run: override OPTS += --rm
 run: DOCKER_COMPOSE_ENV = DOCKER_BUILDKIT=1 COMPOSE_DOCKER_CLI_BUILD=1
 
@@ -43,7 +39,7 @@ port: ## Print public port for a port binding
 
 logs: ## View SVC logs
 logs: MAX_LOGS = 40
-logs: OPTS += --follow --tail=$(MAX_LOGS)
+logs: OPTS ?= --follow --tail=$(MAX_LOGS)
 
 images: ## List images
 

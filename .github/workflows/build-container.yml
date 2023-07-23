@@ -1,28 +1,39 @@
 name: "CI"
 on:
   push:
-    branches:
-      - devel
   pull_request:
-    branches:
-      - devel
   schedule:
     - cron: '0 0 * * *'
   workflow_dispatch:
-env:
-  HUGEPAGES: 256
 
 jobs:
-  build-and-test:
+  build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
         with:
+          # git submodule update --init --recursive
           submodules: recursive
 
       - name: Build container images
         run: make build SVC="spdk nvmeof nvmeof-cli ceph"
+
+      - name: Save container images
+        run: |
+          . .env
+          docker save quay.io/ceph/nvmeof:$NVMEOF_VERSION > nvmeof.tar
+          docker save quay.io/ceph/nvmeof-cli:$NVMEOF_VERSION > nvmeof-cli.tar
+          docker save quay.io/ceph/vstart-cluster:$CEPH_VERSION  > vstart-cluster.tar
+
+      - name: Upload container images
+        uses: actions/upload-artifact@v3
+        with:
+          name: images
+          path: |
+            nvmeof.tar
+            nvmeof-cli.tar
+            vstart-cluster.tar
 
       - name: Build stand-alone packages (RPMs and Python wheel)
         id: build-standalone-packages
@@ -39,8 +50,98 @@ jobs:
           path: |
             ${{ env.EXPORT_DIR }}/**
 
+  pytest:
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+          test: ["cli", "state", "multi_gateway"]
+    runs-on: ubuntu-latest
+    env:
+      HUGEPAGES: 512 # for multi gateway test, approx 256 per gateway instance
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup huge pages
+        run: |
+          make setup HUGEPAGES=$HUGEPAGES
+
+      - name: Download container images
+        uses: actions/download-artifact@v3
+        with:
+          name: images
+
+      - name: Load container images
+        run: |
+          docker load < nvmeof.tar
+          docker load < vstart-cluster.tar
+
+      - name: Start ceph cluster
+        run: |
+          make up SVC=ceph OPTS="--detach"
+
+      - name: Wait for the ceph cluster container to become healthy
+        run: |
+          while true; do
+            container_status=$(docker inspect --format='{{.State.Health.Status}}' ceph)
+            if [[ $container_status == "healthy" ]]; then
+            break
+          else
+            # Wait for a specific time before checking again
+            sleep 1
+            echo -n .
+          fi
+          done
+          echo
+
+      - name: Create RBD image
+        run: |
+          echo "💁 ceph list pools:"
+          make exec SVC=ceph OPTS="-T" CMD="ceph osd lspools"
+          echo "💁 rbd create:"
+          make exec SVC=ceph OPTS="-T" CMD="rbd create rbd/mytestdevimage --size 16"
+          echo "💁 ls rbd:"
+          make exec SVC=ceph OPTS="-T" CMD="rbd ls rbd"
+
+      - name: Run ${{ matrix.test }} test
+        run: |
+          # Run tests code in current dir
+          # Managing pytest’s output: https://docs.pytest.org/en/7.1.x/how-to/output.html
+          make run SVC="nvmeof-devel" OPTS="--volume=$(pwd)/tests:/src/tests --entrypoint=python3" CMD="-m pytest --full-trace -vv -ra -s tests/test_${{ matrix.test }}.py"
+
+      - name: Display Logs
+        run: |
+          make logs OPTS=""
+
+      - name: Compose Down
+        run: make down
+
+      - name: Compose Clean
+        run: make clean
+
+  demo:
+    needs: build
+    runs-on: ubuntu-latest
+    env:
+      HUGEPAGES: 256
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
       - name: Setup huge-pages
         run: make setup HUGEPAGES=$HUGEPAGES
+
+      - name: Download container images
+        uses: actions/download-artifact@v3
+        with:
+          name: images
+
+      - name: Load container images
+        run: |
+          docker load < nvmeof.tar
+          docker load < nvmeof-cli.tar
+          docker load < vstart-cluster.tar
 
       - name: Start containers
         run: |
@@ -50,8 +151,8 @@ jobs:
         timeout-minutes: 1
         run: |
           . .env
-          HOST_PORT=$(make -s port OPTS="--index=1" CMD="nvmeof $NVMEOF_GW_PORT" | tr ":" " ")
-          until nc -z $HOST_PORT; do
+          echo using gateway $NVMEOF_IP_ADDRESS port $NVMEOF_GW_PORT
+          until nc -z $NVMEOF_IP_ADDRESS $NVMEOF_GW_PORT; do
             echo -n .
             sleep 1
           done
@@ -65,8 +166,7 @@ jobs:
 
       - name: Test
         run: |
-          . .env
-          make demo SERVER_ADDRESS=$NVMEOF_IP_ADDRESS OPTS=-T # Disable TTY
+          make demo OPTS=-T || (make logs OPTS=''; exit 1)
 
       - name: Get subsystems
         run: |
