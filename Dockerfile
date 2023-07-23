@@ -85,6 +85,9 @@ LABEL io.ceph.component="$NVMEOF_NAME" \
       io.ceph.git.branch="$NVMEOF_GIT_BRANCH" \
       io.ceph.git.commit="$NVMEOF_GIT_COMMIT"
 
+RUN echo echo $NVMEOF_NAME $NVMEOF_VERSION $NVMEOF_GIT_COMMIT > /bin/ceph
+RUN chmod 755 /bin/ceph
+
 ENV PYTHONPATH=$APPDIR/proto:$APPDIR/__pypackages__/$PYTHON_MAJOR.$PYTHON_MINOR/lib
 
 WORKDIR $APPDIR
