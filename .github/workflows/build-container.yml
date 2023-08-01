@@ -24,6 +24,9 @@ jobs:
       - name: Build container images
         run: make build
 
+      - name: Build stand-alone packages (RPMs and Python wheel)
+        run: make export-rpms export-python EXPORT_DIR=$(mktemp -d)
+
       - name: Setup huge-pages
         run: make setup HUGEPAGES=$HUGEPAGES
 
