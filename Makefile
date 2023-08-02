@@ -47,9 +47,9 @@ export-rpms: run ## Build SPDK RPMs and copy them to $(EXPORT_DIR)/rpm
 	@echo RPMs exported to:
 	@find $(strip $(EXPORT_DIR))/rpm -type f
 
-export-python: SVC=nvmeof-builder
+export-python: SVC=nvmeof-python-export
 export-python: OPTS=--entrypoint=pdm -v $(strip $(EXPORT_DIR)):/tmp
-export-python: CMD=build --no-sdist -d /tmp
+export-python: CMD=build --no-sdist --no-clean -d /tmp
 export-python: run ## Build Ceph NVMe-oF Gateway Python package and copy it to /tmp
 	@echo Python wheel exported to:
 	@find $(EXPORT_DIR) -name "ceph_nvmeof-*.whl" -type f

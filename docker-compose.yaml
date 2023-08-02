@@ -28,6 +28,7 @@ services:
   spdk-rpm-export:
     extends:
       service: spdk
+    image: spdk-rpm-export
     build:
       target: rpm-export
   ceph:
@@ -115,10 +116,10 @@ services:
     volumes:
       - .:/src
   # Used to export Python package
-  nvmeof-builder:
+  nvmeof-python-export:
     extends:
       service: nvmeof-base
-    image: nvmeof-builder
+    image: nvmeof-python-export
     build:
       target: builder
       args:

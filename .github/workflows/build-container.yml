@@ -22,10 +22,22 @@ jobs:
           submodules: recursive
 
       - name: Build container images
-        run: make build
+        run: make build SVC="spdk nvmeof nvmeof-cli ceph"
 
       - name: Build stand-alone packages (RPMs and Python wheel)
-        run: make export-rpms export-python EXPORT_DIR=$(mktemp -d)
+        id: build-standalone-packages
+        run: |
+          export EXPORT_DIR=$(mktemp -d)
+          make export-rpms
+          make export-python
+          echo "EXPORT_DIR=$EXPORT_DIR" >> "$GITHUB_ENV"
+        
+      - name: Upload stand-alone packages
+        uses: actions/upload-artifact@v3
+        with:
+          name: ceph_nvmeof-${{ github.run_number }}
+          path: |
+            ${{ env.EXPORT_DIR }}/**
 
       - name: Setup huge-pages
         run: make setup HUGEPAGES=$HUGEPAGES
