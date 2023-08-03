@@ -34,10 +34,25 @@ up: override OPTS += --no-build --remove-orphans --scale nvmeof=$(SCALE)
 clean: override HUGEPAGES = 0
 clean: $(CLEAN) setup  ## Clean-up environment
 
-update-lockfile: SVC=nvmeof-builder
+update-lockfile: SVC=nvmeof-builder-base
 update-lockfile: override OPTS+=--entrypoint=pdm
 update-lockfile: CMD=update --no-sync --no-isolation --no-self --no-editable
 update-lockfile: pyproject.toml run ## Update dependencies in lockfile (pdm.lock)
+
+EXPORT_DIR ?= /tmp ## Directory to export packages (RPM and Python wheel)
+export-rpms: SVC=spdk-rpm-export
+export-rpms: OPTS=--entrypoint=cp -v $(strip $(EXPORT_DIR)):/tmp
+export-rpms: CMD=-r /rpm /tmp
+export-rpms: run ## Build SPDK RPMs and copy them to $(EXPORT_DIR)/rpm
+	@echo RPMs exported to:
+	@find $(strip $(EXPORT_DIR))/rpm -type f
+
+export-python: SVC=nvmeof-python-export
+export-python: OPTS=--entrypoint=pdm -v $(strip $(EXPORT_DIR)):/tmp
+export-python: CMD=build --no-sdist --no-clean -d /tmp
+export-python: run ## Build Ceph NVMe-oF Gateway Python package and copy it to /tmp
+	@echo Python wheel exported to:
+	@find $(EXPORT_DIR) -name "ceph_nvmeof-*.whl" -type f
 
 help: AUTOHELP_SUMMARY = Makefile to build and deploy the Ceph NVMe-oF Gateway
 help: autohelp

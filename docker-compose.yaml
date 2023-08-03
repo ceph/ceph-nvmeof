@@ -24,6 +24,13 @@ services:
         SPDK_GIT_COMMIT:
       labels:
         io.ceph.nvmeof:
+  # Used to export RPM packages externally (via bind mount)
+  spdk-rpm-export:
+    extends:
+      service: spdk
+    image: spdk-rpm-export
+    build:
+      target: rpm-export
   ceph:
     image: quay.io/ceph/vstart-cluster:$CEPH_CLUSTER_VERSION
     container_name: ceph
@@ -99,14 +106,24 @@ services:
     depends_on:
       ceph:
         condition: service_healthy
-  nvmeof-builder:
+  # Used to update lockfile (make update-lockfile)
+  nvmeof-builder-base:
     extends:
       service: nvmeof-base
-    image: nvmeof-builder
+    image: nvmeof-builder-base
     build:
       target: builder-base
     volumes:
       - .:/src
+  # Used to export Python package
+  nvmeof-python-export:
+    extends:
+      service: nvmeof-base
+    image: nvmeof-python-export
+    build:
+      target: builder
+      args:
+        NVMEOF_TARGET: cli
   nvmeof-devel:
     # Runs from source code in current dir
     extends:

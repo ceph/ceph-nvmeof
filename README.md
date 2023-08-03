@@ -308,6 +308,8 @@ sudo sed -i -E 's/^SELINUX=enforcing$/SELINUX=permissive/' /etc/selinux/config
 
 ### Building
 
+#### Containers
+
 To avoid having to deal with `docker-compose` commands, this provides a `Makefile` that wraps those as regular `make` targets:
 
 To build the container images from the local sources:
@@ -336,6 +338,20 @@ For building a specific service:
 
 ```bash
 make build SVC=nvmeof
+```
+
+#### Stand-alone Packages
+
+To generate independent RPM and Python wheel packages:
+
+```bash
+make export-rpms export-python
+RPMs exported to:
+/tmp/rpm/x86_64/spdk-libs-23.01-0.x86_64.rpm
+/tmp/rpm/x86_64/spdk-devel-23.01-0.x86_64.rpm
+/tmp/rpm/x86_64/spdk-23.01-0.x86_64.rpm
+Python wheel exported to:
+/tmp/ceph_nvmeof-0.0.1-py3-none-any.whl
 ```
 
 ### Development containers
@@ -374,11 +390,14 @@ Targets:
 
   Basic targets:
       clean           Clean-up environment
+      export-python   Build Ceph NVMe-oF Gateway Python package and copy it to /tmp
+      export-rpms     Build SPDK RPMs and copy them to $(EXPORT_DIR)/rpm
       setup           Configure huge-pages (requires sudo/root password)
       up              Services
       update-lockfile Update dependencies in lockfile (pdm.lock)
 
     Options:
+      EXPORT_DIR      Directory to export packages (RPM and Python wheel) (Default: /tmp)
       up: SVC         Services (Default: nvmeof)
 
   Deployment commands (docker-compose):

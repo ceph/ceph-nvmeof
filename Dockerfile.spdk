@@ -51,6 +51,10 @@ RUN \
     rpmbuild/rpm.sh $SPDK_CONFIGURE_ARGS
 
 #------------------------------------------------------------------------------
+FROM registry.access.redhat.com/ubi9/ubi AS rpm-export
+COPY --from=build /root/rpmbuild/rpm /rpm
+
+#------------------------------------------------------------------------------
 FROM registry.access.redhat.com/ubi9/ubi
 
 ARG SPDK_CEPH_VERSION \

@@ -96,6 +96,8 @@ ARG PDM_VERSION=2.7.4 \
     PDM_INSTALL_FLAGS="-v --no-isolation --no-self --no-editable"
 ENV PDM_INSTALL_FLAGS=$PDM_INSTALL_FLAGS
 
+ENV PDM_CHECK_UPDATE=0
+
 # https://pdm.fming.dev/latest/usage/advanced/#use-pdm-in-a-multi-stage-dockerfile
 RUN \
     --mount=type=cache,target=/var/cache/dnf \
