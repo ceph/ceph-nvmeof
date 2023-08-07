@@ -113,6 +113,8 @@ services:
     image: nvmeof-builder-base
     build:
       target: builder-base
+      args:
+        NVMEOF_TARGET: cli
     volumes:
       - .:/src
   # Used to export Python package
