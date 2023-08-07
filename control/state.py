@@ -172,9 +172,10 @@ class OmapGatewayState(GatewayState):
         self.omap_name = f"nvmeof.{gateway_group}.state" if gateway_group else "nvmeof.state"
         ceph_pool = self.config.get("ceph", "pool")
         ceph_conf = self.config.get("ceph", "config_file")
+        rados_id = self.config.get_with_default("ceph", "id", "")
 
         try:
-            conn = rados.Rados(conffile=ceph_conf)
+            conn = rados.Rados(conffile=ceph_conf, rados_id=rados_id)
             conn.connect()
             self.ioctx = conn.open_ioctx(ceph_pool)
             # Create a new gateway persistence OMAP object
