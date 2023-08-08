@@ -333,25 +333,12 @@ class GatewayService(pb2_grpc.GatewayServicer):
                          f" {request.trtype} listener for {request.nqn} at"
                          f" {request.traddr}:{request.trsvcid}.")
         try:
-            if (request.gateway_name and not request.traddr) or \
-               (not request.gateway_name and request.traddr):
-                raise Exception(
-                    "both gateway_name and traddr or neither must be specified")
-
-            if not request.gateway_name or \
-               request.gateway_name == self.gateway_name:
-                if not request.traddr:
-                    traddr = self.config.get("gateway", "addr")
-                    if not traddr:
-                        raise Exception("gateway.addr option is not set")
-                else:
-                    traddr = request.traddr
-
+            if request.gateway_name == self.gateway_name:
                 ret = rpc_nvmf.nvmf_subsystem_add_listener(
                     self.spdk_rpc_client,
                     nqn=request.nqn,
                     trtype=request.trtype,
-                    traddr=traddr,
+                    traddr=request.traddr,
                     trsvcid=request.trsvcid,
                     adrfam=request.adrfam,
                 )
@@ -387,25 +374,12 @@ class GatewayService(pb2_grpc.GatewayServicer):
                          f" {request.trtype} listener for {request.nqn} at"
                          f" {request.traddr}:{request.trsvcid}.")
         try:
-            if (request.gateway_name and not request.traddr) or \
-               (not request.gateway_name and request.traddr):
-                raise Exception(
-                    "both gateway_name and traddr or neither must be specified")
-
-            if not request.gateway_name or \
-               request.gateway_name == self.gateway_name:
-                if not request.traddr:
-                    traddr = self.config.get("gateway", "addr")
-                    if not traddr:
-                        raise Exception("gateway.addr option is not set")
-                else:
-                    traddr = request.traddr
-
+            if request.gateway_name == self.gateway_name:
                 ret = rpc_nvmf.nvmf_subsystem_remove_listener(
                     self.spdk_rpc_client,
                     nqn=request.nqn,
                     trtype=request.trtype,
-                    traddr=traddr,
+                    traddr=request.traddr,
                     trsvcid=request.trsvcid,
                     adrfam=request.adrfam,
                 )
