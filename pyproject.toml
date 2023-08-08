@@ -23,8 +23,9 @@ maintainers = []
 keywords = []
 classifiers = [] # https://pypi.org/classifiers/
 dependencies = [
-  "grpcio ~= 1.53.0",
-  "grpcio_tools ~= 1.53.0"
+    "grpcio ~= 1.53.0",
+    "grpcio_tools ~= 1.53.0",
+    "pytest>=7.4.0",
 ]
 
 [tool.pdm.scripts]
