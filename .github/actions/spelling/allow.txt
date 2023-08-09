@@ -1,0 +1,9 @@
+ceph
+crt
+github
+google
+gpg
+https
+ssh
+ubuntu
+workarounds
