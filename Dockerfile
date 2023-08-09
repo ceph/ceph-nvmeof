@@ -93,8 +93,9 @@ WORKDIR $APPDIR
 FROM python-intermediate AS builder-base
 ARG PDM_VERSION=2.7.4 \
     PDM_INSTALL_CMD=sync \
-    PDM_INSTALL_FLAGS="-v --no-isolation --no-self --no-editable"
-ENV PDM_INSTALL_FLAGS=$PDM_INSTALL_FLAGS
+    PDM_INSTALL_FLAGS="-v --no-isolation --no-self --no-editable" \
+    PDM_INSTALL_DEV=""
+ENV PDM_INSTALL_FLAGS="$PDM_INSTALL_FLAGS $PDM_INSTALL_DEV"
 
 ENV PDM_CHECK_UPDATE=0
 

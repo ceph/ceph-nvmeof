@@ -83,8 +83,8 @@ summary = "A lil' TOML parser"
 [metadata]
 lock_version = "4.2"
 cross_platform = true
-groups = ["default"]
-content_hash = "sha256:f5e6ece46234e1754af42cc4483ac0ecbc8c695cadfd60c8f961e69d308760cb"
+groups = ["default", "dev", "test"]
+content_hash = "sha256:4778dd0d603dbe6e4958b9fbcfaada966a132a64bb5aab32941c648b1e86a7b6"
 
 [metadata.files]
 "colorama 0.4.6" = [

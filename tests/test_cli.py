@@ -32,53 +32,53 @@ def gateway(config):
 
 class TestGet:
     def test_get_subsystems(self, caplog, gateway):
-        cli(["--server-address", "localhost", "get_subsystems"])
+        cli(["get_subsystems"])
         assert "Failed to get" not in caplog.text
 
 
 class TestCreate:
     def test_create_bdev(self, caplog, gateway):
-        cli(["--server-address", "localhost", "create_bdev", "-i", image, "-p", pool, "-b", bdev])
+        cli(["create_bdev", "-i", image, "-p", pool, "-b", bdev])
         assert "Failed to create" not in caplog.text
 
     def test_create_subsystem(self, caplog, gateway):
-        cli(["--server-address", "localhost", "create_subsystem", "-n", subsystem, "-s", serial])
+        cli(["create_subsystem", "-n", subsystem, "-s", serial])
         assert "Failed to create" not in caplog.text
 
     def test_add_namespace(self, caplog, gateway):
-        cli(["--server-address", "localhost", "add_namespace", "-n", subsystem, "-b", bdev])
+        cli(["add_namespace", "-n", subsystem, "-b", bdev])
         assert "Failed to add" not in caplog.text
 
     @pytest.mark.parametrize("host", host_list)
     def test_add_host(self, caplog, host):
-        cli(["--server-address", "localhost", "add_host", "-n", subsystem, "-t", host])
+        cli(["add_host", "-n", subsystem, "-t", host])
         assert "Failed to add" not in caplog.text
 
     @pytest.mark.parametrize("listener", listener_list)
     def test_create_listener(self, caplog, listener, gateway):
-        cli(["--server-address", "localhost", "create_listener", "-n", subsystem] + listener)
+        cli(["create_listener", "-n", subsystem] + listener)
         assert "Failed to create" not in caplog.text
 
 
 class TestDelete:
     @pytest.mark.parametrize("host", host_list)
     def test_remove_host(self, caplog, host, gateway):
-        cli(["--server-address", "localhost", "remove_host", "-n", subsystem, "-t", host])
+        cli(["remove_host", "-n", subsystem, "-t", host])
         assert "Failed to remove" not in caplog.text
 
     @pytest.mark.parametrize("listener", listener_list)
     def test_delete_listener(self, caplog, listener, gateway):
-        cli(["--server-address", "localhost", "delete_listener", "-n", subsystem] + listener)
+        cli(["delete_listener", "-n", subsystem] + listener)
         assert "Failed to delete" not in caplog.text
 
     def test_remove_namespace(self, caplog, gateway):
-        cli(["--server-address", "localhost", "remove_namespace", "-n", subsystem, "-i", nsid])
+        cli(["remove_namespace", "-n", subsystem, "-i", nsid])
         assert "Failed to remove" not in caplog.text
 
     def test_delete_bdev(self, caplog, gateway):
-        cli(["--server-address", "localhost", "delete_bdev", "-b", bdev])
+        cli(["delete_bdev", "-b", bdev])
         assert "Failed to delete" not in caplog.text
 
     def test_delete_subsystem(self, caplog, gateway):
-        cli(["--server-address", "localhost", "delete_subsystem", "-n", subsystem])
+        cli(["delete_subsystem", "-n", subsystem])
         assert "Failed to delete" not in caplog.text

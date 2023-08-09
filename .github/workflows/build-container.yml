@@ -5,7 +5,8 @@ on:
   schedule:
     - cron: '0 0 * * *'
   workflow_dispatch:
-
+env:
+  WAIT_INTERVAL_SECS: 1
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -17,10 +18,11 @@ jobs:
           submodules: recursive
 
       - name: Build container images
-        run: make build SVC="spdk bdevperf nvmeof nvmeof-cli ceph"
+        run: make build
 
       - name: Save container images
         run: |
+          docker save nvmeof-devel > nvmeof-devel.tar
           . .env
           docker save quay.io/ceph/nvmeof:$NVMEOF_VERSION > nvmeof.tar
           docker save quay.io/ceph/nvmeof-cli:$NVMEOF_VERSION > nvmeof-cli.tar
@@ -30,10 +32,11 @@ jobs:
       - name: Upload container images
         uses: actions/upload-artifact@v3
         with:
-          name: images
+          name: ceph_nvmeof_container_images-${{ github.run_number }}
           path: |
             nvmeof.tar
             nvmeof-cli.tar
+            nvmeof-devel.tar
             vstart-cluster.tar
             bdevperf.tar
 
@@ -48,7 +51,7 @@ jobs:
       - name: Upload stand-alone packages
         uses: actions/upload-artifact@v3
         with:
-          name: ceph_nvmeof-${{ github.run_number }}
+          name: ceph_nvmeof_standalone_packages-${{ github.run_number }}
           path: |
             ${{ env.EXPORT_DIR }}/**
 
@@ -72,11 +75,11 @@ jobs:
       - name: Download container images
         uses: actions/download-artifact@v3
         with:
-          name: images
+          name: ceph_nvmeof_container_images-${{ github.run_number }}
 
       - name: Load container images
         run: |
-          docker load < nvmeof.tar
+          docker load < nvmeof-devel.tar
           docker load < vstart-cluster.tar
 
       - name: Start ceph cluster
@@ -84,18 +87,19 @@ jobs:
           make up SVC=ceph OPTS="--detach"
 
       - name: Wait for the ceph cluster container to become healthy
+        timeout-minutes: 3
         run: |
           while true; do
             container_status=$(docker inspect --format='{{.State.Health.Status}}' ceph)
             if [[ $container_status == "healthy" ]]; then
-            break
-          else
-            # Wait for a specific time before checking again
-            sleep 1
-            echo -n .
-          fi
+              # success
+              exit 0
+            else
+              # Wait for a specific time before checking again
+              sleep ${{ env.WAIT_INTERVAL_SECS }}
+              echo -n .
+            fi
           done
-          echo
 
       - name: Create RBD image
         run: |
@@ -110,17 +114,32 @@ jobs:
         run: |
           # Run tests code in current dir
           # Managing pytest’s output: https://docs.pytest.org/en/7.1.x/how-to/output.html
-          make run SVC="nvmeof-devel" OPTS="--volume=$(pwd)/tests:/src/tests --entrypoint=python3" CMD="-m pytest --full-trace -vv -ra -s tests/test_${{ matrix.test }}.py"
+          make run SVC="nvmeof-devel" OPTS="--volume=$(pwd)/tests:/src/tests --entrypoint=python3" CMD="-m pytest --show-capture=all -s --full-trace -vv -rA tests/test_${{ matrix.test }}.py"
 
-      - name: Display Logs
+      - name: Check coredump existence
+        if: success() || failure()
+        id: check_coredumps
+        uses: andstor/file-existence-action@20b4d2e596410855db8f9ca21e96fbe18e12930b # v2, pinned to SHA for security reasons
+        with:
+          files: "/var/lib/systemd/coredump/*"
+
+      - name: Upload ${{ matrix.test }} test core dumps
+        if: steps.check_coredumps.outputs.files_exists == 'true'
+        uses: actions/upload-artifact@v1
+        with:
+          name: ceph_nvmeof_pytest_${{ matrix.test }}_cores-${{ github.run_number }}
+          path: /var/lib/systemd/coredump/*
+
+      - name: Display logs
+        if: success() || failure()
         run: |
           make logs OPTS=""
 
-      - name: Compose Down
-        run: make down
-
-      - name: Compose Clean
-        run: make clean
+      - name: Tear down
+        if: success() || failure()
+        run: |
+          make down
+          make clean
 
   demo:
     needs: build
@@ -137,7 +156,7 @@ jobs:
       - name: Download container images
         uses: actions/download-artifact@v3
         with:
-          name: images
+          name: ceph_nvmeof_container_images-${{ github.run_number }}
 
       - name: Load container images
         run: |
@@ -148,28 +167,30 @@ jobs:
 
       - name: Start containers
         run: |
-          make up OPTS=--detach || (make logs OPTS=''; exit 1)
+          make up OPTS=--detach
 
       - name: Wait for the Gateway to be listening
-        timeout-minutes: 1
+        timeout-minutes: 3
         run: |
           . .env
-          echo using gateway $NVMEOF_IP_ADDRESS port $NVMEOF_GW_PORT
+
+          echo using gateway $NVMEOF_IP_ADDRESS port $NVMEOF_GW_PORT timeout ${{ env.WAIT_TIMEOUT_MINS }}
           until nc -z $NVMEOF_IP_ADDRESS $NVMEOF_GW_PORT; do
             echo -n .
-            sleep 1
+            sleep ${{ env.WAIT_INTERVAL_SECS }}
           done
-          echo
 
       - name: List containers
+        if: success() || failure()
         run: make ps
 
       - name: List processes
+        if: success() || failure()
         run: make top
 
       - name: Test
         run: |
-          make demo OPTS=-T || (make logs OPTS=''; exit 1)
+          make demo OPTS=-T
 
       - name: Get subsystems
         run: |
@@ -200,6 +221,20 @@ jobs:
           bdevperf="/usr/libexec/spdk/scripts/bdevperf.py"
           make exec SVC=bdevperf OPTS=-T CMD="$bdevperf -v -t $timeout -s $BDEVPERF_SOCKET perform_tests"
 
+      - name: Check coredump existence
+        if: success() || failure()
+        id: check_coredumps
+        uses: andstor/file-existence-action@20b4d2e596410855db8f9ca21e96fbe18e12930b # v2, pinned to SHA for security reasons
+        with:
+            files: "/var/lib/systemd/coredump/*"
+
+      - name: Upload demo core dumps
+        if: steps.check_coredumps.outputs.files_exists == 'true'
+        uses: actions/upload-artifact@v1
+        with:
+          name: ceph_nvmeof_demo_cores-${{ github.run_number }}
+          path: /var/lib/systemd/coredump/*
+
       #- name: Test mounting nvmeof device locally
       #  run: |
       #    . .env
@@ -222,10 +257,11 @@ jobs:
       #    limit-access-to-actor: true
 
       - name: Display logs
+        if: success() || failure()
         run: make logs OPTS=''
 
-      - name: Shut containers down
-        run: make down
-
-      - name: Clean up environment
-        run: make clean
+      - name: Tear down
+        if: success() || failure()
+        run: |
+          make down
+          make clean
