@@ -75,7 +75,7 @@ def test_multi_gateway_coordination(config, image, conn):
     if not enable_discovery_controller:
          num_subsystems -= 1
 
-    # Send requests to create a subsytem with one namespace to GatewayA
+    # Send requests to create a subsystem with one namespace to GatewayA
     bdev_req = pb2.create_bdev_req(bdev_name=bdev,
                                    rbd_pool_name=pool,
                                    rbd_image_name=image,
