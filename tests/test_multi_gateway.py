@@ -60,7 +60,7 @@ def test_multi_gateway_coordination(config, image, conn):
     """Tests state coordination in a gateway group.
 
     Sends requests to GatewayA to set up a subsystem with a single namespace
-    and checks if GatewayB has the the identical state after watch/notify and/or
+    and checks if GatewayB has the identical state after watch/notify and/or
     periodic polling.
     """
     stubA, stubB = conn
