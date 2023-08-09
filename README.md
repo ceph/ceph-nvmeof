@@ -365,7 +365,7 @@ make up SVC="nvmeof-devel"
 
 Devel containers provide the same base layer as the production containers but with the source code mounted at run-time.
 
-### Adding, removing or updating Python depedencies
+### Adding, removing or updating Python dependencies
 
 Python dependencies are specified in the file `pyproject.toml`
 ([PEP-621](https://peps.python.org/pep-0621/)), specifically under the `dependencies` list.
