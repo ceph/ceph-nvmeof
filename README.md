@@ -412,7 +412,7 @@ Targets:
       port            Print public port for a port binding
       ps              Display status of SVC containers
       pull            Download SVC images
-      push            Push SVC container images to a registry. Requires previous "docker login"
+      push            Push nvmeof and nvmeof-cli containers images to quay.io registries
       restart         Restart SVC
       run             Run command CMD inside SVC containers
       shell           Exec shell inside running SVC containers

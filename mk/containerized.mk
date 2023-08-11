@@ -19,8 +19,9 @@ pull: ## Download SVC images
 build:  ## Build SVC images
 build: DOCKER_COMPOSE_ENV = DOCKER_BUILDKIT=1 COMPOSE_DOCKER_CLI_BUILD=1
 
-push: ## Push SVC container images to a registry. Requires previous "docker login"
-push: SVC ?= nvmeof nvmeof-cli ceph
+push: ## Push nvmeof and nvmeof-cli containers images to quay.io registries
+	docker push $(QUAY_NVMEOF):$(NVMEOF_VERSION)
+	docker push $(QUAY_NVMEOFCLI):$(NVMEOF_VERSION)
 
 run: ## Run command CMD inside SVC containers
 run: override OPTS += --rm

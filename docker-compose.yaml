@@ -1,7 +1,7 @@
 version: "3.8"
 services:
   spdk:
-    image: quay.io/ceph/spdk:$SPDK_VERSION
+    image: $QUAY_SPDK:$SPDK_VERSION
     profiles:
       - build
     build:
@@ -52,7 +52,7 @@ services:
       nofile: $NVMEOF_NOFILE
       memlock: -1
   ceph:
-    image: quay.io/ceph/vstart-cluster:$CEPH_CLUSTER_VERSION
+    image: $QUAY_CEPH:$CEPH_CLUSTER_VERSION
     container_name: ceph
     build:
       context: .
@@ -122,7 +122,7 @@ services:
   nvmeof:
     extends:
       service: nvmeof-base
-    image: quay.io/ceph/nvmeof:$NVMEOF_VERSION
+    image: $QUAY_NVMEOF:$NVMEOF_VERSION
     depends_on:
       ceph:
         condition: service_healthy
@@ -159,7 +159,7 @@ services:
     volumes:
       - ./control:/src/control
   nvmeof-cli:
-    image: quay.io/ceph/nvmeof-cli:$NVMEOF_VERSION
+    image: $QUAY_NVMEOFCLI:$NVMEOF_VERSION
     build:
       context: .
       args:
