@@ -28,7 +28,8 @@ dependencies = [
 ]
 
 [tool.pdm.scripts]
-protoc = {call = "grpc_tools.command:build_package_protos('proto')"}
+protoc = {call = "grpc_tools.command:build_package_protos('.')"}
+pre_build = {composite = ["protoc"]}
 
 [tool.pytest.ini_options]
 log_cli = true

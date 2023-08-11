@@ -137,6 +137,17 @@ services:
         NVMEOF_TARGET: cli
     volumes:
       - .:/src
+  # Used to regenerate gRPC protobuf files
+  nvmeof-builder:
+    extends:
+      service: nvmeof-base
+    image: nvmeof-builder
+    build:
+      target: builder
+      args:
+        NVMEOF_TARGET: cli
+    volumes:
+      - ./control:/src/control
   # Used to export Python package
   nvmeof-python-export:
     extends:

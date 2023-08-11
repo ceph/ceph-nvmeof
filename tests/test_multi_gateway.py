@@ -4,8 +4,8 @@ import grpc
 import json
 import time
 from control.server import GatewayServer
-from proto import gateway_pb2 as pb2
-from proto import gateway_pb2_grpc as pb2_grpc
+from control.proto import gateway_pb2 as pb2
+from control.proto import gateway_pb2_grpc as pb2_grpc
 
 update_notify = True
 update_interval_sec = 5
@@ -58,7 +58,7 @@ def conn(config):
 
 def test_multi_gateway_coordination(config, image, conn):
     """Tests state coordination in a gateway group.
-    
+
     Sends requests to GatewayA to set up a subsystem with a single namespace
     and checks if GatewayB has the the identical state after watch/notify and/or
     periodic polling.
