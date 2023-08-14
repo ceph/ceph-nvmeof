@@ -1,4 +1,4 @@
 [submodule "spdk"]
 	path = spdk
-	url = https://github.com/ceph/spdk.git
-	branch = ceph-nvmeof
+	url = https://github.com/spdk/spdk.git
+	branch = v23.05
