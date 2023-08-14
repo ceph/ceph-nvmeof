@@ -52,6 +52,7 @@ message create_bdev_req {
 	string rbd_pool_name = 2;
 	string rbd_image_name = 3;
 	int32 block_size = 4;
+	optional string uuid = 5;
 }
 
 message delete_bdev_req {
