@@ -48,7 +48,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
     def create_bdev(self, request, context=None):
         """Creates a bdev from an RBD image."""
 
-        name = str(uuid.uuid4()) if not request.bdev_name else request.bdev_name
+        if not request.uuid:
+            request.uuid = str(uuid.uuid4())
+
+        name = request.uuid if not request.bdev_name else request.bdev_name
         self.logger.info(f"Received request to create bdev {name} from"
                          f" {request.rbd_pool_name}/{request.rbd_image_name}"
                          f" with block size {request.block_size}")
@@ -59,6 +62,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 pool_name=request.rbd_pool_name,
                 rbd_name=request.rbd_image_name,
                 block_size=request.block_size,
+                uuid=request.uuid,
             )
             self.logger.info(f"create_bdev: {bdev_name}")
         except Exception as ex:
