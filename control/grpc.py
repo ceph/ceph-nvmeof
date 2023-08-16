@@ -118,12 +118,16 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         self.logger.info(
             f"Received request to create subsystem {request.subsystem_nqn}")
+        min_cntlid = self.config.getint_with_default("gateway", "min_cntlid", 1)
+        max_cntlid = self.config.getint_with_default("gateway", "max_cntlid", 65519)
         try:
             ret = rpc_nvmf.nvmf_create_subsystem(
                 self.spdk_rpc_client,
                 nqn=request.subsystem_nqn,
                 serial_number=request.serial_number,
                 max_namespaces=request.max_namespaces,
+                min_cntlid=min_cntlid,
+                max_cntlid=max_cntlid,
             )
             self.logger.info(f"create_subsystem {request.subsystem_nqn}: {ret}")
         except Exception as ex:
