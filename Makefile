@@ -18,7 +18,7 @@ setup: ## Configure huge-pages (requires sudo/root password)
 	@echo Actual Hugepages allocation: $$(cat $(HUGEPAGES_DIR))
 	@[ $$(cat $(HUGEPAGES_DIR)) -eq $(HUGEPAGES) ]
 
-build push pull logs: SVC ?= spdk nvmeof nvmeof-cli ceph
+build push pull logs: SVC ?= spdk bdevperf nvmeof nvmeof-cli ceph
 
 build: export NVMEOF_GIT_BRANCH != git name-rev --name-only HEAD
 build: export NVMEOF_GIT_COMMIT != git rev-parse HEAD
