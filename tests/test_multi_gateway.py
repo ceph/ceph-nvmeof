@@ -10,7 +10,6 @@ from proto import gateway_pb2_grpc as pb2_grpc
 update_notify = True
 update_interval_sec = 5
 
-
 @pytest.fixture(scope="module")
 def conn(config):
     """Sets up and tears down Gateways A and B."""
@@ -59,12 +58,16 @@ def test_multi_gateway_coordination(config, image, conn):
     periodic polling.
     """
     stubA, stubB = conn
-
     bdev = "Ceph0"
     nqn = "nqn.2016-06.io.spdk:cnode1"
     serial = "SPDK00000000000001"
     nsid = 10
+    num_subsystems = 2
+
     pool = config.get("ceph", "pool")
+    enable_discovery_controller = config.getboolean_with_default("gateway", "enable_discovery_controller", False)
+    if not enable_discovery_controller:
+         num_subsystems -= 1
 
     # Send requests to create a subsytem with one namespace to GatewayA
     bdev_req = pb2.create_bdev_req(bdev_name=bdev,
@@ -89,18 +92,19 @@ def test_multi_gateway_coordination(config, image, conn):
         time.sleep(1)
         watchB = stubB.get_subsystems(get_subsystems_req)
         listB = json.loads(watchB.subsystems)
-        assert len(listB) == 2
-        assert listB[1]["nqn"] == nqn
-        assert listB[1]["serial_number"] == serial
-        assert listB[1]["namespaces"][0]["nsid"] == nsid
-        assert listB[1]["namespaces"][0]["bdev_name"] == bdev
+        assert len(listB) == num_subsystems
+        assert listB[num_subsystems-1]["nqn"] == nqn
+        assert listB[num_subsystems-1]["serial_number"] == serial
+        assert listB[num_subsystems-1]["namespaces"][0]["nsid"] == nsid
+        assert listB[num_subsystems-1]["namespaces"][0]["bdev_name"] == bdev
 
     # Periodic update
     time.sleep(update_interval_sec + 1)
     pollB = stubB.get_subsystems(get_subsystems_req)
     listB = json.loads(pollB.subsystems)
-    assert len(listB) == 2
-    assert listB[1]["nqn"] == nqn
-    assert listB[1]["serial_number"] == serial
-    assert listB[1]["namespaces"][0]["nsid"] == nsid
-    assert listB[1]["namespaces"][0]["bdev_name"] == bdev
+    assert len(listB) == num_subsystems
+    assert listB[num_subsystems-1]["nqn"] == nqn
+    assert listB[num_subsystems-1]["serial_number"] == serial
+    assert listB[num_subsystems-1]["namespaces"][0]["nsid"] == nsid
+    assert listB[num_subsystems-1]["namespaces"][0]["bdev_name"] == bdev
+

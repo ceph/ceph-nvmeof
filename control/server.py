@@ -113,6 +113,13 @@ class GatewayServer:
 
         # Start server
         self.server.start()
+        enable_discovery_controller = self.config.getboolean_with_default("gateway", "enable_discovery_controller", False)
+        if not enable_discovery_controller:
+            try:
+                rpc_nvmf.nvmf_delete_subsystem(self.spdk_rpc_ping_client, "nqn.2014-08.org.nvmexpress.discovery")
+            except Exception as ex:
+                self.logger.error(f"  Delete Discovery subsystem returned with error: \n {ex}")
+                raise
 
     def _add_server_listener(self):
         """Adds listener port to server."""
