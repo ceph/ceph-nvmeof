@@ -52,12 +52,16 @@ class GatewayService(pb2_grpc.GatewayServicer):
             request.uuid = str(uuid.uuid4())
 
         name = request.uuid if not request.bdev_name else request.bdev_name
+        rados_id = self.config.get_with_default("ceph", "id", "")
+        if rados_id == "":
+            rados_id = None
         self.logger.info(f"Received request to create bdev {name} from"
                          f" {request.rbd_pool_name}/{request.rbd_image_name}"
                          f" with block size {request.block_size}")
         try:
             bdev_name = rpc_bdev.bdev_rbd_create(
                 self.spdk_rpc_client,
+                user=rados_id,
                 name=name,
                 pool_name=request.rbd_pool_name,
                 rbd_name=request.rbd_image_name,
