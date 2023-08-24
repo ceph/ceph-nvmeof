@@ -25,7 +25,6 @@ classifiers = [] # https://pypi.org/classifiers/
 dependencies = [
     "grpcio ~= 1.53.0",
     "grpcio_tools ~= 1.53.0",
-    "pytest>=7.4.0",
 ]
 
 [tool.pdm.scripts]
@@ -36,6 +35,11 @@ log_cli = true
 log_cli_level = "INFO"
 log_cli_format = "%(asctime)s [%(levelname)8s] %(message)s (%(filename)s:%(lineno)s)"
 log_cli_date_format = "%Y-%m-%d %H:%M:%S"
+
+[tool.pdm.dev-dependencies]
+test = [
+    "pytest>=7.4.0",
+]
 
 [project.urls]
 #homepage = ""

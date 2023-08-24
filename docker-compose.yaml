@@ -147,13 +147,15 @@ services:
       args:
         NVMEOF_TARGET: cli
   nvmeof-devel:
+    image: nvmeof-devel
     # Runs from source code in current dir
     extends:
       service: nvmeof-base
-    image: quay.io/ceph/nvmeof:$NVMEOF_VERSION
-    depends_on:
-      ceph:
-        condition: service_healthy
+    build:
+      target: builder
+      args:
+        # https://daobook.github.io/pdm/usage/dependency/#add-development-only-dependencies
+        PDM_INSTALL_DEV: "-d"
     volumes:
       - ./control:/src/control
   nvmeof-cli:

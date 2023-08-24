@@ -20,6 +20,7 @@ build:  ## Build SVC images
 build: DOCKER_COMPOSE_ENV = DOCKER_BUILDKIT=1 COMPOSE_DOCKER_CLI_BUILD=1
 
 push: ## Push SVC container images to a registry. Requires previous "docker login"
+push: SVC ?= nvmeof nvmeof-cli ceph
 
 run: ## Run command CMD inside SVC containers
 run: override OPTS += --rm
