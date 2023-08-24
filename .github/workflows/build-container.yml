@@ -17,7 +17,7 @@ jobs:
           submodules: recursive
 
       - name: Build container images
-        run: make build SVC="spdk nvmeof nvmeof-cli ceph"
+        run: make build SVC="spdk bdevperf nvmeof nvmeof-cli ceph"
 
       - name: Save container images
         run: |
@@ -25,6 +25,7 @@ jobs:
           docker save quay.io/ceph/nvmeof:$NVMEOF_VERSION > nvmeof.tar
           docker save quay.io/ceph/nvmeof-cli:$NVMEOF_VERSION > nvmeof-cli.tar
           docker save quay.io/ceph/vstart-cluster:$CEPH_VERSION  > vstart-cluster.tar
+          docker save bdevperf > bdevperf.tar
 
       - name: Upload container images
         uses: actions/upload-artifact@v3
@@ -34,6 +35,7 @@ jobs:
             nvmeof.tar
             nvmeof-cli.tar
             vstart-cluster.tar
+            bdevperf.tar
 
       - name: Build stand-alone packages (RPMs and Python wheel)
         id: build-standalone-packages
@@ -124,7 +126,7 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     env:
-      HUGEPAGES: 256
+      HUGEPAGES: 512
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -142,6 +144,7 @@ jobs:
           docker load < nvmeof.tar
           docker load < nvmeof-cli.tar
           docker load < vstart-cluster.tar
+          docker load < bdevperf.tar
 
       - name: Start containers
         run: |
@@ -174,6 +177,28 @@ jobs:
           shopt -s expand_aliases
           eval $(make alias)
           nvmeof-cli get_subsystems
+
+      - name: Run bdevperf
+        run: |
+          # see https://spdk.io/doc/nvmf_multipath_howto.html
+          . .env
+          echo -n "ℹ️  Starting bdevperf container"
+          make up  SVC=bdevperf OPTS="--detach"
+          sleep 10
+          echo "ℹ️  bdevperf start up logs"
+          make logs SVC=bdevperf
+          eval $(make run SVC=bdevperf OPTS="--entrypoint=env" | grep BDEVPERF_SOCKET | tr -d '\n\r' )
+
+          rpc="/usr/libexec/spdk/scripts/rpc.py"
+          echo "ℹ️  bdevperf bdev_nvme_set_options"
+          make exec SVC=bdevperf OPTS=-T CMD="$rpc -v -s $BDEVPERF_SOCKET bdev_nvme_set_options -r -1"
+          echo "ℹ️  bdevperf tcp connect ip: $NVMEOF_IP_ADDRESS port: $NVMEOF_IO_PORT nqn: $NQN"
+          make exec SVC=bdevperf OPTS=-T CMD="$rpc -v -s $BDEVPERF_SOCKET bdev_nvme_attach_controller -b Nvme0 -t tcp -a $NVMEOF_IP_ADDRESS -s $NVMEOF_IO_PORT -f ipv4 -n $NQN -l -1 -o 10"
+          echo "ℹ️  bdevperf perform_tests"
+          eval $(make run SVC=bdevperf OPTS="--entrypoint=env" | grep BDEVPERF_TEST_DURATION | tr -d '\n\r' )
+          timeout=$(expr $BDEVPERF_TEST_DURATION \* 2)
+          bdevperf="/usr/libexec/spdk/scripts/bdevperf.py"
+          make exec SVC=bdevperf OPTS=-T CMD="$bdevperf -v -t $timeout -s $BDEVPERF_SOCKET perform_tests"
 
       #- name: Test mounting nvmeof device locally
       #  run: |

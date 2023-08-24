@@ -50,12 +50,15 @@ RUN \
     MAKEFLAGS=$SPDK_MAKEFLAGS \
     rpmbuild/rpm.sh $SPDK_CONFIGURE_ARGS
 
+# build bdevperf example, will not be a part of generated rpm
+RUN make -C ./examples/bdev/bdevperf
+
 #------------------------------------------------------------------------------
 FROM registry.access.redhat.com/ubi9/ubi AS rpm-export
 COPY --from=build /root/rpmbuild/rpm /rpm
 
 #------------------------------------------------------------------------------
-FROM registry.access.redhat.com/ubi9/ubi
+FROM registry.access.redhat.com/ubi9/ubi as spdk
 
 ARG SPDK_CEPH_VERSION \
     SPDK_VERSION
@@ -116,3 +119,32 @@ RUN \
 
 ENTRYPOINT [ "/usr/local/bin/nvmf_tgt" ]
 CMD [ "-u", "-r", "/var/tmp/spdk.sock" ]
+
+#------------------------------------------------------------------------------
+FROM spdk AS bdevperf
+
+# Default test run duration in secs
+ENV BDEVPERF_TEST_DURATION="90"
+
+# RPC socket path
+ENV BDEVPERF_SOCKET="/tmp/bdevperf.sock"
+
+# IO Queue depth
+ENV BDEVPERF_IO_QUEUE="128"
+
+# IO Block size
+ENV BDEVPERF_IO_BS="4096"
+
+# Type of I/O pattern, see https://spdk.io/doc/bdevperf.html
+# for available types
+ENV BDEVPERF_IO_TYPE="verify"
+
+COPY --from=build /src/build/examples/bdevperf /usr/local/bin/bdevperf
+COPY --from=build /src/examples/bdev/bdevperf/bdevperf.py /usr/libexec/spdk/scripts/bdevperf.py
+RUN echo "#!/bin/sh -x"                                                 > /entrypoint
+RUN echo "bdevperf -z -r \$BDEVPERF_SOCKET \\"                         >> /entrypoint
+RUN echo "         -q \$BDEVPERF_IO_QUEUE -o \$BDEVPERF_IO_BS \\"      >> /entrypoint
+RUN echo "         -w \$BDEVPERF_IO_TYPE -t \$BDEVPERF_TEST_DURATION"  >> /entrypoint
+RUN chmod 755 /entrypoint
+
+ENTRYPOINT [ "/entrypoint" ]
