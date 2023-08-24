@@ -20,15 +20,15 @@ config = "ceph-nvmeof.conf"
 def gateway(config):
     """Sets up and tears down Gateway"""
 
-    # Start gateway
-    gateway = GatewayServer(config)
-    gateway.serve()
+    with GatewayServer(config) as gateway:
 
-    yield
+        # Start gateway
+        gateway.serve()
+        yield
 
-    # Stop gateway
-    gateway.server.stop(grace=1)
-    gateway.gateway_rpc.gateway_state.delete_state()
+        # Stop gateway
+        gateway.server.stop(grace=1)
+        gateway.gateway_rpc.gateway_state.delete_state()
 
 class TestGet:
     def test_get_subsystems(self, caplog, gateway):

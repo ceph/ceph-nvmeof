@@ -31,25 +31,27 @@ def conn(config):
     configB.config["spdk"]["tgt_cmd_extra_args"] = "-m 0x02"
 
     # Start servers
-    gatewayA = GatewayServer(configA)
-    gatewayA.serve()
-    # Delete existing OMAP state
-    gatewayA.gateway_rpc.gateway_state.delete_state()
-    # Create new
-    gatewayB = GatewayServer(configB)
-    gatewayB.serve()
+    with (
+       GatewayServer(configA) as gatewayA,
+       GatewayServer(configB) as gatewayB,
+    ):
+        gatewayA.serve()
+        # Delete existing OMAP state
+        gatewayA.gateway_rpc.gateway_state.delete_state()
+        # Create new
+        gatewayB.serve()
 
-    # Bind the client and Gateways A & B
-    channelA = grpc.insecure_channel(f"{addr}:{portA}")
-    stubA = pb2_grpc.GatewayStub(channelA)
-    channelB = grpc.insecure_channel(f"{addr}:{portB}")
-    stubB = pb2_grpc.GatewayStub(channelB)
-    yield stubA, stubB
+        # Bind the client and Gateways A & B
+        channelA = grpc.insecure_channel(f"{addr}:{portA}")
+        stubA = pb2_grpc.GatewayStub(channelA)
+        channelB = grpc.insecure_channel(f"{addr}:{portB}")
+        stubB = pb2_grpc.GatewayStub(channelB)
+        yield stubA, stubB
 
-    # Stop gateways
-    gatewayA.server.stop(grace=1)
-    gatewayB.server.stop(grace=1)
-    gatewayB.gateway_rpc.gateway_state.delete_state()
+        # Stop gateways
+        gatewayA.server.stop(grace=1)
+        gatewayB.server.stop(grace=1)
+        gatewayB.gateway_rpc.gateway_state.delete_state()
 
 def test_multi_gateway_coordination(config, image, conn):
     """Tests state coordination in a gateway group.
