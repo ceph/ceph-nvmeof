@@ -18,12 +18,16 @@ def conn(config):
     configA.config["gateway"]["name"] = "GatewayA"
     configA.config["gateway"]["group"] = "Group1"
     configA.config["gateway"]["state_update_notify"] = str(update_notify)
+    configA.config["gateway"]["min_controller_id"] = "1"
+    configA.config["gateway"]["max_controller_id"] = "20000"
     configB = copy.deepcopy(configA)
     addr = configA.get("gateway", "addr")
     portA = configA.getint("gateway", "port")
     portB = portA + 1
     configB.config["gateway"]["name"] = "GatewayB"
     configB.config["gateway"]["port"] = str(portB)
+    configA.config["gateway"]["min_controller_id"] = "20001"
+    configA.config["gateway"]["max_controller_id"] = "40000"
     configB.config["gateway"]["state_update_interval_sec"] = str(
         update_interval_sec)
     configB.config["spdk"]["rpc_socket"] = "/var/tmp/spdk_GatewayB.sock"
