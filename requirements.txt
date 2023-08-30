@@ -1,3 +1,4 @@
+calver==2022.6.26
 editables==0.5
 exceptiongroup==1.1.3
 flit-core==3.9.0
