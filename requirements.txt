@@ -14,5 +14,6 @@ pytest==7.4.0
 setuptools==45.0
 setuptools-scm[toml]==7.1.0
 tomli==2.0.1
+trove-classifiers==2023.8.7
 typing-extensions==4.7.1
 wheel==0.41.2
