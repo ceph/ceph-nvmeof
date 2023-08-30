@@ -5,3 +5,4 @@ packaging==23.1
 pytest==7.4.0
 setuptools==45.0
 setuptools-scm[toml]==7.1.0
+typing-extensions==4.7.1
