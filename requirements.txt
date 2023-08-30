@@ -2,6 +2,7 @@ flit-core==3.9.0
 grpcio==1.53.0
 grpcio_tools==1.53.0
 packaging==23.1
+protobuf==4.24.2
 pytest==7.4.0
 setuptools==45.0
 setuptools-scm[toml]==7.1.0
