@@ -686,9 +686,12 @@ class DiscoveryService:
         nvme_nsid = struct.unpack_from('<I', data, 12)[0]
         nvme_rsvd1 = struct.unpack_from('<Q', data, 16)[0]
         nvme_mptr = struct.unpack_from('<Q', data, 24)[0]
+        # https://nvmexpress.org/wp-content/uploads/NVM-Express-1_4-2019.06.10-Ratified.pdf
+        # The SGL Data Block descriptor, defined in Figure 114, describes a data block.
         nvme_sgl = struct.unpack_from('<16B', data, 32)
         nvme_sgl_desc_type = nvme_sgl[15] & 0xF0
         nvme_sgl_desc_sub_type = nvme_sgl[15] & 0x0F
+        nvme_sgl_len = nvme_sgl[8] + (nvme_sgl[9] << 8) + (nvme_sgl[10] << 16) + (nvme_sgl[11] << 24)
         nvme_get_logpage_dword10 = struct.unpack_from('<I', data, 48)[0]
         # nvme_get_logpage_numd indicate the reply bytes, rule: (values+1)*4
         nvme_get_logpage_numd = struct.unpack_from('<I', data, 50)[0]
@@ -706,6 +709,10 @@ class DiscoveryService:
 
         if get_logpage_lid != 0x70:
             self.logger.error("request type error, not discovery request.")
+            return -1
+
+        if nvme_data_len != nvme_sgl_len:
+            self.logger.error(f"request data len error, {nvme_data_len=} != {nvme_sgl_len=}.")
             return -1
 
         # Filter listeners based on host access permissions
@@ -786,13 +793,13 @@ class DiscoveryService:
         nvme_tcp_data_pdu.data_length = nvme_data_len
 
         # reply based on the received get log page request packet(length)
-        if nvme_data_len == 16:
+        if nvme_data_len < 1024:
             # nvme cli version: 1.x
             nvme_get_log_page_reply = NVMeGetLogPage()
             nvme_get_log_page_reply.genctr = self_conn.gen_cnt
             nvme_get_log_page_reply.numrec = len(listeners)
 
-            reply = pdu_reply + nvme_tcp_data_pdu + bytes(nvme_get_log_page_reply)[:16]
+            reply = pdu_reply + nvme_tcp_data_pdu + bytes(nvme_get_log_page_reply)[:nvme_data_len]
         elif nvme_data_len == 1024 and nvme_logpage_offset == 0:
             # nvme cli version: 2.x
             nvme_get_log_page_reply = NVMeGetLogPage()
@@ -809,7 +816,7 @@ class DiscoveryService:
                 self_conn.log_page = b''
                 self_conn.allow_listeners = []
         else:
-            self.logger.error("request log page lenghth error. It need to be 16 or n*1024")
+            self.logger.error(f"request log page: invalid length error {nvme_data_len=}")
             return -1
         try:
             conn.sendall(reply)
