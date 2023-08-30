@@ -127,8 +127,9 @@ class Connection:
     nvmeof_connect_data_hostnqn: str = field(default_factory=str)
     sq_head_ptr: int = 0
     unsent_log_page_len: int = 0
-    property_data: str = field(default_factory=str)
-    property_set: bool = False
+    # NVM ExpressTM Revision 1.4, page 47
+    # see Figure 78: Offset 14h: CC – Controller Configuration
+    property_configuration: tuple = tuple((c_ubyte *8)())
     shutdown_now: bool = False
     controller_id: uuid = None
     gen_cnt: int = 0
@@ -458,17 +459,13 @@ class DiscoveryService:
             # b'\x00\x00\x46\x00\x00\x00\x00\x00'
             # 0x46: IO Submission Queue Entry Size: 0x6 (64 bytes)
             # IO Completion Queue Entry Size: 0x4 (16 bytes)
-            property_data = (c_ubyte * 8)(0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00)
-            if len(self_conn.property_data) == 8:
-                property_data = (c_ubyte * 8)(*self_conn.property_data)
-            property_get.property_data = property_data
+            property_get.property_data = self_conn.property_configuration
         elif NVME_CTL(nvmeof_prop_get_set_offset) == NVME_CTL.STATUS:
-            property_data = (c_ubyte * 8)(0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00)
-            if len(self_conn.property_data) == 8:
-                property_data = (c_ubyte * 8)(*self_conn.property_data)
-            shutdown_notification = ((property_data[1]) >> 6) & 0x3
+            shutdown_notification = (self_conn.property_configuration[1] >> 6) & 0x3
             if shutdown_notification == 0:
-                if self_conn.property_set is True:
+                # check CC.EN bit
+                enabled = self_conn.property_configuration[0] & 0x1
+                if enabled != 0:
                     # controller status: ready
                     property_get.property_data = (c_ubyte * 8)(0x01, 0x00, \
                         0x00, 0x00, 0x00, 0x00, 0x00, 0x00)
@@ -510,8 +507,7 @@ class DiscoveryService:
         if NVME_CTL(nvmeof_prop_get_set_offset) == NVME_CTL.CAPABILITIES:
             self.logger.error("property setting of capabilities is not supported.")
         elif NVME_CTL(nvmeof_prop_get_set_offset) == NVME_CTL.CONFIGURATION:
-            self_conn.property_data = struct.unpack_from('<8B', data, 56)
-            self_conn.property_set = True
+            self_conn.property_configuration = struct.unpack_from('<8B', data, 56)
         elif NVME_CTL(nvmeof_prop_get_set_offset) == NVME_CTL.STATUS:
             self.logger.error("property setting of status is not supported.")
         elif NVME_CTL(nvmeof_prop_get_set_offset) == NVME_CTL.VERSION:
@@ -811,7 +807,6 @@ class DiscoveryService:
             self_conn.unsent_log_page_len -= nvme_data_len
             if self_conn.unsent_log_page_len == 0:
                 self_conn.log_page = b''
-                self_conn.property_set = False
                 self_conn.allow_listeners = []
         else:
             self.logger.error("request log page lenghth error. It need to be 16 or n*1024")
