@@ -694,7 +694,9 @@ class DiscoveryService:
         nvme_sgl_len = nvme_sgl[8] + (nvme_sgl[9] << 8) + (nvme_sgl[10] << 16) + (nvme_sgl[11] << 24)
         nvme_get_logpage_dword10 = struct.unpack_from('<I', data, 48)[0]
         # nvme_get_logpage_numd indicate the reply bytes, rule: (values+1)*4
-        nvme_get_logpage_numd = struct.unpack_from('<I', data, 50)[0]
+        nvme_get_logpage_numdl = struct.unpack_from('<H', data, 50)[0]
+        nvme_get_logpage_numdh = struct.unpack_from('<H', data, 52)[0]
+        nvme_get_logpage_numd = (nvme_get_logpage_numdh << 16) + nvme_get_logpage_numdl
         nvme_data_len = (nvme_get_logpage_numd + 1) * 4
         nvme_get_logpage_dword11 = struct.unpack_from('<I', data, 52)[0]
         # Logpage offset overlaps with dword13
