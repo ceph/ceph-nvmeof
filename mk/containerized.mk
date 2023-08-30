@@ -3,7 +3,7 @@
 # Docker and docker-compose specific commands
 DOCKER = docker
 DOCKER_COMPOSE = docker-compose ## Docker-compose command
-DOCKER_COMPOSE_COMMANDS = pull build push up run exec ps top images logs port \
+DOCKER_COMPOSE_COMMANDS = pull build up run exec ps top images logs port \
 	pause unpause stop restart down events
 
 OPTS ?= ## Docker-compose subcommand options
@@ -19,9 +19,12 @@ pull: ## Download SVC images
 build:  ## Build SVC images
 build: DOCKER_COMPOSE_ENV = DOCKER_BUILDKIT=1 COMPOSE_DOCKER_CLI_BUILD=1
 
+GIT_LATEST_TAG != git describe --tags --abbrev=0
 push: ## Push nvmeof and nvmeof-cli containers images to quay.io registries
-	docker push $(QUAY_NVMEOF):$(NVMEOF_VERSION)
-	docker push $(QUAY_NVMEOFCLI):$(NVMEOF_VERSION)
+	docker tag $(QUAY_NVMEOF):$(VERSION) $(QUAY_NVMEOF):$(GIT_LATEST_TAG)
+	docker push $(QUAY_NVMEOF):$(GIT_LATEST_TAG)
+	docker tag $(QUAY_NVMEOFCLI):$(VERSION) $(QUAY_NVMEOFCLI):$(GIT_LATEST_TAG)
+	docker push $(QUAY_NVMEOFCLI):$(GIT_LATEST_TAG)
 
 run: ## Run command CMD inside SVC containers
 run: override OPTS += --rm
