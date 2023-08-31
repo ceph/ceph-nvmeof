@@ -1,7 +1,8 @@
 **
 # Exclude everything except:
 !control/*.py
-!proto/*.proto
+!control/proto/__init__.py
+!control/proto/*.proto
 !pyproject.toml
 !pdm.lock
 !pdm.toml

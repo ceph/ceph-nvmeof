@@ -17,8 +17,8 @@ import spdk.rpc.bdev as rpc_bdev
 import spdk.rpc.nvmf as rpc_nvmf
 
 from google.protobuf import json_format
-from proto import gateway_pb2 as pb2
-from proto import gateway_pb2_grpc as pb2_grpc
+from .proto import gateway_pb2 as pb2
+from .proto import gateway_pb2_grpc as pb2_grpc
 
 
 class GatewayService(pb2_grpc.GatewayServicer):

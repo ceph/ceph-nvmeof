@@ -24,8 +24,8 @@ import spdk.rpc
 import spdk.rpc.client as rpc_client
 import spdk.rpc.nvmf as rpc_nvmf
 
-from proto import gateway_pb2 as pb2
-from proto import gateway_pb2_grpc as pb2_grpc
+from .proto import gateway_pb2 as pb2
+from .proto import gateway_pb2_grpc as pb2_grpc
 from .state import GatewayState, LocalGatewayState, OmapGatewayState, GatewayStateHandler
 from .grpc import GatewayService
 
