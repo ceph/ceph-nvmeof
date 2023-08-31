@@ -19,7 +19,7 @@ setup: ## Configure huge-pages (requires sudo/root password)
 	@[ $$(cat $(HUGEPAGES_DIR)) -eq $(HUGEPAGES) ]
 
 build pull logs: SVC ?= spdk bdevperf nvmeof nvmeof-devel nvmeof-cli ceph
-build up demo run logs push: export NVMEOF_VERSION != git describe --tags --abbrev=0
+
 build: export NVMEOF_GIT_BRANCH != git name-rev --name-only HEAD
 build: export NVMEOF_GIT_COMMIT != git rev-parse HEAD
 build: export SPDK_GIT_REPO != git -C spdk remote get-url origin

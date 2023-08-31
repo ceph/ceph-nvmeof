@@ -19,7 +19,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
         with:
-          fetch-depth: 0
           # git submodule update --init --recursive
           submodules: recursive
 
@@ -29,7 +28,6 @@ jobs:
       - name: Save container images
         run: |
           . .env
-          export NVMEOF_VERSION=$(git describe --tags --abbrev=0)
           docker save $QUAY_NVMEOF:$NVMEOF_VERSION > nvmeof.tar
           docker save $QUAY_NVMEOFCLI:$NVMEOF_VERSION > nvmeof-cli.tar
           docker save $QUAY_CEPH:$CEPH_VERSION  > vstart-cluster.tar
@@ -74,8 +72,6 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
 
       - name: Setup huge pages
         run: |
@@ -158,8 +154,6 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
 
       - name: Setup huge-pages
         run: make setup HUGEPAGES=$HUGEPAGES
@@ -205,7 +199,6 @@ jobs:
 
       - name: Get subsystems
         run: |
-          export NVMEOF_VERSION=$(git describe --tags --abbrev=0)
           # https://github.com/actions/toolkit/issues/766
           shopt -s expand_aliases
           eval $(make alias)
