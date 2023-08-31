@@ -93,7 +93,38 @@ class GatewayService(pb2_grpc.GatewayServicer):
         """Deletes a bdev."""
 
         self.logger.info(f"Received request to delete bdev {request.bdev_name}")
+        use_excep = None
+        req_get_subsystems = pb2.get_subsystems_req()
+        ret = self.get_subsystems(req_get_subsystems, context)
+        subsystems = json.loads(ret.subsystems)
+        for subsystem in subsystems:
+            for namespace in subsystem['namespaces']:
+                if namespace['bdev_name'] == request.bdev_name:
+                    # We found a namespace still using this bdev. If --force was used we will try to remove this namespace.
+                    # Otherwise fail with EBUSY
+                    if request.force:
+                        self.logger.info(f"Will remove namespace {namespace['nsid']} from {subsystem['nqn']} as it is using bdev {request.bdev_name}")
+                        try:
+                            req_rm_ns = pb2.remove_namespace_req(subsystem_nqn=subsystem['nqn'], nsid=namespace['nsid'])
+                            ret = self.remove_namespace(req_rm_ns, context)
+                            self.logger.info(
+                                    f"Removed namespace {namespace['nsid']} from {subsystem['nqn']}: {ret.status}")
+                        except Exception as ex:
+                            self.logger.error(f"Error removing namespace {namespace['nsid']} from {subsystem['nqn']}, will delete bdev {request.bdev_name} anyway: {ex}")
+                            pass
+                    else:
+                        self.logger.error(f"Namespace {namespace['nsid']} from {subsystem['nqn']} is still using bdev {request.bdev_name}. You need to either remove it or use the '--force' command line option")
+                        req = {"name": request.bdev_name, "method": "bdev_rbd_delete", "req_id": 0}
+                        ret = {"code": -16, "message": "Device or resource busy"}
+                        msg = "\n".join(["request:", "%s" % json.dumps(req, indent=2),
+                            "Got JSON-RPC error response",
+                            "response:",
+                            json.dumps(ret, indent=2)])
+                        use_excep = Exception(msg)
+
         try:
+            if use_excep:
+                raise use_excep
             ret = rpc_bdev.bdev_rbd_delete(
                 self.spdk_rpc_client,
                 request.bdev_name,

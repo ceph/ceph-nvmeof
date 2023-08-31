@@ -175,10 +175,11 @@ class GatewayClient:
 
     @cli.cmd([
         argument("-b", "--bdev", help="Bdev name", required=True),
+        argument("-f", "--force", help="Delete any namespace using this bdev before deleting bdev", action='store_true', required=False),
     ])
     def delete_bdev(self, args):
         """Deletes a bdev."""
-        req = pb2.delete_bdev_req(bdev_name=args.bdev)
+        req = pb2.delete_bdev_req(bdev_name=args.bdev, force=args.force)
         ret = self.stub.delete_bdev(req)
         self.logger.info(f"Deleted bdev {args.bdev}: {ret.status}")
 
