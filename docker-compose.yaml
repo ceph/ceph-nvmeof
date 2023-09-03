@@ -108,6 +108,7 @@ services:
       - /dev/vfio/vfio:/dev/vfio/vfio
       - ceph-conf:/etc/ceph:ro
       - $NVMEOF_CONFIG:/src/ceph-nvmeof.conf
+      - /tmp/coredump:/tmp/coredump # core dump
     cap_add:
       - SYS_ADMIN # huge-pages
       - CAP_SYS_NICE # RTE
@@ -115,6 +116,9 @@ services:
     ulimits:
       nofile: $NVMEOF_NOFILE
       memlock: -1
+      core:
+        soft: -1
+        hard: -1
     ports:
       - "$NVMEOF_IO_PORT" # I/O controllers
       - "$NVMEOF_GW_PORT" # Gateway
