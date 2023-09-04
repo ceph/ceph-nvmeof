@@ -185,7 +185,7 @@ class GatewayClient:
 
     @cli.cmd([
         argument("-n", "--subnqn", help="Subsystem NQN", required=True),
-        argument("-s", "--serial", help="Serial number", required=True),
+        argument("-s", "--serial", help="Serial number", required=False),
         argument("-m", "--max-namespaces", help="Maximum number of namespaces", type=int, default=0, required=False),
     ])
     def create_subsystem(self, args):

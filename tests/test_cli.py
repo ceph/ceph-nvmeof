@@ -8,6 +8,7 @@ pool = "rbd"
 bdev = "Ceph0"
 bdev1 = "Ceph1"
 subsystem = "nqn.2016-06.io.spdk:cnode1"
+subsystem2 = "nqn.2016-06.io.spdk:cnode2"
 serial = "SPDK00000000000001"
 host_list = ["nqn.2016-06.io.spdk:host1", "*"]
 nsid = "1"
@@ -45,8 +46,14 @@ class TestCreate:
         assert "Failed to create" not in caplog.text
 
     def test_create_subsystem(self, caplog, gateway):
-        cli(["create_subsystem", "-n", subsystem, "-s", serial])
+        cli(["create_subsystem", "-n", subsystem])
         assert "Failed to create" not in caplog.text
+        cli(["get_subsystems"])
+        assert serial not in caplog.text
+        cli(["create_subsystem", "-n", subsystem2, "-s", serial])
+        assert "Failed to create" not in caplog.text
+        cli(["get_subsystems"])
+        assert serial in caplog.text
 
     def test_add_namespace(self, caplog, gateway):
         cli(["add_namespace", "-n", subsystem, "-b", bdev])
@@ -88,4 +95,6 @@ class TestDelete:
 
     def test_delete_subsystem(self, caplog, gateway):
         cli(["delete_subsystem", "-n", subsystem])
+        assert "Failed to delete" not in caplog.text
+        cli(["delete_subsystem", "-n", subsystem2])
         assert "Failed to delete" not in caplog.text
