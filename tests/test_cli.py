@@ -6,6 +6,7 @@ from control.cli import main as cli
 image = "mytestdevimage"
 pool = "rbd"
 bdev = "Ceph0"
+bdev1 = "Ceph1"
 subsystem = "nqn.2016-06.io.spdk:cnode1"
 serial = "SPDK00000000000001"
 host_list = ["nqn.2016-06.io.spdk:host1", "*"]
@@ -40,6 +41,8 @@ class TestCreate:
     def test_create_bdev(self, caplog, gateway):
         cli(["create_bdev", "-i", image, "-p", pool, "-b", bdev])
         assert "Failed to create" not in caplog.text
+        cli(["create_bdev", "-i", image, "-p", pool, "-b", bdev1])
+        assert "Failed to create" not in caplog.text
 
     def test_create_subsystem(self, caplog, gateway):
         cli(["create_subsystem", "-n", subsystem, "-s", serial])
@@ -47,6 +50,8 @@ class TestCreate:
 
     def test_add_namespace(self, caplog, gateway):
         cli(["add_namespace", "-n", subsystem, "-b", bdev])
+        assert "Failed to add" not in caplog.text
+        cli(["add_namespace", "-n", subsystem, "-b", bdev1])
         assert "Failed to add" not in caplog.text
 
     @pytest.mark.parametrize("host", host_list)
@@ -76,7 +81,9 @@ class TestDelete:
         assert "Failed to remove" not in caplog.text
 
     def test_delete_bdev(self, caplog, gateway):
-        cli(["delete_bdev", "-b", bdev])
+        cli(["delete_bdev", "-b", bdev, "-f"])
+        assert "Failed to delete" not in caplog.text
+        cli(["delete_bdev", "-b", bdev1, "--force"])
         assert "Failed to delete" not in caplog.text
 
     def test_delete_subsystem(self, caplog, gateway):

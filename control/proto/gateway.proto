@@ -57,6 +57,7 @@ message create_bdev_req {
 
 message delete_bdev_req {
 	string bdev_name = 1;
+	bool force = 2;
 }
 
 message create_subsystem_req {
