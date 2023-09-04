@@ -11,6 +11,7 @@ import socket
 import grpc
 import json
 import uuid
+import random
 import logging
 
 import spdk.rpc.bdev as rpc_bdev
@@ -155,6 +156,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
             f"Received request to create subsystem {request.subsystem_nqn}")
         min_cntlid = self.config.getint_with_default("gateway", "min_controller_id", 1)
         max_cntlid = self.config.getint_with_default("gateway", "max_controller_id", 65519)
+        if not request.serial_number:
+            random.seed()
+            randser = random.randint(2, 99999999999999)
+            request.serial_number = f"SPDK{randser}"
         try:
             ret = rpc_nvmf.nvmf_create_subsystem(
                 self.spdk_rpc_client,
