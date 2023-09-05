@@ -238,6 +238,15 @@ Once the NVMe-oF target is
     Hello NVMe-oF
     ```
 
+### Start Discovery Service(Optional)
+
+The discovery service can provide all the targets that the current user can access, and these target information is sourced from ceph omap. These targets may be running or just a record.
+
+1. Start Discovery Service
+    ```bash
+    $ python3 -m control.discovery
+    ```
+
 ## Advanced
 
 ### Configuration
