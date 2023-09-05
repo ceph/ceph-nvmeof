@@ -247,6 +247,11 @@ The discovery service can provide all the targets that the current user can acce
     $ python3 -m control.discovery
     ```
 
+2. To start discovery service container in docker-compose environment
+   ```bash
+   $ docker-compose up --detach discovery
+   ```
+
 ## Advanced
 
 ### Configuration
