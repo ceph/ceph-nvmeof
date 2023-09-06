@@ -39,7 +39,7 @@ services:
     build:
       target: bdevperf
     volumes:
-      # sudo bash -c 'echo 1024 > /sys/devices/system/node/node0/hugepages/hugepages-2048kB/nr_hugepages'
+      # sudo bash -c 'echo 2048 > /sys/devices/system/node/node0/hugepages/hugepages-2048kB/nr_hugepages'
       # https://spdk.io/doc/containers.html
       # TODO: Pending of https://github.com/spdk/spdk/issues/2973
       - /dev/hugepages:/dev/hugepages
@@ -101,7 +101,7 @@ services:
         io.ceph.nvmeof:
     hostname: nvmeof
     volumes:
-      # sudo bash -c 'echo 1024 > /sys/devices/system/node/node0/hugepages/hugepages-2048kB/nr_hugepages'
+      # sudo bash -c 'echo 2048 > /sys/devices/system/node/node0/hugepages/hugepages-2048kB/nr_hugepages'
       # https://spdk.io/doc/containers.html
       # TODO: Pending of https://github.com/spdk/spdk/issues/2973
       - /dev/hugepages:/dev/hugepages
