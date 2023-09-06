@@ -795,20 +795,12 @@ class DiscoveryService:
         nvme_tcp_data_pdu.data_length = nvme_data_len
 
         # reply based on the received get log page request packet(length)
-        if nvme_data_len < 1024:
-            # nvme cli version: 1.x
+        if nvme_data_len <= 1024 and nvme_logpage_offset == 0:
             nvme_get_log_page_reply = NVMeGetLogPage()
             nvme_get_log_page_reply.genctr = self_conn.gen_cnt
             nvme_get_log_page_reply.numrec = len(listeners)
 
             reply = pdu_reply + nvme_tcp_data_pdu + bytes(nvme_get_log_page_reply)[:nvme_data_len]
-        elif nvme_data_len == 1024 and nvme_logpage_offset == 0:
-            # nvme cli version: 2.x
-            nvme_get_log_page_reply = NVMeGetLogPage()
-            nvme_get_log_page_reply.genctr = self_conn.gen_cnt
-            nvme_get_log_page_reply.numrec = len(listeners)
-
-            reply = pdu_reply + nvme_tcp_data_pdu+ nvme_get_log_page_reply
         elif nvme_data_len % 1024 == 0:
             # reply log pages
             reply = pdu_reply + nvme_tcp_data_pdu + \
