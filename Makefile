@@ -14,6 +14,10 @@ include mk/autohelp.mk
 all: setup $(ALL)
 
 setup: ## Configure huge-pages (requires sudo/root password)
+
+	@echo Setup core dump pattern as /tmp/coredump/core.*
+	mkdir -p /tmp/coredump
+	sudo bash -c 'echo "|/usr/bin/env tee /tmp/coredump/core.%e.%p.%h.%t" > /proc/sys/kernel/core_pattern'
 	sudo bash -c 'echo $(HUGEPAGES) > $(HUGEPAGES_DIR)'
 	@echo Actual Hugepages allocation: $$(cat $(HUGEPAGES_DIR))
 	@[ $$(cat $(HUGEPAGES_DIR)) -eq $(HUGEPAGES) ]
