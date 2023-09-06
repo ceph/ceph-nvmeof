@@ -252,6 +252,11 @@ The discovery service can provide all the targets that the current user can acce
    $ docker-compose up --detach discovery
    ```
 
+3. Discover targets from discovery service. The default port is 8009.
+   ```bash
+   $ nvme discover -t tcp -a 192.168.13.3 -s 8009
+   ```
+
 ## Advanced
 
 ### Configuration
