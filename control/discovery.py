@@ -121,10 +121,10 @@ class Connection:
     allow_listeners: list = field(default_factory=list)
     log_page: bytearray = field(default_factory=bytearray)
     recv_buffer: bytearray = field(default_factory=bytearray)
-    nvmeof_connect_data_hostid: str = field(default_factory=str)
+    nvmeof_connect_data_hostid: tuple = tuple((c_ubyte *16)())
     nvmeof_connect_data_cntlid: int = 0
-    nvmeof_connect_data_subnqn: str = field(default_factory=str)
-    nvmeof_connect_data_hostnqn: str = field(default_factory=str)
+    nvmeof_connect_data_subnqn: tuple = tuple((c_ubyte *256)())
+    nvmeof_connect_data_hostnqn: tuple = tuple((c_ubyte *256)())
     sq_head_ptr: int = 0
     unsent_log_page_len: int = 0
     # NVM ExpressTM Revision 1.4, page 47
