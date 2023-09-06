@@ -165,7 +165,16 @@ def test_state_notify_update(config, ioctx, local_state, omap_state):
                omap_state.OMAP_VERSION_KEY)
     assert (ioctx.notify(omap_state.omap_name))  # Send notify signal
 
-    time.sleep(0.5)
+    # any wait interval smaller than update_interval_sec = 10 should be good
+    # to test notify capability
     elapsed = time.time() - start
+    wait_interval = update_interval_sec - elapsed - 0.5
+    assert(wait_interval > 0)
+    assert(wait_interval < update_interval_sec)
+    time.sleep(wait_interval)
+
+    # expect 4 updates: addition, two-step change and removal
+    # registered before update_interval_sec
     assert update_counter == 4
+    elapsed = time.time() - start
     assert elapsed < update_interval_sec
