@@ -12,8 +12,8 @@ BUILDKIT
 cachedir
 caplog
 CMPXATTR
-cntlid
 cnode
+cntlid
 conffile
 coredump
 crb
@@ -42,6 +42,7 @@ keepcache
 keyout
 libexec
 LIBRADOS
+listdir
 lspools
 makeflags
 mds
