@@ -16,8 +16,8 @@ import grpc
 import json
 import logging
 import signal
-import traceback
 from concurrent import futures
+from typing import Dict
 from google.protobuf import json_format
 
 import spdk.rpc
@@ -26,7 +26,7 @@ import spdk.rpc.nvmf as rpc_nvmf
 
 from .proto import gateway_pb2 as pb2
 from .proto import gateway_pb2_grpc as pb2_grpc
-from .state import GatewayState, LocalGatewayState, OmapGatewayState, GatewayStateHandler
+from .state import GatewayState, OmapGatewayState, GatewayStateHandler
 from .grpc import GatewayService
 
 def sigchld_handler(signum, frame):
@@ -95,17 +95,17 @@ class GatewayServer:
         # Start SPDK
         self._start_spdk()
 
-        # Register service implementation with server
+        # Init OMAP state
         omap_state = OmapGatewayState(self.config)
-        local_state = LocalGatewayState()
-        gateway_state = GatewayStateHandler(self.config, local_state,
-                                            omap_state, self.gateway_rpc_caller)
+        gateway_state = GatewayStateHandler(self.config, omap_state, self.gateway_rpc_caller)
+
+        # Register GRPC service implementation with server
         self.gateway_rpc = GatewayService(self.config, gateway_state,
                                           self.spdk_rpc_client)
         self.server = grpc.server(futures.ThreadPoolExecutor(max_workers=1))
         pb2_grpc.add_GatewayServicer_to_server(self.gateway_rpc, self.server)
 
-        # Add listener port
+        # Add GRPC listener port
         self._add_server_listener()
 
         # Check for existing NVMeoF target state
@@ -288,7 +288,7 @@ class GatewayServer:
             self.logger.error(f"spdk_get_version failed with: \n {ex}")
             return False
 
-    def gateway_rpc_caller(self, requests, is_add_req):
+    def gateway_rpc_caller(self, requests: Dict[str, str] , is_add_req: bool) -> None:
         """Passes RPC requests to gateway service."""
         for key, val in requests.items():
             if key.startswith(GatewayState.BDEV_PREFIX):

@@ -16,10 +16,13 @@ import logging
 
 import spdk.rpc.bdev as rpc_bdev
 import spdk.rpc.nvmf as rpc_nvmf
+import spdk.rpc.client as rpc_client
 
 from google.protobuf import json_format
 from .proto import gateway_pb2 as pb2
 from .proto import gateway_pb2_grpc as pb2_grpc
+from .state import GatewayStateHandler
+from .config import GatewayConfig
 
 
 class GatewayService(pb2_grpc.GatewayServicer):
@@ -35,7 +38,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
         spdk_rpc_client: Client of SPDK RPC server
     """
 
-    def __init__(self, config, gateway_state, spdk_rpc_client):
+    def __init__(self, config: GatewayConfig, gateway_state: GatewayStateHandler,
+                 spdk_rpc_client: rpc_client.JSONRPCClient):
 
         self.logger = logging.getLogger(__name__)
         self.config = config
@@ -82,7 +86,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
             try:
                 json_req = json_format.MessageToJson(
                     request, preserving_proto_field_name=True)
-                self.gateway_state.add_bdev(bdev_name, json_req)
+                self.gateway_state.omap.add_bdev(bdev_name, json_req)
             except Exception as ex:
                 self.logger.error(
                     f"Error persisting create_bdev {bdev_name}: {ex}")
@@ -141,7 +145,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         if context:
             # Update gateway state
             try:
-                self.gateway_state.remove_bdev(request.bdev_name)
+                self.gateway_state.omap.remove_bdev(request.bdev_name)
             except Exception as ex:
                 self.logger.error(
                     f"Error persisting delete_bdev {request.bdev_name}: {ex}")
@@ -182,7 +186,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
             try:
                 json_req = json_format.MessageToJson(
                     request, preserving_proto_field_name=True)
-                self.gateway_state.add_subsystem(request.subsystem_nqn,
+                self.gateway_state.omap.add_subsystem(request.subsystem_nqn,
                                                  json_req)
             except Exception as ex:
                 self.logger.error(f"Error persisting create_subsystem"
@@ -212,7 +216,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         if context:
             # Update gateway state
             try:
-                self.gateway_state.remove_subsystem(request.subsystem_nqn)
+                self.gateway_state.omap.remove_subsystem(request.subsystem_nqn)
             except Exception as ex:
                 self.logger.error(f"Error persisting delete_subsystem"
                                   f" {request.subsystem_nqn}: {ex}")
@@ -247,7 +251,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     request.nsid = nsid
                 json_req = json_format.MessageToJson(
                     request, preserving_proto_field_name=True)
-                self.gateway_state.add_namespace(request.subsystem_nqn,
+                self.gateway_state.omap.add_namespace(request.subsystem_nqn,
                                                  str(nsid), json_req)
             except Exception as ex:
                 self.logger.error(
@@ -278,7 +282,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         if context:
             # Update gateway state
             try:
-                self.gateway_state.remove_namespace(request.subsystem_nqn,
+                self.gateway_state.omap.remove_namespace(request.subsystem_nqn,
                                                     str(request.nsid))
             except Exception as ex:
                 self.logger.error(
@@ -322,7 +326,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
             try:
                 json_req = json_format.MessageToJson(
                     request, preserving_proto_field_name=True)
-                self.gateway_state.add_host(request.subsystem_nqn,
+                self.gateway_state.omap.add_host(request.subsystem_nqn,
                                             request.host_nqn, json_req)
             except Exception as ex:
                 self.logger.error(
@@ -365,7 +369,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         if context:
             # Update gateway state
             try:
-                self.gateway_state.remove_host(request.subsystem_nqn,
+                self.gateway_state.omap.remove_host(request.subsystem_nqn,
                                                request.host_nqn)
             except Exception as ex:
                 self.logger.error(f"Error persisting remove_host: {ex}")
@@ -406,7 +410,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
             try:
                 json_req = json_format.MessageToJson(
                     request, preserving_proto_field_name=True)
-                self.gateway_state.add_listener(request.nqn,
+                self.gateway_state.omap.add_listener(request.nqn,
                                                 request.gateway_name,
                                                 request.trtype, request.traddr,
                                                 request.trsvcid, json_req)
@@ -448,7 +452,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         if context:
             # Update gateway state
             try:
-                self.gateway_state.remove_listener(request.nqn,
+                self.gateway_state.omap.remove_listener(request.nqn,
                                                    request.gateway_name,
                                                    request.trtype,
                                                    request.traddr,

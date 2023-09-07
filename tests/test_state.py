@@ -1,11 +1,12 @@
 import pytest
 import time
 import rados
-from control.state import LocalGatewayState, OmapGatewayState, GatewayStateHandler
+from control.state import OmapGatewayState, GatewayStateHandler
+from control.config import GatewayConfig
 
 
 @pytest.fixture(scope="module")
-def ioctx(config):
+def ioctx(config: GatewayConfig):
     """Opens IO context to ceph pool."""
     ceph_pool = config.get("ceph", "pool")
     ceph_conf = config.get("ceph", "config_file")
@@ -16,22 +17,17 @@ def ioctx(config):
     ioctx.close()
 
 
-@pytest.fixture
-def local_state():
-    """Returns local state object."""
-    return LocalGatewayState()
-
 
 @pytest.fixture
-def omap_state(config):
+def omap_state(config: GatewayConfig):
     """Sets up and tears down OMAP state object."""
     omap = OmapGatewayState(config)
-    omap.delete_state()
+    omap.state.delete()
     yield omap
-    omap.delete_state()
+    omap.state.delete()
 
 
-def add_key(ioctx, key, value, version, omap_name, omap_version_key):
+def add_key(ioctx: rados.Ioctx, key: str, value: str, version: int, omap_name: str, omap_version_key: str):
     """Adds key to the specified OMAP and sets version number."""
     with rados.WriteOpCtx() as write_op:
         ioctx.set_omap(write_op, (key,), (value,))
@@ -39,7 +35,7 @@ def add_key(ioctx, key, value, version, omap_name, omap_version_key):
         ioctx.operate_write_op(write_op, omap_name)
 
 
-def remove_key(ioctx, key, version, omap_name, omap_version_key):
+def remove_key(ioctx: rados.Ioctx, key: str, version: int, omap_name: str, omap_version_key: str):
     """Removes key from the specified OMAP."""
     with rados.WriteOpCtx() as write_op:
         ioctx.remove_omap_keys(write_op, (key,))
@@ -47,7 +43,7 @@ def remove_key(ioctx, key, version, omap_name, omap_version_key):
         ioctx.operate_write_op(write_op, omap_name)
 
 
-def test_state_polling_update(config, ioctx, local_state, omap_state):
+def test_state_polling_update(config: GatewayConfig, ioctx: rados.Ioctx, omap_state: OmapGatewayState):
     """Confirms periodic polling of the OMAP for updates."""
 
     update_counter = 0
@@ -78,35 +74,36 @@ def test_state_polling_update(config, ioctx, local_state, omap_state):
 
     version = 1
     update_interval_sec = 1
-    state = GatewayStateHandler(config, local_state, omap_state,
+    state_handler = GatewayStateHandler(config, omap_state,
                                 _state_polling_update)
-    state.update_interval = update_interval_sec
-    state.use_notify = False
+    state_handler.update_interval = update_interval_sec
+    state_handler.use_notify = False
     key = "bdev_test"
-    state.start_update()
+    state_handler.start_update()
+    omap_obj = omap_state.state
 
     # Add bdev key to OMAP and update version number
     version += 1
-    add_key(ioctx, key, "add", version, omap_state.omap_name,
-            omap_state.OMAP_VERSION_KEY)
+    add_key(ioctx, key, "add", version, omap_obj.name,
+            omap_obj.OMAP_VERSION_KEY)
     time.sleep(update_interval_sec + 1)  # Allow time for polling
 
     # Change bdev key and update version number
     version += 1
-    add_key(ioctx, key, "changed", version, omap_state.omap_name,
-            omap_state.OMAP_VERSION_KEY)
+    add_key(ioctx, key, "changed", version, omap_obj.name,
+            omap_obj.OMAP_VERSION_KEY)
     time.sleep(update_interval_sec + 1)  # Allow time for polling
 
     # Remove bdev key and update version number
     version += 1
-    remove_key(ioctx, key, version, omap_state.omap_name,
-               omap_state.OMAP_VERSION_KEY)
+    remove_key(ioctx, key, version, omap_obj.name,
+               omap_obj.OMAP_VERSION_KEY)
     time.sleep(update_interval_sec + 1)  # Allow time for polling
 
     assert update_counter == 4
 
 
-def test_state_notify_update(config, ioctx, local_state, omap_state):
+def test_state_notify_update(config: GatewayConfig, ioctx: rados.Ioctx, omap_state: OmapGatewayState):
     """Confirms use of OMAP watch/notify for updates."""
 
     update_counter = 0
@@ -139,31 +136,32 @@ def test_state_notify_update(config, ioctx, local_state, omap_state):
 
     version = 1
     update_interval_sec = 10
-    state = GatewayStateHandler(config, local_state, omap_state,
+    state_handler = GatewayStateHandler(config, omap_state,
                                 _state_notify_update)
     key = "bdev_test"
-    state.update_interval = update_interval_sec
-    state.use_notify = True
+    state_handler.update_interval = update_interval_sec
+    state_handler.use_notify = True
     start = time.time()
-    state.start_update()
+    state_handler.start_update()
+    omap_obj = omap_state.state
 
     # Add bdev key to OMAP and update version number
     version += 1
-    add_key(ioctx, key, "add", version, omap_state.omap_name,
-            omap_state.OMAP_VERSION_KEY)
-    assert (ioctx.notify(omap_state.omap_name))  # Send notify signal
+    add_key(ioctx, key, "add", version, omap_obj.name,
+            omap_obj.OMAP_VERSION_KEY)
+    assert (ioctx.notify(omap_obj.name))  # Send notify signal
 
     # Change bdev key and update version number
     version += 1
-    add_key(ioctx, key, "changed", version, omap_state.omap_name,
-            omap_state.OMAP_VERSION_KEY)
-    assert (ioctx.notify(omap_state.omap_name))  # Send notify signal
+    add_key(ioctx, key, "changed", version, omap_obj.name,
+            omap_obj.OMAP_VERSION_KEY)
+    assert (ioctx.notify(omap_obj.name))  # Send notify signal
 
     # Remove bdev key and update version number
     version += 1
-    remove_key(ioctx, key, version, omap_state.omap_name,
-               omap_state.OMAP_VERSION_KEY)
-    assert (ioctx.notify(omap_state.omap_name))  # Send notify signal
+    remove_key(ioctx, key, version, omap_obj.name,
+               omap_obj.OMAP_VERSION_KEY)
+    assert (ioctx.notify(omap_obj.name))  # Send notify signal
 
     # any wait interval smaller than update_interval_sec = 10 should be good
     # to test notify capability
