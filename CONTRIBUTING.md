@@ -33,7 +33,7 @@ This project follows:
 
 When committing your changes:
 * Sign-off (`git commit -s`), which will automatically add the following trailer to your commit: `Signed-off-by: FirstName LastName <email@example.com>`.
-  This constitues your [Developer Certificate of Origin](https://en.wikipedia.org/wiki/Developer_Certificate_of_Origin), and is enforced by a [CI check](https://probot.github.io/apps/dco/). 
+  This constitutes your [Developer Certificate of Origin](https://en.wikipedia.org/wiki/Developer_Certificate_of_Origin), and is enforced by a [CI check](https://probot.github.io/apps/dco/). 
 * Follow the [Conventional Commit syntax](https://www.conventionalcommits.org/en/v1.0.0/). This is not yet enforced via CI checks.
 
 ### Testing

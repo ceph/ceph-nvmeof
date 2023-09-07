@@ -146,7 +146,7 @@ class GatewayServer:
                 require_client_auth=True,
             )
 
-            # Add secure port using crendentials
+            # Add secure port using credentials
             self.server.add_secure_port(
                 "{}:{}".format(gateway_addr, gateway_port), server_credentials)
         else:

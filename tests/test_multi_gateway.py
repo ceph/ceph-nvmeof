@@ -60,7 +60,7 @@ def test_multi_gateway_coordination(config, image, conn):
     """Tests state coordination in a gateway group.
 
     Sends requests to GatewayA to set up a subsystem with a single namespace
-    and checks if GatewayB has the the identical state after watch/notify and/or
+    and checks if GatewayB has the identical state after watch/notify and/or
     periodic polling.
     """
     stubA, stubB = conn
@@ -75,7 +75,7 @@ def test_multi_gateway_coordination(config, image, conn):
     if not enable_discovery_controller:
          num_subsystems -= 1
 
-    # Send requests to create a subsytem with one namespace to GatewayA
+    # Send requests to create a subsystem with one namespace to GatewayA
     bdev_req = pb2.create_bdev_req(bdev_name=bdev,
                                    rbd_pool_name=pool,
                                    rbd_image_name=image,
