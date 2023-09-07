@@ -92,6 +92,8 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+      with:
+        ref: ${{ github.event.pull_request && format('refs/pull/{0}/merge', github.event.pull_request.number) || github.event.ref }}
 
     - name: check-spelling
       id: spelling
