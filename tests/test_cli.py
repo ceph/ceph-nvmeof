@@ -30,7 +30,8 @@ def gateway(config):
 
         # Stop gateway
         gateway.server.stop(grace=1)
-        gateway.gateway_rpc.gateway_state.omap.state.delete()
+        gateway.gateway_rpc.gateway_state.state.spdk.obj.delete()
+        gateway.gateway_rpc.gateway_state.state.ranges.obj.delete()
 
 class TestGet:
     def test_get_subsystems(self, caplog, gateway):

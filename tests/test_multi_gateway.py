@@ -40,7 +40,7 @@ def conn(config):
     ):
         gatewayA.serve()
         # Delete existing OMAP state
-        gatewayA.gateway_rpc.gateway_state.omap.state.delete()
+        gatewayA.gateway_rpc.gateway_state.state.spdk.obj.delete()
         # Create new
         gatewayB.serve()
 
@@ -54,7 +54,7 @@ def conn(config):
         # Stop gateways
         gatewayA.server.stop(grace=1)
         gatewayB.server.stop(grace=1)
-        gatewayB.gateway_rpc.gateway_state.omap.state.delete()
+        gatewayB.gateway_rpc.gateway_state.state.spdk.obj.delete()
 
 def test_multi_gateway_coordination(config, image, conn):
     """Tests state coordination in a gateway group.

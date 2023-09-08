@@ -22,9 +22,9 @@ def ioctx(config: GatewayConfig):
 def omap_state(config: GatewayConfig):
     """Sets up and tears down OMAP state object."""
     omap = OmapGatewayState(config)
-    omap.state.delete()
+    omap.spdk.obj.delete()
     yield omap
-    omap.state.delete()
+    omap.spdk.obj.delete()
 
 
 def add_key(ioctx: rados.Ioctx, key: str, value: str, version: int, omap_name: str, omap_version_key: str):
@@ -80,7 +80,7 @@ def test_state_polling_update(config: GatewayConfig, ioctx: rados.Ioctx, omap_st
     state_handler.use_notify = False
     key = "bdev_test"
     state_handler.start_update()
-    omap_obj = omap_state.state
+    omap_obj = omap_state.spdk.obj
 
     # Add bdev key to OMAP and update version number
     version += 1
@@ -143,7 +143,7 @@ def test_state_notify_update(config: GatewayConfig, ioctx: rados.Ioctx, omap_sta
     state_handler.use_notify = True
     start = time.time()
     state_handler.start_update()
-    omap_obj = omap_state.state
+    omap_obj = omap_state.spdk.obj
 
     # Add bdev key to OMAP and update version number
     version += 1

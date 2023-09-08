@@ -9,17 +9,33 @@
 import logging
 import rados
 from typing import Dict
-from collections import defaultdict
 
 
 class OmapObject:
-    """Class representing versioned omap object"""
+    """Class representing a versioned OMAP object
+
+    Methods:
+        get(): Returns dict of all OMAP keys and values
+        delete(): Deletes OMAP object contents
+        add_key(): Adds key and value to the OMAP
+        remove_key(): Removes key from the OMAP
+        register_watch(): Sets a watch on the OMAP object for changes
+    """
     OMAP_VERSION_KEY = "omap_version"
 
+    """
+    Instance attributes:
+        name: OMAP object name
+        version: OMAP object version
+        cached_object: last read cache copy of the object
+        logger: Logger instance to track OMAP access events
+        ioctx: I/O context which allows OMAP access
+        watch: OMAP change notification
+    """
     def __init__(self, name, ioctx) -> None:
         self.version = 1
         self.watch = None
-        self.cached_object = defaultdict(dict)
+        self.cached = {}
         self.name = name
         self.logger = logging.getLogger(__name__)
         self.ioctx = ioctx
@@ -78,8 +94,8 @@ class OmapObject:
                 self.ioctx.operate_write_op(write_op, self.name)
             self.version = version_update
             self.logger.debug(f"omap_key generated: {key}")
-        except Exception as ex:
-            self.logger.error(f"Unable to add key to omap: {ex}. Exiting!")
+        except Exception:
+            self.logger.exception(f"Unable to add {key=} {val=} to omap:")
             raise
 
         self._notify()

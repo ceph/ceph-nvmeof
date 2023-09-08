@@ -29,6 +29,7 @@ class GatewayState:
     SUBSYSTEM_PREFIX = "subsystem_"
     HOST_PREFIX = "host_"
     LISTENER_PREFIX = "listener_"
+    RANGE_PREFIX = "range_"
 
 def bdev_key(bdev_name: str) -> str:
     return f"{GatewayState.BDEV_PREFIX}{bdev_name}"
@@ -46,22 +47,148 @@ def listener_key(subsystem_nqn: str, gateway: str, trtype: str,
                     traddr: str, trsvcid: str) -> str:
     return f"{GatewayState.LISTENER_PREFIX}{subsystem_nqn}_{gateway}_{trtype}_{traddr}_{trsvcid}"
 
+class OmapSpdkState:
+    """Persists gateway NVMeoF target SPDK configuration"""
+
+    def __init__(self, spdk: OmapObject) -> None:
+        self.obj = spdk
+
+    def add_bdev(self, bdev_name: str, val: str) -> None:
+        """Adds a bdev to the state data store."""
+        self.obj.add_key(bdev_key(bdev_name), val)
+
+    def remove_bdev(self, bdev_name: str) -> None:
+        """Removes a bdev from the state data store."""
+        self.obj.remove_key(bdev_key(bdev_name))
+
+    def add_namespace(self, subsystem_nqn: str, nsid: str, val: str) -> None:
+        """Adds a namespace to the state data store."""
+        self.obj.add_key(namespace_key(subsystem_nqn, nsid), val)
+
+    def remove_namespace(self, subsystem_nqn: str, nsid: str) -> None:
+        """Removes a namespace from the state data store."""
+        self.obj.remove_key(namespace_key(subsystem_nqn, nsid))
+
+    def add_subsystem(self, subsystem_nqn: str, val: str) -> None:
+        """Adds a subsystem to the state data store."""
+        self.obj.add_key(subsystem_key(subsystem_nqn), val)
+
+    def remove_subsystem(self, subsystem_nqn: str) -> None:
+        """Removes a subsystem from the state data store."""
+        self.obj.remove_key(subsystem_key(subsystem_nqn))
+
+        # Delete all keys related to subsystem
+        state = self.obj.get()
+        for key in state.keys():
+            if (key.startswith(GatewayState.NAMESPACE_PREFIX + subsystem_nqn) or
+                    key.startswith(GatewayState.HOST_PREFIX + subsystem_nqn) or
+                    key.startswith(GatewayState.LISTENER_PREFIX + subsystem_nqn)):
+                self.obj.remove_key(key)
+
+    def add_host(self, subsystem_nqn: str, host_nqn: str, val: str) -> None:
+        """Adds a host to the state data store."""
+        self.obj.add_key(host_key(subsystem_nqn, host_nqn), val)
+
+    def remove_host(self, subsystem_nqn: str, host_nqn: str) -> None:
+        """Removes a host from the state data store."""
+        self.obj.remove_key(host_key(subsystem_nqn, host_nqn))
+
+    def add_listener(self, subsystem_nqn: str, gateway: str, trtype: str,
+                     traddr: str, trsvcid: str, val: str) -> None:
+        """Adds a listener to the state data store."""
+        self.obj.add_key(listener_key(subsystem_nqn, gateway, trtype, traddr, trsvcid), val)
+
+    def remove_listener(self, subsystem_nqn: str, gateway: str, trtype: str,
+                        traddr: str, trsvcid: str) -> None:
+        """Removes a listener from the state data store."""
+        self.obj.remove_key(listener_key(subsystem_nqn, gateway, trtype, traddr, trsvcid))
+
+class OmapControllerIdRanges:
+    """Persists gateway NVMeoF target controller id ranges to an OMAP object.
+
+    Instance attributes:
+        config: Basic gateway parameters
+        ranges: OMAP object with controller id ranges
+    """
+    def __init__(self, ranges: OmapObject, config: GatewayConfig) -> None:
+        self.config = config
+        self.obj = ranges
+        self.logger = logging.getLogger(__name__)
+
+    def controllerid_range(self, gateway_name: str) -> (int, int):
+        range_length = self.config.getint_with_default("spdk",
+                                    "controllerid_range_length", 4096)
+
+        gateway_range = {key: value for key, value in self.obj.get().items() if value == gateway_name}
+        if len(gateway_range) > 1:
+            raise Exception(f"Too many gateway ranges for {gateway_name=}"
+                            f" ({gateway_range})")
+        elif len(gateway_range) == 1:
+            start, end = gateway_range[0]
+            return (int(start), int(end))
+
+        while True:
+            try:
+                keys = [key for key in self.obj.get().keys() if key != self.obj.OMAP_VERSION_KEY]
+                ranges = [self._parse_range(range) for range in keys]
+                start, end = self._calculate_non_overlapping_range(ranges, range_length)
+                self.obj.add_key(f"{GatewayState.RANGE_PREFIX}{start}_{end}", gateway_name)
+                return ( start, end )
+            except rados.OSError:
+                self.logger.exception(f"Failed to add range for {gateway_name=}, {start=} {end=}, retrying: ")
+                self.obj.cached = self.obj.get()
+                self.obj.version = int(self.obj.cached[OmapObject.OMAP_VERSION_KEY])
+                continue
+            except Exception:
+                raise
+
+    def _parse_range(self, range: str) -> (int, int):
+        start, end = range.removeprefix(GatewayState.RANGE_PREFIX).split("_")
+        return (int(start), int(end))
+
+    def _calculate_non_overlapping_range(self, existing_ranges, range_length):
+        # Sort the existing ranges by their minimum values
+        existing_ranges.sort(key=lambda x: x[0])
+
+        # Initialize variables for the absolute minimum and maximum values
+        absolute_min = 1
+        absolute_max = 65519
+
+        # Initialize the new range's start value to the absolute minimum
+        new_range_start = absolute_min
+
+        # Iterate through existing ranges to find a gap
+        for min_range, max_range in existing_ranges:
+            if new_range_start + range_length <= min_range:
+                # Found a gap before the current existing range
+                new_range_end = new_range_start + range_length
+                return (new_range_start, new_range_end)
+            else:
+                # Update new range's start to be just after the current existing range
+                new_range_start = max_range + 1
+
+        # If no gap is found within existing ranges, use the end of the last range
+        if new_range_start + range_length <= absolute_max:
+            new_range_end = new_range_start + range_length
+        else:
+            # No non-overlapping range can be found within the absolute maximum
+            raise Exception(f"Can not find range: {range_length=}, {existing_ranges=}")
+
+        return (new_range_start, new_range_end)
+
 class OmapGatewayState:
     """Persists gateway NVMeoF target state to an OMAP object.
 
     Handles reads/writes of persistent NVMeoF target state data in key/value
     format within an OMAP object.
 
-    Class attributes:
-        X_KEY: Key name for "X"
-
     Instance attributes:
         config: Basic gateway parameters
         version: Local gateway NVMeoF target state version
         logger: Logger instance to track OMAP access events
-        omap_name: OMAP object name
+        state: OMAP object representing SPDK state
+        ranges: OMAP object with controller id ranges
         ioctx: I/O context which allows OMAP access
-        watch: Watcher for the OMAP object
     """
 
     def __init__(self, config: GatewayConfig) -> None:
@@ -77,62 +204,12 @@ class OmapGatewayState:
             conn = rados.Rados(conffile=ceph_conf, rados_id=rados_id)
             conn.connect()
             self.ioctx = conn.open_ioctx(ceph_pool)
-            omap_state_name = f"nvmeof.{gateway_group}.state" if gateway_group else "nvmeof.state"
-            self.state = OmapObject(omap_state_name, self.ioctx)
+            omap_name_prefix = f"nvmeof.{gateway_group}" if gateway_group else "nvmeof"
+            self.spdk = OmapSpdkState(OmapObject(f"{omap_name_prefix}.state", self.ioctx))
+            self.ranges = OmapControllerIdRanges(OmapObject(f"{omap_name_prefix}.ranges", self.ioctx), config)
         except Exception:
             self.logger.exception(f"Unable to create omap:")
             raise
-
-
-    def add_bdev(self, bdev_name: str, val: str) -> None:
-        """Adds a bdev to the state data store."""
-        self.state.add_key(bdev_key(bdev_name), val)
-
-    def remove_bdev(self, bdev_name: str) -> None:
-        """Removes a bdev from the state data store."""
-        self.state.remove_key(bdev_key(bdev_name))
-
-    def add_namespace(self, subsystem_nqn: str, nsid: str, val: str) -> None:
-        """Adds a namespace to the state data store."""
-        self.state.add_key(namespace_key(subsystem_nqn, nsid), val)
-
-    def remove_namespace(self, subsystem_nqn: str, nsid: str) -> None:
-        """Removes a namespace from the state data store."""
-        self.state.remove_key(namespace_key(subsystem_nqn, nsid))
-
-    def add_subsystem(self, subsystem_nqn: str, val: str) -> None:
-        """Adds a subsystem to the state data store."""
-        self.state.add_key(subsystem_key(subsystem_nqn), val)
-
-    def remove_subsystem(self, subsystem_nqn: str) -> None:
-        """Removes a subsystem from the state data store."""
-        self.state.remove_key(subsystem_key(subsystem_nqn))
-
-        # Delete all keys related to subsystem
-        state = self.state.get()
-        for key in state.keys():
-            if (key.startswith(GatewayState.NAMESPACE_PREFIX + subsystem_nqn) or
-                    key.startswith(GatewayState.HOST_PREFIX + subsystem_nqn) or
-                    key.startswith(GatewayState.LISTENER_PREFIX + subsystem_nqn)):
-                self.state.remove_key(key)
-
-    def add_host(self, subsystem_nqn: str, host_nqn: str, val: str) -> None:
-        """Adds a host to the state data store."""
-        self.state.add_key(host_key(subsystem_nqn, host_nqn), val)
-
-    def remove_host(self, subsystem_nqn: str, host_nqn: str) -> None:
-        """Removes a host from the state data store."""
-        self.state.remove_key(host_key(subsystem_nqn, host_nqn))
-
-    def add_listener(self, subsystem_nqn: str, gateway: str, trtype: str,
-                     traddr: str, trsvcid: str, val: str) -> None:
-        """Adds a listener to the state data store."""
-        self.state.add_key(listener_key(subsystem_nqn, gateway, trtype, traddr, trsvcid), val)
-
-    def remove_listener(self, subsystem_nqn: str, gateway: str, trtype: str,
-                        traddr: str, trsvcid: str) -> None:
-        """Removes a listener from the state data store."""
-        self.state.remove_key(listener_key(subsystem_nqn, gateway, trtype, traddr, trsvcid))
 
 class GatewayStateHandler:
     """Maintains consistency in NVMeoF target state store instances.
@@ -140,18 +217,17 @@ class GatewayStateHandler:
     Instance attributes:
         config: Basic gateway parameters
         logger: Logger instance to track events
-        local: Local GatewayState instance
         gateway_rpc_caller: StateUpdate callback, implemented by GatewayServer
-        omap: OMAP GatewayState instance
+        state: OMAP GatewayState instance
         update_interval: Interval to periodically poll for updates
         update_timer: Timer to check for gateway state updates
         use_notify: Flag to indicate use of OMAP watch/notify
     """
 
-    def __init__(self, config: GatewayConfig, omap: OmapGatewayState,
+    def __init__(self, config: GatewayConfig, state: OmapGatewayState,
                  gateway_rpc_caller: StateUpdate) -> None:
         self.config = config
-        self.omap = omap
+        self.state = state
         self.gateway_rpc_caller = gateway_rpc_caller
         self.update_timer = None
         self.logger = logging.getLogger(__name__)
@@ -168,7 +244,7 @@ class GatewayStateHandler:
         notify_event = threading.Event()
         if self.use_notify:
             # Register a watch on omap state
-            self.omap.state.register_watch(notify_event)
+            self.state.spdk.obj.register_watch(notify_event)
 
         # Start polling for state updates
         if self.update_timer is None:
@@ -196,11 +272,11 @@ class GatewayStateHandler:
         ]
 
         # Get version and state from OMAP
-        omap_state_dict = self.omap.state.get()
+        omap_state_dict = self.state.spdk.obj.get()
         omap_version = int(omap_state_dict[OmapObject.OMAP_VERSION_KEY])
 
-        if self.omap.state.version < omap_version:
-            local_state_dict = self.omap.state.cached_object
+        if self.state.spdk.obj.version < omap_version:
+            local_state_dict = self.state.spdk.obj.cached
             local_state_keys = local_state_dict.keys()
             omap_state_keys = omap_state_dict.keys()
 
@@ -231,8 +307,8 @@ class GatewayStateHandler:
                 self._update_call_rpc(grouped_added, True, prefix_list)
 
             # Update local state and version
-            self.omap.state.cached_object = omap_state_dict.copy()
-            self.omap.state.version = omap_version
+            self.state.spdk.obj.cached = omap_state_dict.copy()
+            self.state.spdk.obj.version = omap_version
             self.logger.debug("Update complete.")
 
     def _group_by_prefix(self, state_update: Dict[str, str], prefix_list: List[str]) -> DefaultDict[str, Dict[str, str]] :
