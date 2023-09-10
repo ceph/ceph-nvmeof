@@ -127,20 +127,11 @@ class OmapControllerIdRanges:
             start, end = gateway_range[0]
             return (int(start), int(end))
 
-        while True:
-            try:
-                keys = [key for key in self.obj.get().keys() if key != self.obj.OMAP_VERSION_KEY]
-                ranges = [self._parse_range(range) for range in keys]
-                start, end = self._calculate_non_overlapping_range(ranges, range_length)
-                self.obj.add_key(f"{GatewayState.RANGE_PREFIX}{start}_{end}", gateway_name)
-                return ( start, end )
-            except rados.OSError:
-                self.logger.exception(f"Failed to add range for {gateway_name=}, {start=} {end=}, retrying: ")
-                self.obj.cached = self.obj.get()
-                self.obj.version = int(self.obj.cached[OmapObject.OMAP_VERSION_KEY])
-                continue
-            except Exception:
-                raise
+        keys = [key for key in self.obj.cached.keys() if key != self.obj.OMAP_VERSION_KEY]
+        ranges = [self._parse_range(range) for range in keys]
+        start, end = self._calculate_non_overlapping_range(ranges, range_length)
+        self.obj.add_key(f"{GatewayState.RANGE_PREFIX}{start}_{end}", gateway_name)
+        return ( start, end )
 
     def _parse_range(self, range: str) -> (int, int):
         start, end = range.removeprefix(GatewayState.RANGE_PREFIX).split("_")
@@ -238,6 +229,8 @@ class GatewayStateHandler:
             self.update_interval = 1
         self.use_notify = self.config.getboolean("gateway",
                                                  "state_update_notify")
+        # set this instance of GatewayStateHandler as updater for the spdk object
+        self.state.spdk.obj._update = self.update
 
     def start_update(self) -> None:
         """Initiates periodic polling and watch/notify for updates."""

@@ -80,43 +80,57 @@ class OmapObject:
         except Exception as ex:
             self.logger.info(f"Failed to notify.")
 
+    def _update(self) -> None:
+        self.cached = self.get()
+        self.version = int(self.cached[OmapObject.OMAP_VERSION_KEY])
+
     def add_key(self, key: str, val: str) -> None:
         """Adds key and value to the OMAP."""
-        try:
-            version_update = self.version + 1
-            with rados.WriteOpCtx() as write_op:
-                # Compare operation failure will cause write failure
-                write_op.omap_cmp(self.OMAP_VERSION_KEY, str(self.version),
-                                  rados.LIBRADOS_CMPXATTR_OP_EQ)
-                self.ioctx.set_omap(write_op, (key,), (val,))
-                self.ioctx.set_omap(write_op, (self.OMAP_VERSION_KEY,),
-                                    (str(version_update),))
-                self.ioctx.operate_write_op(write_op, self.name)
-            self.version = version_update
-            self.logger.debug(f"omap_key generated: {key}")
-        except Exception:
-            self.logger.exception(f"Unable to add {key=} {val=} to omap:")
-            raise
+        while True:
+            try:
+                version_update = self.version + 1
+                with rados.WriteOpCtx() as write_op:
+                    # Compare operation failure will cause write failure
+                    write_op.omap_cmp(self.OMAP_VERSION_KEY, str(self.version),
+                                    rados.LIBRADOS_CMPXATTR_OP_EQ)
+                    self.ioctx.set_omap(write_op, (key,), (val,))
+                    self.ioctx.set_omap(write_op, (self.OMAP_VERSION_KEY,),
+                                        (str(version_update),))
+                    self.ioctx.operate_write_op(write_op, self.name)
+                self.version = version_update
+                self.logger.info(f"omap object {self.name} add_key: {key}")
+                break
+            except rados.OSError:
+                # this exception happens due to object being out of date,
+                # for instance due to update from another gateway.
+                # read new object's version and retry
+                self.logger.debug(f"omap object {self.name} failed to remove_key {key=}: ")
+                self._update()
 
         self._notify()
 
     def remove_key(self, key: str) -> None:
         """Removes key from the OMAP."""
-        try:
-            version_update = self.version + 1
-            with rados.WriteOpCtx() as write_op:
-                # Compare operation failure will cause remove failure
-                write_op.omap_cmp(self.OMAP_VERSION_KEY, str(self.version),
-                                  rados.LIBRADOS_CMPXATTR_OP_EQ)
-                self.ioctx.remove_omap_keys(write_op, (key,))
-                self.ioctx.set_omap(write_op, (self.OMAP_VERSION_KEY,),
-                                    (str(version_update),))
-                self.ioctx.operate_write_op(write_op, self.name)
-            self.version = version_update
-            self.logger.debug(f"omap_key removed: {key}")
-        except Exception:
-            self.logger.exception(f"Unable to remove key from omap:")
-            raise
+        while True:
+            try:
+                version_update = self.version + 1
+                with rados.WriteOpCtx() as write_op:
+                    # Compare operation failure will cause remove failure
+                    write_op.omap_cmp(self.OMAP_VERSION_KEY, str(self.version),
+                                    rados.LIBRADOS_CMPXATTR_OP_EQ)
+                    self.ioctx.remove_omap_keys(write_op, (key,))
+                    self.ioctx.set_omap(write_op, (self.OMAP_VERSION_KEY,),
+                                        (str(version_update),))
+                    self.ioctx.operate_write_op(write_op, self.name)
+                self.version = version_update
+                self.logger.info(f"omap object {self.name} remove_key: {key}")
+                break
+            except rados.OSError:
+                # this exception happens due to object being out of date,
+                # for instance due to update from another gateway.
+                # read new object's version and retry
+                self.logger.debug(f"omap object {self.name} failed to remove_key {key=}: ")
+                self._update()
 
         self._notify()
 
