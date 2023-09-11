@@ -99,16 +99,15 @@ services:
         NVMEOF_GIT_COMMIT:
       labels:
         io.ceph.nvmeof:
-    hostname: nvmeof
     volumes:
       # sudo bash -c 'echo 2048 > /sys/devices/system/node/node0/hugepages/hugepages-2048kB/nr_hugepages'
       # https://spdk.io/doc/containers.html
       # TODO: Pending of https://github.com/spdk/spdk/issues/2973
       - /dev/hugepages:/dev/hugepages
       - /dev/vfio/vfio:/dev/vfio/vfio
-      - ceph-conf:/etc/ceph:ro
       - $NVMEOF_CONFIG:/src/ceph-nvmeof.conf
       - /tmp/coredump:/tmp/coredump # core dump
+      - ceph-conf:/etc/ceph:ro
     cap_add:
       - SYS_ADMIN # huge-pages
       - CAP_SYS_NICE # RTE
@@ -127,9 +126,23 @@ services:
     extends:
       service: nvmeof-base
     image: $QUAY_NVMEOF:$NVMEOF_VERSION
+    ports:
+      - "$NVMEOF_IO_PORT" # I/O controllers
+      - "$NVMEOF_GW_PORT" # Gateway
     depends_on:
       ceph:
         condition: service_healthy
+  discovery:
+    extends:
+      service: nvmeof-base
+    image: $QUAY_NVMEOF:$NVMEOF_VERSION
+    ports:
+      - "$NVMEOF_DISC_PORT" # Discovery
+    depends_on:
+      ceph:
+        condition: service_healthy
+    entrypoint: >-
+      python3 -m control.discovery
   # Used to update lockfile (make update-lockfile)
   nvmeof-builder-base:
     extends:

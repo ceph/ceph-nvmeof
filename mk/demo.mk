@@ -6,6 +6,8 @@ rbd: SVC = ceph
 rbd: CMD = bash -c "rbd -p $(RBD_POOL) info $(RBD_IMAGE_NAME) || rbd -p $(RBD_POOL) create $(RBD_IMAGE_NAME) --size $(RBD_IMAGE_SIZE)"
 
 # demo
+# the fist gateway in docker enviroment, hostname defaults to container id
+demo: export NVMEOF_HOSTNAME != docker ps -q -f name=ceph-nvmeof_nvmeof_1
 demo: rbd ## Expose RBD_IMAGE_NAME as NVMe-oF target
 	$(NVMEOF_CLI) create_bdev --pool $(RBD_POOL) --image $(RBD_IMAGE_NAME) --bdev $(BDEV_NAME)
 	$(NVMEOF_CLI) create_subsystem --subnqn $(NQN)

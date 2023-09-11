@@ -181,7 +181,7 @@ jobs:
         run: |
           . .env
 
-          echo using gateway $NVMEOF_IP_ADDRESS port $NVMEOF_GW_PORT timeout ${{ env.WAIT_TIMEOUT_MINS }}
+          echo using gateway $NVMEOF_IP_ADDRESS port $NVMEOF_GW_PORT
           until nc -z $NVMEOF_IP_ADDRESS $NVMEOF_GW_PORT; do
             echo -n .
             sleep ${{ env.WAIT_INTERVAL_SECS }}
@@ -243,21 +243,6 @@ jobs:
           path: |
             /tmp/coredump/core.*
 
-      #- name: Test mounting nvmeof device locally
-      #  run: |
-      #    . .env
-      #    sudo modprobe nvme-fabrics
-      #    sudo nvme list
-      #    sudo nvme discover -t tcp -a $NVMEOF_IP_ADDRESS -s $NVMEOF_IO_PORT
-      #    sudo nvme connect -t tcp --traddr $NVMEOF_IP_ADDRESS -s $NVMEOF_IO_PORT -n nqn.2016-06.io.spdk:cnode1
-      #    sudo nvme list
-      #    NVMEOF_DEVICE=$(sudo nvme list -o json | jq '.Devices[] | select(.ModelNumber=="SPDK bdev Controller").DevicePath')
-      #    sudo mkfs $NVMEOF_DEVICE
-      #    MOUNT_POINT=$(mktemp -d)
-      #    sudo mount $NVMEOF_DEVICE $MOUNT_POINT
-      #    cd $MOUNT_POINT
-      #    touch test
-
       # For debugging purposes (provides an SSH connection to the runner)
       #- name: Setup tmate session
       #  uses: mxschmitt/action-tmate@v3
@@ -274,18 +259,188 @@ jobs:
           make down
           make clean
 
-  push-to-registry:
-    if: github.event_name == 'release' && startsWith(github.ref, 'refs/tags/v')
-    needs: [pytest, demo]
+  discovery:
+    needs: build
     runs-on: ubuntu-latest
+    env:
+      HUGEPAGES: 768 # 3 spdk instances
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
 
+      - name: Setup huge-pages
+        run: make setup HUGEPAGES=$HUGEPAGES
+
       - name: Download container images
         uses: actions/download-artifact@v3
         with:
-          name: images
+          name: ceph_nvmeof_container_images-${{ github.run_number }}
+
+      - name: Load container images
+        run: |
+          docker load < nvmeof.tar
+          docker load < nvmeof-cli.tar
+          docker load < vstart-cluster.tar
+          docker load < bdevperf.tar
+
+      - name: Start discovery controller
+        run: |
+          docker-compose up --detach discovery
+
+      - name: Wait for discovery controller to be listening
+        timeout-minutes: 3
+        run: |
+          . .env
+          container_ip() {
+            docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$1"
+          }
+
+          ip=$(container_ip $DISC1)
+          echo using discovery controller $ip $NVMEOF_DISC_PORT
+          until nc -z $ip $NVMEOF_DISC_PORT; do
+            echo -n .
+            sleep ${{ env.WAIT_INTERVAL_SECS }}
+          done
+
+      - name: Start gateway with scale=2
+        run: |
+          docker-compose up --detach --scale nvmeof=2 nvmeof
+
+      - name: Wait for gateways to be listening
+        timeout-minutes: 3
+        run: |
+          . .env
+          container_ip() {
+            docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$1"
+          }
+
+          for gw in $GW1 $GW2; do
+            ip=$(container_ip $gw)
+            echo using gateway $ip $NVMEOF_GW_PORT
+            until nc -z $ip $NVMEOF_GW_PORT; do
+              echo -n .
+              sleep ${{ env.WAIT_INTERVAL_SECS }}
+            done
+            echo
+          done
+
+      - name: List containers
+        if: success() || failure()
+        run: |
+          docker-compose ps
+
+      - name: List processes
+        if: success() || failure()
+        run: |
+          docker-compose top
+
+      - name: Create RBD image
+        run: |
+          make rbd OPTS=-T
+
+      - name: Set up target
+        run: |
+          . .env
+
+          container_ip() {
+            docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$1"
+          }
+          # container id is the default hostname in docker environent
+          # i.e. default gateway name
+          container_id() {
+            docker ps -q -f name=$1
+          }
+          cli_gw() {
+            gw=$1
+            shift
+            docker-compose run --rm nvmeof-cli --server-address $gw --server-port $NVMEOF_GW_PORT "$@"
+          }
+
+          gw1=$(container_ip $GW1)
+          echo ℹ️ Using GW RPC $GW1 address $gw1 port $NVMEOF_GW_PORT
+          cli_gw $gw1 get_subsystems
+          cli_gw $gw1 create_bdev --pool $RBD_POOL --image $RBD_IMAGE_NAME --bdev $BDEV_NAME
+          cli_gw $gw1 create_subsystem --subnqn $NQN --serial $SERIAL
+          cli_gw $gw1 add_namespace --subnqn $NQN --bdev $BDEV_NAME
+          for gw in $GW1 $GW2; do
+            ip=$(container_ip $gw)
+            name=$(container_id $gw) # default hostname - container id
+            echo ℹ️ Create listener address $ip gateway $name
+            cli_gw $ip create_listener --subnqn $NQN --gateway-name $name --traddr $ip --trsvcid $NVMEOF_IO_PORT
+          done
+          cli_gw $gw1 add_host --subnqn $NQN --host "*"
+          for gw in $GW1 $GW2; do
+            ip=$(container_ip $gw)
+            echo ℹ️ Subsystems for name $gw ip $ip
+            cli_gw $ip get_subsystems
+          done
+
+      - name: Run bdevperf discovery
+        run: |
+          # See
+          # - https://github.com/spdk/spdk/blob/master/doc/jsonrpc.md
+          # - https://spdk.io/doc/nvmf_multipath_howto.html
+          . .env
+          container_ip() {
+            docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$1"
+          }
+
+          echo -n "ℹ️  Starting bdevperf container"
+          make up  SVC=bdevperf OPTS="--detach"
+          sleep 10
+          echo "ℹ️  bdevperf start up logs"
+          make logs SVC=bdevperf
+          eval $(make run SVC=bdevperf OPTS="--entrypoint=env" | grep BDEVPERF_SOCKET | tr -d '\n\r' )
+          ip=$(container_ip $DISC1)
+          rpc="/usr/libexec/spdk/scripts/rpc.py"
+          echo "ℹ️  bdevperf bdev_nvme_set_options"
+          make exec SVC=bdevperf OPTS=-T CMD="$rpc -v -s $BDEVPERF_SOCKET bdev_nvme_set_options -r -1"
+          echo "ℹ️  bdevperf start discovery ip: $ip port: $NVMEOF_DISC_PORT"
+          # -l -1 -o 10
+          make exec SVC=bdevperf OPTS=-T CMD="$rpc -v -s $BDEVPERF_SOCKET bdev_nvme_start_discovery -b Nvme0 -t tcp -a $ip -s $NVMEOF_DISC_PORT -f ipv4 -w"
+          echo "ℹ️  bdevperf bdev_nvme_get_discovery_info"
+          make exec SVC=bdevperf OPTS=-T CMD="$rpc -v -s $BDEVPERF_SOCKET bdev_nvme_get_discovery_info"
+          echo "ℹ️  bdevperf perform_tests"
+          eval $(make run SVC=bdevperf OPTS="--entrypoint=env" | grep BDEVPERF_TEST_DURATION | tr -d '\n\r' )
+          timeout=$(expr $BDEVPERF_TEST_DURATION \* 2)
+          bdevperf="/usr/libexec/spdk/scripts/bdevperf.py"
+          make exec SVC=bdevperf OPTS=-T CMD="$bdevperf -v -t $timeout -s $BDEVPERF_SOCKET perform_tests"
+
+      - name: Check coredump existence
+        if: success() || failure()
+        id: check_coredumps
+        uses: andstor/file-existence-action@20b4d2e596410855db8f9ca21e96fbe18e12930b # v2, pinned to SHA for security reasons
+        with:
+            files: "/var/lib/systemd/coredump/*"
+
+      - name: Upload demo core dumps
+        if: steps.check_coredumps.outputs.files_exists == 'true'
+        uses: actions/upload-artifact@v1
+        with:
+          name: ceph_nvmeof_demo_cores-${{ github.run_number }}
+          path: /var/lib/systemd/coredump/*
+
+      - name: Display logs
+        if: success() || failure()
+        run: make logs OPTS=''
+
+      - name: Tear down
+        if: success() || failure()
+        run: |
+          make down
+          make clean
+
+  push-to-registry:
+    if: github.event_name == 'release' && startsWith(github.ref, 'refs/tags/v')
+    needs: [pytest, demo, discovery]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download container images
+        uses: actions/download-artifact@v3
+        with:
+          name: ceph_nvmeof_container_images-${{ github.run_number }}
 
       - name: Load container images
         run: |
@@ -302,4 +457,3 @@ jobs:
       - name: Publish nvmeof containers when release/tag is created
         run: |
           make push
-

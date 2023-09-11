@@ -238,6 +238,25 @@ Once the NVMe-oF target is
     Hello NVMe-oF
     ```
 
+### Start Discovery Service(Optional)
+
+The discovery service can provide all the targets that the current user can access, and these target information is sourced from ceph omap. These targets may be running or just a record.
+
+1. Start Discovery Service
+    ```bash
+    $ python3 -m control.discovery
+    ```
+
+2. To start discovery service container in docker-compose environment
+   ```bash
+   $ docker-compose up --detach discovery
+   ```
+
+3. Discover targets from discovery service. The default port is 8009.
+   ```bash
+   $ nvme discover -t tcp -a 192.168.13.3 -s 8009
+   ```
+
 ## Advanced
 
 ### Configuration

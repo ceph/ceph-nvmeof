@@ -22,7 +22,7 @@ setup: ## Configure huge-pages (requires sudo/root password)
 	@echo Actual Hugepages allocation: $$(cat $(HUGEPAGES_DIR))
 	@[ $$(cat $(HUGEPAGES_DIR)) -eq $(HUGEPAGES) ]
 
-build pull logs: SVC ?= spdk bdevperf nvmeof nvmeof-devel nvmeof-cli ceph
+build pull logs: SVC ?= spdk bdevperf nvmeof nvmeof-devel nvmeof-cli discovery ceph
 
 build: export NVMEOF_GIT_BRANCH != git name-rev --name-only HEAD
 build: export NVMEOF_GIT_COMMIT != git rev-parse HEAD
@@ -34,7 +34,7 @@ build: export BUILD_DATE != date -u +"%Y-%m-%dT%H:%M:%SZ"
 up: ## Launch services
 up: SVC ?= ceph nvmeof ## Services
 up: OPTS ?= --abort-on-container-exit --exit-code-from $(SVC) --remove-orphans
-up: override OPTS += --scale nvmeof=$(SCALE)
+#up: override OPTS += --scale nvmeof=$(SCALE)
 
 clean: $(CLEAN) setup  ## Clean-up environment
 clean: override HUGEPAGES = 0
