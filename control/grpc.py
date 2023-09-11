@@ -35,16 +35,56 @@ class GatewayService(pb2_grpc.GatewayServicer):
         spdk_rpc_client: Client of SPDK RPC server
     """
 
-    def __init__(self, config, gateway_state, spdk_rpc_client):
-
+    def __init__(self, config, gateway_state, spdk_rpc_client) -> None:
+        """Constructor"""
         self.logger = logging.getLogger(__name__)
         self.config = config
         self.gateway_state = gateway_state
         self.spdk_rpc_client = spdk_rpc_client
-
         self.gateway_name = self.config.get("gateway", "name")
         if not self.gateway_name:
             self.gateway_name = socket.gethostname()
+        self._init_cluster_context()
+
+    def _init_cluster_context(self) -> None:
+        """Init cluster context management variables"""
+        self.clusters = {}
+        self.current_cluster = None
+        self.bdevs_per_cluster = self.config.getint_with_default("spdk", "bdevs_per_cluster", 8)
+        if self.bdevs_per_cluster < 1:
+            raise Exception(f"invalid configuration: spdk.bdevs_per_cluster_contexts {self.bdevs_per_cluster} < 1")
+        self.librbd_core_mask = self.config.get_with_default("spdk", "librbd_core_mask", None)
+        self.rados_id = self.config.get_with_default("ceph", "id", "")
+        if self.rados_id == "":
+            self.rados_id = None
+
+    def _get_cluster(self) -> str:
+        """Returns cluster name, enforcing bdev per cluster context"""
+        cluster_name = None
+        if self.current_cluster is None:
+            cluster_name = self._alloc_cluster()
+            self.current_cluster = cluster_name
+            self.clusters[cluster_name] = 1
+        elif self.clusters[self.current_cluster] >= self.bdevs_per_cluster:
+            self.current_cluster = None
+            cluster_name = self._get_cluster()
+        else:
+            cluster_name = self.current_cluster
+            self.clusters[cluster_name] += 1
+
+        return cluster_name
+
+    def _alloc_cluster(self) -> str:
+        """Allocates a new Rados cluster context"""
+        name = f"cluster_context_{len(self.clusters)}"
+        self.logger.info(f"Allocating cluster {name=}")
+        rpc_bdev.bdev_rbd_register_cluster(
+            self.spdk_rpc_client,
+            name = name,
+            user = self.rados_id,
+            core_mask = self.librbd_core_mask,
+        )
+        return name
 
     def create_bdev(self, request, context=None):
         """Creates a bdev from an RBD image."""
@@ -53,17 +93,14 @@ class GatewayService(pb2_grpc.GatewayServicer):
             request.uuid = str(uuid.uuid4())
 
         name = request.uuid if not request.bdev_name else request.bdev_name
-        rados_id = self.config.get_with_default("ceph", "id", "")
-        if rados_id == "":
-            rados_id = None
         self.logger.info(f"Received request to create bdev {name} from"
                          f" {request.rbd_pool_name}/{request.rbd_image_name}"
                          f" with block size {request.block_size}")
         try:
             bdev_name = rpc_bdev.bdev_rbd_create(
                 self.spdk_rpc_client,
-                user=rados_id,
                 name=name,
+                cluster_name=self._get_cluster(),
                 pool_name=request.rbd_pool_name,
                 rbd_name=request.rbd_image_name,
                 block_size=request.block_size,
