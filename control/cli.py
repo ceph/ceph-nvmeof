@@ -160,7 +160,7 @@ class GatewayClient:
                  "--block-size",
                  help="Block size",
                  type=int,
-                 default=4096),
+                 default=512),
     ])
     def create_bdev(self, args):
         """Creates a bdev from an RBD image."""
