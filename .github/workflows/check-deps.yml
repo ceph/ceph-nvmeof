@@ -1,6 +1,7 @@
 # Blocks PR merging if PR description contains "depends on" or "blocked by"
 # pointing to another PR until that PR is merged
 
+name: Check Dependencies
 on: [pull_request]
 
 jobs:
