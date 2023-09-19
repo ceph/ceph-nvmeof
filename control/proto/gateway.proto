@@ -43,6 +43,15 @@ service Gateway {
 
 	// Gets subsystems
 	rpc get_subsystems(get_subsystems_req) returns(subsystems_info) {}
+
+	// Gets spdk nvmf log flags and level
+	rpc get_spdk_nvmf_log_flags_and_level(get_spdk_nvmf_log_flags_and_level_req) returns(spdk_nvmf_log_flags_and_level_info) {}
+
+	// Disables spdk nvmf logs
+	rpc disable_spdk_nvmf_logs(disable_spdk_nvmf_logs_req) returns(req_status) {}
+
+	// Set spdk nvmf logs
+	rpc set_spdk_nvmf_logs(set_spdk_nvmf_logs_req) returns(req_status) {}
 }
 
 // Request messages
@@ -112,6 +121,18 @@ message delete_listener_req {
 message get_subsystems_req {
 }
 
+message get_spdk_nvmf_log_flags_and_level_req {
+}
+
+message disable_spdk_nvmf_logs_req {
+}
+
+message set_spdk_nvmf_logs_req {
+	bool flags = 1;
+	optional string log_level = 2;
+	optional string print_level = 3;
+}
+
 // Return messages 
 
 message bdev {
@@ -131,3 +152,8 @@ message nsid {
 message subsystems_info {
 	string subsystems = 1;
 }
+
+message spdk_nvmf_log_flags_and_level_info {
+	string flags_level =1;
+}
+
