@@ -261,6 +261,10 @@ jobs:
 
   discovery:
     needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+          integration: ["container", "embedded"]
     runs-on: ubuntu-latest
     env:
       HUGEPAGES: 768 # 3 spdk instances
@@ -285,10 +289,12 @@ jobs:
           docker load < bdevperf.tar
 
       - name: Start discovery controller
+        if: matrix.integration == 'container'
         run: |
           docker-compose up --detach discovery
 
       - name: Wait for discovery controller to be listening
+        if: matrix.integration == 'container'
         timeout-minutes: 3
         run: |
           . .env
@@ -392,7 +398,14 @@ jobs:
           echo "ℹ️  bdevperf start up logs"
           make logs SVC=bdevperf
           eval $(make run SVC=bdevperf OPTS="--entrypoint=env" | grep BDEVPERF_SOCKET | tr -d '\n\r' )
-          ip=$(container_ip $DISC1)
+
+          if [ "${{ matrix.integration }}" == "embedded" ]; then
+            ip=$(container_ip $GW1)
+            echo "ℹ️  Using discovery service in gateway $GW1 ip  $ip"
+          else
+            ip=$(container_ip $DISC1)
+            echo "ℹ️  Using standalone discovery container $DISC1 ip  $ip"
+          fi
           rpc="/usr/libexec/spdk/scripts/rpc.py"
           echo "ℹ️  bdevperf bdev_nvme_set_options"
           make exec SVC=bdevperf OPTS=-T CMD="$rpc -v -s $BDEVPERF_SOCKET bdev_nvme_set_options -r -1"
