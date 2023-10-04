@@ -412,14 +412,14 @@ jobs:
         id: check_coredumps
         uses: andstor/file-existence-action@20b4d2e596410855db8f9ca21e96fbe18e12930b # v2, pinned to SHA for security reasons
         with:
-            files: "/var/lib/systemd/coredump/*"
+            files: "/tmp/coredump/core.*"
 
       - name: Upload demo core dumps
         if: steps.check_coredumps.outputs.files_exists == 'true'
         uses: actions/upload-artifact@v1
         with:
           name: ceph_nvmeof_demo_cores-${{ github.run_number }}
-          path: /var/lib/systemd/coredump/*
+          path: /tmp/coredump/core.*
 
       - name: Display logs
         if: success() || failure()
@@ -437,6 +437,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
       - name: Download container images
         uses: actions/download-artifact@v3
         with:
