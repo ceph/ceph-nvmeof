@@ -12,7 +12,7 @@ class TestServer(unittest.TestCase):
         self.config = config
 
     def validate_exception(self, e):
-        pattern = r'spdk subprocess terminated pid=(\d+) exit_code=(\d+)'
+        pattern = r'Gateway subprocess terminated pid=(\d+) exit_code=(\d+)'
         m = re.match(pattern, e.code)
         assert(m)
         pid = int(m.group(1))
