@@ -13,6 +13,7 @@ import json
 import uuid
 import random
 import logging
+import os
 
 import spdk.rpc.bdev as rpc_bdev
 import spdk.rpc.nvmf as rpc_nvmf
@@ -38,7 +39,11 @@ class GatewayService(pb2_grpc.GatewayServicer):
     def __init__(self, config, gateway_state, spdk_rpc_client) -> None:
         """Constructor"""
         self.logger = logging.getLogger(__name__)
+        ver = os.getenv("NVMEOF_VERSION")
+        if ver:
+            self.logger.info(f"Using NVMeoF gateway version {ver}")
         self.config = config
+        self.logger.info(f"Using configuration file {config.filepath}")
         self.gateway_state = gateway_state
         self.spdk_rpc_client = spdk_rpc_client
         self.gateway_name = self.config.get("gateway", "name")

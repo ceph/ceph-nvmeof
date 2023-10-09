@@ -17,6 +17,7 @@ class GatewayConfig:
         config: Config parser object
     """
     def __init__(self, conffile):
+        self.filepath = conffile
         with open(conffile) as f:
             self.config = configparser.ConfigParser()
             self.config.read_file(f)

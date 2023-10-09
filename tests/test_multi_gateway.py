@@ -20,7 +20,7 @@ def conn(config):
     configA.config["gateway"]["state_update_notify"] = str(update_notify)
     configA.config["gateway"]["min_controller_id"] = "1"
     configA.config["gateway"]["max_controller_id"] = "20000"
-    configA.config["gateway"]["enable_spdk_discovery_controller"] = "true"
+    configA.config["gateway"]["enable_spdk_discovery_controller"] = "True"
     configB = copy.deepcopy(configA)
     addr = configA.get("gateway", "addr")
     portA = configA.getint("gateway", "port")
