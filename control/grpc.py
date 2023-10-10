@@ -21,6 +21,7 @@ from google.protobuf import json_format
 from .proto import gateway_pb2 as pb2
 from .proto import gateway_pb2_grpc as pb2_grpc
 
+MAX_ANA_GROUPS = 4
 
 class GatewayService(pb2_grpc.GatewayServicer):
     """Implements gateway service interface.
@@ -190,7 +191,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         """Creates a subsystem."""
 
         self.logger.info(
-            f"Received request to create subsystem {request.subsystem_nqn}")
+            f"Received request to create subsystem {request.subsystem_nqn}, ana reporting: {request.ana_reporting}  ")
         min_cntlid = self.config.getint_with_default("gateway", "min_controller_id", 1)
         max_cntlid = self.config.getint_with_default("gateway", "max_controller_id", 65519)
         if not request.serial_number:
@@ -205,6 +206,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 max_namespaces=request.max_namespaces,
                 min_cntlid=min_cntlid,
                 max_cntlid=max_cntlid,
+                ana_reporting = request.ana_reporting,
             )
             self.logger.info(f"create_subsystem {request.subsystem_nqn}: {ret}")
         except Exception as ex:
@@ -259,7 +261,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
     def add_namespace(self, request, context=None):
         """Adds a namespace to a subsystem."""
-
+        if request.anagrpid > MAX_ANA_GROUPS:
+            raise Exception(f"Error group ID {request.anagrpid} is more than configured maximum {MAX_ANA_GROUPS}\n")
+              
         self.logger.info(f"Received request to add {request.bdev_name} to"
                          f" {request.subsystem_nqn}")
         try:
@@ -268,6 +272,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 nqn=request.subsystem_nqn,
                 bdev_name=request.bdev_name,
                 nsid=request.nsid,
+                anagrpid=request.anagrpid,
             )
             self.logger.info(f"add_namespace: {nsid}")
         except Exception as ex:
@@ -296,7 +301,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
     def remove_namespace(self, request, context=None):
         """Removes a namespace from a subsystem."""
 
-        self.logger.info(f"Received request to remove {request.nsid} from"
+        self.logger.info(f"Received request to remove nsid {request.nsid} from"
                          f" {request.subsystem_nqn}")
         try:
             ret = rpc_nvmf.nvmf_subsystem_remove_ns(
@@ -412,7 +417,6 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
     def create_listener(self, request, context=None):
         """Creates a listener for a subsystem at a given IP/Port."""
-
         ret = True
         self.logger.info(f"Received request to create {request.gateway_name}"
                          f" {request.trtype} listener for {request.nqn} at"
@@ -437,6 +441,30 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 context.set_code(grpc.StatusCode.INTERNAL)
                 context.set_details(f"{ex}")
             return pb2.req_status()
+
+        state = self.gateway_state.omap.get_state()
+        for key,val  in state.items():
+              if (key.startswith(self.gateway_state.omap.SUBSYSTEM_PREFIX + request.nqn)):
+                     self.logger.debug(f"values of key: {key}  val: {val} \n")
+                     req = json_format.Parse(val, pb2.create_subsystem_req())
+                     self.logger.info(f" enable_ha :{req.enable_ha} \n")
+                     break
+
+        if req.enable_ha:
+              for x in range (MAX_ANA_GROUPS):
+                   try:
+                      ret = rpc_nvmf.nvmf_subsystem_listener_set_ana_state(
+                        self.spdk_rpc_client,
+                        nqn=request.nqn,
+                        ana_state="inaccessible",
+                        trtype=request.trtype,
+                        traddr=request.traddr,
+                        trsvcid=request.trsvcid,
+                        adrfam=request.adrfam,
+                        anagrpid=(x+1) )
+                   except Exception as ex:
+                        self.logger.error(f" set_listener_ana_state failed with: \n {ex}")
+                        raise
 
         if context:
             # Update gateway state

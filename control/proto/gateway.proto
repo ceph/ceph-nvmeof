@@ -64,6 +64,8 @@ message create_subsystem_req {
 	string subsystem_nqn = 1;
 	string serial_number = 2;
 	int32 max_namespaces = 3;
+	bool  ana_reporting  = 4;
+	bool  enable_ha      = 5;
 }
 
 message delete_subsystem_req {
@@ -74,6 +76,7 @@ message add_namespace_req {
 	string subsystem_nqn = 1;
 	string bdev_name = 2;
 	optional int32 nsid = 3;
+        optional int32 anagrpid = 4;
 }
 
 message remove_namespace_req {
