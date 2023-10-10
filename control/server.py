@@ -129,7 +129,7 @@ class GatewayServer:
 
     def _start_discovery_service(self):
         """Runs either SPDK on CEPH NVMEOF Discovery Service."""
-        enable_spdk_discovery_controller = self.config.getboolean_with_default("gateway", "enable_spdk_discpovery_controller", False)
+        enable_spdk_discovery_controller = self.config.getboolean_with_default("gateway", "enable_spdk_discovery_controller", False)
         if enable_spdk_discovery_controller:
             self.logger.info("Using SPDK discovery service")
             return
