@@ -41,6 +41,12 @@ RUN \
     && scripts/pkgdep.sh $SPDK_PKGDEP_ARGS \
     && dnf update -y
 
+# Disable RDSEED, see https://github.com/ceph/ceph-nvmeof/issues/259
+RUN \
+    sed -i "s/^\( \+'RDSEED'\)/#\1/" dpdk/config/x86/meson.build
+RUN \
+    cat dpdk/config/x86/meson.build
+
 RUN \
     --mount=type=cache,target=/var/cache/dnf \
     --mount=type=cache,target=/var/lib/dnf \
