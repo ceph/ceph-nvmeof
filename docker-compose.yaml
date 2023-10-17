@@ -97,6 +97,8 @@ services:
         NVMEOF_GIT_REPO:
         NVMEOF_GIT_BRANCH:
         NVMEOF_GIT_COMMIT:
+        NVMEOF_GIT_MODIFIED_FILES:
+        NVMEOF_CEPH_VERSION:
       labels:
         io.ceph.nvmeof:
     volumes:
