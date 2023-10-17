@@ -43,8 +43,39 @@ class GatewayService(pb2_grpc.GatewayServicer):
         ver = os.getenv("NVMEOF_VERSION")
         if ver:
             self.logger.info(f"Using NVMeoF gateway version {ver}")
+        spdk_ver = os.getenv("NVMEOF_SPDK_VERSION")
+        if spdk_ver:
+            self.logger.info(f"Using SPDK version {spdk_ver}")
+        ceph_ver = os.getenv("NVMEOF_CEPH_VERSION")
+        if ceph_ver:
+            self.logger.info(f"Using Ceph version {ceph_ver}")
+        build_date = os.getenv("BUILD_DATE")
+        if build_date:
+            self.logger.info(f"NVMeoF gateway built on: {build_date}")
+        git_rep = os.getenv("NVMEOF_GIT_REPO")
+        if git_rep:
+            self.logger.info(f"NVMeoF gateway Git repository: {git_rep}")
+        git_branch = os.getenv("NVMEOF_GIT_BRANCH")
+        if git_branch:
+            self.logger.info(f"NVMeoF gateway Git branch: {git_branch}")
+        git_commit = os.getenv("NVMEOF_GIT_COMMIT")
+        if git_commit:
+            self.logger.info(f"NVMeoF gateway Git commit: {git_commit}")
+        git_modified = os.getenv("NVMEOF_GIT_MODIFIED_FILES")
+        if git_modified:
+            self.logger.info(f"NVMeoF gateway uncommitted modified files: {git_modified}")
         self.config = config
         self.logger.info(f"Using configuration file {config.filepath}")
+        try:
+            with open(config.filepath) as f:
+                self.logger.info(f"Configuration file content:")
+                self.logger.info(f"============================================================================")
+                for line in f:
+                    line = line.rstrip()
+                    self.logger.info(f"{line}")
+                self.logger.info(f"============================================================================")
+        except Exception:
+            pass
         self.rpc_lock = threading.Lock()
         self.gateway_state = gateway_state
         self.spdk_rpc_client = spdk_rpc_client
