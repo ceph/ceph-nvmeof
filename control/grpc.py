@@ -15,6 +15,7 @@ import random
 import logging
 import os
 import threading
+import errno
 
 import spdk.rpc.bdev as rpc_bdev
 import spdk.rpc.nvmf as rpc_nvmf
@@ -169,55 +170,73 @@ class GatewayService(pb2_grpc.GatewayServicer):
         with self.rpc_lock:
             return self.create_bdev_safe(request, context)
 
+    def find_bdev_namespaces(self, bdev_name):
+        ns_list = []
+        local_state_dict = self.gateway_state.local.get_state()
+        local_state_keys = local_state_dict.keys()
+        for key, val in local_state_dict.items():
+            if key.startswith(self.gateway_state.local.NAMESPACE_PREFIX):
+                try:
+                    req = json_format.Parse(val, pb2.add_namespace_req(), ignore_unknown_fields = True)
+                    ns_bdev_name = req.bdev_name
+                    if ns_bdev_name == bdev_name:
+                        nsid = req.nsid
+                        nqn = req.subsystem_nqn
+                        ns_list.insert(0, {"nqn" : nqn, "nsid" : nsid})
+                except Exception as ex:
+                    self.logger.error(f"Got exception trying to get bdev {bdev_name} namespaces: {ex}")
+                    pass
+
+        return ns_list
+
+    def delete_bdev_handle_exception(self, context, ex):
+        self.logger.error(f"delete_bdev failed with: \n {ex}")
+        if context:
+            context.set_code(grpc.StatusCode.INTERNAL)
+            context.set_details(f"{ex}")
+        return pb2.req_status()
+
     def delete_bdev_safe(self, request, context=None):
         """Deletes a bdev."""
 
         self.logger.info(f"Received request to delete bdev {request.bdev_name}")
-        use_excep = None
-        req_get_subsystems = pb2.get_subsystems_req()
-        # We already hold the lock, so call the safe version, do not try lock again
-        ret = self.get_subsystems_safe(req_get_subsystems, context)
-        subsystems = json.loads(ret.subsystems)
-        for subsystem in subsystems:
-            for namespace in subsystem['namespaces']:
-                if namespace['bdev_name'] == request.bdev_name:
-                    # We found a namespace still using this bdev. If --force was used we will try to remove this namespace.
-                    # Otherwise fail with EBUSY
-                    if request.force:
-                        self.logger.info(f"Will remove namespace {namespace['nsid']} from {subsystem['nqn']} as it is using bdev {request.bdev_name}")
-                        try:
-                            req_rm_ns = pb2.remove_namespace_req(subsystem_nqn=subsystem['nqn'], nsid=namespace['nsid'])
-                            # We already hold the lock, so call the safe version, do not try lock again
-                            ret = self.remove_namespace_safe(req_rm_ns, context)
-                            self.logger.info(
-                                    f"Removed namespace {namespace['nsid']} from {subsystem['nqn']}: {ret.status}")
-                        except Exception as ex:
-                            self.logger.error(f"Error removing namespace {namespace['nsid']} from {subsystem['nqn']}, will delete bdev {request.bdev_name} anyway: {ex}")
-                            pass
-                    else:
-                        self.logger.error(f"Namespace {namespace['nsid']} from {subsystem['nqn']} is still using bdev {request.bdev_name}. You need to either remove it or use the '--force' command line option")
-                        req = {"name": request.bdev_name, "method": "bdev_rbd_delete", "req_id": 0}
-                        ret = {"code": -16, "message": "Device or resource busy"}
-                        msg = "\n".join(["request:", "%s" % json.dumps(req, indent=2),
-                            "Got JSON-RPC error response",
-                            "response:",
-                            json.dumps(ret, indent=2)])
-                        use_excep = Exception(msg)
+        ns_list = self.find_bdev_namespaces(request.bdev_name)
+        for namespace in ns_list:
+            # We found a namespace still using this bdev. If --force was used we will try to remove this namespace.
+            # Otherwise fail with EBUSY
+            try:
+                ns_nsid = namespace["nsid"]
+                ns_nqn = namespace["nqn"]
+            except Exception as ex:
+                self.logger.error(f"Got exception while trying to remove namespace: {namespace} which stil uses bdev {request.bdev_name}: {ex}")
+                continue
+
+            if request.force:
+                self.logger.info(f"Will remove namespace {ns_nsid} from {ns_nqn} as it is using bdev {request.bdev_name}")
+                try:
+                    req_rm_ns = pb2.remove_namespace_req(subsystem_nqn=ns_nqn, nsid=ns_nsid)
+                    # We already hold the lock, so call the safe version, do not try to lock again
+                    ret = self.remove_namespace_safe(req_rm_ns, context)
+                    self.logger.info(f"Removed namespace {ns_nsid} from {ns_nqn}: {ret.status}")
+                except Exception as ex:
+                    self.logger.error(f"Error removing namespace {ns_nsid} from {ns_nqn}, will delete bdev {request.bdev_name} anyway: {ex}")
+                    pass
+            else:
+                self.logger.error(f"Namespace {ns_nsid} from {ns_nqn} is still using bdev {request.bdev_name}. You need to either remove it or use the '--force' command line option")
+                req = {"name": request.bdev_name, "method": "bdev_rbd_delete", "req_id": 0}
+                ret = {"code": -errno.EBUSY, "message": os.strerror(errno.EBUSY)}
+                msg = "\n".join(["request:", "%s" % json.dumps(req, indent = 2),
+                    "Got JSON-RPC error response", "response:", json.dumps(ret, indent = 2)])
+                return self.delete_bdev_handle_exception(context, Exception(msg))
 
         try:
-            if use_excep:
-                raise use_excep
             ret = rpc_bdev.bdev_rbd_delete(
                 self.spdk_rpc_client,
                 request.bdev_name,
             )
             self.logger.info(f"delete_bdev {request.bdev_name}: {ret}")
         except Exception as ex:
-            self.logger.error(f"delete_bdev failed with: \n {ex}")
-            if context:
-                context.set_code(grpc.StatusCode.INTERNAL)
-                context.set_details(f"{ex}")
-            return pb2.req_status()
+            return self.delete_bdev_handle_exception(context, ex)
 
         if context:
             # Update gateway state
