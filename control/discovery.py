@@ -316,10 +316,10 @@ class DiscoveryService:
         self.lock = threading.Lock()
 
         self.logger = logging.getLogger(__name__)
-        log_level = self.config.get("discovery", "debug")
-        self.logger.setLevel(level=int(log_level))
+        log_level = self.config.getint_with_default("discovery", "debug", 20)
+        self.logger.setLevel(level=log_level)
 
-        gateway_group = self.config.get("gateway", "group")
+        gateway_group = self.config.get_with_default("gateway", "group", "")
         self.omap_name = f"nvmeof.{gateway_group}.state" \
             if gateway_group else "nvmeof.state"
         self.logger.info(f"log pages info from omap: {self.omap_name}")
@@ -330,9 +330,9 @@ class DiscoveryService:
         conn.connect()
         self.ioctx = conn.open_ioctx(ceph_pool)
 
-        self.discovery_addr = self.config.get("discovery", "addr")
-        self.discovery_port = self.config.get("discovery", "port")
-        if self.discovery_addr == '' or self.discovery_port == '':
+        self.discovery_addr = self.config.get_with_default("discovery", "addr", "0.0.0.0")
+        self.discovery_port = self.config.get_with_default("discovery", "port", "8009")
+        if not self.discovery_addr or not self.discovery_port:
             self.logger.error("discovery addr/port are empty.")
             assert 0
         self.logger.info(f"discovery addr: {self.discovery_addr} port: {self.discovery_port}")
