@@ -243,7 +243,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
             try:
                 self.gateway_state.remove_bdev(request.bdev_name)
             except Exception as ex:
-                self.logger.error(f"Error persisting delete_bdev {request.bdev_name}: {ex}")
+                self.logger.error(
+                    f"Error persisting delete_bdev {request.bdev_name}: {ex}")
                 raise
 
         return pb2.req_status(status=ret)
@@ -301,7 +302,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
     def delete_subsystem_safe(self, request, context=None):
         """Deletes a subsystem."""
 
-        self.logger.info(f"Received request to delete subsystem {request.subsystem_nqn}")
+        self.logger.info(
+            f"Received request to delete subsystem {request.subsystem_nqn}")
         try:
             ret = rpc_nvmf.nvmf_delete_subsystem(
                 self.spdk_rpc_client,
@@ -333,7 +335,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
     def add_namespace_safe(self, request, context=None):
         """Adds a namespace to a subsystem."""
 
-        self.logger.info(f"Received request to add {request.bdev_name} to {request.subsystem_nqn}")
+        self.logger.info(f"Received request to add {request.bdev_name} to"
+                         f" {request.subsystem_nqn}")
         try:
             nsid = rpc_nvmf.nvmf_subsystem_add_ns(
                 self.spdk_rpc_client,
@@ -356,9 +359,11 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     request.nsid = nsid
                 json_req = json_format.MessageToJson(
                     request, preserving_proto_field_name=True)
-                self.gateway_state.add_namespace(request.subsystem_nqn, str(nsid), json_req)
+                self.gateway_state.add_namespace(request.subsystem_nqn,
+                                                 str(nsid), json_req)
             except Exception as ex:
-                self.logger.error(f"Error persisting add_namespace {nsid}: {ex}")
+                self.logger.error(
+                    f"Error persisting add_namespace {nsid}: {ex}")
                 raise
 
         return pb2.nsid(nsid=nsid, status=True)
