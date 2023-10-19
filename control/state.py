@@ -224,10 +224,16 @@ class OmapGatewayState(GatewayState):
 
     def get_state(self) -> Dict[str, str]:
         """Returns dict of all OMAP keys and values."""
-        with rados.ReadOpCtx() as read_op:
-            i, _ = self.ioctx.get_omap_vals(read_op, "", "", -1)
-            self.ioctx.operate_read_op(read_op, self.omap_name)
-            omap_dict = dict(i)
+        omap_list = [("", 0)]   # Dummy, non empty, list value. Just so we would enter the while
+        omap_dict = {}
+        # The number of items returned is limited by Ceph, so we need to read in a loop until no more items are returned
+        while len(omap_list) > 0:
+            last_key_read = omap_list[-1][0]
+            with rados.ReadOpCtx() as read_op:
+                i, _ = self.ioctx.get_omap_vals(read_op, last_key_read, "", -1)
+                self.ioctx.operate_read_op(read_op, self.omap_name)
+                omap_list = list(i)
+                omap_dict.update(dict(omap_list))
         return omap_dict
 
     def _add_key(self, key: str, val: str):

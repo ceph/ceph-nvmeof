@@ -87,6 +87,27 @@ jobs:
           docker load < nvmeof-devel.tar
           docker load < vstart-cluster.tar
 
+      - name: Clear space on disk
+        run: |
+          if [[ -d /usr/share/dotnet ]]; then
+            /usr/bin/du -sh /usr/share/dotnet
+            rm -rf /usr/share/dotnet
+          fi
+          if [[ -d /opt/ghc ]]; then
+            /usr/bin/du -sh /opt/ghc
+            rm -rf /opt/ghc
+          fi
+          if [[ -d /usr/local/share/boost ]]; then
+            /usr/bin/du -sh /usr/local/share/boost
+            rm -rf /usr/local/share/boost
+          fi
+          if [[ -n "$AGENT_TOOLSDIRECTORY" ]]; then
+            if [[ -d "$AGENT_TOOLSDIRECTORY" ]]; then
+              /usr/bin/du -sh "$AGENT_TOOLSDIRECTORY"
+              rm -rf "$AGENT_TOOLSDIRECTORY"
+            fi
+          fi
+
       - name: Start ceph cluster
         run: |
           make up SVC=ceph OPTS="--detach"
