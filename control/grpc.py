@@ -533,15 +533,21 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 context.set_details(f"{ex}")
             return pb2.req_status()
 
-        state = self.gateway_state.omap.get_state()
-        for key,val  in state.items():
-              if (key.startswith(self.gateway_state.omap.SUBSYSTEM_PREFIX + request.nqn)):
-                     self.logger.debug(f"values of key: {key}  val: {val} \n")
-                     req = json_format.Parse(val, pb2.create_subsystem_req())
-                     self.logger.info(f" enable_ha :{req.enable_ha} \n")
-                     break
+        state = self.gateway_state.local.get_state()
+        req = None
+        subsys = state.get(self.gateway_state.local.SUBSYSTEM_PREFIX + request.nqn)
+        if subsys:
+            self.logger.debug(f"value of sub-system: {subsys}")
+            try:
+                req = json_format.Parse(subsys, pb2.create_subsystem_req())
+                self.logger.info(f"enable_ha: {req.enable_ha}")
+            except Exception:
+                self.logger.error(f"Got exception trying to parse subsystem: {ex}")
+                pass
+        else:
+            self.logger.info(f"No sub-system for {request.nqn}")
 
-        if req.enable_ha:
+        if req and req.enable_ha:
               for x in range (MAX_ANA_GROUPS):
                    try:
                       ret = rpc_nvmf.nvmf_subsystem_listener_set_ana_state(
