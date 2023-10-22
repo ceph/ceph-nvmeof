@@ -304,16 +304,11 @@ class DiscoveryService:
         discovery_port: Discovery controller's listening port
     """
 
-    BDEV_PREFIX = "bdev_"
-    NAMESPACE_PREFIX = "namespace_"
-    SUBSYSTEM_PREFIX = "subsystem_"
-    HOST_PREFIX = "host_"
-    LISTENER_PREFIX = "listener_"
-
     def __init__(self, config):
         self.version = 1
         self.config = config
         self.lock = threading.Lock()
+        self.omap_state = OmapGatewayState(self.config)
 
         self.logger = logging.getLogger(__name__)
         log_level = self.config.getint_with_default("discovery", "debug", 20)
@@ -344,10 +339,7 @@ class DiscoveryService:
     def _read_all(self) -> Dict[str, str]:
         """Reads OMAP and returns dict of all keys and values."""
 
-        with rados.ReadOpCtx() as read_op:
-            iter, _ = self.ioctx.get_omap_vals(read_op, "", "", -1)
-            self.ioctx.operate_read_op(read_op, self.omap_name)
-            omap_dict = dict(iter)
+        omap_dict = self.omap_state.get_state()
         return omap_dict
 
     def _get_vals(self, omap_dict, prefix):
@@ -675,8 +667,8 @@ class DiscoveryService:
         self.logger.debug("handle get log page request.")
         self_conn = self.conn_vals[conn.fileno()]
         my_omap_dict = self._read_all()
-        listeners = self._get_vals(my_omap_dict, self.LISTENER_PREFIX)
-        hosts = self._get_vals(my_omap_dict, self.HOST_PREFIX)
+        listeners = self._get_vals(my_omap_dict, GatewayState.LISTENER_PREFIX)
+        hosts = self._get_vals(my_omap_dict, GatewayState.HOST_PREFIX)
         if len(self_conn.nvmeof_connect_data_hostnqn) != 256:
             self.logger.error("error hostnqn.")
             return -1
@@ -1030,10 +1022,9 @@ class DiscoveryService:
         t = threading.Thread(target=self.handle_timeout)
         t.start()
 
-        omap_state = OmapGatewayState(self.config)
         local_state = LocalGatewayState()
         gateway_state = GatewayStateHandler(self.config, local_state,
-                                            omap_state, self._state_notify_update)
+                                            self.omap_state, self._state_notify_update)
         gateway_state.start_update()
 
         try:

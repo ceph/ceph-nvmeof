@@ -11,7 +11,7 @@ image = "mytestdevimage"
 pool = "rbd"
 bdev_prefix = "Ceph0"
 subsystem_prefix = "nqn.2016-06.io.spdk:cnode"
-created_resource_count = 150
+created_resource_count = 500
 get_subsys_count = 100
 
 def create_resource_by_index(i):
