@@ -171,10 +171,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
         with self.rpc_lock:
             return self.create_bdev_safe(request, context)
 
-    def find_bdev_namespaces(self, bdev_name):
+    def get_bdev_namespaces(self, bdev_name) -> list:
         ns_list = []
         local_state_dict = self.gateway_state.local.get_state()
-        local_state_keys = local_state_dict.keys()
         for key, val in local_state_dict.items():
             if key.startswith(self.gateway_state.local.NAMESPACE_PREFIX):
                 try:
@@ -201,9 +200,11 @@ class GatewayService(pb2_grpc.GatewayServicer):
         """Deletes a bdev."""
 
         self.logger.info(f"Received request to delete bdev {request.bdev_name}")
-        ns_list = self.find_bdev_namespaces(request.bdev_name)
+        ns_list = []
+        if context:
+            ns_list = self.get_bdev_namespaces(request.bdev_name)
         for namespace in ns_list:
-            # We found a namespace still using this bdev. If --force was used we will try to remove this namespace.
+            # We found a namespace still using this bdev. If --force was used we will try to remove the namespace from OMAP.
             # Otherwise fail with EBUSY
             try:
                 ns_nsid = namespace["nsid"]
@@ -215,10 +216,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
             if request.force:
                 self.logger.info(f"Will remove namespace {ns_nsid} from {ns_nqn} as it is using bdev {request.bdev_name}")
                 try:
-                    req_rm_ns = pb2.remove_namespace_req(subsystem_nqn=ns_nqn, nsid=ns_nsid)
-                    # We already hold the lock, so call the safe version, do not try to lock again
-                    ret = self.remove_namespace_safe(req_rm_ns, context)
-                    self.logger.info(f"Removed namespace {ns_nsid} from {ns_nqn}: {ret.status}")
+                    self.gateway_state.remove_namespace(ns_nqn, str(ns_nsid))
+                    self.logger.info(f"Removed namespace {ns_nsid} from {ns_nqn}")
                 except Exception as ex:
                     self.logger.error(f"Error removing namespace {ns_nsid} from {ns_nqn}, will delete bdev {request.bdev_name} anyway: {ex}")
                     pass
@@ -412,10 +411,37 @@ class GatewayService(pb2_grpc.GatewayServicer):
         with self.rpc_lock:
             return self.remove_namespace_safe(request, context)
 
+    def matching_host_exists(self, context, subsys_nqn, host_nqn) -> bool:
+        if not context:
+            return False
+        host_key = "_".join([self.gateway_state.local.HOST_PREFIX + subsys_nqn, host_nqn])
+        state = self.gateway_state.local.get_state()
+        if state.get(host_key):
+            return True
+        else:
+            return False
+
     def add_host_safe(self, request, context=None):
         """Adds a host to a subsystem."""
 
         try:
+            host_already_exist = self.matching_host_exists(context, request.subsystem_nqn, request.host_nqn)
+            if host_already_exist:
+                if request.host_nqn == "*":
+                    self.logger.error(f"All hosts already allowed to {request.subsystem_nqn}")
+                    req = {"subsystem_nqn": request.subsystem_nqn, "host_nqn": request.host_nqn,
+                           "method": "nvmf_subsystem_allow_any_host", "req_id": 0}
+                    ret = {"code": -errno.EEXIST, "message": f"All hosts already allowed to {request.subsystem_nqn}"}
+                else:
+                    self.logger.error(f"Host {request.host_nqn} already added to {request.subsystem_nqn}")
+                    req = {"subsystem_nqn": request.subsystem_nqn, "host_nqn": request.host_nqn,
+                           "method": "nvmf_subsystem_add_host", "req_id": 0}
+                    ret = {"code": -errno.EEXIST, "message": f"Host {request.host_nqn} already added to {request.subsystem_nqn}"}
+                msg = "\n".join(["request:", "%s" % json.dumps(req, indent=2),
+                                "Got JSON-RPC error response",
+                                "response:",
+                                json.dumps(ret, indent=2)])
+                raise Exception(msg)
             if request.host_nqn == "*":  # Allow any host access to subsystem
                 self.logger.info(f"Received request to allow any host to"
                                  f" {request.subsystem_nqn}")
@@ -506,6 +532,16 @@ class GatewayService(pb2_grpc.GatewayServicer):
         with self.rpc_lock:
             return self.remove_host_safe(request, context)
 
+    def matching_listener_exists(self, context, nqn, gw_name, trtype, traddr, trsvcid) -> bool:
+        if not context:
+            return False
+        listener_key = "_".join([self.gateway_state.local.LISTENER_PREFIX + nqn, gw_name, trtype, traddr, trsvcid])
+        state = self.gateway_state.local.get_state()
+        if state.get(listener_key):
+            return True
+        else:
+            return False
+
     def create_listener_safe(self, request, context=None):
         """Creates a listener for a subsystem at a given IP/Port."""
         ret = True
@@ -514,6 +550,20 @@ class GatewayService(pb2_grpc.GatewayServicer):
                          f" {request.traddr}:{request.trsvcid}.")
         try:
             if request.gateway_name == self.gateway_name:
+                listener_already_exist = self.matching_listener_exists(
+                        context, request.nqn, request.gateway_name, request.trtype, request.traddr, request.trsvcid)
+                if listener_already_exist:
+                    self.logger.error(f"{request.nqn} already listens on address {request.traddr} port {request.trsvcid}")
+                    req = {"nqn": request.nqn, "trtype": request.trtype, "traddr": request.traddr,
+                           "gateway_name": request.gateway_name,
+                           "trsvcid": request.trsvcid, "adrfam": request.adrfam,
+                           "method": "nvmf_subsystem_add_listener", "req_id": 0}
+                    ret = {"code": -errno.EEXIST, "message": f"{request.nqn} already listens on address {request.traddr} port {request.trsvcid}"}
+                    msg = "\n".join(["request:", "%s" % json.dumps(req, indent=2),
+                                    "Got JSON-RPC error response",
+                                    "response:",
+                                    json.dumps(ret, indent=2)])
+                    raise Exception(msg)
                 ret = rpc_nvmf.nvmf_subsystem_add_listener(
                     self.spdk_rpc_client,
                     nqn=request.nqn,
