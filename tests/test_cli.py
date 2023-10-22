@@ -108,7 +108,7 @@ class TestCreateWithAna:
 
 
     def test_create_subsystem_ana(self, caplog, gateway):
-        cli(["create_subsystem", "-n", subsystem, "-a", "true", "-t", "true"])
+        cli(["create_subsystem", "-n", subsystem, "-a", "-t"])
         assert "Failed to create" not in caplog.text
         cli(["get_subsystems"])
         assert serial not in caplog.text

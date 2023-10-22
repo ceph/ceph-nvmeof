@@ -187,9 +187,8 @@ class GatewayClient:
         argument("-n", "--subnqn", help="Subsystem NQN", required=True),
         argument("-s", "--serial", help="Serial number", required=False),
         argument("-m", "--max-namespaces", help="Maximum number of namespaces", type=int, default=0, required=False),
-        argument("-a", "--ana-reporting", help="Enable ANA reporting", type=bool, default=False, required=False),
-        argument("-t", "--enable-ha", help="Enable automatic HA"  , type=bool, default=False, required=False),
-
+        argument("-a", "--ana-reporting", help="Enable ANA reporting", action='store_true', required=False),
+        argument("-t", "--enable-ha", help="Enable automatic HA", action='store_true', required=False),
     ])
     def create_subsystem(self, args):
         """Creates a subsystem."""
