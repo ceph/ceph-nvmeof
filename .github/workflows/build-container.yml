@@ -218,7 +218,7 @@ jobs:
 
       - name: Test
         run: |
-          make demo OPTS=-T
+          make demo OPTS=-T NVMEOF_CONTAINER_NAME="ceph-nvmeof_nvmeof_1"
 
       - name: Get subsystems
         run: |
