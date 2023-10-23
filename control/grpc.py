@@ -67,17 +67,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         if git_modified:
             self.logger.info(f"NVMeoF gateway uncommitted modified files: {git_modified}")
         self.config = config
-        self.logger.info(f"Using configuration file {config.filepath}")
-        try:
-            with open(config.filepath) as f:
-                self.logger.info(f"Configuration file content:")
-                self.logger.info(f"============================================================================")
-                for line in f:
-                    line = line.rstrip()
-                    self.logger.info(f"{line}")
-                self.logger.info(f"============================================================================")
-        except Exception:
-            pass
+        config.dump_config_file(self.logger)
         self.rpc_lock = threading.Lock()
         self.gateway_state = gateway_state
         self.spdk_rpc_client = spdk_rpc_client
