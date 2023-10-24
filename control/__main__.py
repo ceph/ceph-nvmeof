@@ -31,6 +31,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     config = GatewayConfig(args.config)
+    config.dump_config_file(logger)
     with GatewayServer(config) as gateway:
         gateway.serve()
         gateway.keep_alive()

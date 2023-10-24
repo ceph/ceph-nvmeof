@@ -147,6 +147,8 @@ class GatewayServer:
             self.logger.info("Starting ceph nvmeof discovery service")
             DiscoveryService(self.config).start_service()
             os._exit(0)
+        else:
+            self.logger.info(f"Discovery service process id: {self.discovery_pid}")
 
     def _add_server_listener(self):
         """Adds listener port to server."""
@@ -208,6 +210,7 @@ class GatewayServer:
         log_level = self.config.get("spdk", "log_level")
         # connect timeout: spdk client retries 5 times per sec
         conn_retries = int(timeout * 5)
+        self.logger.info(f"SPDK process id: {self.spdk_process.pid}")
         self.logger.info(
             f"Attempting to initialize SPDK: rpc_socket: {spdk_rpc_socket},"
             f" conn_retries: {conn_retries}, timeout: {timeout}"
