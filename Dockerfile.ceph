@@ -38,9 +38,6 @@ RUN rpm -vih https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.
 RUN rpm --import 'https://download.ceph.com/keys/release.asc'
 RUN cd /etc/yum.repos.d/ && curl -O https://copr.fedorainfracloud.org/coprs/ceph/el9/repo/epel-9/ceph-el9-epel-9.repo
 
-## WORKAROUND: remove when https://tracker.ceph.com/issues/61882 is fixed
-RUN rpm -vih "https://buildlogs.centos.org/centos/9-stream/storage/x86_64/ceph-quincy/Packages/t/thrift-0.14.0-7.el9s.x86_64.rpm"
-
 RUN \
     --mount=type=cache,target=/var/cache/microdnf \
     microdnf install -y \
