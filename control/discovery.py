@@ -321,7 +321,8 @@ class DiscoveryService:
 
         ceph_pool = self.config.get("ceph", "pool")
         ceph_conf = self.config.get("ceph", "config_file")
-        conn = rados.Rados(conffile=ceph_conf)
+        rados_id = self.config.get_with_default("ceph", "id", "")
+        conn = rados.Rados(conffile=ceph_conf, rados_id=rados_id)
         conn.connect()
         self.ioctx = conn.open_ioctx(ceph_pool)
 
