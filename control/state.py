@@ -170,14 +170,9 @@ class OmapGatewayState(GatewayState):
         self.watch = None
         gateway_group = self.config.get("gateway", "group")
         self.omap_name = f"nvmeof.{gateway_group}.state" if gateway_group else "nvmeof.state"
-        ceph_pool = self.config.get("ceph", "pool")
-        ceph_conf = self.config.get("ceph", "config_file")
-        rados_id = self.config.get_with_default("ceph", "id", "")
 
         try:
-            conn = rados.Rados(conffile=ceph_conf, rados_id=rados_id)
-            conn.connect()
-            self.ioctx = conn.open_ioctx(ceph_pool)
+            self.ioctx = self.open_rados_connection(self.config)
             # Create a new gateway persistence OMAP object
             with rados.WriteOpCtx() as write_op:
                 # Set exclusive parameter to fail write_op if object exists
@@ -197,6 +192,15 @@ class OmapGatewayState(GatewayState):
         if self.watch is not None:
             self.watch.close()
         self.ioctx.close()
+
+    def open_rados_connection(self, config):
+        ceph_pool = config.get("ceph", "pool")
+        ceph_conf = config.get("ceph", "config_file")
+        rados_id = config.get_with_default("ceph", "id", "")
+        conn = rados.Rados(conffile=ceph_conf, rados_id=rados_id)
+        conn.connect()
+        ioctx = conn.open_ioctx(ceph_pool)
+        return ioctx
 
     def get_local_version(self) -> int:
         """Returns local version."""
