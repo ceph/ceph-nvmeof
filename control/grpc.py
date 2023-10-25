@@ -50,7 +50,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
             self.logger.info(f"Using SPDK version {spdk_ver}")
         ceph_ver = os.getenv("NVMEOF_CEPH_VERSION")
         if ceph_ver:
-            self.logger.info(f"Using Ceph version {ceph_ver}")
+            self.logger.info(f"Using vstart cluster version based on {ceph_ver}")
         build_date = os.getenv("BUILD_DATE")
         if build_date:
             self.logger.info(f"NVMeoF gateway built on: {build_date}")
