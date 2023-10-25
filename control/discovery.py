@@ -319,13 +319,7 @@ class DiscoveryService:
             if gateway_group else "nvmeof.state"
         self.logger.info(f"log pages info from omap: {self.omap_name}")
 
-        ceph_pool = self.config.get("ceph", "pool")
-        ceph_conf = self.config.get("ceph", "config_file")
-        rados_id = self.config.get_with_default("ceph", "id", "")
-        conn = rados.Rados(conffile=ceph_conf, rados_id=rados_id)
-        conn.connect()
-        self.ioctx = conn.open_ioctx(ceph_pool)
-
+        self.ioctx = self.omap_state.open_rados_connection(config)
         self.discovery_addr = self.config.get_with_default("discovery", "addr", "0.0.0.0")
         self.discovery_port = self.config.get_with_default("discovery", "port", "8009")
         if not self.discovery_addr or not self.discovery_port:
