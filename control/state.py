@@ -431,6 +431,12 @@ class GatewayStateHandler:
             notify_event.wait(max(update_time - time.time(), 0))
             notify_event.clear()
 
+    def compare_state_values(self, val1, val2) -> bool:
+        # We sometimes get one value as type bytes and the other as type str, so convert them both to str for the comparison
+        val1_str = val1.decode() if type(val1) == type(b'') else val1
+        val2_str = val2.decode() if type(val2) == type(b'') else val2
+        return val1_str == val2_str
+
     def update(self):
         """Checks for updated omap state and initiates local update."""
         prefix_list = [
@@ -457,7 +463,7 @@ class GatewayStateHandler:
             changed = {
                 key: omap_state_dict[key]
                 for key in same_keys
-                if omap_state_dict[key] != local_state_dict[key]
+                if not self.compare_state_values(local_state_dict[key], omap_state_dict[key])
             }
             grouped_changed = self._group_by_prefix(changed, prefix_list)
             # Find OMAP removals
