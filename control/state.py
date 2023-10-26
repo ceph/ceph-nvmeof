@@ -193,12 +193,23 @@ class OmapGatewayState(GatewayState):
             self.watch.close()
         self.ioctx.close()
 
+    def fetch_and_display_ceph_version(self, conn):
+        try:
+            rply = conn.mon_command('{"prefix":"mon versions"}', b'')
+            ceph_ver = rply[1].decode().removeprefix("{").strip().split(":")[0].removeprefix('"').removesuffix('"')
+            ceph_ver = ceph_ver.removeprefix("ceph version ")
+            self.logger.info(f"Connected to Ceph with version \"{ceph_ver}\"")
+        except Exception as ex:
+            self.logger.debug(f"Got exception trying to fetch Ceph version: {ex}")
+            pass
+
     def open_rados_connection(self, config):
         ceph_pool = config.get("ceph", "pool")
         ceph_conf = config.get("ceph", "config_file")
         rados_id = config.get_with_default("ceph", "id", "")
         conn = rados.Rados(conffile=ceph_conf, rados_id=rados_id)
         conn.connect()
+        self.fetch_and_display_ceph_version(conn)
         ioctx = conn.open_ioctx(ceph_pool)
         return ioctx
 
