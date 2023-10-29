@@ -170,6 +170,7 @@ class OmapGatewayState(GatewayState):
         self.watch = None
         gateway_group = self.config.get("gateway", "group")
         self.omap_name = f"nvmeof.{gateway_group}.state" if gateway_group else "nvmeof.state"
+        self.ceph_fsid = None
 
         try:
             self.ioctx = self.open_rados_connection(self.config)
@@ -203,6 +204,16 @@ class OmapGatewayState(GatewayState):
             self.logger.debug(f"Got exception trying to fetch Ceph version: {ex}")
             pass
 
+    def fetch_ceph_fsid(self, conn) -> str:
+        fsid = None
+        try:
+            fsid = conn.get_fsid()
+        except Exception as ex:
+            self.logger.debug(f"Got exception trying to fetch Ceph fsid: {ex}")
+            pass
+
+        return fsid
+
     def open_rados_connection(self, config):
         ceph_pool = config.get("ceph", "pool")
         ceph_conf = config.get("ceph", "config_file")
@@ -210,6 +221,7 @@ class OmapGatewayState(GatewayState):
         conn = rados.Rados(conffile=ceph_conf, rados_id=rados_id)
         conn.connect()
         self.fetch_and_display_ceph_version(conn)
+        self.ceph_fsid = self.fetch_ceph_fsid(conn)
         ioctx = conn.open_ioctx(ceph_pool)
         return ioctx
 
