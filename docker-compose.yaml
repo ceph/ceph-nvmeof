@@ -78,6 +78,7 @@ services:
     networks:
       default:
         ipv4_address: 192.168.13.2
+        ipv6_address: 2001:db8::2
   nvmeof-base:
     build:
       context: .
@@ -213,6 +214,8 @@ volumes:
   ceph-conf:
 networks:
   default:
+    enable_ipv6: true
     ipam:
       config:
         - subnet: 192.168.13.0/24
+        - subnet: 2001:0DB8::/112

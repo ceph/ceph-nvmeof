@@ -23,6 +23,7 @@ import spdk.rpc.nvmf as rpc_nvmf
 from google.protobuf import json_format
 from .proto import gateway_pb2 as pb2
 from .proto import gateway_pb2_grpc as pb2_grpc
+from .config import GatewayConfig
 
 MAX_ANA_GROUPS = 4
 
@@ -535,9 +536,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
     def create_listener_safe(self, request, context=None):
         """Creates a listener for a subsystem at a given IP/Port."""
         ret = True
+        traddr = GatewayConfig.escape_address_if_ipv6(request.traddr)
         self.logger.info(f"Received request to create {request.gateway_name}"
                          f" {request.trtype} listener for {request.nqn} at"
-                         f" {request.traddr}:{request.trsvcid}.")
+                         f" {traddr}:{request.trsvcid}.")
         try:
             if request.gateway_name == self.gateway_name:
                 listener_already_exist = self.matching_listener_exists(
@@ -627,9 +629,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
         """Deletes a listener from a subsystem at a given IP/Port."""
 
         ret = True
+        traddr = GatewayConfig.escape_address_if_ipv6(request.traddr)
         self.logger.info(f"Received request to delete {request.gateway_name}"
                          f" {request.trtype} listener for {request.nqn} at"
-                         f" {request.traddr}:{request.trsvcid}.")
+                         f" {traddr}:{request.trsvcid}.")
         try:
             if request.gateway_name == self.gateway_name:
                 ret = rpc_nvmf.nvmf_subsystem_remove_listener(

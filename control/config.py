@@ -64,3 +64,10 @@ class GatewayConfig:
                 self.conffile_logged = True
         except Exception:
             pass
+
+    # We need to enclose IPv6 addresses in brackets before concatenating a colon and port number to it
+    def escape_address_if_ipv6(addr) -> str:
+        ret_addr = addr
+        if ":" in addr and not addr.strip().startswith("["):
+            ret_addr = f"[{addr}]"
+        return ret_addr
