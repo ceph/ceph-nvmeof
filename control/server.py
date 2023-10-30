@@ -66,6 +66,7 @@ class GatewayServer:
         self.gateway_rpc = None
         self.server = None
         self.discovery_pid = None
+        self.spdk_rpc_socket_path = None
 
         self.name = self.config.get("gateway", "name")
         if not self.name:
@@ -98,18 +99,19 @@ class GatewayServer:
         """Starts gateway server."""
         self.logger.debug("Starting serve")
 
+        omap_state = OmapGatewayState(self.config)
+        local_state = LocalGatewayState()
+
         # install SIGCHLD handler
         signal.signal(signal.SIGCHLD, sigchld_handler)
 
         # Start SPDK
-        self._start_spdk()
+        self._start_spdk(omap_state)
 
         # Start discovery service
         self._start_discovery_service()
 
         # Register service implementation with server
-        omap_state = OmapGatewayState(self.config)
-        local_state = LocalGatewayState()
         gateway_state = GatewayStateHandler(self.config, local_state,
                                             omap_state, self.gateway_rpc_caller)
         self.gateway_rpc = GatewayService(self.config, gateway_state,
@@ -183,18 +185,38 @@ class GatewayServer:
             self.server.add_insecure_port("{}:{}".format(
                 gateway_addr, gateway_port))
 
-    def _start_spdk(self):
+    def _get_spdk_rpc_socket_path(self, omap_state) -> str:
+        # For backward compatibility, try first to get the old attribute
+        spdk_rpc_socket = self.config.get_with_default("spdk", "rpc_socket", "")
+        if spdk_rpc_socket:
+            return spdk_rpc_socket
+
+        spdk_rpc_socket_dir = self.config.get_with_default("spdk", "rpc_socket_dir", "")
+        if not spdk_rpc_socket_dir:
+            spdk_rpc_socket_dir = "/var/run/ceph/"
+            if omap_state.ceph_fsid:
+                spdk_rpc_socket_dir += omap_state.ceph_fsid + "/"
+        if not spdk_rpc_socket_dir.endswith("/"):
+            spdk_rpc_socket_dir += "/"
+        try:
+            os.makedirs(spdk_rpc_socket_dir, 0o777, True)
+        except Exception:
+            pass
+        spdk_rpc_socket = spdk_rpc_socket_dir + self.config.get_with_default("spdk", "rpc_socket_name", "spdk.sock")
+        return spdk_rpc_socket
+
+    def _start_spdk(self, omap_state):
         """Starts SPDK process."""
 
         # Start target
         self.logger.debug(f"Configuring server {self.name}")
         spdk_tgt_path = self.config.get("spdk", "tgt_path")
         self.logger.info(f"SPDK Target Path: {spdk_tgt_path}")
-        spdk_rpc_socket = self.config.get("spdk", "rpc_socket")
-        self.logger.info(f"SPDK Socket: {spdk_rpc_socket}")
+        self.spdk_rpc_socket_path = self._get_spdk_rpc_socket_path(omap_state)
+        self.logger.info(f"SPDK Socket: {self.spdk_rpc_socket_path}")
         spdk_tgt_cmd_extra_args = self.config.get_with_default(
             "spdk", "tgt_cmd_extra_args", "")
-        cmd = [spdk_tgt_path, "-u", "-r", spdk_rpc_socket]
+        cmd = [spdk_tgt_path, "-u", "-r", self.spdk_rpc_socket_path]
         if spdk_tgt_cmd_extra_args:
             cmd += shlex.split(spdk_tgt_cmd_extra_args)
         self.logger.info(f"Starting {' '.join(cmd)}")
@@ -212,19 +234,19 @@ class GatewayServer:
         conn_retries = int(timeout * 5)
         self.logger.info(f"SPDK process id: {self.spdk_process.pid}")
         self.logger.info(
-            f"Attempting to initialize SPDK: rpc_socket: {spdk_rpc_socket},"
+            f"Attempting to initialize SPDK: rpc_socket: {self.spdk_rpc_socket_path},"
             f" conn_retries: {conn_retries}, timeout: {timeout}"
         )
         try:
             self.spdk_rpc_client = rpc_client.JSONRPCClient(
-                spdk_rpc_socket,
+                self.spdk_rpc_socket_path,
                 None,
                 timeout,
                 log_level=log_level,
                 conn_retries=conn_retries,
             )
             self.spdk_rpc_ping_client = rpc_client.JSONRPCClient(
-                spdk_rpc_socket,
+                self.spdk_rpc_socket_path,
                 None,
                 timeout,
                 log_level=log_level,
@@ -245,7 +267,6 @@ class GatewayServer:
         assert self.spdk_process is not None # should be verified by the caller
 
         return_code = self.spdk_process.returncode
-        rpc_socket = self.config.get("spdk", "rpc_socket")
 
         # Terminate spdk process
         if return_code is not None:
@@ -264,12 +285,12 @@ class GatewayServer:
             self.spdk_process.kill() # kill -9, send KILL signal
 
         # Clean spdk rpc socket
-        if os.path.exists(rpc_socket):
+        if self.spdk_rpc_socket_path and os.path.exists(self.spdk_rpc_socket_path):
             try:
-                os.remove(rpc_socket)
+                os.remove(self.spdk_rpc_socket_path)
             except Exception:
                 self.logger.exception(f"An error occurred while removing "
-                                      f"rpc socket {rpc_socket}:")
+                                      f"rpc socket {self.spdk_rpc_socket_path}:")
 
     def _stop_discovery(self):
         """Stops Discovery service process."""
