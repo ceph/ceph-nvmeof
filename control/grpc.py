@@ -24,6 +24,7 @@ from google.protobuf import json_format
 from .proto import gateway_pb2 as pb2
 from .proto import gateway_pb2_grpc as pb2_grpc
 from .config import GatewayConfig
+from .discovery import DiscoveryService
 
 MAX_ANA_GROUPS = 4
 
@@ -244,11 +245,18 @@ class GatewayService(pb2_grpc.GatewayServicer):
         with self.rpc_lock:
             return self.delete_bdev_safe(request, context)
 
+    def is_discovery_nqn(self, nqn) -> bool:
+        return nqn == DiscoveryService.DISCOVERY_NQN
+
     def create_subsystem_safe(self, request, context=None):
         """Creates a subsystem."""
 
         self.logger.info(
             f"Received request to create subsystem {request.subsystem_nqn}, ana reporting: {request.ana_reporting}  ")
+
+        if self.is_discovery_nqn(request.subsystem_nqn):
+            raise Exception(f"Can't create a discovery subsystem")
+
         min_cntlid = self.config.getint_with_default("gateway", "min_controller_id", 1)
         max_cntlid = self.config.getint_with_default("gateway", "max_controller_id", 65519)
         if not request.serial_number:
@@ -296,6 +304,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         self.logger.info(
             f"Received request to delete subsystem {request.subsystem_nqn}")
+
+        if self.is_discovery_nqn(request.subsystem_nqn):
+            raise Exception(f"Can't delete a discovery subsystem")
+
         try:
             ret = rpc_nvmf.nvmf_delete_subsystem(
                 self.spdk_rpc_client,
@@ -326,11 +338,16 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
     def add_namespace_safe(self, request, context=None):
         """Adds a namespace to a subsystem."""
-        if request.anagrpid > MAX_ANA_GROUPS:
-            raise Exception(f"Error group ID {request.anagrpid} is more than configured maximum {MAX_ANA_GROUPS}\n")
               
         self.logger.info(f"Received request to add {request.bdev_name} to"
                          f" {request.subsystem_nqn}")
+
+        if request.anagrpid > MAX_ANA_GROUPS:
+            raise Exception(f"Error group ID {request.anagrpid} is more than configured maximum {MAX_ANA_GROUPS}")
+
+        if self.is_discovery_nqn(request.subsystem_nqn):
+            raise Exception(f"Can't add a namespace to a discovery subsystem")
+
         try:
             nsid = rpc_nvmf.nvmf_subsystem_add_ns(
                 self.spdk_rpc_client,
@@ -372,6 +389,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         self.logger.info(f"Received request to remove nsid {request.nsid} from"
                          f" {request.subsystem_nqn}")
+
+        if self.is_discovery_nqn(request.subsystem_nqn):
+            raise Exception(f"Can't remove a namespace from a discovery subsystem")
+
         try:
             ret = rpc_nvmf.nvmf_subsystem_remove_ns(
                 self.spdk_rpc_client,
@@ -414,6 +435,12 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
     def add_host_safe(self, request, context=None):
         """Adds a host to a subsystem."""
+
+        if self.is_discovery_nqn(request.subsystem_nqn):
+            raise Exception(f"Can't allow a host to a discovery subsystem")
+
+        if self.is_discovery_nqn(request.host_nqn):
+            raise Exception(f"Can't use a discovery NQN as host NQN")
 
         try:
             host_already_exist = self.matching_host_exists(context, request.subsystem_nqn, request.host_nqn)
@@ -480,6 +507,12 @@ class GatewayService(pb2_grpc.GatewayServicer):
     def remove_host_safe(self, request, context=None):
         """Removes a host from a subsystem."""
 
+        if self.is_discovery_nqn(request.subsystem_nqn):
+            raise Exception(f"Can't remove a host from a discovery subsystem")
+
+        if self.is_discovery_nqn(request.host_nqn):
+            raise Exception(f"Can't use a discovery NQN as host NQN")
+
         try:
             if request.host_nqn == "*":  # Disable allow any host access
                 self.logger.info(
@@ -540,6 +573,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
         self.logger.info(f"Received request to create {request.gateway_name}"
                          f" {request.trtype} listener for {request.nqn} at"
                          f" {traddr}:{request.trsvcid}.")
+
+        if self.is_discovery_nqn(request.nqn):
+            raise Exception(f"Can't create a listener for a discovery subsystem")
+
         try:
             if request.gateway_name == self.gateway_name:
                 listener_already_exist = self.matching_listener_exists(
@@ -633,6 +670,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
         self.logger.info(f"Received request to delete {request.gateway_name}"
                          f" {request.trtype} listener for {request.nqn} at"
                          f" {traddr}:{request.trsvcid}.")
+
+        if self.is_discovery_nqn(request.nqn):
+            raise Exception(f"Can't delete a listener from a discovery subsystem")
+
         try:
             if request.gateway_name == self.gateway_name:
                 ret = rpc_nvmf.nvmf_subsystem_remove_listener(

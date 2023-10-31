@@ -304,6 +304,8 @@ class DiscoveryService:
         discovery_port: Discovery controller's listening port
     """
 
+    DISCOVERY_NQN = "nqn.2014-08.org.nvmexpress.discovery"
+
     def __init__(self, config):
         self.version = 1
         self.config = config
