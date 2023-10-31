@@ -226,6 +226,7 @@ jobs:
           shopt -s expand_aliases
           eval $(make alias)
           nvmeof-cli get_subsystems
+          nvmeof-cli-ipv6 get_subsystems
 
       - name: Run bdevperf
         run: |

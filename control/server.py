@@ -28,6 +28,7 @@ from .proto import gateway_pb2_grpc as pb2_grpc
 from .state import GatewayState, LocalGatewayState, OmapGatewayState, GatewayStateHandler
 from .grpc import GatewayService
 from .discovery import DiscoveryService
+from .config import GatewayConfig
 
 def sigchld_handler(signum, frame):
     """Handle SIGCHLD, runs when a spdk process terminates."""
@@ -158,6 +159,8 @@ class GatewayServer:
         enable_auth = self.config.getboolean("gateway", "enable_auth")
         gateway_addr = self.config.get("gateway", "addr")
         gateway_port = self.config.get("gateway", "port")
+        # We need to enclose IPv6 addresses in brackets before concatenating a colon and port number to it
+        gateway_addr = GatewayConfig.escape_address_if_ipv6(gateway_addr)
         if enable_auth:
             # Read in key and certificates for authentication
             server_key = self.config.get("mtls", "server_key")

@@ -17,7 +17,7 @@ from functools import wraps
 
 from .proto import gateway_pb2_grpc as pb2_grpc
 from .proto import gateway_pb2 as pb2
-
+from .config import GatewayConfig
 
 def argument(*name_or_flags, **kwargs):
     """Helper function to format arguments for argparse command decorator."""
@@ -124,7 +124,9 @@ class GatewayClient:
 
     def connect(self, host, port, client_key, client_cert, server_cert):
         """Connects to server and sets stub."""
-        server = "{}:{}".format(host, port)
+        # We need to enclose IPv6 addresses in brackets before concatenating a colon and port number to it
+        host = GatewayConfig.escape_address_if_ipv6(host)
+        server = f"{host}:{port}"
 
         if client_key and client_cert:
             # Create credentials for mutual TLS and a secure channel
