@@ -25,6 +25,7 @@ from .proto import gateway_pb2 as pb2
 from .proto import gateway_pb2_grpc as pb2_grpc
 from .config import GatewayConfig
 from .discovery import DiscoveryService
+from .state import GatewayState
 
 MAX_ANA_GROUPS = 4
 
@@ -426,7 +427,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
     def matching_host_exists(self, context, subsys_nqn, host_nqn) -> bool:
         if not context:
             return False
-        host_key = "_".join([self.gateway_state.local.HOST_PREFIX + subsys_nqn, host_nqn])
+        host_key = GatewayState.build_host_key(subsys_nqn, host_nqn)
         state = self.gateway_state.local.get_state()
         if state.get(host_key):
             return True
@@ -559,7 +560,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
     def matching_listener_exists(self, context, nqn, gw_name, trtype, traddr, trsvcid) -> bool:
         if not context:
             return False
-        listener_key = "_".join([self.gateway_state.local.LISTENER_PREFIX + nqn, gw_name, trtype, traddr, trsvcid])
+        listener_key = GatewayState.build_listener_key(nqn, gw_name, trtype, traddr, trsvcid)
         state = self.gateway_state.local.get_state()
         if state.get(listener_key):
             return True
@@ -614,7 +615,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         state = self.gateway_state.local.get_state()
         req = None
-        subsys = state.get(self.gateway_state.local.SUBSYSTEM_PREFIX + request.nqn)
+        subsys = state.get(GatewayState.build_subsystem_key(request.nqn))
         if subsys:
             self.logger.debug(f"value of sub-system: {subsys}")
             try:
