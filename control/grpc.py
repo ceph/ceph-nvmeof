@@ -168,17 +168,17 @@ class GatewayService(pb2_grpc.GatewayServicer):
         ns_list = []
         local_state_dict = self.gateway_state.local.get_state()
         for key, val in local_state_dict.items():
-            if key.startswith(self.gateway_state.local.NAMESPACE_PREFIX):
-                try:
-                    req = json_format.Parse(val, pb2.add_namespace_req(), ignore_unknown_fields = True)
-                    ns_bdev_name = req.bdev_name
-                    if ns_bdev_name == bdev_name:
-                        nsid = req.nsid
-                        nqn = req.subsystem_nqn
-                        ns_list.insert(0, {"nqn" : nqn, "nsid" : nsid})
-                except Exception as ex:
-                    self.logger.error(f"Got exception trying to get bdev {bdev_name} namespaces: {ex}")
-                    pass
+            if not key.startswith(self.gateway_state.local.NAMESPACE_PREFIX):
+                continue
+            try:
+                ns = json.loads(val)
+                if ns["bdev_name"] == bdev_name:
+                    nsid = ns["nsid"]
+                    nqn = ns["subsystem_nqn"]
+                    ns_list.insert(0, {"nqn" : nqn, "nsid" : nsid})
+            except Exception as ex:
+                self.logger.error(f"Got exception trying to get bdev {bdev_name} namespaces: {ex}")
+                pass
 
         return ns_list
 
@@ -249,6 +249,23 @@ class GatewayService(pb2_grpc.GatewayServicer):
     def is_discovery_nqn(self, nqn) -> bool:
         return nqn == DiscoveryService.DISCOVERY_NQN
 
+    def serial_number_already_used(self, context, serial) -> str:
+        if not context:
+            return None
+        state = self.gateway_state.local.get_state()
+        for key, val in state.items():
+            if not key.startswith(self.gateway_state.local.SUBSYSTEM_PREFIX):
+                continue
+            try:
+                subsys = json.loads(val)
+                sn = subsys["serial_number"]
+                if serial == sn:
+                    return subsys["subsystem_nqn"]
+            except Exception:
+                self.logger.warning("Got exception while parsing {val}: {ex}")
+                continue
+        return None
+
     def create_subsystem_safe(self, request, context=None):
         """Creates a subsystem."""
 
@@ -264,7 +281,24 @@ class GatewayService(pb2_grpc.GatewayServicer):
             random.seed()
             randser = random.randint(2, 99999999999999)
             request.serial_number = f"SPDK{randser}"
+            self.logger.info(f"No serial number specified, will use {request.serial_number}")
+
         try:
+            subsys_using_serial = self.serial_number_already_used(context, request.serial_number)
+            if subsys_using_serial:
+                self.logger.error(f"Serial number {request.serial_number} already used by subsystem {subsys_using_serial}")
+                req = {"subsystem_nqn": request.subsystem_nqn,
+                       "serial_number": request.serial_number,
+                       "max_namespaces": request.max_namespaces,
+                       "ana_reporting": request.ana_reporting,
+                       "enable_ha": request.enable_ha,
+                       "method": "nvmf_create_subsystem", "req_id": 0}
+                ret = {"code": -errno.EEXIST, "message": f"Serial number {request.serial_number} already used by subsystem {subsys_using_serial}"}
+                msg = "\n".join(["request:", "%s" % json.dumps(req, indent=2),
+                                "Got JSON-RPC error response",
+                                "response:",
+                                json.dumps(ret, indent=2)])
+                raise Exception(msg)
             ret = rpc_nvmf.nvmf_create_subsystem(
                 self.spdk_rpc_client,
                 nqn=request.subsystem_nqn,
@@ -614,20 +648,24 @@ class GatewayService(pb2_grpc.GatewayServicer):
             return pb2.req_status()
 
         state = self.gateway_state.local.get_state()
-        req = None
-        subsys = state.get(GatewayState.build_subsystem_key(request.nqn))
-        if subsys:
-            self.logger.debug(f"value of sub-system: {subsys}")
+        enable_ha = False
+        subsys_str = state.get(GatewayState.build_subsystem_key(request.nqn))
+        if subsys_str:
+            self.logger.debug(f"value of sub-system: {subsys_str}")
             try:
-                req = json_format.Parse(subsys, pb2.create_subsystem_req())
-                self.logger.info(f"enable_ha: {req.enable_ha}")
-            except Exception:
-                self.logger.error(f"Got exception trying to parse subsystem: {ex}")
+                subsys_dict = json.loads(subsys_str)
+                try:
+                    enable_ha = subsys_dict["enable_ha"]
+                except KeyError:
+                    enable_ha = False
+                self.logger.info(f"enable_ha: {enable_ha}")
+            except Exception as ex:
+                self.logger.error(f"Got exception trying to parse subsystem {request.nqn}: {ex}")
                 pass
         else:
-            self.logger.info(f"No sub-system for {request.nqn}")
+            self.logger.info(f"No subsystem for {request.nqn}")
 
-        if req and req.enable_ha:
+        if enable_ha:
               for x in range (MAX_ANA_GROUPS):
                    try:
                       ret = rpc_nvmf.nvmf_subsystem_listener_set_ana_state(

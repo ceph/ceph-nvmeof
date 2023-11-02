@@ -63,10 +63,13 @@ class TestCreate:
     def test_create_subsystem(self, caplog, gateway):
         cli(["create_subsystem", "-n", subsystem])
         assert "Failed to create" not in caplog.text
+        assert "ana reporting: False" in caplog.text
         cli(["get_subsystems"])
         assert serial not in caplog.text
+        caplog.clear()
         cli(["create_subsystem", "-n", subsystem2, "-s", serial])
         assert "Failed to create" not in caplog.text
+        assert "ana reporting: False" in caplog.text
         cli(["get_subsystems"])
         assert serial in caplog.text
 
@@ -148,8 +151,10 @@ class TestCreateWithAna:
 
 
     def test_create_subsystem_ana(self, caplog, gateway):
+        caplog.clear()
         cli(["create_subsystem", "-n", subsystem, "-a", "-t"])
         assert "Failed to create" not in caplog.text
+        assert "ana reporting: True" in caplog.text
         cli(["get_subsystems"])
         assert serial not in caplog.text
 
@@ -161,6 +166,7 @@ class TestCreateWithAna:
     def test_create_listener_ana(self, caplog, listener, gateway):
         cli(["create_listener", "-n", subsystem] + listener)
         assert "Failed to create" not in caplog.text
+        assert "enable_ha: True" in caplog.text
 
 
 class TestDeleteAna:
