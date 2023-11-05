@@ -23,6 +23,9 @@ import spdk.rpc.nvmf as rpc_nvmf
 from google.protobuf import json_format
 from .proto import gateway_pb2 as pb2
 from .proto import gateway_pb2_grpc as pb2_grpc
+from .config import GatewayConfig
+from .discovery import DiscoveryService
+from .state import GatewayState
 
 MAX_ANA_GROUPS = 4
 
@@ -165,17 +168,17 @@ class GatewayService(pb2_grpc.GatewayServicer):
         ns_list = []
         local_state_dict = self.gateway_state.local.get_state()
         for key, val in local_state_dict.items():
-            if key.startswith(self.gateway_state.local.NAMESPACE_PREFIX):
-                try:
-                    req = json_format.Parse(val, pb2.add_namespace_req(), ignore_unknown_fields = True)
-                    ns_bdev_name = req.bdev_name
-                    if ns_bdev_name == bdev_name:
-                        nsid = req.nsid
-                        nqn = req.subsystem_nqn
-                        ns_list.insert(0, {"nqn" : nqn, "nsid" : nsid})
-                except Exception as ex:
-                    self.logger.error(f"Got exception trying to get bdev {bdev_name} namespaces: {ex}")
-                    pass
+            if not key.startswith(self.gateway_state.local.NAMESPACE_PREFIX):
+                continue
+            try:
+                ns = json.loads(val)
+                if ns["bdev_name"] == bdev_name:
+                    nsid = ns["nsid"]
+                    nqn = ns["subsystem_nqn"]
+                    ns_list.insert(0, {"nqn" : nqn, "nsid" : nsid})
+            except Exception as ex:
+                self.logger.error(f"Got exception trying to get bdev {bdev_name} namespaces: {ex}")
+                pass
 
         return ns_list
 
@@ -243,18 +246,59 @@ class GatewayService(pb2_grpc.GatewayServicer):
         with self.rpc_lock:
             return self.delete_bdev_safe(request, context)
 
+    def is_discovery_nqn(self, nqn) -> bool:
+        return nqn == DiscoveryService.DISCOVERY_NQN
+
+    def serial_number_already_used(self, context, serial) -> str:
+        if not context:
+            return None
+        state = self.gateway_state.local.get_state()
+        for key, val in state.items():
+            if not key.startswith(self.gateway_state.local.SUBSYSTEM_PREFIX):
+                continue
+            try:
+                subsys = json.loads(val)
+                sn = subsys["serial_number"]
+                if serial == sn:
+                    return subsys["subsystem_nqn"]
+            except Exception:
+                self.logger.warning("Got exception while parsing {val}: {ex}")
+                continue
+        return None
+
     def create_subsystem_safe(self, request, context=None):
         """Creates a subsystem."""
 
         self.logger.info(
             f"Received request to create subsystem {request.subsystem_nqn}, ana reporting: {request.ana_reporting}  ")
+
+        if self.is_discovery_nqn(request.subsystem_nqn):
+            raise Exception(f"Can't create a discovery subsystem")
+
         min_cntlid = self.config.getint_with_default("gateway", "min_controller_id", 1)
         max_cntlid = self.config.getint_with_default("gateway", "max_controller_id", 65519)
         if not request.serial_number:
             random.seed()
             randser = random.randint(2, 99999999999999)
             request.serial_number = f"SPDK{randser}"
+            self.logger.info(f"No serial number specified, will use {request.serial_number}")
+
         try:
+            subsys_using_serial = self.serial_number_already_used(context, request.serial_number)
+            if subsys_using_serial:
+                self.logger.error(f"Serial number {request.serial_number} already used by subsystem {subsys_using_serial}")
+                req = {"subsystem_nqn": request.subsystem_nqn,
+                       "serial_number": request.serial_number,
+                       "max_namespaces": request.max_namespaces,
+                       "ana_reporting": request.ana_reporting,
+                       "enable_ha": request.enable_ha,
+                       "method": "nvmf_create_subsystem", "req_id": 0}
+                ret = {"code": -errno.EEXIST, "message": f"Serial number {request.serial_number} already used by subsystem {subsys_using_serial}"}
+                msg = "\n".join(["request:", "%s" % json.dumps(req, indent=2),
+                                "Got JSON-RPC error response",
+                                "response:",
+                                json.dumps(ret, indent=2)])
+                raise Exception(msg)
             ret = rpc_nvmf.nvmf_create_subsystem(
                 self.spdk_rpc_client,
                 nqn=request.subsystem_nqn,
@@ -295,6 +339,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         self.logger.info(
             f"Received request to delete subsystem {request.subsystem_nqn}")
+
+        if self.is_discovery_nqn(request.subsystem_nqn):
+            raise Exception(f"Can't delete a discovery subsystem")
+
         try:
             ret = rpc_nvmf.nvmf_delete_subsystem(
                 self.spdk_rpc_client,
@@ -325,11 +373,16 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
     def add_namespace_safe(self, request, context=None):
         """Adds a namespace to a subsystem."""
-        if request.anagrpid > MAX_ANA_GROUPS:
-            raise Exception(f"Error group ID {request.anagrpid} is more than configured maximum {MAX_ANA_GROUPS}\n")
               
         self.logger.info(f"Received request to add {request.bdev_name} to"
                          f" {request.subsystem_nqn}")
+
+        if request.anagrpid > MAX_ANA_GROUPS:
+            raise Exception(f"Error group ID {request.anagrpid} is more than configured maximum {MAX_ANA_GROUPS}")
+
+        if self.is_discovery_nqn(request.subsystem_nqn):
+            raise Exception(f"Can't add a namespace to a discovery subsystem")
+
         try:
             nsid = rpc_nvmf.nvmf_subsystem_add_ns(
                 self.spdk_rpc_client,
@@ -371,6 +424,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         self.logger.info(f"Received request to remove nsid {request.nsid} from"
                          f" {request.subsystem_nqn}")
+
+        if self.is_discovery_nqn(request.subsystem_nqn):
+            raise Exception(f"Can't remove a namespace from a discovery subsystem")
+
         try:
             ret = rpc_nvmf.nvmf_subsystem_remove_ns(
                 self.spdk_rpc_client,
@@ -404,7 +461,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
     def matching_host_exists(self, context, subsys_nqn, host_nqn) -> bool:
         if not context:
             return False
-        host_key = "_".join([self.gateway_state.local.HOST_PREFIX + subsys_nqn, host_nqn])
+        host_key = GatewayState.build_host_key(subsys_nqn, host_nqn)
         state = self.gateway_state.local.get_state()
         if state.get(host_key):
             return True
@@ -413,6 +470,12 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
     def add_host_safe(self, request, context=None):
         """Adds a host to a subsystem."""
+
+        if self.is_discovery_nqn(request.subsystem_nqn):
+            raise Exception(f"Can't allow a host to a discovery subsystem")
+
+        if self.is_discovery_nqn(request.host_nqn):
+            raise Exception(f"Can't use a discovery NQN as host NQN")
 
         try:
             host_already_exist = self.matching_host_exists(context, request.subsystem_nqn, request.host_nqn)
@@ -479,6 +542,12 @@ class GatewayService(pb2_grpc.GatewayServicer):
     def remove_host_safe(self, request, context=None):
         """Removes a host from a subsystem."""
 
+        if self.is_discovery_nqn(request.subsystem_nqn):
+            raise Exception(f"Can't remove a host from a discovery subsystem")
+
+        if self.is_discovery_nqn(request.host_nqn):
+            raise Exception(f"Can't use a discovery NQN as host NQN")
+
         try:
             if request.host_nqn == "*":  # Disable allow any host access
                 self.logger.info(
@@ -525,7 +594,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
     def matching_listener_exists(self, context, nqn, gw_name, trtype, traddr, trsvcid) -> bool:
         if not context:
             return False
-        listener_key = "_".join([self.gateway_state.local.LISTENER_PREFIX + nqn, gw_name, trtype, traddr, trsvcid])
+        listener_key = GatewayState.build_listener_key(nqn, gw_name, trtype, traddr, trsvcid)
         state = self.gateway_state.local.get_state()
         if state.get(listener_key):
             return True
@@ -535,9 +604,14 @@ class GatewayService(pb2_grpc.GatewayServicer):
     def create_listener_safe(self, request, context=None):
         """Creates a listener for a subsystem at a given IP/Port."""
         ret = True
+        traddr = GatewayConfig.escape_address_if_ipv6(request.traddr)
         self.logger.info(f"Received request to create {request.gateway_name}"
                          f" {request.trtype} listener for {request.nqn} at"
-                         f" {request.traddr}:{request.trsvcid}.")
+                         f" {traddr}:{request.trsvcid}.")
+
+        if self.is_discovery_nqn(request.nqn):
+            raise Exception(f"Can't create a listener for a discovery subsystem")
+
         try:
             if request.gateway_name == self.gateway_name:
                 listener_already_exist = self.matching_listener_exists(
@@ -574,20 +648,24 @@ class GatewayService(pb2_grpc.GatewayServicer):
             return pb2.req_status()
 
         state = self.gateway_state.local.get_state()
-        req = None
-        subsys = state.get(self.gateway_state.local.SUBSYSTEM_PREFIX + request.nqn)
-        if subsys:
-            self.logger.debug(f"value of sub-system: {subsys}")
+        enable_ha = False
+        subsys_str = state.get(GatewayState.build_subsystem_key(request.nqn))
+        if subsys_str:
+            self.logger.debug(f"value of sub-system: {subsys_str}")
             try:
-                req = json_format.Parse(subsys, pb2.create_subsystem_req())
-                self.logger.info(f"enable_ha: {req.enable_ha}")
-            except Exception:
-                self.logger.error(f"Got exception trying to parse subsystem: {ex}")
+                subsys_dict = json.loads(subsys_str)
+                try:
+                    enable_ha = subsys_dict["enable_ha"]
+                except KeyError:
+                    enable_ha = False
+                self.logger.info(f"enable_ha: {enable_ha}")
+            except Exception as ex:
+                self.logger.error(f"Got exception trying to parse subsystem {request.nqn}: {ex}")
                 pass
         else:
-            self.logger.info(f"No sub-system for {request.nqn}")
+            self.logger.info(f"No subsystem for {request.nqn}")
 
-        if req and req.enable_ha:
+        if enable_ha:
               for x in range (MAX_ANA_GROUPS):
                    try:
                       ret = rpc_nvmf.nvmf_subsystem_listener_set_ana_state(
@@ -627,9 +705,14 @@ class GatewayService(pb2_grpc.GatewayServicer):
         """Deletes a listener from a subsystem at a given IP/Port."""
 
         ret = True
+        traddr = GatewayConfig.escape_address_if_ipv6(request.traddr)
         self.logger.info(f"Received request to delete {request.gateway_name}"
                          f" {request.trtype} listener for {request.nqn} at"
-                         f" {request.traddr}:{request.trsvcid}.")
+                         f" {traddr}:{request.trsvcid}.")
+
+        if self.is_discovery_nqn(request.nqn):
+            raise Exception(f"Can't delete a listener from a discovery subsystem")
+
         try:
             if request.gateway_name == self.gateway_name:
                 ret = rpc_nvmf.nvmf_subsystem_remove_listener(

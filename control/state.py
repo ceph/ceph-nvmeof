@@ -29,6 +29,30 @@ class GatewayState(ABC):
     HOST_PREFIX = "host_"
     LISTENER_PREFIX = "listener_"
 
+    def build_bdev_key(bdev_name: str) -> str:
+        return GatewayState.BDEV_PREFIX + bdev_name
+
+    def build_namespace_key(subsystem_nqn: str, nsid) -> str:
+        key = GatewayState.NAMESPACE_PREFIX + subsystem_nqn
+        if nsid is not None:
+            key = key + "_" + nsid
+        return key
+
+    def build_subsystem_key(subsystem_nqn: str) -> str:
+        return GatewayState.SUBSYSTEM_PREFIX + subsystem_nqn
+
+    def build_host_key(subsystem_nqn: str, host_nqn) -> str:
+        key = GatewayState.HOST_PREFIX + subsystem_nqn
+        if host_nqn is not None:
+            key = key + "_" + host_nqn
+        return key
+
+    def build_partial_listener_key(subsystem_nqn: str) -> str:
+        return GatewayState.LISTENER_PREFIX + subsystem_nqn
+
+    def build_listener_key(subsystem_nqn: str, gateway: str, trtype: str, traddr: str, trsvcid: str) -> str:
+        return GatewayState.build_partial_listener_key(subsystem_nqn) + "_" + gateway + "_" + trtype + "_" + traddr + "_" + trsvcid
+
     @abstractmethod
     def get_state(self) -> Dict[str, str]:
         """Returns the state dictionary."""
@@ -46,64 +70,62 @@ class GatewayState(ABC):
 
     def add_bdev(self, bdev_name: str, val: str):
         """Adds a bdev to the state data store."""
-        key = self.BDEV_PREFIX + bdev_name
+        key = GatewayState.build_bdev_key(bdev_name)
         self._add_key(key, val)
 
     def remove_bdev(self, bdev_name: str):
         """Removes a bdev from the state data store."""
-        key = self.BDEV_PREFIX + bdev_name
+        key = GatewayState.build_bdev_key(bdev_name)
         self._remove_key(key)
 
     def add_namespace(self, subsystem_nqn: str, nsid: str, val: str):
         """Adds a namespace to the state data store."""
-        key = self.NAMESPACE_PREFIX + subsystem_nqn + "_" + nsid
+        key = GatewayState.build_namespace_key(subsystem_nqn, nsid)
         self._add_key(key, val)
 
     def remove_namespace(self, subsystem_nqn: str, nsid: str):
         """Removes a namespace from the state data store."""
-        key = self.NAMESPACE_PREFIX + subsystem_nqn + "_" + nsid
+        key = GatewayState.build_namespace_key(subsystem_nqn, nsid)
         self._remove_key(key)
 
     def add_subsystem(self, subsystem_nqn: str, val: str):
         """Adds a subsystem to the state data store."""
-        key = self.SUBSYSTEM_PREFIX + subsystem_nqn
+        key = GatewayState.build_subsystem_key(subsystem_nqn)
         self._add_key(key, val)
 
     def remove_subsystem(self, subsystem_nqn: str):
         """Removes a subsystem from the state data store."""
-        key = self.SUBSYSTEM_PREFIX + subsystem_nqn
+        key = GatewayState.build_subsystem_key(subsystem_nqn)
         self._remove_key(key)
 
         # Delete all keys related to subsystem
         state = self.get_state()
         for key in state.keys():
-            if (key.startswith(self.NAMESPACE_PREFIX + subsystem_nqn) or
-                    key.startswith(self.HOST_PREFIX + subsystem_nqn) or
-                    key.startswith(self.LISTENER_PREFIX + subsystem_nqn)):
+            if (key.startswith(GatewayState.build_namespace_key(subsystem_nqn, None)) or
+                    key.startswith(GatewayState.build_host_key(subsystem_nqn, None)) or
+                    key.startswith(GatewayState.build_partial_listener_key(subsystem_nqn))):
                 self._remove_key(key)
 
     def add_host(self, subsystem_nqn: str, host_nqn: str, val: str):
         """Adds a host to the state data store."""
-        key = "{}{}_{}".format(self.HOST_PREFIX, subsystem_nqn, host_nqn)
+        key = GatewayState.build_host_key(subsystem_nqn, host_nqn)
         self._add_key(key, val)
 
     def remove_host(self, subsystem_nqn: str, host_nqn: str):
         """Removes a host from the state data store."""
-        key = "{}{}_{}".format(self.HOST_PREFIX, subsystem_nqn, host_nqn)
+        key = GatewayState.build_host_key(subsystem_nqn, host_nqn)
         self._remove_key(key)
 
     def add_listener(self, subsystem_nqn: str, gateway: str, trtype: str,
                      traddr: str, trsvcid: str, val: str):
         """Adds a listener to the state data store."""
-        key = "{}{}_{}_{}_{}_{}".format(self.LISTENER_PREFIX, subsystem_nqn,
-                                        gateway, trtype, traddr, trsvcid)
+        key = GatewayState.build_listener_key(subsystem_nqn, gateway, trtype, traddr, trsvcid)
         self._add_key(key, val)
 
     def remove_listener(self, subsystem_nqn: str, gateway: str, trtype: str,
                         traddr: str, trsvcid: str):
         """Removes a listener from the state data store."""
-        key = "{}{}_{}_{}_{}_{}".format(self.LISTENER_PREFIX, subsystem_nqn,
-                                        gateway, trtype, traddr, trsvcid)
+        key = GatewayState.build_listener_key(subsystem_nqn, gateway, trtype, traddr, trsvcid)
         self._remove_key(key)
 
     @abstractmethod

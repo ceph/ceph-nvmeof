@@ -304,6 +304,8 @@ class DiscoveryService:
         discovery_port: Discovery controller's listening port
     """
 
+    DISCOVERY_NQN = "nqn.2014-08.org.nvmexpress.discovery"
+
     def __init__(self, config):
         self.version = 1
         self.config = config
@@ -731,12 +733,12 @@ class DiscoveryService:
             log_entry_counter = 0
             while log_entry_counter < len(allow_listeners):
                 log_entry = DiscoveryLogEntry()
-                trtype = TRANSPORT_TYPES[allow_listeners[log_entry_counter]["trtype"]]
+                trtype = TRANSPORT_TYPES[allow_listeners[log_entry_counter]["trtype"].upper()]
                 if trtype is None:
                     self.logger.error("unsupported transport type")
                 else:
                     log_entry.trtype = trtype
-                adrfam = ADRFAM_TYPES[allow_listeners[log_entry_counter]["adrfam"]]
+                adrfam = ADRFAM_TYPES[allow_listeners[log_entry_counter]["adrfam"].lower()]
                 if adrfam is None:
                     self.logger.error("unsupported adress family")
                 else:
