@@ -136,11 +136,14 @@ jobs:
           echo "💁 ls rbd:"
           make exec SVC=ceph OPTS="-T" CMD="rbd ls rbd"
 
+      - name: Run protoc
+        run: |
+          make protoc
+
       - name: Run ${{ matrix.test }} test
         run: |
           # Run tests code in current dir
           # Managing pytest’s output: https://docs.pytest.org/en/7.1.x/how-to/output.html
-          make protoc
           make run SVC="nvmeof-devel" OPTS="--volume=$(pwd)/tests:/src/tests --entrypoint=python3" CMD="-m pytest --show-capture=all -s --full-trace -vv -rA tests/test_${{ matrix.test }}.py"
 
       - name: Check coredump existence
