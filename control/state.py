@@ -11,6 +11,7 @@ import time
 import threading
 import rados
 import logging
+import errno
 from typing import Dict
 from collections import defaultdict
 from abc import ABC, abstractmethod
@@ -164,6 +165,124 @@ class LocalGatewayState(GatewayState):
         """Resets dictionary with OMAP state."""
         self.state = omap_state
 
+
+class OmapLock:
+    OMAP_FILE_LOCK_NAME = "omap_file_lock"
+    OMAP_FILE_LOCK_COOKIE = "omap_file_cookie"
+
+    def __init__(self, omap_state, gateway_state) -> None:
+        self.logger = omap_state.logger
+        self.omap_state = omap_state
+        self.gateway_state = gateway_state
+        self.omap_file_lock_duration = self.omap_state.config.getint_with_default("gateway", "omap_file_lock_duration", 60)
+        self.omap_file_update_reloads = self.omap_state.config.getint_with_default("gateway", "omap_file_update_reloads", 10)
+        self.omap_file_lock_retries = self.omap_state.config.getint_with_default("gateway", "omap_file_lock_retries", 15)
+        self.omap_file_lock_retry_sleep_interval = self.omap_state.config.getint_with_default("gateway",
+                                                                                    "omap_file_lock_retry_sleep_interval", 5)
+        # This is used for testing purposes only. To allow us testing locking from two gateways at the same time
+        self.omap_file_disable_unlock = self.omap_state.config.getboolean_with_default("gateway", "omap_file_disable_unlock", False)
+        if self.omap_file_disable_unlock:
+            self.logger.warning(f"Will not unlock OMAP file for testing purposes")
+        self.enter_args = {}
+
+    def __call__(self, **kwargs):
+        self.enter_args.clear()
+        self.enter_args.update(kwargs)
+        return self
+
+    #
+    # We pass the context from the different functions here. It should point to a real object in case we come from a real
+    # resource changing function, resulting from a CLI command. It will be None in case we come from an automatic update
+    # which is done because the local state is out of date. In case context is None, that is we're in the middle of an update
+    # we should not try to lock the OMAP file as the code will not try to make changes there, only the local spdk calls
+    # are done in such a case.
+    #
+    def __enter__(self):
+        context = self.enter_args.get("context")
+        if context and self.omap_file_lock_duration > 0:
+            self.lock_omap()
+        return self
+
+    def __exit__(self, typ, value, traceback):
+        context = self.enter_args.get("context")
+        self.enter_args.clear()
+        if context and self.omap_file_lock_duration > 0:
+            self.unlock_omap()
+
+    #
+    # This function accepts a function in which there is Omap locking. It will execute this function
+    # and in case the Omap is not current, will reload it and try again
+    #
+    def execute_omap_locking_function(self, grpc_func, omap_locking_func, request, context):
+        for i in range(1, self.omap_file_update_reloads):
+            need_to_update = False
+            try:
+                return grpc_func(omap_locking_func, request, context)
+            except OSError as err:
+                if err.errno == errno.EAGAIN:
+                    need_to_update = True
+                else:
+                    raise
+
+            assert need_to_update
+            for j in range(10):
+                if self.gateway_state.update():
+                    # update was succesful, we can stop trying
+                    break
+                time.sleep(1)
+
+        if need_to_update:
+            raise Exception(f"Unable to lock OMAP file after reloading {self.omap_file_update_reloads} times, exiting")
+
+    def lock_omap(self):
+        got_lock = False
+
+        for i in range(1, self.omap_file_lock_retries):
+            try:
+                self.omap_state.ioctx.lock_exclusive(self.omap_state.omap_name, self.OMAP_FILE_LOCK_NAME,
+                                         self.OMAP_FILE_LOCK_COOKIE, "OMAP file changes lock", self.omap_file_lock_duration, 0)
+                got_lock = True
+                if i > 1:
+                    self.logger.info(f"Succeeded to lock OMAP file after {i} tries")
+                break
+            except rados.ObjectExists as ex:
+                self.logger.info(f"We already locked the OMAP file")
+                got_lock = True
+                break
+            except rados.ObjectBusy as ex:
+                self.logger.warning(
+                       f"The OMAP file is locked, will try again in {self.omap_file_lock_retry_sleep_interval} seconds")
+                time.sleep(self.omap_file_lock_retry_sleep_interval)
+            except Exception as ex:
+                self.logger.error(f"Unable to lock OMAP file, exiting: {ex}")
+                raise
+
+        if not got_lock:
+            self.logger.error(f"Unable to lock OMAP file after {self.omap_file_lock_retries} tries. Exiting!")
+            raise Exception("Unable to lock OMAP file")
+
+        omap_version = self.omap_state.get_omap_version()
+        local_version = self.omap_state.get_local_version()
+
+        if omap_version > local_version:
+            self.logger.warning(
+                       f"Local version {local_version} differs from OMAP file version {omap_version}."
+                       f" The file is not current, will reload it and try again")
+            self.unlock_omap()
+            raise OSError(errno.EAGAIN, "Unable to lock OMAP file, file not current", self.omap_state.omap_name)
+
+    def unlock_omap(self):
+        if self.omap_file_disable_unlock:
+            self.logger.warning(f"OMAP file unlock was disabled, will not unlock file")
+            return
+
+        try:
+            self.omap_state.ioctx.unlock(self.omap_state.omap_name, self.OMAP_FILE_LOCK_NAME, self.OMAP_FILE_LOCK_COOKIE)
+        except rados.ObjectNotFound as ex:
+            self.logger.warning(f"No such lock, the lock duration might have passed")
+        except Exception as ex:
+            self.logger.error(f"Unable to unlock OMAP file: {ex}")
+            pass
 
 class OmapGatewayState(GatewayState):
     """Persists gateway NVMeoF target state to an OMAP object.
@@ -390,6 +509,7 @@ class GatewayStateHandler:
             self.update_interval = 1
         self.use_notify = self.config.getboolean("gateway",
                                                  "state_update_notify")
+        self.update_is_active_lock = threading.Lock()
 
     def add_bdev(self, bdev_name: str, val: str):
         """Adds a bdev to the state data stores."""
@@ -482,53 +602,61 @@ class GatewayStateHandler:
         val2_str = val2.decode() if type(val2) == type(b'') else val2
         return val1_str == val2_str
 
-    def update(self):
+    def update(self) -> bool:
         """Checks for updated omap state and initiates local update."""
-        prefix_list = [
-            GatewayState.BDEV_PREFIX, GatewayState.SUBSYSTEM_PREFIX,
-            GatewayState.NAMESPACE_PREFIX, GatewayState.HOST_PREFIX,
-            GatewayState.LISTENER_PREFIX
-        ]
 
-        # Get version and state from OMAP
-        omap_state_dict = self.omap.get_state()
-        omap_version = int(omap_state_dict[self.omap.OMAP_VERSION_KEY])
+        if self.update_is_active_lock.locked():
+            self.logger.warning(f"An update is already running, ignore")
+            return False
 
-        if self.omap.get_local_version() < omap_version:
-            local_state_dict = self.local.get_state()
-            local_state_keys = local_state_dict.keys()
-            omap_state_keys = omap_state_dict.keys()
+        with self.update_is_active_lock:
+            prefix_list = [
+                GatewayState.BDEV_PREFIX, GatewayState.SUBSYSTEM_PREFIX,
+                GatewayState.NAMESPACE_PREFIX, GatewayState.HOST_PREFIX,
+                GatewayState.LISTENER_PREFIX
+            ]
 
-            # Find OMAP additions
-            added_keys = omap_state_keys - local_state_keys
-            added = {key: omap_state_dict[key] for key in added_keys}
-            grouped_added = self._group_by_prefix(added, prefix_list)
-            # Find OMAP changes
-            same_keys = omap_state_keys & local_state_keys
-            changed = {
-                key: omap_state_dict[key]
-                for key in same_keys
-                if not self.compare_state_values(local_state_dict[key], omap_state_dict[key])
-            }
-            grouped_changed = self._group_by_prefix(changed, prefix_list)
-            # Find OMAP removals
-            removed_keys = local_state_keys - omap_state_keys
-            removed = {key: local_state_dict[key] for key in removed_keys}
-            grouped_removed = self._group_by_prefix(removed, prefix_list)
+            # Get version and state from OMAP
+            omap_state_dict = self.omap.get_state()
+            omap_version = int(omap_state_dict[self.omap.OMAP_VERSION_KEY])
 
-            # Handle OMAP removals and remove outdated changed components
-            grouped_removed.update(grouped_changed)
-            if grouped_removed:
-                self._update_call_rpc(grouped_removed, False, prefix_list)
-            # Handle OMAP additions and add updated changed components
-            grouped_added.update(grouped_changed)
-            if grouped_added:
-                self._update_call_rpc(grouped_added, True, prefix_list)
+            if self.omap.get_local_version() < omap_version:
+                local_state_dict = self.local.get_state()
+                local_state_keys = local_state_dict.keys()
+                omap_state_keys = omap_state_dict.keys()
 
-            # Update local state and version
-            self.local.reset(omap_state_dict)
-            self.omap.set_local_version(omap_version)
-            self.logger.debug("Update complete.")
+                # Find OMAP additions
+                added_keys = omap_state_keys - local_state_keys
+                added = {key: omap_state_dict[key] for key in added_keys}
+                grouped_added = self._group_by_prefix(added, prefix_list)
+                # Find OMAP changes
+                same_keys = omap_state_keys & local_state_keys
+                changed = {
+                    key: omap_state_dict[key]
+                    for key in same_keys
+                    if not self.compare_state_values(local_state_dict[key], omap_state_dict[key])
+                }
+                grouped_changed = self._group_by_prefix(changed, prefix_list)
+                # Find OMAP removals
+                removed_keys = local_state_keys - omap_state_keys
+                removed = {key: local_state_dict[key] for key in removed_keys}
+                grouped_removed = self._group_by_prefix(removed, prefix_list)
+
+                # Handle OMAP removals and remove outdated changed components
+                grouped_removed.update(grouped_changed)
+                if grouped_removed:
+                    self._update_call_rpc(grouped_removed, False, prefix_list)
+                # Handle OMAP additions and add updated changed components
+                grouped_added.update(grouped_changed)
+                if grouped_added:
+                    self._update_call_rpc(grouped_added, True, prefix_list)
+
+                # Update local state and version
+                self.local.reset(omap_state_dict)
+                self.omap.set_local_version(omap_version)
+                self.logger.debug("Update complete.")
+
+        return True
 
     def _group_by_prefix(self, state_update, prefix_list):
         """Groups state update by key prefixes."""

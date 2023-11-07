@@ -25,7 +25,7 @@ import spdk.rpc.nvmf as rpc_nvmf
 
 from .proto import gateway_pb2 as pb2
 from .proto import gateway_pb2_grpc as pb2_grpc
-from .state import GatewayState, LocalGatewayState, OmapGatewayState, GatewayStateHandler
+from .state import GatewayState, LocalGatewayState, OmapLock, OmapGatewayState, GatewayStateHandler
 from .grpc import GatewayService
 from .discovery import DiscoveryService
 from .config import GatewayConfig
@@ -113,10 +113,9 @@ class GatewayServer:
         self._start_discovery_service()
 
         # Register service implementation with server
-        gateway_state = GatewayStateHandler(self.config, local_state,
-                                            omap_state, self.gateway_rpc_caller)
-        self.gateway_rpc = GatewayService(self.config, gateway_state,
-                                          self.spdk_rpc_client)
+        gateway_state = GatewayStateHandler(self.config, local_state, omap_state, self.gateway_rpc_caller)
+        omap_lock = OmapLock(omap_state, gateway_state)
+        self.gateway_rpc = GatewayService(self.config, gateway_state, omap_lock, self.spdk_rpc_client)
         self.server = grpc.server(futures.ThreadPoolExecutor(max_workers=1))
         pb2_grpc.add_GatewayServicer_to_server(self.gateway_rpc, self.server)
 
