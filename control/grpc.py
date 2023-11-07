@@ -406,7 +406,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 if context:
                     context.set_code(grpc.StatusCode.INTERNAL)
                     context.set_details(f"{ex}")
-                return pb2.nsid()
+                return pb2.nsid_status()
 
             if context:
                 # Update gateway state
@@ -422,7 +422,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                         f"Error persisting add_namespace {nsid}: {ex}")
                     raise
 
-        return pb2.nsid(nsid=nsid, status=True)
+        return pb2.nsid_status(nsid=nsid, status=True)
 
     def add_namespace(self, request, context=None):
         return self.execute_grpc_function(self.add_namespace_safe, request, context)
