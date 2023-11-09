@@ -24,7 +24,8 @@ EOF
 
 ARG SPDK_PKGDEP_ARGS \
     SPDK_CONFIGURE_ARGS \
-    SPDK_MAKEFLAGS
+    SPDK_MAKEFLAGS \
+    SPDK_DISABLE_VPCLMULQDQ
 
 WORKDIR /src
 COPY . .
@@ -45,6 +46,9 @@ RUN \
 # Disable RDSEED, see https://github.com/ceph/ceph-nvmeof/issues/259
 RUN \
     sed -i "s/^\( \+'RDSEED'\)/#\1/" dpdk/config/x86/meson.build
+# If we run from github disable also VPCLMULQDQ as some of github's runners don't have it
+RUN \
+    if [[ -n "$SPDK_DISABLE_VPCLMULQDQ" ]]; then sed -i "s/^\( \+'VPCLMULQDQ'\)/#\1/" dpdk/config/x86/meson.build ; fi
 RUN \
     cat dpdk/config/x86/meson.build
 
