@@ -19,6 +19,7 @@ services:
         SPDK_DESCRIPTION:
         SPDK_URL:
         SPDK_MAINTAINER: $MAINTAINER
+        SPDK_DISABLE_VPCLMULQDQ:
         BUILD_DATE:
         SPDK_GIT_REPO:
         SPDK_GIT_BRANCH:

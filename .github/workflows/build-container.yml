@@ -23,7 +23,7 @@ jobs:
           submodules: recursive
 
       - name: Build container images
-        run: make build
+        run: make build SPDK_DISABLE_VPCLMULQDQ="yes"
 
       - name: Save container images
         run: |
