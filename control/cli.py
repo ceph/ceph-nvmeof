@@ -329,6 +329,39 @@ class GatewayClient:
         formatted_subsystems = json.dumps(subsystems, indent=4)
         self.logger.info(f"Get subsystems:\n{formatted_subsystems}")
 
+    @cli.cmd()
+    def get_spdk_nvmf_log_flags_and_level(self, args):
+        """Gets spdk nvmf log levels and flags"""
+        req = pb2.get_spdk_nvmf_log_flags_and_level_req()
+        ret = self.stub.get_spdk_nvmf_log_flags_and_level(req)
+        formatted_flags_log_level = json.dumps(json.loads(ret.flags_level), indent=4)
+        self.logger.info(
+            f"Get SPDK nvmf log flags and level:\n{formatted_flags_log_level}")
+
+    @cli.cmd()
+    def disable_spdk_nvmf_logs(self, args):
+        """Disables spdk nvmf logs and flags"""
+        req = pb2.disable_spdk_nvmf_logs_req()
+        ret = self.stub.disable_spdk_nvmf_logs(req)
+        self.logger.info(
+            f"Disable SPDK nvmf logs: {ret.status}")
+
+    @cli.cmd([
+        argument("-f", "--flags", help="SPDK nvmf enable flags", \
+                 action='store_true', required=True),
+        argument("-l", "--log_level", \
+                 help="SPDK nvmf log level (ERROR, WARNING, NOTICE, INFO, DEBUG)", required=False),
+        argument("-p", "--log_print_level", \
+                 help="SPDK nvmf log print level (ERROR, WARNING, NOTICE, INFO, DEBUG)", \
+                    required=False),
+    ])
+    def set_spdk_nvmf_logs(self, args):
+        """Set spdk nvmf log and flags"""
+        req = pb2.set_spdk_nvmf_logs_req(flags=args.flags, log_level=args.log_level, \
+                                         print_level=args.log_print_level)
+        ret = self.stub.set_spdk_nvmf_logs(req)
+        self.logger.info(
+            f"Set SPDK nvmf logs : {ret.status}")
 
 def main(args=None):
     client = GatewayClient()

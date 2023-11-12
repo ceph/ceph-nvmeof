@@ -19,6 +19,7 @@ import errno
 
 import spdk.rpc.bdev as rpc_bdev
 import spdk.rpc.nvmf as rpc_nvmf
+import spdk.rpc.log as rpc_log
 
 from google.protobuf import json_format
 from .proto import gateway_pb2 as pb2
@@ -779,3 +780,72 @@ class GatewayService(pb2_grpc.GatewayServicer):
     def get_subsystems(self, request, context):
         with self.rpc_lock:
             return self.get_subsystems_safe(request, context)
+
+    def get_spdk_nvmf_log_flags_and_level(self, request, context):
+        """Gets spdk nvmf log flags, log level and log print level"""
+        self.logger.info(f"Received request to get SPDK nvmf log flags and level")
+        try:
+            nvmf_log_flags = {key: value for key, value in rpc_log.log_get_flags(
+                self.spdk_rpc_client).items() if key.startswith('nvmf')}
+            spdk_log_level = {'log_level': rpc_log.log_get_level(self.spdk_rpc_client)}
+            spdk_log_print_level = {'log_print_level': rpc_log.log_get_print_level(
+                self.spdk_rpc_client)}
+            flags_log_level = {**nvmf_log_flags, **spdk_log_level, **spdk_log_print_level}
+            self.logger.info(f"spdk log flags: {nvmf_log_flags}, " 
+                             f"spdk log level: {spdk_log_level}, "
+                             f"spdk log print level: {spdk_log_print_level}")
+        except Exception as ex:
+            self.logger.error(f"get_spdk_nvmf_log_flags_and_level failed with: \n {ex}")
+            context.set_code(grpc.StatusCode.INTERNAL)
+            context.set_details(f"{ex}")
+            return pb2.spdk_nvmf_log_flags_and_level_info()
+
+        return pb2.spdk_nvmf_log_flags_and_level_info(
+            flags_level=json.dumps(flags_log_level))
+
+    def set_spdk_nvmf_logs(self, request, context):
+        """Enables spdk nvmf logs"""
+        self.logger.info(f"Received request to set SPDK nvmf logs")
+        try:
+            nvmf_log_flags = [key for key in rpc_log.log_get_flags(self.spdk_rpc_client).keys() \
+                              if key.startswith('nvmf')]
+            ret = [rpc_log.log_set_flag(
+                self.spdk_rpc_client, flag=flag) for flag in nvmf_log_flags]
+            self.logger.info(f"Set SPDK log flags {nvmf_log_flags} to TRUE")
+            if request.log_level:
+                ret_log = rpc_log.log_set_level(self.spdk_rpc_client, level=request.log_level)
+                self.logger.info(f"Set log level to: {request.log_level}")
+                ret.append(ret_log)
+            if request.print_level:
+                ret_print = rpc_log.log_set_print_level(
+                    self.spdk_rpc_client, level=request.print_level)
+                self.logger.info(f"Set log print level to: {request.print_level}")
+                ret.append(ret_print)
+        except Exception as ex:
+            self.logger.error(f"set_spdk_nvmf_logs failed with: \n {ex}")
+            context.set_code(grpc.StatusCode.INTERNAL)
+            context.set_details(f"{ex}")
+            for flag in nvmf_log_flags:
+                rpc_log.log_clear_flag(self.spdk_rpc_client, flag=flag)
+            return pb2.req_status()
+
+        return pb2.req_status(status=all(ret))
+
+    def disable_spdk_nvmf_logs(self, request, context):
+        """Disables spdk nvmf logs"""
+        self.logger.info(f"Received request to disable SPDK nvmf logs")
+        try:
+            nvmf_log_flags = [key for key in rpc_log.log_get_flags(self.spdk_rpc_client).keys() \
+                              if key.startswith('nvmf')]
+            ret = [rpc_log.log_clear_flag(
+                self.spdk_rpc_client, flag=flag) for flag in nvmf_log_flags]
+            logs_level = [rpc_log.log_set_level(self.spdk_rpc_client, level='NOTICE'),
+                          rpc_log.log_set_print_level(self.spdk_rpc_client, level='INFO')]
+            ret.extend(logs_level)
+        except Exception as ex:
+            self.logger.error(f"disable_spdk_nvmf_logs failed with: \n {ex}")
+            context.set_code(grpc.StatusCode.INTERNAL)
+            context.set_details(f"{ex}")
+            return pb2.req_status()
+
+        return pb2.req_status(status=all(ret))
