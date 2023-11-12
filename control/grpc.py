@@ -126,6 +126,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
             return func(request, context)
 
     def execute_grpc_function(self, func, request, context):
+        """This functions handles both the RPC and OMAP locks. It first takes the OMAP lock and then calls a
+           help function which takes the RPC lock and call the GRPC function passes as a parameter. So, the GRPC
+           function runs with both the OMAP and RPC locks taken
+        """
         return self.omap_lock.execute_omap_locking_function(self._grpc_function_with_lock, func, request, context)
 
     def create_bdev_safe(self, request, context=None):
@@ -781,7 +785,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         with self.rpc_lock:
             return self.get_subsystems_safe(request, context)
 
-    def get_spdk_nvmf_log_flags_and_level(self, request, context):
+    def get_spdk_nvmf_log_flags_and_level_safe(self, request, context):
         """Gets spdk nvmf log flags, log level and log print level"""
         self.logger.info(f"Received request to get SPDK nvmf log flags and level")
         try:
@@ -803,7 +807,11 @@ class GatewayService(pb2_grpc.GatewayServicer):
         return pb2.spdk_nvmf_log_flags_and_level_info(
             flags_level=json.dumps(flags_log_level))
 
-    def set_spdk_nvmf_logs(self, request, context):
+    def get_spdk_nvmf_log_flags_and_level(self, request, context):
+        with self.rpc_lock:
+            return self.get_spdk_nvmf_log_flags_and_level_safe(request, context)
+
+    def set_spdk_nvmf_logs_safe(self, request, context):
         """Enables spdk nvmf logs"""
         self.logger.info(f"Received request to set SPDK nvmf logs")
         try:
@@ -831,7 +839,11 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         return pb2.req_status(status=all(ret))
 
-    def disable_spdk_nvmf_logs(self, request, context):
+    def set_spdk_nvmf_logs(self, request, context):
+        with self.rpc_lock:
+            return self.set_spdk_nvmf_logs_safe(request, context)
+
+    def disable_spdk_nvmf_logs_safe(self, request, context):
         """Disables spdk nvmf logs"""
         self.logger.info(f"Received request to disable SPDK nvmf logs")
         try:
@@ -849,3 +861,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
             return pb2.req_status()
 
         return pb2.req_status(status=all(ret))
+
+    def disable_spdk_nvmf_logs(self, request, context):
+        with self.rpc_lock:
+            return self.disable_spdk_nvmf_logs_safe(request, context)
