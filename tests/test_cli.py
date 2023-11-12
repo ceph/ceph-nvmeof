@@ -190,3 +190,47 @@ class TestDeleteAna:
         cli(["delete_subsystem", "-n", subsystem])
         assert "Failed to delete" not in caplog.text
 
+class TestSDKLOg:
+    def test_log_flags(self, caplog, gateway):
+        caplog.clear()
+        cli(["get_spdk_nvmf_log_flags_and_level"])
+        assert '"nvmf": false' in caplog.text
+        assert '"nvmf_tcp": false' in caplog.text
+        assert '"log_level": "NOTICE"' in caplog.text
+        assert '"log_print_level": "INFO"' in caplog.text
+        caplog.clear()
+        cli(["set_spdk_nvmf_logs", "-f"])
+        assert "Set SPDK nvmf logs : True" in caplog.text
+        caplog.clear()
+        cli(["get_spdk_nvmf_log_flags_and_level"])
+        assert '"nvmf": true' in caplog.text
+        assert '"nvmf_tcp": true' in caplog.text
+        assert '"log_level": "NOTICE"' in caplog.text
+        assert '"log_print_level": "INFO"' in caplog.text
+        caplog.clear()
+        cli(["set_spdk_nvmf_logs", "-f", "-l", "DEBUG"])
+        assert "Set SPDK nvmf logs : True" in caplog.text
+        caplog.clear()
+        cli(["get_spdk_nvmf_log_flags_and_level"])
+        assert '"nvmf": true' in caplog.text
+        assert '"nvmf_tcp": true' in caplog.text
+        assert '"log_level": "DEBUG"' in caplog.text
+        assert '"log_print_level": "INFO"' in caplog.text
+        caplog.clear()
+        cli(["set_spdk_nvmf_logs", "-f", "-p", "ERROR"])
+        assert "Set SPDK nvmf logs : True" in caplog.text
+        caplog.clear()
+        cli(["get_spdk_nvmf_log_flags_and_level"])
+        assert '"nvmf": true' in caplog.text
+        assert '"nvmf_tcp": true' in caplog.text
+        assert '"log_level": "DEBUG"' in caplog.text
+        assert '"log_print_level": "ERROR"' in caplog.text
+        caplog.clear()
+        cli(["disable_spdk_nvmf_logs"])
+        assert "Disable SPDK nvmf logs: True" in caplog.text
+        caplog.clear()
+        cli(["get_spdk_nvmf_log_flags_and_level"])
+        assert '"nvmf": false' in caplog.text
+        assert '"nvmf_tcp": false' in caplog.text
+        assert '"log_level": "NOTICE"' in caplog.text
+        assert '"log_print_level": "INFO"' in caplog.text
