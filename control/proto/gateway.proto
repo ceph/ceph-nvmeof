@@ -24,7 +24,7 @@ service Gateway {
 	rpc delete_subsystem(delete_subsystem_req) returns(req_status) {}
 
 	// Adds a namespace to a subsystem
-	rpc add_namespace(add_namespace_req) returns(nsid) {}
+	rpc add_namespace(add_namespace_req) returns(nsid_status) {}
 
 	// Removes a namespace from a subsystem
 	rpc remove_namespace(remove_namespace_req) returns(req_status) {}
@@ -73,6 +73,8 @@ message create_subsystem_req {
 	string subsystem_nqn = 1;
 	string serial_number = 2;
 	int32 max_namespaces = 3;
+	bool  ana_reporting  = 4;
+	bool  enable_ha      = 5;
 }
 
 message delete_subsystem_req {
@@ -83,6 +85,7 @@ message add_namespace_req {
 	string subsystem_nqn = 1;
 	string bdev_name = 2;
 	optional int32 nsid = 3;
+	optional int32 anagrpid = 4;
 }
 
 message remove_namespace_req {
@@ -144,7 +147,7 @@ message req_status {
 	bool status = 1;
 }
 
-message nsid {
+message nsid_status {
 	int32 nsid = 1;
 	bool status = 2;
 }

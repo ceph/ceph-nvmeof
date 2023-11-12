@@ -304,35 +304,27 @@ class DiscoveryService:
         discovery_port: Discovery controller's listening port
     """
 
-    BDEV_PREFIX = "bdev_"
-    NAMESPACE_PREFIX = "namespace_"
-    SUBSYSTEM_PREFIX = "subsystem_"
-    HOST_PREFIX = "host_"
-    LISTENER_PREFIX = "listener_"
+    DISCOVERY_NQN = "nqn.2014-08.org.nvmexpress.discovery"
 
     def __init__(self, config):
         self.version = 1
         self.config = config
         self.lock = threading.Lock()
+        self.omap_state = OmapGatewayState(self.config)
 
         self.logger = logging.getLogger(__name__)
-        log_level = self.config.get("discovery", "debug")
-        self.logger.setLevel(level=int(log_level))
+        log_level = self.config.getint_with_default("discovery", "debug", 20)
+        self.logger.setLevel(level=log_level)
 
-        gateway_group = self.config.get("gateway", "group")
+        gateway_group = self.config.get_with_default("gateway", "group", "")
         self.omap_name = f"nvmeof.{gateway_group}.state" \
             if gateway_group else "nvmeof.state"
         self.logger.info(f"log pages info from omap: {self.omap_name}")
 
-        ceph_pool = self.config.get("ceph", "pool")
-        ceph_conf = self.config.get("ceph", "config_file")
-        conn = rados.Rados(conffile=ceph_conf)
-        conn.connect()
-        self.ioctx = conn.open_ioctx(ceph_pool)
-
-        self.discovery_addr = self.config.get("discovery", "addr")
-        self.discovery_port = self.config.get("discovery", "port")
-        if self.discovery_addr == '' or self.discovery_port == '':
+        self.ioctx = self.omap_state.open_rados_connection(config)
+        self.discovery_addr = self.config.get_with_default("discovery", "addr", "0.0.0.0")
+        self.discovery_port = self.config.get_with_default("discovery", "port", "8009")
+        if not self.discovery_addr or not self.discovery_port:
             self.logger.error("discovery addr/port are empty.")
             assert 0
         self.logger.info(f"discovery addr: {self.discovery_addr} port: {self.discovery_port}")
@@ -344,10 +336,7 @@ class DiscoveryService:
     def _read_all(self) -> Dict[str, str]:
         """Reads OMAP and returns dict of all keys and values."""
 
-        with rados.ReadOpCtx() as read_op:
-            iter, _ = self.ioctx.get_omap_vals(read_op, "", "", -1)
-            self.ioctx.operate_read_op(read_op, self.omap_name)
-            omap_dict = dict(iter)
+        omap_dict = self.omap_state.get_state()
         return omap_dict
 
     def _get_vals(self, omap_dict, prefix):
@@ -675,8 +664,8 @@ class DiscoveryService:
         self.logger.debug("handle get log page request.")
         self_conn = self.conn_vals[conn.fileno()]
         my_omap_dict = self._read_all()
-        listeners = self._get_vals(my_omap_dict, self.LISTENER_PREFIX)
-        hosts = self._get_vals(my_omap_dict, self.HOST_PREFIX)
+        listeners = self._get_vals(my_omap_dict, GatewayState.LISTENER_PREFIX)
+        hosts = self._get_vals(my_omap_dict, GatewayState.HOST_PREFIX)
         if len(self_conn.nvmeof_connect_data_hostnqn) != 256:
             self.logger.error("error hostnqn.")
             return -1
@@ -744,12 +733,12 @@ class DiscoveryService:
             log_entry_counter = 0
             while log_entry_counter < len(allow_listeners):
                 log_entry = DiscoveryLogEntry()
-                trtype = TRANSPORT_TYPES[allow_listeners[log_entry_counter]["trtype"]]
+                trtype = TRANSPORT_TYPES[allow_listeners[log_entry_counter]["trtype"].upper()]
                 if trtype is None:
                     self.logger.error("unsupported transport type")
                 else:
                     log_entry.trtype = trtype
-                adrfam = ADRFAM_TYPES[allow_listeners[log_entry_counter]["adrfam"]]
+                adrfam = ADRFAM_TYPES[allow_listeners[log_entry_counter]["adrfam"].lower()]
                 if adrfam is None:
                     self.logger.error("unsupported adress family")
                 else:
@@ -1030,10 +1019,9 @@ class DiscoveryService:
         t = threading.Thread(target=self.handle_timeout)
         t.start()
 
-        omap_state = OmapGatewayState(self.config)
         local_state = LocalGatewayState()
         gateway_state = GatewayStateHandler(self.config, local_state,
-                                            omap_state, self._state_notify_update)
+                                            self.omap_state, self._state_notify_update)
         gateway_state.start_update()
 
         try:

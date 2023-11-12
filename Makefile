@@ -24,12 +24,14 @@ setup: ## Configure huge-pages (requires sudo/root password)
 
 build pull logs: SVC ?= spdk bdevperf nvmeof nvmeof-devel nvmeof-cli discovery ceph
 
+build: export NVMEOF_GIT_REPO != git remote get-url origin
 build: export NVMEOF_GIT_BRANCH != git name-rev --name-only HEAD
 build: export NVMEOF_GIT_COMMIT != git rev-parse HEAD
 build: export SPDK_GIT_REPO != git -C spdk remote get-url origin
 build: export SPDK_GIT_BRANCH != git -C spdk name-rev --name-only HEAD
 build: export SPDK_GIT_COMMIT != git rev-parse HEAD:spdk
-build: export BUILD_DATE != date -u +"%Y-%m-%dT%H:%M:%SZ"
+build: export BUILD_DATE != date -u +"%Y-%m-%d %H:%M:%S %Z"
+build: export NVMEOF_GIT_MODIFIED_FILES != git status -s | grep -e "^ *M" | sed 's/^ *M //' | xargs
 
 up: ## Launch services
 up: SVC ?= ceph nvmeof ## Services

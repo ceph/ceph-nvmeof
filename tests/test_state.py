@@ -4,14 +4,10 @@ import rados
 from control.state import LocalGatewayState, OmapGatewayState, GatewayStateHandler
 
 
-@pytest.fixture(scope="module")
-def ioctx(config):
+@pytest.fixture
+def ioctx(omap_state, config):
     """Opens IO context to ceph pool."""
-    ceph_pool = config.get("ceph", "pool")
-    ceph_conf = config.get("ceph", "config_file")
-    conn = rados.Rados(conffile=ceph_conf)
-    conn.connect()
-    ioctx = conn.open_ioctx(ceph_pool)
+    ioctx = omap_state.open_rados_connection(config)
     yield ioctx
     ioctx.close()
 

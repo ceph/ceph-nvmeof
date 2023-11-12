@@ -16,7 +16,6 @@ import grpc
 import json
 import logging
 import signal
-import traceback
 from concurrent import futures
 from google.protobuf import json_format
 
@@ -26,8 +25,10 @@ import spdk.rpc.nvmf as rpc_nvmf
 
 from .proto import gateway_pb2 as pb2
 from .proto import gateway_pb2_grpc as pb2_grpc
-from .state import GatewayState, LocalGatewayState, OmapGatewayState, GatewayStateHandler
+from .state import GatewayState, LocalGatewayState, OmapLock, OmapGatewayState, GatewayStateHandler
 from .grpc import GatewayService
+from .discovery import DiscoveryService
+from .config import GatewayConfig
 
 def sigchld_handler(signum, frame):
     """Handle SIGCHLD, runs when a spdk process terminates."""
@@ -43,7 +44,7 @@ def sigchld_handler(signum, frame):
     exit_code = os.waitstatus_to_exitcode(wait_status)
 
     # GW process should exit now
-    raise SystemExit(f"spdk subprocess terminated {pid=} {exit_code=}")
+    raise SystemExit(f"Gateway subprocess terminated {pid=} {exit_code=}")
 
 class GatewayServer:
     """Runs SPDK and receives client requests for the gateway service.
@@ -56,6 +57,7 @@ class GatewayServer:
         spdk_rpc_client: Client of SPDK RPC server
         spdk_rpc_ping_client: Ping client of SPDK RPC server
         spdk_process: Subprocess running SPDK NVMEoF target application
+        discovery_pid: Subprocess running Ceph nvmeof discovery service
     """
 
     def __init__(self, config):
@@ -64,6 +66,8 @@ class GatewayServer:
         self.spdk_process = None
         self.gateway_rpc = None
         self.server = None
+        self.discovery_pid = None
+        self.spdk_rpc_socket_path = None
 
         self.name = self.config.get("gateway", "name")
         if not self.name:
@@ -79,6 +83,7 @@ class GatewayServer:
         if exc_type is not None:
             self.logger.exception("GatewayServer exception occurred:")
 
+        signal.signal(signal.SIGCHLD, signal.SIG_IGN)
         if self.spdk_process is not None:
             self._stop_spdk()
 
@@ -86,22 +91,31 @@ class GatewayServer:
             self.logger.info("Stopping the server...")
             self.server.stop(None)
 
+        if self.discovery_pid:
+            self._stop_discovery()
+
         self.logger.info("Exiting the gateway process.")
 
     def serve(self):
         """Starts gateway server."""
         self.logger.debug("Starting serve")
 
-        # Start SPDK
-        self._start_spdk()
-
-        # Register service implementation with server
         omap_state = OmapGatewayState(self.config)
         local_state = LocalGatewayState()
-        gateway_state = GatewayStateHandler(self.config, local_state,
-                                            omap_state, self.gateway_rpc_caller)
-        self.gateway_rpc = GatewayService(self.config, gateway_state,
-                                          self.spdk_rpc_client)
+
+        # install SIGCHLD handler
+        signal.signal(signal.SIGCHLD, sigchld_handler)
+
+        # Start SPDK
+        self._start_spdk(omap_state)
+
+        # Start discovery service
+        self._start_discovery_service()
+
+        # Register service implementation with server
+        gateway_state = GatewayStateHandler(self.config, local_state, omap_state, self.gateway_rpc_caller)
+        omap_lock = OmapLock(omap_state, gateway_state)
+        self.gateway_rpc = GatewayService(self.config, gateway_state, omap_lock, self.spdk_rpc_client)
         self.server = grpc.server(futures.ThreadPoolExecutor(max_workers=1))
         pb2_grpc.add_GatewayServicer_to_server(self.gateway_rpc, self.server)
 
@@ -113,13 +127,30 @@ class GatewayServer:
 
         # Start server
         self.server.start()
-        enable_discovery_controller = self.config.getboolean_with_default("gateway", "enable_discovery_controller", False)
-        if not enable_discovery_controller:
-            try:
-                rpc_nvmf.nvmf_delete_subsystem(self.spdk_rpc_ping_client, "nqn.2014-08.org.nvmexpress.discovery")
-            except Exception as ex:
-                self.logger.error(f"  Delete Discovery subsystem returned with error: \n {ex}")
-                raise
+
+
+    def _start_discovery_service(self):
+        """Runs either SPDK on CEPH NVMEOF Discovery Service."""
+        enable_spdk_discovery_controller = self.config.getboolean_with_default("gateway", "enable_spdk_discovery_controller", False)
+        if enable_spdk_discovery_controller:
+            self.logger.info("Using SPDK discovery service")
+            return
+
+        try:
+            rpc_nvmf.nvmf_delete_subsystem(self.spdk_rpc_ping_client, DiscoveryService.DISCOVERY_NQN)
+        except Exception as ex:
+            self.logger.error(f"  Delete Discovery subsystem returned with error: \n {ex}")
+            raise
+
+        # run ceph nvmeof discovery service in sub-process
+        assert self.discovery_pid is None
+        self.discovery_pid = os.fork()
+        if self.discovery_pid == 0:
+            self.logger.info("Starting ceph nvmeof discovery service")
+            DiscoveryService(self.config).start_service()
+            os._exit(0)
+        else:
+            self.logger.info(f"Discovery service process id: {self.discovery_pid}")
 
     def _add_server_listener(self):
         """Adds listener port to server."""
@@ -127,6 +158,8 @@ class GatewayServer:
         enable_auth = self.config.getboolean("gateway", "enable_auth")
         gateway_addr = self.config.get("gateway", "addr")
         gateway_port = self.config.get("gateway", "port")
+        # We need to enclose IPv6 addresses in brackets before concatenating a colon and port number to it
+        gateway_addr = GatewayConfig.escape_address_if_ipv6(gateway_addr)
         if enable_auth:
             # Read in key and certificates for authentication
             server_key = self.config.get("mtls", "server_key")
@@ -154,25 +187,42 @@ class GatewayServer:
             self.server.add_insecure_port("{}:{}".format(
                 gateway_addr, gateway_port))
 
-    def _start_spdk(self):
+    def _get_spdk_rpc_socket_path(self, omap_state) -> str:
+        # For backward compatibility, try first to get the old attribute
+        spdk_rpc_socket = self.config.get_with_default("spdk", "rpc_socket", "")
+        if spdk_rpc_socket:
+            return spdk_rpc_socket
+
+        spdk_rpc_socket_dir = self.config.get_with_default("spdk", "rpc_socket_dir", "")
+        if not spdk_rpc_socket_dir:
+            spdk_rpc_socket_dir = "/var/run/ceph/"
+            if omap_state.ceph_fsid:
+                spdk_rpc_socket_dir += omap_state.ceph_fsid + "/"
+        if not spdk_rpc_socket_dir.endswith("/"):
+            spdk_rpc_socket_dir += "/"
+        try:
+            os.makedirs(spdk_rpc_socket_dir, 0o777, True)
+        except Exception:
+            pass
+        spdk_rpc_socket = spdk_rpc_socket_dir + self.config.get_with_default("spdk", "rpc_socket_name", "spdk.sock")
+        return spdk_rpc_socket
+
+    def _start_spdk(self, omap_state):
         """Starts SPDK process."""
 
         # Start target
         self.logger.debug(f"Configuring server {self.name}")
         spdk_tgt_path = self.config.get("spdk", "tgt_path")
         self.logger.info(f"SPDK Target Path: {spdk_tgt_path}")
-        spdk_rpc_socket = self.config.get("spdk", "rpc_socket")
-        self.logger.info(f"SPDK Socket: {spdk_rpc_socket}")
+        self.spdk_rpc_socket_path = self._get_spdk_rpc_socket_path(omap_state)
+        self.logger.info(f"SPDK Socket: {self.spdk_rpc_socket_path}")
         spdk_tgt_cmd_extra_args = self.config.get_with_default(
             "spdk", "tgt_cmd_extra_args", "")
-        cmd = [spdk_tgt_path, "-u", "-r", spdk_rpc_socket]
+        cmd = [spdk_tgt_path, "-u", "-r", self.spdk_rpc_socket_path]
         if spdk_tgt_cmd_extra_args:
             cmd += shlex.split(spdk_tgt_cmd_extra_args)
         self.logger.info(f"Starting {' '.join(cmd)}")
         try:
-            # install SIGCHLD handler
-            signal.signal(signal.SIGCHLD, sigchld_handler)
-
             # start spdk process
             self.spdk_process = subprocess.Popen(cmd)
         except Exception as ex:
@@ -184,20 +234,21 @@ class GatewayServer:
         log_level = self.config.get("spdk", "log_level")
         # connect timeout: spdk client retries 5 times per sec
         conn_retries = int(timeout * 5)
+        self.logger.info(f"SPDK process id: {self.spdk_process.pid}")
         self.logger.info(
-            f"Attempting to initialize SPDK: rpc_socket: {spdk_rpc_socket},"
+            f"Attempting to initialize SPDK: rpc_socket: {self.spdk_rpc_socket_path},"
             f" conn_retries: {conn_retries}, timeout: {timeout}"
         )
         try:
             self.spdk_rpc_client = rpc_client.JSONRPCClient(
-                spdk_rpc_socket,
+                self.spdk_rpc_socket_path,
                 None,
                 timeout,
                 log_level=log_level,
                 conn_retries=conn_retries,
             )
             self.spdk_rpc_ping_client = rpc_client.JSONRPCClient(
-                spdk_rpc_socket,
+                self.spdk_rpc_socket_path,
                 None,
                 timeout,
                 log_level=log_level,
@@ -218,10 +269,8 @@ class GatewayServer:
         assert self.spdk_process is not None # should be verified by the caller
 
         return_code = self.spdk_process.returncode
-        rpc_socket = self.config.get("spdk", "rpc_socket")
 
         # Terminate spdk process
-        signal.signal(signal.SIGCHLD, signal.SIG_DFL)
         if return_code is not None:
             self.logger.error(f"SPDK({self.name}) pid {self.spdk_process.pid} "
                               f"already terminated, exit code: {return_code}")
@@ -238,12 +287,27 @@ class GatewayServer:
             self.spdk_process.kill() # kill -9, send KILL signal
 
         # Clean spdk rpc socket
-        if os.path.exists(rpc_socket):
+        if self.spdk_rpc_socket_path and os.path.exists(self.spdk_rpc_socket_path):
             try:
-                os.remove(rpc_socket)
+                os.remove(self.spdk_rpc_socket_path)
             except Exception:
                 self.logger.exception(f"An error occurred while removing "
-                                      f"rpc socket {rpc_socket}:")
+                                      f"rpc socket {self.spdk_rpc_socket_path}:")
+
+    def _stop_discovery(self):
+        """Stops Discovery service process."""
+        assert self.discovery_pid is not None # should be verified by the caller
+
+        self.logger.info("Terminating discovery service...")
+        # discovery service selector loop should exit due to KeyboardInterrupt exception
+        try:
+            os.kill(self.discovery_pid, signal.SIGINT)
+            os.waitpid(self.discovery_pid, 0)
+        except ChildProcessError:
+            pass # ignore
+        self.logger.info("Discovery service terminated")
+
+        self.discovery_pid = None
 
     def _create_transport(self, trtype):
         """Initializes a transport type."""

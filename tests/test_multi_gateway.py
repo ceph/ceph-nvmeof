@@ -20,6 +20,8 @@ def conn(config):
     configA.config["gateway"]["state_update_notify"] = str(update_notify)
     configA.config["gateway"]["min_controller_id"] = "1"
     configA.config["gateway"]["max_controller_id"] = "20000"
+    configA.config["gateway"]["enable_spdk_discovery_controller"] = "True"
+    configA.config["spdk"]["rpc_socket_name"] = "spdk_GatewayA.sock"
     configB = copy.deepcopy(configA)
     addr = configA.get("gateway", "addr")
     portA = configA.getint("gateway", "port")
@@ -30,7 +32,7 @@ def conn(config):
     configA.config["gateway"]["max_controller_id"] = "40000"
     configB.config["gateway"]["state_update_interval_sec"] = str(
         update_interval_sec)
-    configB.config["spdk"]["rpc_socket"] = "/var/tmp/spdk_GatewayB.sock"
+    configB.config["spdk"]["rpc_socket_name"] = "spdk_GatewayB.sock"
     configB.config["spdk"]["tgt_cmd_extra_args"] = "-m 0x02"
 
     # Start servers
@@ -71,9 +73,6 @@ def test_multi_gateway_coordination(config, image, conn):
     num_subsystems = 2
 
     pool = config.get("ceph", "pool")
-    enable_discovery_controller = config.getboolean_with_default("gateway", "enable_discovery_controller", False)
-    if not enable_discovery_controller:
-         num_subsystems -= 1
 
     # Send requests to create a subsystem with one namespace to GatewayA
     bdev_req = pb2.create_bdev_req(bdev_name=bdev,

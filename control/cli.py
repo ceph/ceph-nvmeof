@@ -17,7 +17,7 @@ from functools import wraps
 
 from .proto import gateway_pb2_grpc as pb2_grpc
 from .proto import gateway_pb2 as pb2
-
+from .config import GatewayConfig
 
 def argument(*name_or_flags, **kwargs):
     """Helper function to format arguments for argparse command decorator."""
@@ -124,7 +124,9 @@ class GatewayClient:
 
     def connect(self, host, port, client_key, client_cert, server_cert):
         """Connects to server and sets stub."""
-        server = "{}:{}".format(host, port)
+        # We need to enclose IPv6 addresses in brackets before concatenating a colon and port number to it
+        host = GatewayConfig.escape_address_if_ipv6(host)
+        server = f"{host}:{port}"
 
         if client_key and client_cert:
             # Create credentials for mutual TLS and a secure channel
@@ -187,12 +189,16 @@ class GatewayClient:
         argument("-n", "--subnqn", help="Subsystem NQN", required=True),
         argument("-s", "--serial", help="Serial number", required=False),
         argument("-m", "--max-namespaces", help="Maximum number of namespaces", type=int, default=0, required=False),
+        argument("-a", "--ana-reporting", help="Enable ANA reporting", action='store_true', required=False),
+        argument("-t", "--enable-ha", help="Enable automatic HA", action='store_true', required=False),
     ])
     def create_subsystem(self, args):
         """Creates a subsystem."""
         req = pb2.create_subsystem_req(subsystem_nqn=args.subnqn,
                                         serial_number=args.serial,
-                                        max_namespaces=args.max_namespaces)
+                                        max_namespaces=args.max_namespaces,
+                                        ana_reporting=args.ana_reporting,
+                                        enable_ha=args.enable_ha)
         ret = self.stub.create_subsystem(req)
         self.logger.info(f"Created subsystem {args.subnqn}: {ret.status}")
 
@@ -209,15 +215,20 @@ class GatewayClient:
         argument("-n", "--subnqn", help="Subsystem NQN", required=True),
         argument("-b", "--bdev", help="Bdev name", required=True),
         argument("-i", "--nsid", help="Namespace ID", type=int),
+        argument("-a", "--anagrpid", help="ANA group ID", type=int),
     ])
     def add_namespace(self, args):
         """Adds a namespace to a subsystem."""
+        if args.anagrpid == 0:
+	        args.anagrpid = 1
+
         req = pb2.add_namespace_req(subsystem_nqn=args.subnqn,
                                     bdev_name=args.bdev,
-                                    nsid=args.nsid)
+                                    nsid=args.nsid,
+                                    anagrpid=args.anagrpid)
         ret = self.stub.add_namespace(req)
         self.logger.info(
-            f"Added namespace {ret.nsid} to {args.subnqn}: {ret.status}")
+            f"Added namespace {ret.nsid} to {args.subnqn}, ANA group id {args.anagrpid} : {ret.status}")
 
     @cli.cmd([
         argument("-n", "--subnqn", help="Subsystem NQN", required=True),

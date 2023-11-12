@@ -12,7 +12,7 @@ class TestServer(unittest.TestCase):
         self.config = config
 
     def validate_exception(self, e):
-        pattern = r'spdk subprocess terminated pid=(\d+) exit_code=(\d+)'
+        pattern = r'Gateway subprocess terminated pid=(\d+) exit_code=(\d+)'
         m = re.match(pattern, e.code)
         assert(m)
         pid = int(m.group(1))
@@ -55,7 +55,7 @@ class TestServer(unittest.TestCase):
         configB = copy.deepcopy(configA)
         configB.config["gateway"]["name"] = "GatewayB"
         configB.config["gateway"]["port"] = str(configA.getint("gateway", "port") + 1)
-        configB.config["spdk"]["rpc_socket"] = "/var/tmp/spdk_GatewayB.sock"
+        configB.config["spdk"]["rpc_socket_name"] = "spdk_GatewayB.sock"
         # invalid arg, spdk would exit with code 1 at start up
         configB.config["spdk"]["tgt_cmd_extra_args"] = "-m 0x343435545"
 

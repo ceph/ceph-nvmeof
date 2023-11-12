@@ -19,6 +19,7 @@ services:
         SPDK_DESCRIPTION:
         SPDK_URL:
         SPDK_MAINTAINER: $MAINTAINER
+        SPDK_DISABLE_VPCLMULQDQ:
         BUILD_DATE:
         SPDK_GIT_REPO:
         SPDK_GIT_BRANCH:
@@ -78,6 +79,7 @@ services:
     networks:
       default:
         ipv4_address: 192.168.13.2
+        ipv6_address: 2001:db8::2
   nvmeof-base:
     build:
       context: .
@@ -97,6 +99,8 @@ services:
         NVMEOF_GIT_REPO:
         NVMEOF_GIT_BRANCH:
         NVMEOF_GIT_COMMIT:
+        NVMEOF_GIT_MODIFIED_FILES:
+        NVMEOF_CEPH_VERSION:
       labels:
         io.ceph.nvmeof:
     volumes:
@@ -211,6 +215,8 @@ volumes:
   ceph-conf:
 networks:
   default:
+    enable_ipv6: true
     ipam:
       config:
         - subnet: 192.168.13.0/24
+        - subnet: 2001:0DB8::/112

@@ -24,7 +24,8 @@ EOF
 
 ARG SPDK_PKGDEP_ARGS \
     SPDK_CONFIGURE_ARGS \
-    SPDK_MAKEFLAGS
+    SPDK_MAKEFLAGS \
+    SPDK_DISABLE_VPCLMULQDQ
 
 WORKDIR /src
 COPY . .
@@ -38,8 +39,18 @@ RUN \
     && dnf install -y \
         rpm-build \
         git-core \
+    && rpm -vih https://buildlogs.centos.org/centos/9-stream/storage/x86_64/ceph-reef/Packages/t/thrift-0.15.0-3.el9s.x86_64.rpm \
     && scripts/pkgdep.sh $SPDK_PKGDEP_ARGS \
     && dnf update -y
+
+# Disable RDSEED, see https://github.com/ceph/ceph-nvmeof/issues/259
+RUN \
+    sed -i "s/^\( \+'RDSEED'\)/#\1/" dpdk/config/x86/meson.build
+# If we run from github disable also VPCLMULQDQ as some of github's runners don't have it
+RUN \
+    if [[ -n "$SPDK_DISABLE_VPCLMULQDQ" ]]; then sed -i "s/^\( \+'VPCLMULQDQ'\)/#\1/" dpdk/config/x86/meson.build ; fi
+RUN \
+    cat dpdk/config/x86/meson.build
 
 RUN \
     --mount=type=cache,target=/var/cache/dnf \
@@ -114,6 +125,7 @@ RUN \
     --mount=type=cache,target=/var/lib/dnf \
     rpm -vih $SPDK_CENTOS_BASE/centos-stream-repos-$SPDK_CENTOS_REPO_VER.noarch.rpm \
              $SPDK_CENTOS_BASE/centos-gpg-keys-$SPDK_CENTOS_REPO_VER.noarch.rpm \
+             https://buildlogs.centos.org/centos/9-stream/storage/x86_64/ceph-reef/Packages/t/thrift-0.15.0-3.el9s.x86_64.rpm \
     && dnf install -y /rpm/$(uname -m)/*.rpm \
     && dnf update -y
 
