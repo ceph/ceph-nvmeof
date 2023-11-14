@@ -177,6 +177,27 @@ class GatewayService(pb2_grpc.GatewayServicer):
     def create_bdev(self, request, context=None):
         return self.execute_grpc_function(self.create_bdev_safe, request, context)
 
+    def resize_bdev_safe(self, request):
+        """Resizes a bdev."""
+
+        self.logger.info(f"Received request to resize bdev {request.bdev_name} to size {request.new_size} MiB")
+        try:
+            ret = rpc_bdev.bdev_rbd_resize(
+                self.spdk_rpc_client,
+                name=request.bdev_name,
+                new_size=request.new_size,
+            )
+            self.logger.info(f"resize_bdev: {request.bdev_name}: {ret}")
+        except Exception as ex:
+            self.logger.error(f"resize_bdev failed with: \n {ex}")
+            return pb2.req_status()
+
+        return pb2.req_status(status=ret)
+
+    def resize_bdev(self, request, context=None):
+        with self.rpc_lock:
+            return self.resize_bdev_safe(request)
+
     def get_bdev_namespaces(self, bdev_name) -> list:
         ns_list = []
         local_state_dict = self.gateway_state.local.get_state()
@@ -619,7 +640,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         ret = True
         traddr = GatewayConfig.escape_address_if_ipv6(request.traddr)
         self.logger.info(f"Received request to create {request.gateway_name}"
-                         f" {request.trtype} listener for {request.nqn} at"
+                         f" {request.trtype} {request.adrfam} listener for {request.nqn} at"
                          f" {traddr}:{request.trsvcid}., context: {context}")
 
         if self.is_discovery_nqn(request.nqn):
