@@ -791,6 +791,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         """Gets subsystems."""
 
         self.logger.info(f"Received request to get subsystems, context: {context}")
+        subsystems = []
         try:
             ret = rpc_nvmf.nvmf_get_subsystems(self.spdk_rpc_client)
             self.logger.info(f"get_subsystems: {ret}")
@@ -800,7 +801,17 @@ class GatewayService(pb2_grpc.GatewayServicer):
             context.set_details(f"{ex}")
             return pb2.subsystems_info()
 
-        return pb2.subsystems_info(subsystems=json.dumps(ret))
+        for s in ret:
+            try:
+                # Parse the JSON dictionary into the protobuf message
+                subsystem = pb2.subsystem()
+                json_format.Parse(json.dumps(s), subsystem)
+                subsystems.append(subsystem)
+            except Exception:
+                self.logger.exception(f"{s=} parse error: ")
+                raise
+
+        return pb2.subsystems_info(subsystems=subsystems)
 
     def get_subsystems(self, request, context):
         with self.rpc_lock:

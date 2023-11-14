@@ -3,6 +3,7 @@ import copy
 import grpc
 import json
 import time
+from google.protobuf import json_format
 from control.server import GatewayServer
 from control.proto import gateway_pb2 as pb2
 from control.proto import gateway_pb2_grpc as pb2_grpc
@@ -105,12 +106,14 @@ def test_multi_gateway_omap_reread(config, conn, caplog):
     assert ret_namespace.status is True
 
     # Until we create some resource on GW-B it shouldn't still have the resrouces created on GW-A, only the discovery subsystem
-    watchB = stubB.get_subsystems(get_subsystems_req)
-    listB = json.loads(watchB.subsystems)
+    listB = json.loads(json_format.MessageToJson(
+        stubB.get_subsystems(get_subsystems_req),
+        preserving_proto_field_name=True))['subsystems']
     assert len(listB) == 1
 
-    watchA = stubA.get_subsystems(get_subsystems_req)
-    listA = json.loads(watchA.subsystems)
+    listA = json.loads(json_format.MessageToJson(
+        stubB.get_subsystems(get_subsystems_req),
+        preserving_proto_field_name=True))['subsystems']
     assert len(listA) == num_subsystems
 
     bdev2_req = pb2.create_bdev_req(bdev_name=bdev2,
@@ -122,8 +125,9 @@ def test_multi_gateway_omap_reread(config, conn, caplog):
     assert "The file is not current, will reload it and try again" in caplog.text
 
     # Make sure that after reading the OMAP file GW-B has the subsystem and namespace created on GW-A
-    watchB = stubB.get_subsystems(get_subsystems_req)
-    listB = json.loads(watchB.subsystems)
+    listB = json.loads(json_format.MessageToJson(
+        stubB.get_subsystems(get_subsystems_req),
+        preserving_proto_field_name=True))['subsystems']
     assert len(listB) == num_subsystems
     assert listB[num_subsystems-1]["nqn"] == nqn
     assert listB[num_subsystems-1]["serial_number"] == serial
