@@ -92,13 +92,13 @@ message delete_subsystem_req {
 message add_namespace_req {
 	string subsystem_nqn = 1;
 	string bdev_name = 2;
-	optional int32 nsid = 3;
+	optional uint32 nsid = 3;
 	optional int32 anagrpid = 4;
 }
 
 message remove_namespace_req {
 	string subsystem_nqn = 1;
-	int32 nsid = 2;
+	uint32 nsid = 2;
 }
 
 message add_host_req {
@@ -156,15 +156,48 @@ message req_status {
 }
 
 message nsid_status {
-	int32 nsid = 1;
+	uint32 nsid = 1;
 	bool status = 2;
 }
 
 message subsystems_info {
-	string subsystems = 1;
+	repeated subsystem subsystems = 1;
+}
+
+message subsystem {
+	string nqn = 1;
+	string subtype = 2;
+	repeated listen_address listen_addresses = 3;
+	repeated host hosts = 4;
+	bool allow_any_host = 5;
+	optional string serial_number = 6;
+	optional string model_number = 7;
+	optional uint32 max_namespaces = 8;
+	optional uint32 min_cntlid = 9;
+	optional uint32 max_cntlid = 10;
+	repeated namespace namespaces = 11;
+}
+
+message listen_address {
+	string transport = 1;
+	string trtype = 2;
+	string adrfam = 3;
+	string traddr = 4;
+	string trsvcid = 5;
+}
+
+message host {
+    string nqn = 1;
+}
+
+message namespace {
+    uint32 nsid = 1;
+    string name = 2;
+    optional string bdev_name = 3;
+    optional string nguid = 4;
+    optional string uuid = 5;
 }
 
 message spdk_nvmf_log_flags_and_level_info {
 	string flags_level =1;
 }
-

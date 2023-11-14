@@ -3,6 +3,7 @@ import copy
 import grpc
 import json
 import time
+from google.protobuf import json_format
 from control.server import GatewayServer
 from control.proto import gateway_pb2 as pb2
 from control.proto import gateway_pb2_grpc as pb2_grpc
@@ -95,8 +96,9 @@ def test_multi_gateway_coordination(config, image, conn):
     # Watch/Notify
     if update_notify:
         time.sleep(1)
-        watchB = stubB.get_subsystems(get_subsystems_req)
-        listB = json.loads(watchB.subsystems)
+        listB = json.loads(json_format.MessageToJson(
+            stubB.get_subsystems(get_subsystems_req),
+            preserving_proto_field_name=True))['subsystems']
         assert len(listB) == num_subsystems
         assert listB[num_subsystems-1]["nqn"] == nqn
         assert listB[num_subsystems-1]["serial_number"] == serial
@@ -105,8 +107,9 @@ def test_multi_gateway_coordination(config, image, conn):
 
     # Periodic update
     time.sleep(update_interval_sec + 1)
-    pollB = stubB.get_subsystems(get_subsystems_req)
-    listB = json.loads(pollB.subsystems)
+    listB = json.loads(json_format.MessageToJson(
+        stubB.get_subsystems(get_subsystems_req),
+        preserving_proto_field_name=True))['subsystems']
     assert len(listB) == num_subsystems
     assert listB[num_subsystems-1]["nqn"] == nqn
     assert listB[num_subsystems-1]["serial_number"] == serial

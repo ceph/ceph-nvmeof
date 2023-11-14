@@ -14,6 +14,7 @@ import logging
 import sys
 
 from functools import wraps
+from google.protobuf import json_format
 
 from .proto import gateway_pb2_grpc as pb2_grpc
 from .proto import gateway_pb2 as pb2
@@ -337,11 +338,11 @@ class GatewayClient:
     @cli.cmd()
     def get_subsystems(self, args):
         """Gets subsystems."""
-        req = pb2.get_subsystems_req()
-        ret = self.stub.get_subsystems(req)
-        subsystems = json.loads(ret.subsystems)
-        formatted_subsystems = json.dumps(subsystems, indent=4)
-        self.logger.info(f"Get subsystems:\n{formatted_subsystems}")
+        subsystems = json_format.MessageToJson(
+                        self.stub.get_subsystems(pb2.get_subsystems_req()),
+                        indent=4,
+                        preserving_proto_field_name=True)
+        self.logger.info(f"Get subsystems:\n{subsystems}")
 
     @cli.cmd()
     def get_spdk_nvmf_log_flags_and_level(self, args):
