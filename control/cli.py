@@ -177,6 +177,19 @@ class GatewayClient:
 
     @cli.cmd([
         argument("-b", "--bdev", help="Bdev name", required=True),
+        argument("-s", "--size", help="New size in MiB", type=int, required=True),
+    ])
+    def resize_bdev(self, args):
+        """Resizes a bdev."""
+        req = pb2.resize_bdev_req(
+            bdev_name=args.bdev,
+            new_size=args.size,
+        )
+        ret = self.stub.resize_bdev(req)
+        self.logger.info(f"Resized bdev {args.bdev}: {ret.status}")
+
+    @cli.cmd([
+        argument("-b", "--bdev", help="Bdev name", required=True),
         argument("-f", "--force", help="Delete any namespace using this bdev before deleting bdev", action='store_true', required=False),
     ])
     def delete_bdev(self, args):
@@ -287,16 +300,17 @@ class GatewayClient:
     ])
     def create_listener(self, args):
         """Creates a listener for a subsystem at a given IP/Port."""
+        traddr = GatewayConfig.escape_address_if_ipv6(args.traddr)
         req = pb2.create_listener_req(
             nqn=args.subnqn,
             gateway_name=args.gateway_name,
             trtype=args.trtype,
             adrfam=args.adrfam,
-            traddr=args.traddr,
+            traddr=traddr,
             trsvcid=args.trsvcid,
         )
         ret = self.stub.create_listener(req)
-        self.logger.info(f"Created {args.subnqn} listener: {ret.status}")
+        self.logger.info(f"Created {args.subnqn} listener at {traddr}:{args.trsvcid}: {ret.status}")
 
     @cli.cmd([
         argument("-n", "--subnqn", help="Subsystem NQN", required=True),
@@ -308,17 +322,17 @@ class GatewayClient:
     ])
     def delete_listener(self, args):
         """Deletes a listener from a subsystem at a given IP/Port."""
+        traddr = GatewayConfig.escape_address_if_ipv6(args.traddr)
         req = pb2.delete_listener_req(
             nqn=args.subnqn,
             gateway_name=args.gateway_name,
             trtype=args.trtype,
             adrfam=args.adrfam,
-            traddr=args.traddr,
+            traddr=traddr,
             trsvcid=args.trsvcid,
         )
         ret = self.stub.delete_listener(req)
-        self.logger.info(
-            f"Deleted {args.traddr} from {args.subnqn}: {ret.status}")
+        self.logger.info(f"Deleted {traddr}:{args.trsvcid} from {args.subnqn}: {ret.status}")
 
     @cli.cmd()
     def get_subsystems(self, args):
