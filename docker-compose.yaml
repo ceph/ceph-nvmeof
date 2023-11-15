@@ -20,6 +20,7 @@ services:
         SPDK_URL:
         SPDK_MAINTAINER: $MAINTAINER
         SPDK_DISABLE_VPCLMULQDQ:
+        SPDK_DISABLE_AVX512:
         BUILD_DATE:
         SPDK_GIT_REPO:
         SPDK_GIT_BRANCH:
