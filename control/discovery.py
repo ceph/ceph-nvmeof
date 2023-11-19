@@ -865,14 +865,19 @@ class DiscoveryService:
 
         for key in list(self.conn_vals.keys()):
             if self.conn_vals[key].recv_async is True:
+                pdu_reply = Pdu()
+                pdu_reply.type = NVME_TCP_PDU.RSP
+                pdu_reply.header_length = 24
+                pdu_reply.packet_length = 24
+
                 async_reply = CqeNVMe()
                 # async_event_type:0x2 async_event_info:0xf0 log_page_identifier:0x70
-                async_reply.dword0 = b'\x02\xf0\x70\x00'
+                async_reply.dword0 = int.from_bytes(b'\x02\xf0\x70\x00', byteorder='little')
                 async_reply.sq_head_ptr = self.conn_vals[key].sq_head_ptr
                 async_reply.cmd_id = self.conn_vals[key].async_cmd_id
 
                 try:
-                    self.conn_vals[key].connection.sendall(async_reply)
+                    self.conn_vals[key].connection.sendall(pdu_reply + async_reply)
                 except BrokenPipeError:
                     self.logger.error("client disconnected unexpectedly.")
                     return -1
