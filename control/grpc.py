@@ -308,6 +308,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         if self.is_discovery_nqn(request.subsystem_nqn):
             raise Exception(f"Can't create a discovery subsystem")
+        if request.enable_ha == True  and request.ana_reporting == False:
+            raise Exception(f"Validation Error: HA enabled but ANA-reporting is disabled ")
 
         min_cntlid = self.config.getint_with_default("gateway", "min_controller_id", 1)
         max_cntlid = self.config.getint_with_default("gateway", "max_controller_id", 65519)
