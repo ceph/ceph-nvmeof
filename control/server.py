@@ -60,7 +60,7 @@ class GatewayServer:
         discovery_pid: Subprocess running Ceph nvmeof discovery service
     """
 
-    def __init__(self, config):
+    def __init__(self, config: GatewayConfig):
         self.logger = logging.getLogger(__name__)
         self.config = config
         self.spdk_process = None
@@ -84,6 +84,9 @@ class GatewayServer:
             self.logger.exception("GatewayServer exception occurred:")
 
         signal.signal(signal.SIGCHLD, signal.SIG_IGN)
+        if self.monitor_client_process is not None:
+            self._stop_monitor_client()
+
         if self.spdk_process is not None:
             self._stop_spdk()
 
@@ -128,6 +131,24 @@ class GatewayServer:
         # Start server
         self.server.start()
 
+        # Start monitor client
+        self._start_monitor_client()
+
+    def _start_monitor_client(self):
+        """Runs CEPH NVMEOF Monitor Client."""
+        enable_monitor_client = self.config.getboolean_with_default("gateway", "enable_monitor_client", True)
+        if not enable_monitor_client:
+            self.logger.info("CEPH monitor client is disabled")
+            return
+        monitor_client = '/usr/local/bin/ceph-nvmeof'
+        cmd = [monitor_client, "---name", self.name, "---gateway-address", self._gateway_address()]
+        self.logger.info(f"Starting {' '.join(cmd)}")
+        try:
+            # start monitor client process
+            self.monitor_client_process = subprocess.Popen(cmd)
+        except Exception:
+            self.logger.exception(f"Unable to start CEPH monitor client:")
+            raise
 
     def _start_discovery_service(self):
         """Runs either SPDK on CEPH NVMEOF Discovery Service."""
@@ -152,14 +173,18 @@ class GatewayServer:
         else:
             self.logger.info(f"Discovery service process id: {self.discovery_pid}")
 
-    def _add_server_listener(self):
-        """Adds listener port to server."""
-
-        enable_auth = self.config.getboolean("gateway", "enable_auth")
+    def _gateway_address(self):
+        """Calculate gateway gRPC address string."""
         gateway_addr = self.config.get("gateway", "addr")
         gateway_port = self.config.get("gateway", "port")
         # We need to enclose IPv6 addresses in brackets before concatenating a colon and port number to it
         gateway_addr = GatewayConfig.escape_address_if_ipv6(gateway_addr)
+        return "{}:{}".format(gateway_addr, gateway_port)
+
+    def _add_server_listener(self):
+        """Adds listener port to server."""
+
+        enable_auth = self.config.getboolean("gateway", "enable_auth")
         if enable_auth:
             # Read in key and certificates for authentication
             server_key = self.config.get("mtls", "server_key")
@@ -181,11 +206,10 @@ class GatewayServer:
 
             # Add secure port using credentials
             self.server.add_secure_port(
-                "{}:{}".format(gateway_addr, gateway_port), server_credentials)
+                self._gateway_address(), server_credentials)
         else:
             # Authentication is not enabled
-            self.server.add_insecure_port("{}:{}".format(
-                gateway_addr, gateway_port))
+            self.server.add_insecure_port(self._gateway_address())
 
     def _get_spdk_rpc_socket_path(self, omap_state) -> str:
         # For backward compatibility, try first to get the old attribute
@@ -264,27 +288,37 @@ class GatewayServer:
         for trtype in spdk_transports.split():
             self._create_transport(trtype.lower())
 
-    def _stop_spdk(self):
+    def _stop_subprocess(self, proc, timeout):
         """Stops SPDK process."""
-        assert self.spdk_process is not None # should be verified by the caller
+        assert proc is not None # should be verified by the caller
 
-        return_code = self.spdk_process.returncode
+        return_code = proc.returncode
 
         # Terminate spdk process
         if return_code is not None:
-            self.logger.error(f"SPDK({self.name}) pid {self.spdk_process.pid} "
+            self.logger.error(f"{self.name} pid {proc.pid} "
                               f"already terminated, exit code: {return_code}")
         else:
-            self.logger.info(f"Aborting SPDK({self.name}) pid {self.spdk_process.pid}...")
-            self.spdk_process.send_signal(signal.SIGABRT)
+            self.logger.info(f"Aborting ({self.name}) pid {proc.pid}...")
+            proc.send_signal(signal.SIGABRT)
 
         try:
-            timeout = self.config.getfloat("spdk", "timeout")
-            self.spdk_process.communicate(timeout=timeout)
+            proc.communicate(timeout=timeout)
         except subprocess.TimeoutExpired:
-            self.logger.exception(f"SPDK({self.name}) pid {self.spdk_process.pid} "
-                                  f"timeout occurred while terminating spdk:")
-            self.spdk_process.kill() # kill -9, send KILL signal
+            self.logger.exception(f"({self.name}) pid {proc.pid} "
+                                  f"timeout occurred while terminating sub process:")
+            proc.kill() # kill -9, send KILL signal
+
+    def _stop_monitor_client(self):
+        """Stops Monitor client."""
+        timeout = self.config.getfloat_with_default("monitor", "timeout", 1.0)
+        self._stop_subprocess(self.monitor_client_process, timeout)
+
+    def _stop_spdk(self):
+        """Stops SPDK process."""
+        # Terminate spdk process
+        timeout = self.config.getfloat("spdk", "timeout")
+        self._stop_subprocess(self.spdk_process, timeout)
 
         # Clean spdk rpc socket
         if self.spdk_rpc_socket_path and os.path.exists(self.spdk_rpc_socket_path):
