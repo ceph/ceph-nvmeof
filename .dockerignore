@@ -8,3 +8,5 @@
 !pdm.toml
 !README.md
 !LICENSE
+!ceph-monitor/ceph-nvmeof
+!ceph-monitor/libceph-common.so.2

@@ -29,6 +29,24 @@ RUN \
     --mount=type=cache,target=/var/lib/dnf \
     dnf update -y
 
+RUN \
+    --mount=type=cache,target=/var/cache/dnf \
+    --mount=type=cache,target=/var/lib/dnf \
+    dnf config-manager --set-enabled crb
+
+RUN \
+    --mount=type=cache,target=/var/cache/dnf \
+    --mount=type=cache,target=/var/lib/dnf \
+    dnf install -y epel-release epel-next-release
+
+RUN \
+    --mount=type=cache,target=/var/cache/dnf \
+    --mount=type=cache,target=/var/lib/dnf \
+    dnf install -y protobuf grpc grpc-cpp snappy gperftools-libs fmt thrift
+
+COPY ceph-monitor/ceph-nvmeof /usr/local/bin/
+COPY ceph-monitor/libceph-common.so.2 /lib64/
+
 ENV PYTHONUNBUFFERED=1 \
     PYTHONIOENCODING=UTF-8 \
     LC_ALL=C.UTF-8 \
