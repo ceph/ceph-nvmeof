@@ -22,6 +22,14 @@ setup: ## Configure huge-pages (requires sudo/root password)
 	@echo Actual Hugepages allocation: $$(cat $(HUGEPAGES_DIR))
 	@[ $$(cat $(HUGEPAGES_DIR)) -eq $(HUGEPAGES) ]
 
+ceph-monitor-copy:
+	mkdir -p ceph-monitor
+	cp ../../../build/bin/ceph-nvmeof ceph-monitor/
+	cp ../../../build/lib/libceph-common.so.2 ceph-monitor/
+	ls -l ceph-monitor
+
+build: ceph-monitor-copy
+
 build pull logs: SVC ?= spdk bdevperf nvmeof nvmeof-devel nvmeof-cli discovery ceph
 
 build: export NVMEOF_GIT_REPO != git remote get-url origin
