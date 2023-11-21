@@ -141,7 +141,7 @@ class GatewayServer:
             self.logger.info("CEPH monitor client is disabled")
             return
         monitor_client = '/usr/local/bin/ceph-nvmeof'
-        cmd = [monitor_client, "---name", self.name, "---gateway-address", self._gateway_address()]
+        cmd = [monitor_client, "--gateway-name", self.name, "--gateway-address", self._gateway_address()]
         self.logger.info(f"Starting {' '.join(cmd)}")
         try:
             # start monitor client process
