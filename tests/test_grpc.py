@@ -37,7 +37,7 @@ def test_create_get_subsys(caplog, config):
 
         for i in range(created_resource_count):
             create_resource_by_index(i)
-            assert "Failed" not in caplog.text
+            assert "failed" not in caplog.text.lower()
 
     caplog.clear()
 
