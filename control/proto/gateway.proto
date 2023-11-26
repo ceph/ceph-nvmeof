@@ -169,13 +169,13 @@ message ana_group_state {
 	ana_state  state  = 2;  // ANA state
 }
 
-message controller_ana_states {
-	string     nqn                     = 1; // subsystem controller
+message nqn_ana_states {
+	string     nqn                     = 1; // subsystem nqn
 	repeated   ana_group_state  states = 2; // list of group states
 }
 
 message ana_info {
-	repeated controller_ana_states states = 1; // list of controller states
+	repeated nqn_ana_states states = 1; // list of nqn states
 }
 
 // Return messages 
