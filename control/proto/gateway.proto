@@ -55,6 +55,9 @@ service Gateway {
 
 	// Set spdk nvmf logs
 	rpc set_spdk_nvmf_logs(set_spdk_nvmf_logs_req) returns(req_status) {}
+
+	// Set spdk nvmf logs
+	rpc get_gateway_info(get_gateway_info_req) returns(gateway_info) {}
 }
 
 // Request messages
@@ -144,6 +147,10 @@ message set_spdk_nvmf_logs_req {
 	optional string print_level = 3;
 }
 
+message get_gateway_info_req {
+	string cli_version = 1;
+}
+
 // Return messages 
 
 message bdev {
@@ -176,6 +183,16 @@ message subsystem {
 	optional uint32 min_cntlid = 9;
 	optional uint32 max_cntlid = 10;
 	repeated namespace namespaces = 11;
+}
+
+message gateway_info {
+	string cli_version = 1;
+	string gateway_version = 2;
+	string gateway_name = 3;
+	string gateway_group = 4;
+	string gateway_addr = 5;
+	string gateway_port = 6;
+	bool status = 7;
 }
 
 message listen_address {

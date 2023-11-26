@@ -3,6 +3,10 @@ from control.server import GatewayServer
 import socket
 from control.cli import main as cli
 import spdk.rpc.bdev as rpc_bdev
+import grpc
+from control.proto import gateway_pb2 as pb2
+from control.proto import gateway_pb2_grpc as pb2_grpc
+import os
 
 image = "mytestdevimage"
 pool = "rbd"
@@ -30,11 +34,18 @@ config = "ceph-nvmeof.conf"
 def gateway(config):
     """Sets up and tears down Gateway"""
 
+    addr = config.get("gateway", "addr")
+    port = config.getint("gateway", "port")
+
     with GatewayServer(config) as gateway:
 
         # Start gateway
         gateway.serve()
-        yield gateway.gateway_rpc
+
+        # Bind the client and Gateway
+        channel = grpc.insecure_channel(f"{addr}:{port}")
+        stub = pb2_grpc.GatewayStub(channel)
+        yield gateway.gateway_rpc, stub
 
         # Stop gateway
         gateway.server.stop(grace=1)
@@ -51,10 +62,44 @@ class TestGet:
         cli(["--server-address", server_addr_ipv6, "get_subsystems"])
         assert "[]" in caplog.text
 
+    def test_get_gateway_info(self, caplog, gateway):
+        gw, stub = gateway
+        caplog.clear()
+        gw_info_req = pb2.get_gateway_info_req(cli_version="0.0.1")
+        ret = stub.get_gateway_info(gw_info_req)
+        assert not ret.status
+        assert "is older than gateway" in caplog.text
+        caplog.clear()
+        gw_info_req = pb2.get_gateway_info_req()
+        ret = stub.get_gateway_info(gw_info_req)
+        assert "No CLI version specified" in caplog.text
+        assert not ret.status
+        caplog.clear()
+        gw_info_req = pb2.get_gateway_info_req(cli_version="0.0.1.4")
+        ret = stub.get_gateway_info(gw_info_req)
+        assert "Can't parse version" in caplog.text
+        assert not ret.status
+        caplog.clear()
+        gw_info_req = pb2.get_gateway_info_req(cli_version="0.X.4")
+        ret = stub.get_gateway_info(gw_info_req)
+        assert "Can't parse version" in caplog.text
+        assert not ret.status
+        caplog.clear()
+        cli_ver = os.getenv("NVMEOF_VERSION")
+        gw.config.config["gateway"]["port"] = "6789"
+        gw.config.config["gateway"]["addr"] = "10.10.10.10"
+        gw_info_req = pb2.get_gateway_info_req(cli_version=cli_ver)
+        ret = stub.get_gateway_info(gw_info_req)
+        assert ret.status
+        assert f'cli_version: "{cli_ver}"' in caplog.text
+        assert f'gateway_version: "{cli_ver}"' in caplog.text
+        assert 'gateway_port: "6789"' in caplog.text
+        assert 'gateway_addr: "10.10.10.10"' in caplog.text
+        assert f'gateway_name: "{gw.gateway_name}"' in caplog.text
 
 class TestCreate:
     def test_create_bdev(self, caplog, gateway):
-        gw = gateway
+        gw, stub = gateway
         bdev_found = False
         caplog.clear()
         cli(["create_bdev", "-i", image, "-p", pool, "-b", bdev])
@@ -88,7 +133,7 @@ class TestCreate:
     def test_resize_bdev(self, caplog, gateway):
         caplog.clear()
         bdev_found = False
-        gw = gateway
+        gw, stub = gateway
         cli(["resize_bdev", "-b", bdev, "-s", "20"])
         assert f"Resized bdev {bdev}: True" in caplog.text
         bdev_list = rpc_bdev.bdev_get_bdevs(gw.spdk_rpc_client)
