@@ -235,6 +235,15 @@ class TestCreateWithAna:
 
     def test_create_subsystem_ana(self, caplog, gateway):
         caplog.clear()
+        with pytest.raises(Exception) as ex:
+            try:
+                cli(["create_subsystem", "-n", subsystem, "-t"])
+            except SystemExit as sysex:
+                # should fail with non-zero return code
+                assert sysex != 0
+                pass
+            assert "HA enabled but ANA-reporting is disabled" in str(ex.value)
+        caplog.clear()
         cli(["create_subsystem", "-n", subsystem, "-a", "-t"])
         assert f"Created subsystem {subsystem}: True" in caplog.text
         assert "ana reporting: True" in caplog.text
