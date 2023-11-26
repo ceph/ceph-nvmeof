@@ -164,38 +164,8 @@ enum ana_state {
   INACCESSIBLE  = 3;
 }
 
-// From https://nvmexpress.org/wp-content/uploads/NVM-Express-1_4-2019.06.10-Ratified.pdf page 170
-// ANA Group Identifier (ANAGRPID): This field indicates the ANA Group Identifier of the
-// ANA group (refer to section 8.20.2) of which the namespace is a member. Each
-// namespace that is attached to a controller that supports Asymmetric Namespace Access
-// Reporting (refer to the CMIC field) shall report a valid ANAGRPID. If the controller does
-// not support Asymmetric Namespace Access Reporting, then this field shall be cleared to
-// 0h.
-// If the value in this field changes and Asymmetric Namespace Access Change Notices
-// are supported and enabled, then the controller shall issue an Asymmetric Namespace
-// Access Change Notice
-// bits 95:92
-enum ana_grp_id {
-  NOT_SUPPORTED = 0;
-  ANAGRP1       = 1;
-  ANAGRP2       = 2;
-  ANAGRP3       = 3;
-  ANAGRP4       = 4;
-  ANAGRP5       = 5;
-  ANAGRP6       = 6;
-  ANAGRP7       = 7;
-  ANAGRP8       = 8;
-  ANAGRP9       = 9;
-  ANAGRP10      = 10;
-  ANAGRP11      = 11;
-  ANAGRP12      = 12;
-  ANAGRP13      = 13;
-  ANAGRP14      = 14;
-  ANAGRP15      = 15;
-}
-
 message ana_group_state {
-	ana_grp_id grp_id = 1;  // groupd id
+	uint32     grp_id = 1;  // groupd id
 	ana_state  state  = 2;  // ANA state
 }
 
