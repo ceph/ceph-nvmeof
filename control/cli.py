@@ -12,6 +12,7 @@ import grpc
 import json
 import logging
 import sys
+import os
 
 from functools import wraps
 from google.protobuf import json_format
@@ -377,6 +378,18 @@ class GatewayClient:
         ret = self.stub.set_spdk_nvmf_logs(req)
         self.logger.info(
             f"Set SPDK nvmf logs : {ret.status}")
+
+    @cli.cmd()
+    def get_gateway_info(self, args):
+        """Get gateway's info"""
+        ver = os.getenv("NVMEOF_VERSION")
+        req = pb2.get_gateway_info_req(cli_version=ver)
+        gw_info = json_format.MessageToJson(
+                        self.stub.get_gateway_info(req),
+                        indent=4,
+                        including_default_value_fields=True,
+                        preserving_proto_field_name=True)
+        self.logger.info(f"Gateway info:\n{gw_info}")
 
 def main(args=None):
     client = GatewayClient()

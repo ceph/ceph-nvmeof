@@ -79,6 +79,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         self.gateway_name = self.config.get("gateway", "name")
         if not self.gateway_name:
             self.gateway_name = socket.gethostname()
+        self.gateway_group = self.config.get("gateway", "group")
         self._init_cluster_context()
 
     def _init_cluster_context(self) -> None:
@@ -899,3 +900,48 @@ class GatewayService(pb2_grpc.GatewayServicer):
     def disable_spdk_nvmf_logs(self, request, context):
         with self.rpc_lock:
             return self.disable_spdk_nvmf_logs_safe(request, context)
+
+    def parse_version(self, version):
+        if not version:
+            return None
+        try:
+            vlist = version.split(".")
+            if len(vlist) != 3:
+                raise Exception
+            v1 = int(vlist[0])
+            v2 = int(vlist[1])
+            v3 = int(vlist[2])
+        except Exception:
+            self.logger.error(f"Can't parse version \"{version}\"")
+            return None
+        return (v1, v2, v3)
+
+    def get_gateway_info(self, request, context):
+        """Return gateway's info"""
+        self.logger.info(f"Received request to get gateway's info")
+        gw_version_string = os.getenv("NVMEOF_VERSION")
+        cli_version_string = request.cli_version
+        addr = self.config.get_with_default("gateway", "addr", "")
+        port = self.config.get_with_default("gateway", "port", "")
+        ret = pb2.gateway_info(cli_version = request.cli_version,
+                               gateway_version = gw_version_string,
+                               gateway_name = self.gateway_name,
+                               gateway_group = self.gateway_group,
+                               gateway_addr = addr,
+                               gateway_port = port,
+                               status = True)
+        cli_ver = self.parse_version(cli_version_string)
+        gw_ver = self.parse_version(gw_version_string)
+        if cli_ver != None and gw_ver != None and cli_ver < gw_ver:
+            self.logger.error(f"CLI version {cli_version_string} is older than gateway's version {gw_version_string}")
+            ret.status = False
+        if not cli_version_string:
+            self.logger.error(f"No CLI version specified")
+            ret.status = False
+        if not gw_version_string:
+            self.logger.error(f"Gateway version not found")
+            ret.status = False
+        if not cli_ver or not gw_ver:
+            ret.status = False
+        self.logger.info(f"Gateway's info:\n{ret}")
+        return ret
