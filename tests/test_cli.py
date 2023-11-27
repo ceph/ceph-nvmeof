@@ -27,6 +27,7 @@ addr = "127.0.0.1"
 addr_ipv6 = "::1"
 server_addr_ipv6 = "2001:db8::3"
 listener_list = [["-g", gateway_name, "-a", addr, "-s", "5001"], ["-g", gateway_name, "-a", addr,"-s", "5002"]]
+listener_list_no_port = [["-g", gateway_name, "-a", addr]]
 listener_list_ipv6 = [["-g", gateway_name, "-a", addr_ipv6, "-s", "5003"], ["-g", gateway_name, "-a", addr_ipv6, "-s", "5004"]]
 config = "ceph-nvmeof.conf"
 
@@ -201,6 +202,14 @@ class TestCreate:
         assert "IPV6" in caplog.text
         assert f"Created {subsystem} listener at [{listener_ipv6[3]}]:{listener_ipv6[5]}: True" in caplog.text
 
+    @pytest.mark.parametrize("listener", listener_list_no_port)
+    def test_create_listener_no_port(self, caplog, listener, gateway):
+        caplog.clear()
+        cli(["create_listener", "-n", subsystem] + listener)
+        assert "enable_ha: False" in caplog.text
+        assert "ipv4" in caplog.text
+        assert f"Created {subsystem} listener at {listener[3]}:4420: True" in caplog.text
+
 class TestDelete:
     @pytest.mark.parametrize("host", host_list)
     def test_remove_host(self, caplog, host, gateway):
@@ -222,6 +231,12 @@ class TestDelete:
         caplog.clear()
         cli(["--server-address", server_addr_ipv6, "delete_listener", "-n", subsystem, "--adrfam", "IPV6"] + listener_ipv6)
         assert f"Deleted [{listener_ipv6[3]}]:{listener_ipv6[5]} from {subsystem}: True" in caplog.text
+
+    @pytest.mark.parametrize("listener", listener_list_no_port)
+    def test_delete_listener_no_port(self, caplog, listener, gateway):
+        caplog.clear()
+        cli(["delete_listener", "-n", subsystem] + listener)
+        assert f"Deleted {listener[3]}:4420 from {subsystem}: True" in caplog.text
 
     def test_remove_namespace(self, caplog, gateway):
         caplog.clear()
