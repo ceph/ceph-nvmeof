@@ -230,6 +230,7 @@ message namespace {
     optional string bdev_name = 3;
     optional string nguid = 4;
     optional string uuid = 5;
+    optional uint32 anagrpid = 6;
 }
 
 message spdk_nvmf_log_flags_and_level_info {
