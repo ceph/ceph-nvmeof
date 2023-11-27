@@ -315,6 +315,9 @@ class TestCreateWithAna:
         caplog.clear()
         cli(["add_namespace", "-n", subsystem, "-b", bdev, "-a", anagrpid])
         assert f"Added namespace 1 to {subsystem}, ANA group id {anagrpid}" in caplog.text
+        caplog.clear()
+        cli(["get_subsystems"])
+        assert "failed" not in caplog.text
 
     @pytest.mark.parametrize("listener", listener_list)
     def test_create_listener_ana(self, caplog, listener, gateway):
