@@ -26,7 +26,7 @@ from .proto import gateway_pb2 as pb2
 from .proto import gateway_pb2_grpc as pb2_grpc
 from .config import GatewayConfig
 from .discovery import DiscoveryService
-from .state import GatewayState
+from .state import GatewayState, GatewayStateHandler, OmapLock
 
 MAX_ANA_GROUPS = 4
 
@@ -43,7 +43,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         spdk_rpc_client: Client of SPDK RPC server
     """
 
-    def __init__(self, config, gateway_state, omap_lock, spdk_rpc_client) -> None:
+    def __init__(self, config: GatewayConfig, gateway_state: GatewayStateHandler, omap_lock: OmapLock, spdk_rpc_client) -> None:
         """Constructor"""
         self.logger = logging.getLogger(__name__)
         ver = os.getenv("NVMEOF_VERSION")
@@ -449,6 +449,44 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     raise
 
         return pb2.nsid_status(nsid=nsid, status=True)
+
+    def set_ana_state(self, request, context=None):
+        return self.execute_grpc_function(self.set_ana_state_safe, request, context)
+
+    def set_ana_state_safe(self, ana_info: pb2.ana_info, context=None):
+        """Sets ana state for this gateway."""
+        self.logger.info(f"Received request to set ana states {ana_info.states}")
+        state = self.gateway_state.local.get_state()
+
+        # Iterate over nqn_ana_states in ana_info
+        for nas in ana_info.states:
+            nqn = nas.nqn
+            prefix = f"{self.gateway_state.local.LISTENER_PREFIX}_{nqn}_{self.name}_"
+            for listener_key in [key for key in state.keys() if key.startswith(prefix)]:
+                listener = json.loads(state[listener_key])
+
+                # Iterate over ana_group_state in nqn_ana_states
+                for gs in nas.states:
+                    # Access grp_id and state
+                    grp_id = gs.grp_id
+                    ana_state = "optimized" if gs.state == pb2.ana_state.OPTIMIZED else "inaccessible"
+                    try:
+                        ret = rpc_nvmf.nvmf_subsystem_listener_set_ana_state(
+                            self.spdk_rpc_client,
+                            nqn=nqn,
+                            listen_address=listener,
+                            ana_state=ana_state,
+                            anagrpid=grp_id)
+                        if not ret:
+                            raise Exception(f"nvmf_subsystem_listener_set_ana_state({nqn=}, {listener=}, {ana_state=}, {grp_id=}) error")
+                    except Exception as ex:
+                        self.logger.exception("nvmf_subsystem_listener_set_ana_state: ")
+                        if context:
+                            context.set_code(grpc.StatusCode.INTERNAL)
+                            context.set_details(f"{ex}")
+                        return pb2.req_status()
+
+        return pb2.req_status(status=True)
 
     def add_namespace(self, request, context=None):
         return self.execute_grpc_function(self.add_namespace_safe, request, context)

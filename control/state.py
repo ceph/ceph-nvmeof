@@ -15,6 +15,7 @@ import errno
 from typing import Dict
 from collections import defaultdict
 from abc import ABC, abstractmethod
+from .config import GatewayConfig
 
 
 class GatewayState(ABC):
@@ -495,7 +496,7 @@ class GatewayStateHandler:
         use_notify: Flag to indicate use of OMAP watch/notify
     """
 
-    def __init__(self, config, local, omap, gateway_rpc_caller):
+    def __init__(self, config: GatewayConfig, local: LocalGatewayState, omap: OmapGatewayState, gateway_rpc_caller):
         self.config = config
         self.local = local
         self.omap = omap
