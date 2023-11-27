@@ -298,7 +298,7 @@ class GatewayClient:
         argument("-t", "--trtype", help="Transport type", default="TCP"),
         argument("-f", "--adrfam", help="Address family", default="ipv4"),
         argument("-a", "--traddr", help="NVMe host IP", required=True),
-        argument("-s", "--trsvcid", help="Port number", required=True),
+        argument("-s", "--trsvcid", help="Port number", default="4420", required=False),
     ])
     def create_listener(self, args):
         """Creates a listener for a subsystem at a given IP/Port."""
@@ -320,7 +320,7 @@ class GatewayClient:
         argument("-t", "--trtype", help="Transport type", default="TCP"),
         argument("-f", "--adrfam", help="Address family", default="ipv4"),
         argument("-a", "--traddr", help="NVMe host IP", required=True),
-        argument("-s", "--trsvcid", help="Port number", required=True),
+        argument("-s", "--trsvcid", help="Port number", default="4420", required=False),
     ])
     def delete_listener(self, args):
         """Deletes a listener from a subsystem at a given IP/Port."""
