@@ -296,53 +296,84 @@ class GatewayClient:
         argument("-n", "--subnqn", help="Subsystem NQN", required=True),
         argument("-g", "--gateway-name", help="Gateway name", required=True),
         argument("-t", "--trtype", help="Transport type", default="TCP"),
-        argument("-f", "--adrfam", help="Address family", default="ipv4"),
+        argument("-f", "--adrfam", help="Address family", default="IPV4"),
         argument("-a", "--traddr", help="NVMe host IP", required=True),
         argument("-s", "--trsvcid", help="Port number", default="4420", required=False),
     ])
     def create_listener(self, args):
         """Creates a listener for a subsystem at a given IP/Port."""
         traddr = GatewayConfig.escape_address_if_ipv6(args.traddr)
-        req = pb2.create_listener_req(
-            nqn=args.subnqn,
-            gateway_name=args.gateway_name,
-            trtype=args.trtype,
-            adrfam=args.adrfam,
-            traddr=traddr,
-            trsvcid=args.trsvcid,
-        )
-        ret = self.stub.create_listener(req)
-        self.logger.info(f"Created {args.subnqn} listener at {traddr}:{args.trsvcid}: {ret.status}")
+        trtype = None
+        adrfam = None
+        if args.trtype:
+            trtype = args.trtype.upper()
+        if args.adrfam:
+            adrfam = args.adrfam.lower()
+        try:
+            req = pb2.create_listener_req(
+                nqn=args.subnqn,
+                gateway_name=args.gateway_name,
+                trtype=trtype,
+                adrfam=adrfam,
+                traddr=traddr,
+                trsvcid=args.trsvcid,
+            )
+            ret = self.stub.create_listener(req)
+            self.logger.info(f"Created {args.subnqn} listener at {traddr}:{args.trsvcid}: {ret.status}")
+        except ValueError as err:
+            self.logger.error(f"{err}")
+            self.logger.info(f"Created {args.subnqn} listener at {traddr}:{args.trsvcid}: {False}")
+            raise
+        except Exception as ex:
+            self.logger.info(f"Created {args.subnqn} listener at {traddr}:{args.trsvcid}: {False}")
+            raise
 
     @cli.cmd([
         argument("-n", "--subnqn", help="Subsystem NQN", required=True),
         argument("-g", "--gateway-name", help="Gateway name", required=True),
         argument("-t", "--trtype", help="Transport type", default="TCP"),
-        argument("-f", "--adrfam", help="Address family", default="ipv4"),
+        argument("-f", "--adrfam", help="Address family", default="IPV4"),
         argument("-a", "--traddr", help="NVMe host IP", required=True),
         argument("-s", "--trsvcid", help="Port number", default="4420", required=False),
     ])
     def delete_listener(self, args):
         """Deletes a listener from a subsystem at a given IP/Port."""
         traddr = GatewayConfig.escape_address_if_ipv6(args.traddr)
-        req = pb2.delete_listener_req(
-            nqn=args.subnqn,
-            gateway_name=args.gateway_name,
-            trtype=args.trtype,
-            adrfam=args.adrfam,
-            traddr=traddr,
-            trsvcid=args.trsvcid,
-        )
-        ret = self.stub.delete_listener(req)
-        self.logger.info(f"Deleted {traddr}:{args.trsvcid} from {args.subnqn}: {ret.status}")
+        trtype = None
+        adrfam = None
+        if args.trtype:
+            trtype = args.trtype.upper()
+        if args.adrfam:
+            adrfam = args.adrfam.lower()
+        try:
+            req = pb2.delete_listener_req(
+                nqn=args.subnqn,
+                gateway_name=args.gateway_name,
+                trtype=trtype,
+                adrfam=adrfam,
+                traddr=traddr,
+                trsvcid=args.trsvcid,
+            )
+            ret = self.stub.delete_listener(req)
+            self.logger.info(f"Deleted {traddr}:{args.trsvcid} from {args.subnqn}: {ret.status}")
+        except ValueError as err:
+            self.logger.error(f"{err}")
+            self.logger.info(f"Deleted {traddr}:{args.trsvcid} from {args.subnqn}: {False}")
+            raise
+        except Exception as ex:
+            self.logger.info(f"Deleted {traddr}:{args.trsvcid} from {args.subnqn}: {False}")
+            raise
 
     @cli.cmd()
     def get_subsystems(self, args):
         """Gets subsystems."""
         subsystems = json_format.MessageToJson(
                         self.stub.get_subsystems(pb2.get_subsystems_req()),
-                        indent=4,
+                        indent=4, including_default_value_fields=True,
                         preserving_proto_field_name=True)
+        # The address family enum values are lower case, convert them for display
+        subsystems = subsystems.replace('"adrfam": "ipv4"', '"adrfam": "IPv4"')
+        subsystems = subsystems.replace('"adrfam": "ipv6"', '"adrfam": "IPv6"')
         self.logger.info(f"Get subsystems:\n{subsystems}")
 
     @cli.cmd()
@@ -363,8 +394,6 @@ class GatewayClient:
             f"Disable SPDK nvmf logs: {ret.status}")
 
     @cli.cmd([
-        argument("-f", "--flags", help="SPDK nvmf enable flags", \
-                 action='store_true', required=True),
         argument("-l", "--log_level", \
                  help="SPDK nvmf log level (ERROR, WARNING, NOTICE, INFO, DEBUG)", required=False),
         argument("-p", "--log_print_level", \
@@ -372,12 +401,24 @@ class GatewayClient:
                     required=False),
     ])
     def set_spdk_nvmf_logs(self, args):
-        """Set spdk nvmf log and flags"""
-        req = pb2.set_spdk_nvmf_logs_req(flags=args.flags, log_level=args.log_level, \
-                                         print_level=args.log_print_level)
-        ret = self.stub.set_spdk_nvmf_logs(req)
-        self.logger.info(
-            f"Set SPDK nvmf logs : {ret.status}")
+        """Set spdk nvmf log and print levels"""
+        log_level = None
+        print_level = None
+        if args.log_level:
+            log_level = args.log_level.upper()
+        if args.log_print_level:
+            print_level = args.log_print_level.upper()
+        try:
+            req = pb2.set_spdk_nvmf_logs_req(log_level=log_level, print_level=print_level)
+            ret = self.stub.set_spdk_nvmf_logs(req)
+            self.logger.info(f"Set SPDK nvmf logs: {ret.status}")
+        except ValueError as err:
+            self.logger.error(f"{err}")
+            self.logger.info(f"Set SPDK nvmf logs: {False}")
+            raise
+        except Exception as ex:
+            self.logger.info(f"Set SPDK nvmf logs: {False}")
+            raise
 
     @cli.cmd()
     def get_gateway_info(self, args):

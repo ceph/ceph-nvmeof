@@ -25,10 +25,38 @@ from google.protobuf import json_format
 from .proto import gateway_pb2 as pb2
 from .proto import gateway_pb2_grpc as pb2_grpc
 from .config import GatewayConfig
-from .discovery import DiscoveryService
 from .state import GatewayState
 
 MAX_ANA_GROUPS = 4
+
+class GatewayEnumUtils:
+    def get_value_from_key(e_type, keyval, ignore_case = False):
+        val = None
+        try:
+            key_index = e_type.keys().index(keyval)
+            val = e_type.values()[key_index]
+        except ValueError:
+            pass
+        except IndexError:
+            pass
+
+        if ignore_case and val == None and type(keyval) == str:
+            val = get_value_from_key(e_type, keyval.lower(), False)
+        if ignore_case and val == None and type(keyval) == str:
+            val = get_value_from_key(e_type, keyval.upper(), False)
+
+        return val
+
+    def get_key_from_value(e_type, val):
+        keyval = None
+        try:
+            val_index = e_type.values().index(val)
+            keyval = e_type.keys()[val_index]
+        except ValueError:
+            pass
+        except IndexError:
+            pass
+        return keyval
 
 class GatewayService(pb2_grpc.GatewayServicer):
     """Implements gateway service interface.
@@ -166,7 +194,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 # Update gateway state
                 try:
                     json_req = json_format.MessageToJson(
-                        request, preserving_proto_field_name=True)
+                        request, preserving_proto_field_name=True, including_default_value_fields=True)
                     self.gateway_state.add_bdev(bdev_name, json_req)
                 except Exception as ex:
                     self.logger.error(
@@ -282,7 +310,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         return self.execute_grpc_function(self.delete_bdev_safe, request, context)
 
     def is_discovery_nqn(self, nqn) -> bool:
-        return nqn == DiscoveryService.DISCOVERY_NQN
+        return nqn == GatewayConfig.DISCOVERY_NQN
 
     def serial_number_already_used(self, context, serial) -> str:
         if not context:
@@ -358,7 +386,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 # Update gateway state
                 try:
                     json_req = json_format.MessageToJson(
-                        request, preserving_proto_field_name=True)
+                        request, preserving_proto_field_name=True, including_default_value_fields=True)
                     self.gateway_state.add_subsystem(request.subsystem_nqn,
                                                      json_req)
                 except Exception as ex:
@@ -443,7 +471,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     if not request.nsid:
                         request.nsid = nsid
                     json_req = json_format.MessageToJson(
-                        request, preserving_proto_field_name=True)
+                        request, preserving_proto_field_name=True, including_default_value_fields=True)
                     self.gateway_state.add_namespace(request.subsystem_nqn,
                                                      str(nsid), json_req)
                 except Exception as ex:
@@ -563,7 +591,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 # Update gateway state
                 try:
                     json_req = json_format.MessageToJson(
-                        request, preserving_proto_field_name=True)
+                        request, preserving_proto_field_name=True, including_default_value_fields=True)
                     self.gateway_state.add_host(request.subsystem_nqn,
                                                 request.host_nqn, json_req)
                 except Exception as ex:
@@ -642,9 +670,18 @@ class GatewayService(pb2_grpc.GatewayServicer):
         """Creates a listener for a subsystem at a given IP/Port."""
         ret = True
         traddr = GatewayConfig.escape_address_if_ipv6(request.traddr)
+
+        trtype = GatewayEnumUtils.get_key_from_value(pb2.TransportType, request.trtype)
+        if trtype == None:
+            raise Exception(f"Unknown transport type {request.trtype}")
+
+        adrfam = GatewayEnumUtils.get_key_from_value(pb2.AddressFamily, request.adrfam)
+        if adrfam == None:
+            raise Exception(f"Unknown address family {request.adrfam}")
+
         self.logger.info(f"Received request to create {request.gateway_name}"
-                         f" {request.trtype} {request.adrfam} listener for {request.nqn} at"
-                         f" {traddr}:{request.trsvcid}., context: {context}")
+                         f" {trtype} {adrfam} listener for {request.nqn} at"
+                         f" {traddr}:{request.trsvcid}, context: {context}")
 
         if self.is_discovery_nqn(request.nqn):
             raise Exception(f"Can't create a listener for a discovery subsystem")
@@ -653,12 +690,12 @@ class GatewayService(pb2_grpc.GatewayServicer):
             try:
                 if request.gateway_name == self.gateway_name:
                     listener_already_exist = self.matching_listener_exists(
-                            context, request.nqn, request.gateway_name, request.trtype, request.traddr, request.trsvcid)
+                            context, request.nqn, request.gateway_name, trtype, request.traddr, request.trsvcid)
                     if listener_already_exist:
                         self.logger.error(f"{request.nqn} already listens on address {request.traddr} port {request.trsvcid}")
-                        req = {"nqn": request.nqn, "trtype": request.trtype, "traddr": request.traddr,
+                        req = {"nqn": request.nqn, "trtype": trtype, "traddr": request.traddr,
                                "gateway_name": request.gateway_name,
-                               "trsvcid": request.trsvcid, "adrfam": request.adrfam,
+                               "trsvcid": request.trsvcid, "adrfam": adrfam,
                                "method": "nvmf_subsystem_add_listener", "req_id": 0}
                         ret = {"code": -errno.EEXIST, "message": f"{request.nqn} already listens on address {request.traddr} port {request.trsvcid}"}
                         msg = "\n".join(["request:", "%s" % json.dumps(req, indent=2),
@@ -669,10 +706,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     ret = rpc_nvmf.nvmf_subsystem_add_listener(
                         self.spdk_rpc_client,
                         nqn=request.nqn,
-                        trtype=request.trtype,
+                        trtype=trtype,
                         traddr=request.traddr,
                         trsvcid=request.trsvcid,
-                        adrfam=request.adrfam,
+                        adrfam=adrfam,
                     )
                     self.logger.info(f"create_listener: {ret}")
                 else:
@@ -710,10 +747,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
                             self.spdk_rpc_client,
                             nqn=request.nqn,
                             ana_state="inaccessible",
-                            trtype=request.trtype,
+                            trtype=trtype,
                             traddr=request.traddr,
                             trsvcid=request.trsvcid,
-                            adrfam=request.adrfam,
+                            adrfam=adrfam,
                             anagrpid=(x+1) )
                        except Exception as ex:
                             self.logger.error(f" set_listener_ana_state failed with: \n {ex}")
@@ -723,10 +760,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 # Update gateway state
                 try:
                     json_req = json_format.MessageToJson(
-                        request, preserving_proto_field_name=True)
+                        request, preserving_proto_field_name=True, including_default_value_fields=True)
                     self.gateway_state.add_listener(request.nqn,
                                                     request.gateway_name,
-                                                    request.trtype, request.traddr,
+                                                    trtype, request.traddr,
                                                     request.trsvcid, json_req)
                 except Exception as ex:
                     self.logger.error(
@@ -743,9 +780,18 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         ret = True
         traddr = GatewayConfig.escape_address_if_ipv6(request.traddr)
+
+        trtype = GatewayEnumUtils.get_key_from_value(pb2.TransportType, request.trtype)
+        if trtype == None:
+            raise Exception(f"Unknown transport type {request.trtype}")
+
+        adrfam = GatewayEnumUtils.get_key_from_value(pb2.AddressFamily, request.adrfam)
+        if adrfam == None:
+            raise Exception(f"Unknown address family {request.adrfam}")
+
         self.logger.info(f"Received request to delete {request.gateway_name}"
-                         f" {request.trtype} listener for {request.nqn} at"
-                         f" {traddr}:{request.trsvcid}., context: {context}")
+                         f" {trtype} listener for {request.nqn} at"
+                         f" {traddr}:{request.trsvcid}, context: {context}")
 
         if self.is_discovery_nqn(request.nqn):
             raise Exception(f"Can't delete a listener from a discovery subsystem")
@@ -756,10 +802,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     ret = rpc_nvmf.nvmf_subsystem_remove_listener(
                         self.spdk_rpc_client,
                         nqn=request.nqn,
-                        trtype=request.trtype,
+                        trtype=trtype,
                         traddr=request.traddr,
                         trsvcid=request.trsvcid,
-                        adrfam=request.adrfam,
+                        adrfam=adrfam,
                     )
                     self.logger.info(f"delete_listener: {ret}")
                 else:
@@ -777,7 +823,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 try:
                     self.gateway_state.remove_listener(request.nqn,
                                                        request.gateway_name,
-                                                       request.trtype,
+                                                       trtype,
                                                        request.traddr,
                                                        request.trsvcid)
                 except Exception as ex:
@@ -806,6 +852,21 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         for s in ret:
             try:
+                # Need to adjust values to fit enum constants
+                try:
+                    listen_addrs = s["listen_addresses"]
+                except Exception:
+                    listen_addrs = []
+                    pass
+                for addr in listen_addrs:
+                    try:
+                        addr["trtype"] = addr["trtype"].upper()
+                    except Exception:
+                        pass
+                    try:
+                        addr["adrfam"] = addr["adrfam"].lower()
+                    except Exception:
+                        pass
                 # Parse the JSON dictionary into the protobuf message
                 subsystem = pb2.subsystem()
                 json_format.Parse(json.dumps(s), subsystem)
@@ -849,23 +910,37 @@ class GatewayService(pb2_grpc.GatewayServicer):
     def set_spdk_nvmf_logs_safe(self, request, context):
         """Enables spdk nvmf logs"""
         self.logger.info(f"Received request to set SPDK nvmf logs")
+        log_level = None
+        print_level = None
+        if request.log_level:
+            try:
+                log_level = pb2.LogLevel.keys()[request.log_level]
+            except Exception:
+                raise Exception(f"Unknown log level {request.log_level}")
+
+        if request.print_level:
+            try:
+                print_level = pb2.LogLevel.keys()[request.print_level]
+            except Exception:
+                raise Exception(f"Unknown print level {request.print_level}")
+
         try:
             nvmf_log_flags = [key for key in rpc_log.log_get_flags(self.spdk_rpc_client).keys() \
                               if key.startswith('nvmf')]
             ret = [rpc_log.log_set_flag(
                 self.spdk_rpc_client, flag=flag) for flag in nvmf_log_flags]
             self.logger.info(f"Set SPDK log flags {nvmf_log_flags} to TRUE")
-            if request.log_level:
-                ret_log = rpc_log.log_set_level(self.spdk_rpc_client, level=request.log_level)
-                self.logger.info(f"Set log level to: {request.log_level}")
+            if log_level:
+                ret_log = rpc_log.log_set_level(self.spdk_rpc_client, level=log_level)
+                self.logger.info(f"Set log level to: {log_level}")
                 ret.append(ret_log)
-            if request.print_level:
+            if print_level:
                 ret_print = rpc_log.log_set_print_level(
-                    self.spdk_rpc_client, level=request.print_level)
-                self.logger.info(f"Set log print level to: {request.print_level}")
+                    self.spdk_rpc_client, level=print_level)
+                self.logger.info(f"Set log print level to: {print_level}")
                 ret.append(ret_print)
         except Exception as ex:
-            self.logger.error(f"set_spdk_nvmf_logs failed with: \n {ex}")
+            self.logger.error(f"set_spdk_nvmf_logs failed with:\n{ex}")
             context.set_code(grpc.StatusCode.INTERNAL)
             context.set_details(f"{ex}")
             for flag in nvmf_log_flags:

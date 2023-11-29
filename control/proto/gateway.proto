@@ -10,6 +10,33 @@
 
 syntax = "proto3";
 
+enum TransportType {
+    INVALID = 0;
+    RDMA = 1;
+    FC = 2;
+    TCP = 3;
+    PCIE = 256;
+    VFIOUSER = 1024;
+    CUSTOM = 4096;
+}
+
+enum AddressFamily {
+    invalid = 0;
+    ipv4 = 1;
+    ipv6 = 2;
+    ib = 3;
+    fc = 4;
+}
+
+enum LogLevel {
+    DISABLED = 0;
+    ERROR = 1;
+    WARN = 2;
+    NOTICE = 3;
+    INFO = 4;
+    DEBUG = 5;
+}
+
 service Gateway {
 	// Creates a bdev from an RBD image
 	rpc create_bdev(create_bdev_req) returns (bdev) {}
@@ -117,8 +144,8 @@ message remove_host_req {
 message create_listener_req {
 	string nqn = 1;
 	string gateway_name = 2;
-	string trtype = 3;
-	string adrfam = 4;
+	TransportType trtype = 3;
+	AddressFamily adrfam = 4;
 	string traddr = 5;
 	string trsvcid = 6;
 }
@@ -126,8 +153,8 @@ message create_listener_req {
 message delete_listener_req {
 	string nqn = 1;
 	string gateway_name = 2;
-	string trtype = 3;
-	string adrfam = 4;
+	TransportType trtype = 3;
+	AddressFamily adrfam = 4;
 	string traddr = 5;
 	string trsvcid = 6;
 }
@@ -142,9 +169,8 @@ message disable_spdk_nvmf_logs_req {
 }
 
 message set_spdk_nvmf_logs_req {
-	bool flags = 1;
-	optional string log_level = 2;
-	optional string print_level = 3;
+	optional LogLevel log_level = 1;
+	optional LogLevel print_level = 2;
 }
 
 message get_gateway_info_req {
@@ -197,8 +223,8 @@ message gateway_info {
 
 message listen_address {
 	string transport = 1;
-	string trtype = 2;
-	string adrfam = 3;
+	TransportType trtype = 2;
+	AddressFamily adrfam = 3;
 	string traddr = 4;
 	string trsvcid = 5;
 }

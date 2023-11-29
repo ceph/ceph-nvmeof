@@ -224,12 +224,12 @@ def test_multi_gateway_omap_reread(config, conn_omap_reread, caplog):
     # Until we create some resource on GW-B it shouldn't still have the resrouces created on GW-A, only the discovery subsystem
     listB = json.loads(json_format.MessageToJson(
         stubB.get_subsystems(get_subsystems_req),
-        preserving_proto_field_name=True))['subsystems']
+        preserving_proto_field_name=True, including_default_value_fields=True))['subsystems']
     assert len(listB) == 1
 
     listA = json.loads(json_format.MessageToJson(
         stubA.get_subsystems(get_subsystems_req),
-        preserving_proto_field_name=True))['subsystems']
+        preserving_proto_field_name=True, including_default_value_fields=True))['subsystems']
     assert len(listA) == num_subsystems
 
     bdev2_req = pb2.create_bdev_req(bdev_name=bdev2,
@@ -243,7 +243,7 @@ def test_multi_gateway_omap_reread(config, conn_omap_reread, caplog):
     # Make sure that after reading the OMAP file GW-B has the subsystem and namespace created on GW-A
     listB = json.loads(json_format.MessageToJson(
         stubB.get_subsystems(get_subsystems_req),
-        preserving_proto_field_name=True))['subsystems']
+        preserving_proto_field_name=True, including_default_value_fields=True))['subsystems']
     assert len(listB) == num_subsystems
     assert listB[num_subsystems-1]["nqn"] == nqn
     assert listB[num_subsystems-1]["serial_number"] == serial
@@ -303,10 +303,10 @@ def test_multi_gateway_concurrent_changes(config, image, conn_concurrent, caplog
     get_subsystems_req = pb2.get_subsystems_req()
     listA = json.loads(json_format.MessageToJson(
         stubA.get_subsystems(get_subsystems_req),
-        preserving_proto_field_name=True))['subsystems']
+        preserving_proto_field_name=True, including_default_value_fields=True))['subsystems']
     listB = json.loads(json_format.MessageToJson(
         stubB.get_subsystems(get_subsystems_req),
-        preserving_proto_field_name=True))['subsystems']
+        preserving_proto_field_name=True, including_default_value_fields=True))['subsystems']
     for i in range(created_resource_count):
         check_resource_by_index(i, listA)
         check_resource_by_index(i, listB)

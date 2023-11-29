@@ -13,6 +13,8 @@ import json
 import logging
 from .config import GatewayConfig
 from .state import GatewayState, LocalGatewayState, OmapGatewayState, GatewayStateHandler
+from .grpc import GatewayEnumUtils
+from .proto import gateway_pb2 as pb2
 
 import rados
 from typing import Dict, Optional
@@ -81,21 +83,6 @@ class NVMF_SUBTYPE(enum.IntFlag):
     DISCOVERY = 0x1
     # NVMe type for NVM subsystem
     NVME = 0x2
-
-# NVMe over Fabrics transport types
-class TRANSPORT_TYPES(enum.IntFlag):
-    RDMA = 0x1
-    FC = 0x2
-    TCP = 0x3
-    INTRA_HOST = 0xfe
-
-# Address family types
-class ADRFAM_TYPES(enum.IntFlag):
-    ipv4 = 0x1
-    ipv6 = 0x2
-    ib = 0x3
-    fc = 0x4
-    intra_host = 0xfe
 
 # Transport requirement, secure channel requirements
 # Connections shall be made over a fabric secure channel
@@ -303,8 +290,6 @@ class DiscoveryService:
         discovery_addr: Discovery controller addr which allows initiator send command
         discovery_port: Discovery controller's listening port
     """
-
-    DISCOVERY_NQN = "nqn.2014-08.org.nvmexpress.discovery"
 
     def __init__(self, config):
         self.version = 1
@@ -733,14 +718,18 @@ class DiscoveryService:
             log_entry_counter = 0
             while log_entry_counter < len(allow_listeners):
                 log_entry = DiscoveryLogEntry()
-                trtype = TRANSPORT_TYPES[allow_listeners[log_entry_counter]["trtype"].upper()]
+                log_trtype = allow_listeners[log_entry_counter]["trtype"]
+                log_adrfam = allow_listeners[log_entry_counter]["adrfam"]
+                trtype = GatewayEnumUtils.get_value_from_key(pb2.TransportType, log_trtype, True)
+                adrfam = GatewayEnumUtils.get_value_from_key(pb2.AddressFamily, log_adrfam, True)
+
                 if trtype is None:
-                    self.logger.error("unsupported transport type")
+                    self.logger.error(f"unsupported transport type {log_trtype}")
                 else:
                     log_entry.trtype = trtype
-                adrfam = ADRFAM_TYPES[allow_listeners[log_entry_counter]["adrfam"].lower()]
+
                 if adrfam is None:
-                    self.logger.error("unsupported adress family")
+                    self.logger.error(f"unsupported address family {log_adrfam}")
                 else:
                     log_entry.adrfam = adrfam
                 log_entry.subtype = NVMF_SUBTYPE.NVME

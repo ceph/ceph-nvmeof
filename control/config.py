@@ -16,6 +16,9 @@ class GatewayConfig:
     Instance attributes:
         config: Config parser object
     """
+
+    DISCOVERY_NQN = "nqn.2014-08.org.nvmexpress.discovery"
+
     def __init__(self, conffile):
         self.filepath = conffile
         self.conffile_logged = False

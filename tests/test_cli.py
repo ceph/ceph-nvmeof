@@ -16,19 +16,24 @@ bdev_ipv6 = bdev + "_ipv6"
 bdev1_ipv6 = bdev1 + "_ipv6"
 subsystem = "nqn.2016-06.io.spdk:cnode1"
 subsystem2 = "nqn.2016-06.io.spdk:cnode2"
+discovery_nqn = "nqn.2014-08.org.nvmexpress.discovery"
 serial = "SPDK00000000000001"
 host_list = ["nqn.2016-06.io.spdk:host1", "*"]
 nsid = "1"
 nsid_ipv6 = "3"
 anagrpid = "2"
-trtype = "TCP"
 gateway_name = socket.gethostname()
 addr = "127.0.0.1"
 addr_ipv6 = "::1"
 server_addr_ipv6 = "2001:db8::3"
-listener_list = [["-g", gateway_name, "-a", addr, "-s", "5001"], ["-g", gateway_name, "-a", addr,"-s", "5002"]]
+listener_list = [["-g", gateway_name, "-a", addr, "-s", "5001", "-t", "tCp", "-f", "ipV4"], ["-g", gateway_name, "-a", addr, "-s", "5002"]]
 listener_list_no_port = [["-g", gateway_name, "-a", addr]]
-listener_list_ipv6 = [["-g", gateway_name, "-a", addr_ipv6, "-s", "5003"], ["-g", gateway_name, "-a", addr_ipv6, "-s", "5004"]]
+listener_list_fc_trtype = [["-g", gateway_name, "-a", addr, "-s", "5010", "--trtype", "FC"]]
+listener_list_invalid_trtype = [["-g", gateway_name, "-a", addr, "-s", "5011", "--trtype", "JUNK"]]
+listener_list_invalid_adrfam = [["-g", gateway_name, "-a", addr, "-s", "5013", "--adrfam", "JUNK"]]
+listener_list_ib_adrfam = [["-g", gateway_name, "-a", addr, "-s", "5014", "--adrfam", "ib"]]
+listener_list_ipv6 = [["-g", gateway_name, "-a", addr_ipv6, "-s", "5003", "--adrfam", "ipv6"], ["-g", gateway_name, "-a", addr_ipv6, "-s", "5004", "--adrfam", "IPV6"]]
+listener_list_discovery = [["-n", discovery_nqn, "-g", gateway_name, "-a", addr, "-s", "5012"]]
 config = "ceph-nvmeof.conf"
 
 @pytest.fixture(scope="module")
@@ -191,15 +196,15 @@ class TestCreate:
         caplog.clear()
         cli(["create_listener", "-n", subsystem] + listener)
         assert "enable_ha: False" in caplog.text
-        assert "ipv4" in caplog.text
+        assert "ipv4" in caplog.text.lower()
         assert f"Created {subsystem} listener at {listener[3]}:{listener[5]}: True" in caplog.text
 
     @pytest.mark.parametrize("listener_ipv6", listener_list_ipv6)
     def test_create_listener_ipv6(self, caplog, listener_ipv6, gateway):
         caplog.clear()
-        cli(["--server-address", server_addr_ipv6, "create_listener", "-n", subsystem, "--adrfam", "IPV6"] + listener_ipv6)
+        cli(["--server-address", server_addr_ipv6, "create_listener", "-n", subsystem] + listener_ipv6)
         assert "enable_ha: False" in caplog.text
-        assert "IPV6" in caplog.text
+        assert "ipv6" in caplog.text.lower()
         assert f"Created {subsystem} listener at [{listener_ipv6[3]}]:{listener_ipv6[5]}: True" in caplog.text
 
     @pytest.mark.parametrize("listener", listener_list_no_port)
@@ -207,8 +212,78 @@ class TestCreate:
         caplog.clear()
         cli(["create_listener", "-n", subsystem] + listener)
         assert "enable_ha: False" in caplog.text
-        assert "ipv4" in caplog.text
+        assert "ipv4" in caplog.text.lower()
         assert f"Created {subsystem} listener at {listener[3]}:4420: True" in caplog.text
+
+    @pytest.mark.parametrize("listener", listener_list_fc_trtype)
+    def test_create_listener_fc_trtype(self, caplog, listener, gateway):
+        caplog.clear()
+        rc = 0
+        with pytest.raises(Exception) as ex:
+            try:
+                cli(["create_listener", "-n", subsystem] + listener)
+            except SystemExit as sysex:
+                rc = sysex
+                pass
+            assert "create_listener failed" in str(ex.value)
+        assert rc != 0
+        assert "create_listener failed" in caplog.text
+        assert "Invalid parameters" in caplog.text
+        assert '"trtype": "FC"' in caplog.text
+
+    @pytest.mark.parametrize("listener", listener_list_invalid_trtype)
+    def test_create_listener_invalid_trtype(self, caplog, listener, gateway):
+        caplog.clear()
+        with pytest.raises(Exception) as ex:
+            try:
+                cli(["create_listener", "-n", subsystem] + listener)
+            except SystemExit as sysex:
+                pass
+            assert "unknown enum label" in str(ex.value)
+        assert "unknown enum label" in caplog.text
+        assert f"Created {subsystem} listener at {listener[3]}:{listener[5]}: False" in caplog.text
+
+    @pytest.mark.parametrize("listener", listener_list_invalid_adrfam)
+    def test_create_listener_invalid_adrfam(self, caplog, listener, gateway):
+        caplog.clear()
+        with pytest.raises(Exception) as ex:
+            try:
+                cli(["create_listener", "-n", subsystem] + listener)
+            except SystemExit as sysex:
+                pass
+            assert "unknown enum label" in str(ex.value)
+        assert "unknown enum label" in caplog.text
+        assert f"Created {subsystem} listener at {listener[3]}:{listener[5]}: False" in caplog.text
+
+    @pytest.mark.parametrize("listener", listener_list_ib_adrfam)
+    def test_create_listener_ib_adrfam(self, caplog, listener, gateway):
+        caplog.clear()
+        rc = 0
+        with pytest.raises(Exception) as ex:
+            try:
+                cli(["create_listener", "-n", subsystem] + listener)
+            except SystemExit as sysex:
+                rc = sysex
+                pass
+            assert "create_listener failed" in str(ex.value)
+        assert rc != 0
+        assert "create_listener failed" in caplog.text
+        assert "Invalid parameters" in caplog.text
+        assert '"adrfam": "ib"' in caplog.text
+
+    @pytest.mark.parametrize("listener", listener_list_discovery)
+    def test_create_listener_on_discovery(self, caplog, listener, gateway):
+        caplog.clear()
+        rc = 0
+        with pytest.raises(Exception) as ex:
+            try:
+                cli(["create_listener"] + listener)
+            except SystemExit as sysex:
+                rc = sysex
+                pass
+            assert "Can't create a listener for a discovery subsystem" in str(ex.value)
+        assert rc != 0
+        assert "Can't create a listener for a discovery subsystem" in caplog.text
 
 class TestDelete:
     @pytest.mark.parametrize("host", host_list)
@@ -229,7 +304,7 @@ class TestDelete:
     @pytest.mark.parametrize("listener_ipv6", listener_list_ipv6)
     def test_delete_listener_ipv6(self, caplog, listener_ipv6, gateway):
         caplog.clear()
-        cli(["--server-address", server_addr_ipv6, "delete_listener", "-n", subsystem, "--adrfam", "IPV6"] + listener_ipv6)
+        cli(["--server-address", server_addr_ipv6, "delete_listener", "-n", subsystem] + listener_ipv6)
         assert f"Deleted [{listener_ipv6[3]}]:{listener_ipv6[5]} from {subsystem}: True" in caplog.text
 
     @pytest.mark.parametrize("listener", listener_list_no_port)
@@ -252,14 +327,16 @@ class TestDelete:
         assert "Will remove namespace" not in caplog.text
         caplog.clear()
         # Should fail as there is a namespace using the bdev
+        rc = 0
         with pytest.raises(Exception) as ex:
             try:
                 cli(["delete_bdev", "-b", bdev1])
             except SystemExit as sysex:
                 # should fail with non-zero return code
-                assert sysex != 0
-                pass
+                rc = sysex
             assert "Device or resource busy" in str(ex.value)
+        assert rc != 0
+        assert "Device or resource busy" in caplog.text
         assert f"Namespace 2 from {subsystem} is still using bdev {bdev1}" in caplog.text
         caplog.clear()
         cli(["delete_bdev", "-b", bdev1, "--force"])
@@ -295,14 +372,16 @@ class TestCreateWithAna:
 
     def test_create_subsystem_ana(self, caplog, gateway):
         caplog.clear()
+        rc = 0
         with pytest.raises(Exception) as ex:
             try:
                 cli(["create_subsystem", "-n", subsystem, "-t"])
             except SystemExit as sysex:
                 # should fail with non-zero return code
-                assert sysex != 0
-                pass
+                rc = sysex
             assert "HA enabled but ANA-reporting is disabled" in str(ex.value)
+        assert rc != 0
+        assert "HA enabled but ANA-reporting is disabled" in caplog.text
         caplog.clear()
         cli(["create_subsystem", "-n", subsystem, "-a", "-t"])
         assert f"Created subsystem {subsystem}: True" in caplog.text
@@ -324,7 +403,7 @@ class TestCreateWithAna:
         caplog.clear()
         cli(["create_listener", "-n", subsystem] + listener)
         assert "enable_ha: True" in caplog.text
-        assert "ipv4" in caplog.text
+        assert "ipv4" in caplog.text.lower()
         assert f"Created {subsystem} listener at {listener[3]}:{listener[5]}: True" in caplog.text
 
 
@@ -356,7 +435,7 @@ class TestDeleteAna:
         cli(["delete_subsystem", "-n", subsystem])
         assert f"Deleted subsystem {subsystem}: True" in caplog.text
 
-class TestSDKLOg:
+class TestSPDKLOg:
     def test_log_flags(self, caplog, gateway):
         caplog.clear()
         cli(["get_spdk_nvmf_log_flags_and_level"])
@@ -365,8 +444,8 @@ class TestSDKLOg:
         assert '"log_level": "NOTICE"' in caplog.text
         assert '"log_print_level": "INFO"' in caplog.text
         caplog.clear()
-        cli(["set_spdk_nvmf_logs", "-f"])
-        assert "Set SPDK nvmf logs : True" in caplog.text
+        cli(["set_spdk_nvmf_logs"])
+        assert "Set SPDK nvmf logs: True" in caplog.text
         caplog.clear()
         cli(["get_spdk_nvmf_log_flags_and_level"])
         assert '"nvmf": true' in caplog.text
@@ -374,8 +453,8 @@ class TestSDKLOg:
         assert '"log_level": "NOTICE"' in caplog.text
         assert '"log_print_level": "INFO"' in caplog.text
         caplog.clear()
-        cli(["set_spdk_nvmf_logs", "-f", "-l", "DEBUG"])
-        assert "Set SPDK nvmf logs : True" in caplog.text
+        cli(["set_spdk_nvmf_logs", "-l", "DebuG"])
+        assert "Set SPDK nvmf logs: True" in caplog.text
         caplog.clear()
         cli(["get_spdk_nvmf_log_flags_and_level"])
         assert '"nvmf": true' in caplog.text
@@ -383,8 +462,8 @@ class TestSDKLOg:
         assert '"log_level": "DEBUG"' in caplog.text
         assert '"log_print_level": "INFO"' in caplog.text
         caplog.clear()
-        cli(["set_spdk_nvmf_logs", "-f", "-p", "ERROR"])
-        assert "Set SPDK nvmf logs : True" in caplog.text
+        cli(["set_spdk_nvmf_logs", "-p", "eRRor"])
+        assert "Set SPDK nvmf logs: True" in caplog.text
         caplog.clear()
         cli(["get_spdk_nvmf_log_flags_and_level"])
         assert '"nvmf": true' in caplog.text
@@ -400,3 +479,11 @@ class TestSDKLOg:
         assert '"nvmf_tcp": false' in caplog.text
         assert '"log_level": "NOTICE"' in caplog.text
         assert '"log_print_level": "INFO"' in caplog.text
+        caplog.clear()
+        with pytest.raises(Exception) as ex:
+            try:
+                cli(["set_spdk_nvmf_logs", "-l", "JUNK"])
+            except SystemExit as sysex:
+                pass
+            assert "Set SPDK nvmf logs: False" in str(ex.value)
+        assert "Set SPDK nvmf logs: False" in caplog.text
