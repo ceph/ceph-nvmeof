@@ -145,7 +145,7 @@ class GatewayServer:
                 "--gateway-name", self.name,
                 "--gateway-address", self._gateway_address(),
                 '-c', '/etc/ceph/ceph.conf',
-                '-n', 'client.admin',
+                '-n', 'client.nvmeof',
                 '-k', '/etc/ceph/keyring']
         self.logger.info(f"Starting {' '.join(cmd)}")
         try:

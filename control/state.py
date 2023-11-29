@@ -360,6 +360,7 @@ class OmapGatewayState(GatewayState):
         ceph_pool = config.get("ceph", "pool")
         ceph_conf = config.get("ceph", "config_file")
         rados_id = config.get_with_default("ceph", "id", "")
+        self.logger.error(f"Connecting to Rados using id {rados_id}")
         conn = rados.Rados(conffile=ceph_conf, rados_id=rados_id)
         conn.connect()
         self.fetch_and_display_ceph_version(conn)
