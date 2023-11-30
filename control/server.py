@@ -141,11 +141,15 @@ class GatewayServer:
             self.logger.info("CEPH monitor client is disabled")
             return
         monitor_client = '/usr/local/bin/ceph-nvmeof'
+        client_prefix = "client."
+        rados_id = self.config.get_with_default("ceph", "id", "client.admin")
+        if not rados_id.startswith(client_prefix):
+            rados_id = client_prefix + rados_id
         cmd = [ monitor_client,
                 "--gateway-name", self.name,
                 "--gateway-address", self._gateway_address(),
                 '-c', '/etc/ceph/ceph.conf',
-                '-n', 'client.nvmeof',
+                '-n', rados_id,
                 '-k', '/etc/ceph/keyring']
         self.logger.info(f"Starting {' '.join(cmd)}")
         try:
