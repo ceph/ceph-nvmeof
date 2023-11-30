@@ -29,6 +29,7 @@ from .state import GatewayState, LocalGatewayState, OmapLock, OmapGatewayState, 
 from .grpc import GatewayService
 from .discovery import DiscoveryService
 from .config import GatewayConfig
+from .prometheus import start_exporter
 
 def sigchld_handler(signum, frame):
     """Handle SIGCHLD, runs when a spdk process terminates."""
@@ -128,6 +129,13 @@ class GatewayServer:
         # Start server
         self.server.start()
 
+        # Start the prometheus endpoint if enabled by the config
+        if self.config.getboolean_with_default("gateway", "enable_prometheus_exporter", False):
+            port = self.config.getint_with_default("gateway", "prometheus_port", 9202)
+            self.logger.info(f"Starting prometheus exporter. Listening on port {port}")
+            start_exporter(self.spdk_rpc_client, port)
+        else:
+            self.logger.info(f"Prometheus endpoint is disabled. To enable, set the config option 'enable_prometheus_exporter = True'")
 
     def _start_discovery_service(self):
         """Runs either SPDK on CEPH NVMEOF Discovery Service."""
