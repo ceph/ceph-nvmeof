@@ -25,7 +25,7 @@ classifiers = [] # https://pypi.org/classifiers/
 dependencies = [
     "grpcio ~= 1.53.0",
     "grpcio_tools ~= 1.53.0",
-    "prometheus_client >= v0.18.0"
+    "prometheus_client ~= v0.18.0"
 ]
 
 [tool.pdm.scripts]

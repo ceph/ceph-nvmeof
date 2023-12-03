@@ -50,7 +50,7 @@ summary = "plugin and hook calling mechanisms for python"
 
 [[package]]
 name = "prometheus-client"
-version = "0.19.0"
+version = "0.18.0"
 requires_python = ">=3.8"
 summary = "Python client for the Prometheus monitoring system."
 
@@ -90,7 +90,7 @@ summary = "A lil' TOML parser"
 lock_version = "4.2"
 cross_platform = true
 groups = ["default", "dev", "test"]
-content_hash = "sha256:b2eb5e2491f288e60e327007caf6835985b0d7b7bda95f26ca4739d1bd538762"
+content_hash = "sha256:16c96071ce60826204362d954fd9fec38243d945d57d87a1a27e57a655dfc87c"
 
 [metadata.files]
 "colorama 0.4.6" = [
@@ -200,8 +200,8 @@ content_hash = "sha256:b2eb5e2491f288e60e327007caf6835985b0d7b7bda95f26ca4739d1b
 "pluggy 1.2.0" = [
     {url = "https://files.pythonhosted.org/packages/51/32/4a79112b8b87b21450b066e102d6608907f4c885ed7b04c3fdb085d4d6ae/pluggy-1.2.0-py3-none-any.whl", hash = "sha256:c2fd55a7d7a3863cba1a013e4e2414658b1d07b6bc57b3919e0c63c9abb99849"},
 ]
-"prometheus-client 0.19.0" = [
-    {url = "https://files.pythonhosted.org/packages/bb/9f/ad934418c48d01269fc2af02229ff64bcf793fd5d7f8f82dc5e7ea7ef149/prometheus_client-0.19.0-py3-none-any.whl", hash = "sha256:c88b1e6ecf6b41cd8fb5731c7ae919bf66df6ec6fafa555cd6c0e16ca169ae92"},
+"prometheus-client 0.18.0" = [
+    {url = "https://files.pythonhosted.org/packages/aa/84/8b11274c61f81376ee06dfb5b60b176097b58166f095d55014f033632f46/prometheus_client-0.18.0-py3-none-any.whl", hash = "sha256:8de3ae2755f890826f4b6479e5571d4f74ac17a81345fe69a6778fdb92579184"},
 ]
 "protobuf 4.22.3" = [
     {url = "https://files.pythonhosted.org/packages/25/ca/79af03ceec0f9439d8fb5c2c8d99454c5c4f8c7fe00c8e7dbb280a8177c8/protobuf-4.22.3-cp38-cp38-win_amd64.whl", hash = "sha256:f2f4710543abec186aee332d6852ef5ae7ce2e9e807a3da570f36de5a732d88e"},
