@@ -98,7 +98,7 @@ def test_multi_gateway_coordination(config, image, conn):
         time.sleep(1)
         listB = json.loads(json_format.MessageToJson(
             stubB.get_subsystems(get_subsystems_req),
-            preserving_proto_field_name=True))['subsystems']
+            preserving_proto_field_name=True, including_default_value_fields=True))['subsystems']
         assert len(listB) == num_subsystems
         assert listB[num_subsystems-1]["nqn"] == nqn
         assert listB[num_subsystems-1]["serial_number"] == serial
@@ -109,7 +109,7 @@ def test_multi_gateway_coordination(config, image, conn):
     time.sleep(update_interval_sec + 1)
     listB = json.loads(json_format.MessageToJson(
         stubB.get_subsystems(get_subsystems_req),
-        preserving_proto_field_name=True))['subsystems']
+        preserving_proto_field_name=True, including_default_value_fields=True))['subsystems']
     assert len(listB) == num_subsystems
     assert listB[num_subsystems-1]["nqn"] == nqn
     assert listB[num_subsystems-1]["serial_number"] == serial

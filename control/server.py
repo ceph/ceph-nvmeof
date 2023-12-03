@@ -137,7 +137,7 @@ class GatewayServer:
             return
 
         try:
-            rpc_nvmf.nvmf_delete_subsystem(self.spdk_rpc_ping_client, DiscoveryService.DISCOVERY_NQN)
+            rpc_nvmf.nvmf_delete_subsystem(self.spdk_rpc_ping_client, GatewayConfig.DISCOVERY_NQN)
         except Exception as ex:
             self.logger.error(f"  Delete Discovery subsystem returned with error: \n {ex}")
             raise
