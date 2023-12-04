@@ -6,6 +6,7 @@
 //
 
 syntax = "proto3";
+import "google/protobuf/empty.proto";
 
 service Monitor {
 	// Called by the monitor client to set the gateway's group id
