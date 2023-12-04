@@ -176,6 +176,7 @@ class GatewayServer:
         cmd = [ monitor_client,
                 "--gateway-name", self.name,
                 "--gateway-address", self._gateway_address(),
+                "--monitor-address", self._monitor_address(),
                 '-c', '/etc/ceph/ceph.conf',
                 '-n', rados_id,
                 '-k', '/etc/ceph/keyring']
