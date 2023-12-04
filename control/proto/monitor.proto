@@ -8,7 +8,7 @@
 syntax = "proto3";
 import "google/protobuf/empty.proto";
 
-service Monitor {
+service MonitorGroup {
 	// Called by the monitor client to set the gateway's group id
 	rpc group_id(group_id_req) returns (google.protobuf.Empty) {}
 }

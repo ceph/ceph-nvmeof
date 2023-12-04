@@ -29,7 +29,7 @@ from .proto import gateway_pb2_grpc as pb2_grpc
 from .proto import monitor_pb2
 from .proto import monitor_pb2_grpc
 from .state import GatewayState, LocalGatewayState, OmapLock, OmapGatewayState, GatewayStateHandler
-from .grpc import GatewayService, MonitorService
+from .grpc import GatewayService, MonitorGroupService
 from .discovery import DiscoveryService
 from .config import GatewayConfig
 from .grpc import MAX_ANA_GROUPS
@@ -114,10 +114,10 @@ class GatewayServer:
     def _wait_for_group_id(self):
         """Waits for the monitor notification of this gatway's group id"""
         self.monitor_server = grpc.server(futures.ThreadPoolExecutor(max_workers=1))
-        monitor_pb2_grpc.add_MonitorServicer_to_server(MonitorService(self.set_group_id), self.monitor_server)
+        monitor_pb2_grpc.add_MonitorGroupServicer_to_server(MonitorGroupService(self.set_group_id), self.monitor_server)
         self.monitor_server.add_insecure_port(self._monitor_address())
         self.monitor_server.start()
-        self.logger.info(f"Monitor server is listening on {self._monitor_address()} for group id")
+        self.logger.info(f"MonitorGroup server is listening on {self._monitor_address()} for group id")
         self.monitor_event.wait()
         self.monitor_event = None
         self.logger.info("Stopping the monitor server...")
