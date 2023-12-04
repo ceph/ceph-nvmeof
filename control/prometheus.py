@@ -10,34 +10,53 @@
 import os
 import logging
 import spdk.rpc as rpc
-
-from prometheus_client.core import REGISTRY, GaugeMetricFamily, CounterMetricFamily
+from collections import namedtuple
+from prometheus_client.core import REGISTRY, GaugeMetricFamily, CounterMetricFamily, InfoMetricFamily
 from prometheus_client import start_http_server
 
 
-def start_exporter(spdk_rpc_client, port):
+RBD = namedtuple("RBD_Lookup", "pool image")
+
+
+def start_exporter(spdk_rpc_client, port, config):
     """Start the prometheus exporter and register the NVMeOF collector"""
-    start_http_server(port)
-    REGISTRY.register(NVMeOFCollector(spdk_rpc_client))
+    cert_filepath = config.get('mtls', 'server_cert')
+    key_filepath = config.get('mtls', 'server_key')
+    logger = logging.getLogger(__name__)
+    if os.path.exists(cert_filepath) and os.path.exists(key_filepath):
+        start_http_server(port=port, certfile=cert_filepath, keyfile=key_filepath)
+    else:
+        # fallback to http if the cert and key are unavailable
+        logger.warning("TLS cert and key files not found, falling back to HTTP support")
+        start_http_server(port)
+    REGISTRY.register(NVMeOFCollector(spdk_rpc_client, config))
 
 
 class NVMeOFCollector:
     """Provide a prometheus endpoint for nvmeof gateway statistics"""
 
-    def __init__(self, spdk_rpc_client):
+    def __init__(self, spdk_rpc_client, config):
         self.logger = logging.getLogger(__name__)
         self.spdk_rpc_client = spdk_rpc_client
         self.metric_prefix = "ceph_nvmeof"
+        self.gw_config = config
+        _bdev_pools = config.get_with_default('gateway', 'prometheus_bdev_pools', '')
+        self.bdev_pools = _bdev_pools.split(',') if _bdev_pools else []
+
+        if self.bdev_pools:
+            self.logger.info(f"Stats restricted to bdevs in the following pool(s): {','.join(self.bdev_pools)}")
+        else:
+            self.logger.info("Stats for all bdevs will be provided")
 
     def collect(self):
         self.logger.debug("Processing prometheus scrape request")
+        bdev_lookup = {}
 
         spdk_version = rpc.spdk_get_version(self.spdk_rpc_client)
-        spdk = GaugeMetricFamily(
-            f"{self.metric_prefix}_spdk_metadata",
-            "SPDK Version information", 
-            labels=["version"])
-        spdk.add_metric([spdk_version.get("version", "Unknown")],1)
+        spdk = InfoMetricFamily(
+            f"{self.metric_prefix}_spdk_info",
+            "SPDK Version information",
+            value={'version': spdk_version.get("version", "Unknown")}) 
         yield spdk
 
         bdev_info = rpc.bdev.bdev_get_bdevs(self.spdk_rpc_client)
@@ -51,15 +70,23 @@ class NVMeOFCollector:
             labels=["bdev_name"])
 
         for bdev in bdev_info:
-            bdev_size = bdev.get("block_size") * bdev.get("num_blocks")
-            bdev_capacity.add_metric([bdev.get("name")], bdev_size)
-            rbd_info = {}
+            bdev_name = bdev.get('name')
             try:
                 rbd_info = bdev["driver_specific"]["rbd"]
             except KeyError:
-                print("no rbd information present?")
-            else:
-                bdev_metadata.add_metric([bdev.get("name"), rbd_info.get("pool_name"), rbd_info.get("rbd_name")], 1)
+                self.logger.debug(f"no rbd information present for bdev {bdev.get('name')}, skipping")
+                continue
+
+            rbd_pool = rbd_info.get('pool_name')
+            rbd_image = rbd_info.get('rbd_name')
+            if self.bdev_pools:
+                if rbd_pool not in self.bdev_pools:
+                    continue
+
+            bdev_lookup[bdev_name] = RBD(rbd_pool, rbd_image)
+            bdev_metadata.add_metric([bdev_name, rbd_pool, rbd_image], 1)
+            bdev_size = bdev.get("block_size") * bdev.get("num_blocks")
+            bdev_capacity.add_metric([bdev.get("name")], bdev_size)
         
         yield bdev_capacity
         yield bdev_metadata
@@ -94,13 +121,18 @@ class NVMeOFCollector:
             labels=["bdev_name"])
 
         for bdev in bdev_io_stats.get("bdevs", []):
-            bdev_read_ops.add_metric([bdev.get("name")], bdev.get("num_read_ops", 0))
-            bdev_write_ops.add_metric([bdev.get("name")], bdev.get("num_write_ops", 0))
-            bdev_read_bytes.add_metric([bdev.get("name")], bdev.get("bytes_read", 0))
-            bdev_write_bytes.add_metric([bdev.get("name")], bdev.get("bytes_written", 0))
+            bdev_name = bdev.get('name')
+            if bdev_name not in bdev_lookup:
+                self.logger.debug(f"i/o stats for bdev {bdev_name} skipped. Either not an rbd bdev, or excluded by 'prometheus_bdev_pools'")
+                continue
+            
+            bdev_read_ops.add_metric([bdev_name], bdev.get("num_read_ops", 0))
+            bdev_write_ops.add_metric([bdev_name], bdev.get("num_write_ops", 0))
+            bdev_read_bytes.add_metric([bdev_name], bdev.get("bytes_read", 0))
+            bdev_write_bytes.add_metric([bdev_name], bdev.get("bytes_written", 0))
 
-            bdev_read_seconds.add_metric([bdev.get("name")], (bdev.get("read_latency_ticks") / tick_rate))
-            bdev_write_seconds.add_metric([bdev.get("name")], (bdev.get("write_latency_ticks") / tick_rate))
+            bdev_read_seconds.add_metric([bdev_name], (bdev.get("read_latency_ticks") / tick_rate))
+            bdev_write_seconds.add_metric([bdev_name], (bdev.get("write_latency_ticks") / tick_rate))
 
         yield bdev_read_ops
         yield bdev_write_ops
