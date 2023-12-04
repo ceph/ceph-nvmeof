@@ -34,7 +34,7 @@ from .state import GatewayState, GatewayStateHandler, OmapLock
 
 MAX_ANA_GROUPS = 32 # should match nvmeof gateway monitor ceph c++ code
 
-class MonitorService(monitor_pb2_grpc.MonitorServicer):
+class MonitorGroupService(monitor_pb2_grpc.MonitorGroupServicer):
     def __init__(self, set_group_id: Callable[[int], None]) -> None:
         self.set_group_id = set_group_id
 
