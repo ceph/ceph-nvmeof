@@ -17,12 +17,6 @@ RUN \
     --mount=type=cache,target=/var/cache/dnf \
     --mount=type=cache,target=/var/lib/dnf \
     dnf install -y python3-rados
-ENTRYPOINT ["python3", "-m", "control"]
-CMD ["-c", "/src/ceph-nvmeof.conf"]
-
-#------------------------------------------------------------------------------
-# Intermediate layer for Python set-up
-FROM base-$NVMEOF_TARGET AS python-intermediate
 
 RUN \
     --mount=type=cache,target=/var/cache/dnf \
@@ -46,6 +40,13 @@ RUN \
 
 COPY ceph-monitor/ceph-nvmeof /usr/local/bin/
 COPY ceph-monitor/libceph-common.so.2 /lib64/
+
+ENTRYPOINT ["python3", "-m", "control"]
+CMD ["-c", "/src/ceph-nvmeof.conf"]
+
+#------------------------------------------------------------------------------
+# Intermediate layer for Python set-up
+FROM base-$NVMEOF_TARGET AS python-intermediate
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONIOENCODING=UTF-8 \
