@@ -16,6 +16,7 @@ import grpc
 import json
 import logging
 import signal
+import threading
 from concurrent import futures
 from google.protobuf import json_format
 
@@ -25,10 +26,14 @@ import spdk.rpc.nvmf as rpc_nvmf
 
 from .proto import gateway_pb2 as pb2
 from .proto import gateway_pb2_grpc as pb2_grpc
+from .proto import monitor_pb2
+from .proto import monitor_pb2_grpc
 from .state import GatewayState, LocalGatewayState, OmapLock, OmapGatewayState, GatewayStateHandler
-from .grpc import GatewayService
+from .grpc import GatewayService, MonitorService
 from .discovery import DiscoveryService
 from .config import GatewayConfig
+from .grpc import MAX_ANA_GROUPS
+from typing import Callable
 
 def sigchld_handler(signum, frame):
     """Handle SIGCHLD, runs when a spdk process terminates."""
@@ -68,6 +73,7 @@ class GatewayServer:
         self.server = None
         self.discovery_pid = None
         self.spdk_rpc_socket_path = None
+        self.monitor_event = threading.Event()
 
         self.name = self.config.get("gateway", "name")
         if not self.name:
@@ -99,6 +105,25 @@ class GatewayServer:
 
         self.logger.info("Exiting the gateway process.")
 
+    def set_group_id(self, id: int):
+        self.logger.info(f"Gateway {self.name} group {id=}")
+        assert id >= 1 and id <= MAX_ANA_GROUPS
+        self.group_id = id
+        self.monitor_event.set()
+
+    def _wait_for_group_id(self):
+        """Waits for the monitor notification of this gatway's group id"""
+        self.monitor_server = grpc.server(futures.ThreadPoolExecutor(max_workers=1))
+        monitor_pb2_grpc.add_MonitorServicer_to_server(MonitorService(self.set_group_id), self.monitor_server)
+        self.monitor_server.add_insecure_port(self._monitor_address())
+        self.monitor_server.start()
+        self.logger.info(f"Monitor server is listening on {self._monitor_address()} for group id")
+        self.monitor_event.wait()
+        self.monitor_event = None
+        self.logger.info("Stopping the monitor server...")
+        self.monitor_server.stop(None)
+        self.monitor_server = None
+
     def serve(self):
         """Starts gateway server."""
         self.logger.debug("Starting serve")
@@ -109,6 +134,9 @@ class GatewayServer:
         # install SIGCHLD handler
         signal.signal(signal.SIGCHLD, sigchld_handler)
 
+        # wait for monitor notification of the group id
+        self._wait_for_group_id()
+
         # Start SPDK
         self._start_spdk(omap_state)
 
@@ -118,7 +146,7 @@ class GatewayServer:
         # Register service implementation with server
         gateway_state = GatewayStateHandler(self.config, local_state, omap_state, self.gateway_rpc_caller)
         omap_lock = OmapLock(omap_state, gateway_state)
-        self.gateway_rpc = GatewayService(self.config, gateway_state, omap_lock, self.spdk_rpc_client)
+        self.gateway_rpc = GatewayService(self.config, gateway_state, omap_lock, self.group_id, self.spdk_rpc_client)
         self.server = grpc.server(futures.ThreadPoolExecutor(max_workers=1))
         pb2_grpc.add_GatewayServicer_to_server(self.gateway_rpc, self.server)
 
@@ -189,6 +217,14 @@ class GatewayServer:
         # We need to enclose IPv6 addresses in brackets before concatenating a colon and port number to it
         gateway_addr = GatewayConfig.escape_address_if_ipv6(gateway_addr)
         return "{}:{}".format(gateway_addr, gateway_port)
+
+    def _monitor_address(self):
+        """Calculate gateway gRPC address string."""
+        monitor_addr = self.config.get("gateway", "addr")
+        monitor_port = self.config.get("gateway", "port") - 1
+        # We need to enclose IPv6 addresses in brackets before concatenating a colon and port number to it
+        monitor_addr = GatewayConfig.escape_address_if_ipv6(monitor_addr)
+        return "{}:{}".format(monitor_addr, monitor_port)
 
     def _add_server_listener(self):
         """Adds listener port to server."""

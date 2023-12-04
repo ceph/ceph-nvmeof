@@ -16,19 +16,31 @@ import logging
 import os
 import threading
 import errno
+from typing import Callable
 
 import spdk.rpc.bdev as rpc_bdev
 import spdk.rpc.nvmf as rpc_nvmf
 import spdk.rpc.log as rpc_log
 
 from google.protobuf import json_format
+from google.protobuf.empty_pb2 import Empty
 from .proto import gateway_pb2 as pb2
 from .proto import gateway_pb2_grpc as pb2_grpc
+from .proto import monitor_pb2
+from .proto import monitor_pb2_grpc
 from .config import GatewayConfig
 from .discovery import DiscoveryService
 from .state import GatewayState, GatewayStateHandler, OmapLock
 
-MAX_ANA_GROUPS = 4
+MAX_ANA_GROUPS = 32 # should match nvmeof gateway monitor ceph c++ code
+
+class MonitorService(monitor_pb2_grpc.MonitorServicer):
+    def __init__(self, set_group_id: Callable[[int], None]) -> None:
+        self.set_group_id = set_group_id
+
+    def group_id(self, request: monitor_pb2.group_id_req, context = None) -> Empty:
+        self.set_group_id(request.id)
+        return Empty()
 
 class GatewayEnumUtils:
     def get_value_from_key(e_type, keyval, ignore_case = False):
@@ -72,7 +84,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         spdk_rpc_client: Client of SPDK RPC server
     """
 
-    def __init__(self, config: GatewayConfig, gateway_state: GatewayStateHandler, omap_lock: OmapLock, spdk_rpc_client) -> None:
+    def __init__(self, config: GatewayConfig, gateway_state: GatewayStateHandler, omap_lock: OmapLock, group_id: int, spdk_rpc_client) -> None:
         """Constructor"""
         self.logger = logging.getLogger(__name__)
         ver = os.getenv("NVMEOF_VERSION")
@@ -104,6 +116,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         self.rpc_lock = threading.Lock()
         self.gateway_state = gateway_state
         self.omap_lock = omap_lock
+        self.group_id = group_id
         self.spdk_rpc_client = spdk_rpc_client
         self.gateway_name = self.config.get("gateway", "name")
         if not self.gateway_name:
@@ -341,8 +354,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
         if request.enable_ha == True  and request.ana_reporting == False:
             raise Exception(f"Validation Error: HA enabled but ANA-reporting is disabled ")
 
-        min_cntlid = self.config.getint_with_default("gateway", "min_controller_id", 1)
-        max_cntlid = self.config.getint_with_default("gateway", "max_controller_id", 65519)
+        # Assuming max of 32 gateways and protocol min 1 max 65519
+        offset = (self.group_id - 1) * 2040
+        min_cntlid = offset + 1
+        max_cntlid = offset + 2040
         if not request.serial_number:
             random.seed()
             randser = random.randint(2, 99999999999999)
