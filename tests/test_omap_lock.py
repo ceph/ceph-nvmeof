@@ -7,6 +7,7 @@ from google.protobuf import json_format
 from control.server import GatewayServer
 from control.proto import gateway_pb2 as pb2
 from control.proto import gateway_pb2_grpc as pb2_grpc
+from . import set_group_id
 import spdk.rpc.bdev as rpc_bdev
 
 image = "mytestdevimage"
@@ -37,18 +38,14 @@ def conn(config, request):
     configA.config["gateway"]["state_update_interval_sec"] = str(update_interval_sec)
     configA.config["gateway"]["omap_file_disable_unlock"] = str(disable_unlock)
     configA.config["gateway"]["omap_file_lock_duration"] = str(lock_duration)
-    configA.config["gateway"]["min_controller_id"] = "1"
-    configA.config["gateway"]["max_controller_id"] = "20000"
     configA.config["gateway"]["enable_spdk_discovery_controller"] = "True"
     configA.config["spdk"]["rpc_socket_name"] = "spdk_GatewayA.sock"
     configB = copy.deepcopy(configA)
     addr = configA.get("gateway", "addr")
     portA = configA.getint("gateway", "port")
-    portB = portA + 1
+    portB = portA + 2
     configB.config["gateway"]["name"] = "GatewayB"
     configB.config["gateway"]["port"] = str(portB)
-    configB.config["gateway"]["min_controller_id"] = "20001"
-    configB.config["gateway"]["max_controller_id"] = "40000"
     configB.config["spdk"]["rpc_socket_name"] = "spdk_GatewayB.sock"
     configB.config["spdk"]["tgt_cmd_extra_args"] = "-m 0x02"
 
@@ -58,10 +55,12 @@ def conn(config, request):
        GatewayServer(configB) as gatewayB,
     ):
         gatewayA.serve()
+        set_group_id(1, gatewayA)
         # Delete existing OMAP state
         gatewayA.gateway_rpc.gateway_state.delete_state()
         # Create new
         gatewayB.serve()
+        set_group_id(2, gatewayB)
 
         # Bind the client and Gateways A & B
         channelA = grpc.insecure_channel(f"{addr}:{portA}")
