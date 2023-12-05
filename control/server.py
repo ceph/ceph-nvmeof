@@ -107,7 +107,7 @@ class GatewayServer:
 
     def set_group_id(self, id: int):
         self.logger.info(f"Gateway {self.name} group {id=}")
-        assert id >= 1 and id <= MAX_ANA_GROUPS
+        assert id >= 0 and id < MAX_ANA_GROUPS
         self.group_id = id
         self.monitor_event.set()
 
