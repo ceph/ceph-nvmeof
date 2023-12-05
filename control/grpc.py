@@ -490,14 +490,17 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     grp_id = gs.grp_id
                     ana_state = "optimized" if gs.state == pb2.ana_state.OPTIMIZED else "inaccessible"
                     try:
-                        self.logger.info(f"SPDK nvmf_subsystem_listener_set_ana_state {nqn=} {listener=} {ana_state=} {grp_id=}")
+                        self.logger.info(f"set_ana_state nvmf_subsystem_listener_set_ana_state {nqn=} {listener=} {ana_state=} {grp_id=}")
                         ret = rpc_nvmf.nvmf_subsystem_listener_set_ana_state(
                             self.spdk_rpc_client,
                             nqn=nqn,
-                            listen_address=listener,
+                            trtype=listener.trtype,
+                            traddr=listener.traddr,
+                            trsvcid=listener.trsvcid,
+                            adrfam=listener.adrfam,
                             ana_state=ana_state,
                             anagrpid=grp_id)
-                        self.logger.info(f"SPDK nvmf_subsystem_listener_set_ana_state response {ret=}")
+                        self.logger.info(f"set_ana_state nvmf_subsystem_listener_set_ana_state response {ret=}")
                         if not ret:
                             raise Exception(f"nvmf_subsystem_listener_set_ana_state({nqn=}, {listener=}, {ana_state=}, {grp_id=}) error")
                     except Exception as ex:
@@ -730,7 +733,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                         trsvcid=request.trsvcid,
                         adrfam=request.adrfam,
                     )
-                    self.logger.info(f"create_listener: {ret}")
+                    self.logger.info(f"create_listener: nvmf_subsystem_add_listener {ret}")
                 else:
                     raise Exception(f"Gateway name must match current gateway"
                                     f" ({self.gateway_name})")
@@ -762,6 +765,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
             if enable_ha:
                   for x in range (MAX_ANA_GROUPS):
                        try:
+                          self.logger.info(f"create_listener nvmf_subsystem_listener_set_ana_state {request=} ana_state=inaccessible anagrpid={x+1}")
                           ret = rpc_nvmf.nvmf_subsystem_listener_set_ana_state(
                             self.spdk_rpc_client,
                             nqn=request.nqn,
@@ -771,6 +775,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                             trsvcid=request.trsvcid,
                             adrfam=request.adrfam,
                             anagrpid=(x+1) )
+                          self.logger.info(f"create_listener nvmf_subsystem_listener_set_ana_state response {ret=}")
                        except Exception as ex:
                             self.logger.error(f" set_listener_ana_state failed with: \n {ex}")
                             raise
