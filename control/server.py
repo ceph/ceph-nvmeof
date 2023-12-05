@@ -222,7 +222,7 @@ class GatewayServer:
     def _monitor_address(self):
         """Calculate gateway gRPC address string."""
         monitor_addr = self.config.get("gateway", "addr")
-        monitor_port = self.config.get("gateway", "port") - 1
+        monitor_port = self.config.getint_with_default("gateway", "port", 5500) - 1
         # We need to enclose IPv6 addresses in brackets before concatenating a colon and port number to it
         monitor_addr = GatewayConfig.escape_address_if_ipv6(monitor_addr)
         return "{}:{}".format(monitor_addr, monitor_port)
