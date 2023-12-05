@@ -476,7 +476,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         # Iterate over nqn_ana_states in ana_info
         for nas in ana_info.states:
             nqn = nas.nqn
-            prefix = f"{self.gateway_state.local.LISTENER_PREFIX}_{nqn}_{self.name}_"
+            prefix = f"{self.gateway_state.local.LISTENER_PREFIX}_{nqn}_{self.gateway_name}_"
             for listener_key in [key for key in state.keys() if key.startswith(prefix)]:
                 listener = json.loads(state[listener_key])
 
