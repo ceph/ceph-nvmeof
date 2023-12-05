@@ -477,8 +477,12 @@ class GatewayService(pb2_grpc.GatewayServicer):
         for nas in ana_info.states:
             nqn = nas.nqn
             prefix = f"{self.gateway_state.local.LISTENER_PREFIX}_{nqn}_{self.gateway_name}_"
-            for listener_key in [key for key in state.keys() if key.startswith(prefix)]:
+            listener_keys = [key for key in state.keys() if key.startswith(prefix)]
+            self.logger.info(f"Iterate over {nqn=} {prefix=} {listener_keys=}")
+
+            for listener_key in listener_keys:
                 listener = json.loads(state[listener_key])
+                self.logger.info(f"{listener_key=} {listener=}")
 
                 # Iterate over ana_group_state in nqn_ana_states
                 for gs in nas.states:
@@ -486,12 +490,14 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     grp_id = gs.grp_id
                     ana_state = "optimized" if gs.state == pb2.ana_state.OPTIMIZED else "inaccessible"
                     try:
+                        self.logger.info(f"SPDK nvmf_subsystem_listener_set_ana_state {nqn=} {listener=} {ana_state=} {grp_id=}")
                         ret = rpc_nvmf.nvmf_subsystem_listener_set_ana_state(
                             self.spdk_rpc_client,
                             nqn=nqn,
                             listen_address=listener,
                             ana_state=ana_state,
                             anagrpid=grp_id)
+                        self.logger.info(f"SPDK nvmf_subsystem_listener_set_ana_state response {ret=}")
                         if not ret:
                             raise Exception(f"nvmf_subsystem_listener_set_ana_state({nqn=}, {listener=}, {ana_state=}, {grp_id=}) error")
                     except Exception as ex:
