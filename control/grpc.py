@@ -323,7 +323,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
             raise Exception(f"Can't create a discovery subsystem")
 
         # Assuming max of 32 gateways and protocol min 1 max 65519
-        offset = (self.group_id - 1) * 2040
+        offset = self.group_id * 2040
         min_cntlid = offset + 1
         max_cntlid = offset + 2040
         if not request.serial_number:
