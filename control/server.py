@@ -134,6 +134,9 @@ class GatewayServer:
         # install SIGCHLD handler
         signal.signal(signal.SIGCHLD, sigchld_handler)
 
+        # Start monitor client
+        self._start_monitor_client()
+
         # wait for monitor notification of the group id
         self._wait_for_group_id()
 
@@ -158,9 +161,6 @@ class GatewayServer:
 
         # Start server
         self.server.start()
-
-        # Start monitor client
-        self._start_monitor_client()
 
     def _start_monitor_client(self):
         """Runs CEPH NVMEOF Monitor Client."""
