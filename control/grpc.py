@@ -494,10 +494,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
                         ret = rpc_nvmf.nvmf_subsystem_listener_set_ana_state(
                             self.spdk_rpc_client,
                             nqn=nqn,
-                            trtype=listener.trtype,
-                            traddr=listener.traddr,
-                            trsvcid=listener.trsvcid,
-                            adrfam=listener.adrfam,
+                            trtype=listener['trtype'],
+                            traddr=listener['traddr'],
+                            trsvcid=listener['trsvcid'],
+                            adrfam=listener['adrfam'],
                             ana_state=ana_state,
                             anagrpid=grp_id)
                         self.logger.info(f"set_ana_state nvmf_subsystem_listener_set_ana_state response {ret=}")
