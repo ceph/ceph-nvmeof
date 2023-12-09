@@ -18,7 +18,7 @@ def create_resource_by_index(i):
     bdev = f"{bdev_prefix}_{i}"
     cli(["create_bdev", "-i", image, "-p", pool, "-b", bdev])
     subsystem = f"{subsystem_prefix}{i}"
-    cli(["create_subsystem", "-n", subsystem ])
+    cli(["create_subsystem", "-n", subsystem, "-a", "-t" ])
     cli(["add_namespace", "-n", subsystem, "-b", bdev])
 
 def check_resource_by_index(i, caplog):
@@ -39,6 +39,10 @@ def test_create_get_subsys(caplog, config):
             create_resource_by_index(i)
             assert "failed" not in caplog.text.lower()
 
+        # add a listener
+        cli(["create_listener", "-n", f"{subsystem_prefix}0", "-g", gateway.name, "-a", "127.0.0.1", "-s", "5001"])
+        assert f"auto HA state: AUTO_HA_UNSET" in caplog.text
+
     caplog.clear()
 
     # restart the gateway here
@@ -51,6 +55,7 @@ def test_create_get_subsys(caplog, config):
             time.sleep(0.1)
 
         time.sleep(20)     # Make sure update() is over
+        assert f"auto HA state: AUTO_HA_ON" in caplog.text
         caplog.clear()
         cli(["get_subsystems"])
         assert "Exception" not in caplog.text
