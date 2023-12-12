@@ -37,6 +37,12 @@ enum LogLevel {
     DEBUG = 5;
 }
 
+enum AutoHAState {
+    AUTO_HA_UNSET = 0;
+    AUTO_HA_OFF = 1;
+    AUTO_HA_ON = 2;
+}
+
 service Gateway {
 	// Creates a bdev from an RBD image
 	rpc create_bdev(create_bdev_req) returns (bdev) {}
@@ -148,6 +154,7 @@ message create_listener_req {
 	AddressFamily adrfam = 4;
 	string traddr = 5;
 	string trsvcid = 6;
+	AutoHAState auto_ha_state = 7;
 }
 
 message delete_listener_req {

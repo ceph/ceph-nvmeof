@@ -333,7 +333,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         """Creates a subsystem."""
 
         self.logger.info(
-            f"Received request to create subsystem {request.subsystem_nqn}, ana reporting: {request.ana_reporting}, context: {context}")
+            f"Received request to create subsystem {request.subsystem_nqn}, enable_ha: {request.enable_ha}, ana reporting: {request.ana_reporting}, context: {context}")
 
         if self.is_discovery_nqn(request.subsystem_nqn):
             raise Exception(f"Can't create a discovery subsystem")
@@ -679,9 +679,13 @@ class GatewayService(pb2_grpc.GatewayServicer):
         if adrfam == None:
             raise Exception(f"Unknown address family {request.adrfam}")
 
+        auto_ha_state = GatewayEnumUtils.get_key_from_value(pb2.AutoHAState, request.auto_ha_state)
+        if auto_ha_state == None:
+            raise Exception(f"Unknown auto HA state {request.auto_ha_state}")
+
         self.logger.info(f"Received request to create {request.gateway_name}"
                          f" {trtype} {adrfam} listener for {request.nqn} at"
-                         f" {traddr}:{request.trsvcid}, context: {context}")
+                         f" {traddr}:{request.trsvcid}, auto HA state: {auto_ha_state}, context: {context}")
 
         if self.is_discovery_nqn(request.nqn):
             raise Exception(f"Can't create a listener for a discovery subsystem")
@@ -722,23 +726,35 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     context.set_details(f"{ex}")
                 return pb2.req_status()
 
-            state = self.gateway_state.local.get_state()
             enable_ha = False
-            subsys_str = state.get(GatewayState.build_subsystem_key(request.nqn))
-            if subsys_str:
-                self.logger.debug(f"value of sub-system: {subsys_str}")
-                try:
-                    subsys_dict = json.loads(subsys_str)
+            if auto_ha_state == "AUTO_HA_UNSET":
+                if context == None:
+                    self.logger.error(f"auto_ha_state is not set but we are in an update()")
+                state = self.gateway_state.local.get_state()
+                subsys_str = state.get(GatewayState.build_subsystem_key(request.nqn))
+                if subsys_str:
+                    self.logger.debug(f"value of sub-system: {subsys_str}")
                     try:
-                        enable_ha = subsys_dict["enable_ha"]
-                    except KeyError:
-                        enable_ha = False
-                    self.logger.info(f"enable_ha: {enable_ha}")
-                except Exception as ex:
-                    self.logger.error(f"Got exception trying to parse subsystem {request.nqn}: {ex}")
-                    pass
+                        subsys_dict = json.loads(subsys_str)
+                        try:
+                            enable_ha = subsys_dict["enable_ha"]
+                            auto_ha_state_key = "AUTO_HA_ON" if enable_ha else "AUTO_HA_OFF"
+                            request.auto_ha_state = GatewayEnumUtils.get_value_from_key(pb2.AutoHAState, auto_ha_state_key)
+                        except KeyError:
+                            enable_ha = False
+                        self.logger.info(f"enable_ha: {enable_ha}")
+                    except Exception as ex:
+                        self.logger.error(f"Got exception trying to parse subsystem {request.nqn}: {ex}")
+                        pass
+                else:
+                    self.logger.info(f"No subsystem for {request.nqn}")
             else:
-                self.logger.info(f"No subsystem for {request.nqn}")
+                if context != None:
+                    self.logger.error(f"auto_ha_state is set to {auto_ha_state} but we are not in an update()")
+                if auto_ha_state == "AUTO_HA_OFF":
+                    enable_ha = False
+                elif auto_ha_state == "AUTO_HA_ON":
+                    enable_ha = True
 
             if enable_ha:
                   for x in range (MAX_ANA_GROUPS):
@@ -753,7 +769,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                             adrfam=adrfam,
                             anagrpid=(x+1) )
                        except Exception as ex:
-                            self.logger.error(f" set_listener_ana_state failed with: \n {ex}")
+                            self.logger.error(f"set_listener_ana_state failed with:\n{ex}")
                             raise
 
             if context:
@@ -766,8 +782,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                                     trtype, request.traddr,
                                                     request.trsvcid, json_req)
                 except Exception as ex:
-                    self.logger.error(
-                        f"Error persisting add_listener {request.trsvcid}: {ex}")
+                    self.logger.error(f"Error persisting add_listener {request.trsvcid}: {ex}")
                     raise
 
         return pb2.req_status(status=ret)

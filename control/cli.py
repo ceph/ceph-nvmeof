@@ -317,6 +317,7 @@ class GatewayClient:
                 adrfam=adrfam,
                 traddr=traddr,
                 trsvcid=args.trsvcid,
+                auto_ha_state="AUTO_HA_UNSET",
             )
             ret = self.stub.create_listener(req)
             self.logger.info(f"Created {args.subnqn} listener at {traddr}:{args.trsvcid}: {ret.status}")
