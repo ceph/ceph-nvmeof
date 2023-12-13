@@ -29,7 +29,6 @@ from .proto import gateway_pb2_grpc as pb2_grpc
 from .proto import monitor_pb2
 from .proto import monitor_pb2_grpc
 from .config import GatewayConfig
-from .discovery import DiscoveryService
 from .state import GatewayState, GatewayStateHandler, OmapLock
 from collections import defaultdict
 
