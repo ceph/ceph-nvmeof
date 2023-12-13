@@ -842,7 +842,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                             self.spdk_rpc_client,
                             nqn=request.nqn,
                             ana_state= _ana_state,
-                            trtype=request.trtype,
+                            trtype=trtype,
                             traddr=request.traddr,
                             trsvcid=request.trsvcid,
                             adrfam=adrfam,
