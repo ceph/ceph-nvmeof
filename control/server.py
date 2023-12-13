@@ -131,7 +131,7 @@ class GatewayServer:
 
         # Start the prometheus endpoint if enabled by the config
         if self.config.getboolean_with_default("gateway", "enable_prometheus_exporter", False):
-            port = self.config.getint_with_default("gateway", "prometheus_port", 9202)
+            port = self.config.getint_with_default("gateway", "prometheus_port", 10008)
             self.logger.info(f"Starting prometheus exporter. Listening on port {port}")
             start_exporter(self.spdk_rpc_client, port, self.config)
         else:
