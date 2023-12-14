@@ -8,18 +8,36 @@
 #
 
 import os
+import time
 import logging
+import threading
 import spdk.rpc as rpc
-from collections import namedtuple
+
 from prometheus_client.core import REGISTRY, GaugeMetricFamily, CounterMetricFamily, InfoMetricFamily
 from prometheus_client import start_http_server
+from typing import NamedTuple
 
 
-RBD = namedtuple("RBD_Lookup", "pool image")
+class RBD(NamedTuple):
+    pool: str
+    namespace: str
+    image: str
+
+
+def timer(method):
+    def call(self, *args, **kwargs):
+        st = time.time()
+        result = method(self, *args, **kwargs)
+        elapsed = time.time() - st
+        if hasattr(self, 'method_timings'):
+            self.method_timings[method.__name__] = elapsed
+        return result
+    return call
 
 
 def start_exporter(spdk_rpc_client, port, config):
     """Start the prometheus exporter and register the NVMeOF collector"""
+
     cert_filepath = config.get('mtls', 'server_cert')
     key_filepath = config.get('mtls', 'server_key')
     logger = logging.getLogger(__name__)
@@ -43,154 +61,224 @@ class NVMeOFCollector:
         _bdev_pools = config.get_with_default('gateway', 'prometheus_bdev_pools', '')
         self.bdev_pools = _bdev_pools.split(',') if _bdev_pools else []
 
+        self.start = time.time()
+        self.interval = config.getint_with_default('gateway', 'prometheus_stats_inteval', 10)
+        self.lock = threading.Lock()
+        self.event = threading.Event()
+        self.spdk_version = {}
+        self.bdev_info = []
+        self.bdev_io_stats = {}
+        self.spdk_thread_stats = {}
+        self.subsystems = []
+        self.method_timings = {}
+
         if self.bdev_pools:
             self.logger.info(f"Stats restricted to bdevs in the following pool(s): {','.join(self.bdev_pools)}")
         else:
             self.logger.info("Stats for all bdevs will be provided")
 
+        self.collector = threading.Thread(target=self._collect)
+        self.collector.daemon = True
+        self.collector.start()
+
+    @timer
+    def _get_version(self):
+        self.spdk_version = rpc.spdk_get_version(self.spdk_rpc_client)
+
+    @timer
+    def _get_bdev_info(self):
+        self.bdev_info = rpc.bdev.bdev_get_bdevs(self.spdk_rpc_client)
+
+    @timer
+    def _get_bdev_io_stats(self):
+        self.bdev_io_stats = rpc.bdev.bdev_get_iostat(self.spdk_rpc_client)
+
+    @timer
+    def _get_spdk_thread_stats(self):
+        self.spdk_thread_stats = rpc.app.thread_get_stats(self.spdk_rpc_client)
+        
+    @timer
+    def _get_subsystems(self):
+        self.subsystems = rpc.nvmf.nvmf_get_subsystems(self.spdk_rpc_client)
+
+    def _collect(self):
+        """Collector thread refreshing the SPDK stats"""
+        self.logger.info(f"Starting SPDK collector thread, refreshing every {self.interval} secs")
+
+        while not self.event.wait(self.interval):
+            with self.lock:
+                self.logger.debug("Refreshing stats from SPDK")
+                start_time = time.time()
+                self._get_version()
+                self._get_bdev_info()
+                self._get_bdev_io_stats()
+                self._get_spdk_thread_stats()
+                self._get_subsystems
+                elapsed = time.time() - start_time
+
+                interval_used = elapsed / self.interval
+                if interval_used > 1:
+                    self.logger.error(f"Stats refresh time > interval time of {self.interval} secs")
+                elif interval_used > 0.8:
+                    self.logger.warning("Stats refresh is close to exceeding the interval (>80%)")
+                else:
+                    self.logger.debug(f"Stats refresh completed in {elapsed:.3f} secs.")
+
     def collect(self):
+        """Generator function returning SPDK data in Prometheus exposition format
+        
+        This method is called when the client receives a scrape request from the 
+        Prometheus Server. All rpc calls are made in a separate thread which updates
+        on an interval basis, so repeated calls from multiple Prometheus Servers will
+        only see data from the last collection interval.
+        """
         self.logger.debug("Processing prometheus scrape request")
         bdev_lookup = {}
 
-        spdk_version = rpc.spdk_get_version(self.spdk_rpc_client)
-        spdk = InfoMetricFamily(
-            f"{self.metric_prefix}_spdk_info",
-            "SPDK Version information",
-            value={'version': spdk_version.get("version", "Unknown")}) 
-        yield spdk
+        with self.lock:
 
-        bdev_info = rpc.bdev.bdev_get_bdevs(self.spdk_rpc_client)
-        bdev_metadata = GaugeMetricFamily(
-            f"{self.metric_prefix}_bdev_metadata", 
-            "BDEV Metadata", 
-            labels=["bdev_name","pool_name","rbd_name"])
-        bdev_capacity = GaugeMetricFamily(
-            f"{self.metric_prefix}_bdev_capacity_bytes", 
-            "BDEV Capacity", 
-            labels=["bdev_name"])
+            spdk = InfoMetricFamily(
+                f"{self.metric_prefix}_spdk_info",
+                "SPDK Version information",
+                value={'version': self.spdk_version.get("version", "Unknown")}) 
+            yield spdk
 
-        for bdev in bdev_info:
-            bdev_name = bdev.get('name')
-            try:
-                rbd_info = bdev["driver_specific"]["rbd"]
-            except KeyError:
-                self.logger.debug(f"no rbd information present for bdev {bdev.get('name')}, skipping")
-                continue
+            bdev_metadata = GaugeMetricFamily(
+                f"{self.metric_prefix}_bdev_metadata", 
+                "BDEV Metadata", 
+                labels=["bdev_name","pool_name", "namespace", "rbd_name"])
+            bdev_capacity = GaugeMetricFamily(
+                f"{self.metric_prefix}_bdev_capacity_bytes", 
+                "BDEV Capacity", 
+                labels=["bdev_name"])
 
-            rbd_pool = rbd_info.get('pool_name')
-            rbd_image = rbd_info.get('rbd_name')
-            if self.bdev_pools:
-                if rbd_pool not in self.bdev_pools:
+            for bdev in self.bdev_info:
+                bdev_name = bdev.get('name')
+                try:
+                    rbd_info = bdev["driver_specific"]["rbd"]
+                except KeyError:
+                    self.logger.debug(f"no rbd information present for bdev {bdev.get('name')}, skipping")
                     continue
 
-            bdev_lookup[bdev_name] = RBD(rbd_pool, rbd_image)
-            bdev_metadata.add_metric([bdev_name, rbd_pool, rbd_image], 1)
-            bdev_size = bdev.get("block_size") * bdev.get("num_blocks")
-            bdev_capacity.add_metric([bdev.get("name")], bdev_size)
-        
-        yield bdev_capacity
-        yield bdev_metadata
-     
-        bdev_io_stats = rpc.bdev.bdev_get_iostat(self.spdk_rpc_client)
+                rbd_pool = rbd_info.get('pool_name')
+                rbd_namespace = rbd_info.get('namespace', '') # namespace is not currently present
+                rbd_image = rbd_info.get('rbd_name')
+                if self.bdev_pools:
+                    if rbd_pool not in self.bdev_pools:
+                        continue
 
-        tick_rate = bdev_io_stats.get("tick_rate")
-
-        bdev_read_ops = CounterMetricFamily(
-            f"{self.metric_prefix}_bdev_reads_completed_total", 
-            "Total number of read operations completed", 
-            labels=["bdev_name"])
-        bdev_write_ops = CounterMetricFamily(
-            f"{self.metric_prefix}_bdev_writes_completed_total", 
-            "Total number of write operations completed", 
-            labels=["bdev_name"])
-        bdev_read_bytes = CounterMetricFamily(
-            f"{self.metric_prefix}_bdev_read_bytes_total", 
-            "Total number of bytes read successfully", 
-            labels=["bdev_name"])
-        bdev_write_bytes = CounterMetricFamily(
-            f"{self.metric_prefix}_bdev_written_bytes_total", 
-            "Total number of bytes written successfully", 
-            labels=["bdev_name"])
-        bdev_read_seconds = CounterMetricFamily(
-            f"{self.metric_prefix}_bdev_read_seconds_total", 
-            "Total time spent servicing READ I/O", 
-            labels=["bdev_name"])
-        bdev_write_seconds = CounterMetricFamily(
-            f"{self.metric_prefix}_bdev_write_seconds_total", 
-            "Total time spent servicing WRITE I/O", 
-            labels=["bdev_name"])
-
-        for bdev in bdev_io_stats.get("bdevs", []):
-            bdev_name = bdev.get('name')
-            if bdev_name not in bdev_lookup:
-                self.logger.debug(f"i/o stats for bdev {bdev_name} skipped. Either not an rbd bdev, or excluded by 'prometheus_bdev_pools'")
-                continue
+                bdev_lookup[bdev_name] = RBD(rbd_pool, rbd_namespace, rbd_image)
+                bdev_metadata.add_metric([bdev_name, rbd_pool, rbd_namespace, rbd_image], 1)
+                bdev_size = bdev.get("block_size") * bdev.get("num_blocks")
+                bdev_capacity.add_metric([bdev.get("name")], bdev_size)
             
-            bdev_read_ops.add_metric([bdev_name], bdev.get("num_read_ops", 0))
-            bdev_write_ops.add_metric([bdev_name], bdev.get("num_write_ops", 0))
-            bdev_read_bytes.add_metric([bdev_name], bdev.get("bytes_read", 0))
-            bdev_write_bytes.add_metric([bdev_name], bdev.get("bytes_written", 0))
-
-            bdev_read_seconds.add_metric([bdev_name], (bdev.get("read_latency_ticks") / tick_rate))
-            bdev_write_seconds.add_metric([bdev_name], (bdev.get("write_latency_ticks") / tick_rate))
-
-        yield bdev_read_ops
-        yield bdev_write_ops
-        yield bdev_read_bytes
-        yield bdev_write_bytes
-        yield bdev_read_seconds
-        yield bdev_write_seconds
-
-        thread_stats = rpc.app.thread_get_stats(self.spdk_rpc_client)
-        reactor_utilization = CounterMetricFamily(
-            f"{self.metric_prefix}_reactor_seconds_total", 
-            "time reactor thread active with I/O", 
-            labels=["name", "mode"])
+            yield bdev_capacity
+            yield bdev_metadata
         
-        for spdk_thread in thread_stats.get("threads", []):
-            if "poll" not in spdk_thread["name"]:
-                continue
-            reactor_utilization.add_metric([spdk_thread.get("name"), "busy"], (spdk_thread.get("busy") / tick_rate))
-            reactor_utilization.add_metric([spdk_thread.get("name"), "idle"], (spdk_thread.get("idle") / tick_rate))
-       
-        yield reactor_utilization 
-             
-        subsystems = rpc.nvmf.nvmf_get_subsystems(self.spdk_rpc_client)
-        subsystem_metadata = GaugeMetricFamily(
-            f"{self.metric_prefix}_subsystem_metadata", 
-            "Metadata describing the subsystem configuration", 
-            labels=["nqn", "serial_number", "model_number", "allow_any_host"])
-        subsystem_listeners = GaugeMetricFamily(
-            f"{self.metric_prefix}_subsystem_listener_count", 
-            "Number of listener addresses used by the subsystem", 
-            labels=["nqn"])
-        subsystem_host_count = GaugeMetricFamily(
-            f"{self.metric_prefix}_subsystem_host_count", 
-            "Number of hosts defined to the subsystem", 
-            labels=["nqn"])
-        subsystem_namespace_limit = GaugeMetricFamily(
-            f"{self.metric_prefix}_subsystem_namespace_limit", 
-            "Maximum namespaces supported", 
-            labels=["nqn"])
-        subsystem_namespace_metadata = GaugeMetricFamily(
-            f"{self.metric_prefix}_subsystem_namespace_metadata", 
-            "Namespace information for the subsystem", 
-            labels=["nqn", "nsid", "bdev_name", "name"])
+            tick_rate = self.bdev_io_stats.get("tick_rate")
 
-        for subsys in subsystems:
-            nqn = subsys.get("nqn", "")
-            if not nqn or "discovery" in nqn:
-                continue
-            subsys_is_open = "yes" if subsys.get("allow_any_host") else "no"
-            subsystem_metadata.add_metric([nqn, subsys.get("serial_number"), subsys.get("model_number"), subsys_is_open], 1)
-            subsystem_listeners.add_metric([nqn], len(subsys.get("listen_addresses", [])))
-            subsystem_host_count.add_metric([nqn], len(subsys.get("hosts", [])))
-            subsystem_namespace_limit.add_metric([nqn], subsys.get("max_namespaces"))
-            for ns in subsys.get("namespaces", []):
-                subsystem_namespace_metadata.add_metric([nqn, str(ns.get("nsid")), ns.get("bdev_name"), ns.get("name")],1)
+            bdev_read_ops = CounterMetricFamily(
+                f"{self.metric_prefix}_bdev_reads_completed_total", 
+                "Total number of read operations completed", 
+                labels=["bdev_name"])
+            bdev_write_ops = CounterMetricFamily(
+                f"{self.metric_prefix}_bdev_writes_completed_total", 
+                "Total number of write operations completed", 
+                labels=["bdev_name"])
+            bdev_read_bytes = CounterMetricFamily(
+                f"{self.metric_prefix}_bdev_read_bytes_total", 
+                "Total number of bytes read successfully", 
+                labels=["bdev_name"])
+            bdev_write_bytes = CounterMetricFamily(
+                f"{self.metric_prefix}_bdev_written_bytes_total", 
+                "Total number of bytes written successfully", 
+                labels=["bdev_name"])
+            bdev_read_seconds = CounterMetricFamily(
+                f"{self.metric_prefix}_bdev_read_seconds_total", 
+                "Total time spent servicing READ I/O", 
+                labels=["bdev_name"])
+            bdev_write_seconds = CounterMetricFamily(
+                f"{self.metric_prefix}_bdev_write_seconds_total", 
+                "Total time spent servicing WRITE I/O", 
+                labels=["bdev_name"])
 
-        yield subsystem_metadata
-        yield subsystem_listeners
-        yield subsystem_host_count
-        yield subsystem_namespace_limit
-        yield subsystem_namespace_metadata
+            for bdev in self.bdev_io_stats.get("bdevs", []):
+                bdev_name = bdev.get('name')
+                if bdev_name not in bdev_lookup:
+                    self.logger.debug(f"i/o stats for bdev {bdev_name} skipped. Either not an rbd bdev, or excluded by 'prometheus_bdev_pools'")
+                    continue
+                
+                bdev_read_ops.add_metric([bdev_name], bdev.get("num_read_ops"))
+                bdev_write_ops.add_metric([bdev_name], bdev.get("num_write_ops"))
+                bdev_read_bytes.add_metric([bdev_name], bdev.get("bytes_read"))
+                bdev_write_bytes.add_metric([bdev_name], bdev.get("bytes_written"))
+
+                bdev_read_seconds.add_metric([bdev_name], (bdev.get("read_latency_ticks") / tick_rate))
+                bdev_write_seconds.add_metric([bdev_name], (bdev.get("write_latency_ticks") / tick_rate))
+
+            yield bdev_read_ops
+            yield bdev_write_ops
+            yield bdev_read_bytes
+            yield bdev_write_bytes
+            yield bdev_read_seconds
+            yield bdev_write_seconds
+
+            reactor_utilization = CounterMetricFamily(
+                f"{self.metric_prefix}_reactor_seconds_total", 
+                "time reactor thread active with I/O", 
+                labels=["name", "mode"])
+            
+            for spdk_thread in self.spdk_thread_stats.get("threads", []):
+                if "poll" not in spdk_thread["name"]:
+                    continue
+                reactor_utilization.add_metric([spdk_thread.get("name"), "busy"], (spdk_thread.get("busy") / tick_rate))
+                reactor_utilization.add_metric([spdk_thread.get("name"), "idle"], (spdk_thread.get("idle") / tick_rate))
+        
+            yield reactor_utilization 
+                
+            subsystem_metadata = GaugeMetricFamily(
+                f"{self.metric_prefix}_subsystem_metadata", 
+                "Metadata describing the subsystem configuration", 
+                labels=["nqn", "serial_number", "model_number", "allow_any_host"])
+            subsystem_listeners = GaugeMetricFamily(
+                f"{self.metric_prefix}_subsystem_listener_count", 
+                "Number of listener addresses used by the subsystem", 
+                labels=["nqn"])
+            subsystem_host_count = GaugeMetricFamily(
+                f"{self.metric_prefix}_subsystem_host_count", 
+                "Number of hosts defined to the subsystem", 
+                labels=["nqn"])
+            subsystem_namespace_limit = GaugeMetricFamily(
+                f"{self.metric_prefix}_subsystem_namespace_limit", 
+                "Maximum namespaces supported", 
+                labels=["nqn"])
+            subsystem_namespace_metadata = GaugeMetricFamily(
+                f"{self.metric_prefix}_subsystem_namespace_metadata", 
+                "Namespace information for the subsystem", 
+                labels=["nqn", "nsid", "bdev_name", "name"])
+
+            for subsys in self.subsystems:
+                nqn = subsys.get("nqn", "")
+                if not nqn or "discovery" in nqn:
+                    continue
+                subsys_is_open = "yes" if subsys.get("allow_any_host") else "no"
+                subsystem_metadata.add_metric([nqn, subsys.get("serial_number"), subsys.get("model_number"), subsys_is_open], 1)
+                subsystem_listeners.add_metric([nqn], len(subsys.get("listen_addresses", [])))
+                subsystem_host_count.add_metric([nqn], len(subsys.get("hosts", [])))
+                subsystem_namespace_limit.add_metric([nqn], subsys.get("max_namespaces"))
+                for ns in subsys.get("namespaces", []):
+                    subsystem_namespace_metadata.add_metric([nqn, str(ns.get("nsid")), ns.get("bdev_name"), ns.get("name")],1)
+
+            yield subsystem_metadata
+            yield subsystem_listeners
+            yield subsystem_host_count
+            yield subsystem_namespace_limit
+            yield subsystem_namespace_metadata
+
+            method_runtimes = GaugeMetricFamily(
+                f"{self.metric_prefix}_rpc_method_seconds", 
+                "Run times of the RPC method calls", 
+                labels=["method"])
+            for name, value in self.method_timings.items():
+                method_runtimes.add_metric([name], value)
+            yield method_runtimes
