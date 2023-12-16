@@ -14,8 +14,11 @@ import threading
 import spdk.rpc as rpc
 
 from prometheus_client.core import REGISTRY, GaugeMetricFamily, CounterMetricFamily, InfoMetricFamily
-from prometheus_client import start_http_server
+from prometheus_client import start_http_server, GC_COLLECTOR
 from typing import NamedTuple
+
+COLLECTION_ELAPSED_WARNING = 0.8   # Percentage of the refresh interval before a warning message is issued
+REGISTRY.unregister(GC_COLLECTOR)  # Turn of the garbage collector metrics
 
 
 class RBD(NamedTuple):
@@ -42,10 +45,11 @@ def start_exporter(spdk_rpc_client, port, config):
     key_filepath = config.get('mtls', 'server_key')
     logger = logging.getLogger(__name__)
     if os.path.exists(cert_filepath) and os.path.exists(key_filepath):
+        logger.info("Prometheus exporter endpoint mode is https")
         start_http_server(port=port, certfile=cert_filepath, keyfile=key_filepath)
     else:
         # fallback to http if the cert and key are unavailable
-        logger.warning("TLS cert and key files not found, falling back to HTTP support")
+        logger.warning("Prometheus exporter endpoint mode is http. TLS cert and key files not found.")
         start_http_server(port)
     REGISTRY.register(NVMeOFCollector(spdk_rpc_client, config))
 
@@ -116,11 +120,10 @@ class NVMeOFCollector:
                 self._get_subsystems
                 elapsed = time.time() - start_time
 
-                interval_used = elapsed / self.interval
-                if interval_used > 1:
+                if elapsed > self.interval:
                     self.logger.error(f"Stats refresh time > interval time of {self.interval} secs")
-                elif interval_used > 0.8:
-                    self.logger.warning("Stats refresh is close to exceeding the interval (>80%)")
+                elif elapsed > self.interval * COLLECTION_ELAPSED_WARNING:
+                    self.logger.warning(f"Stats refresh of {elapsed:.2f}s is close to exceeding the interval {self.interval}s")
                 else:
                     self.logger.debug(f"Stats refresh completed in {elapsed:.3f} secs.")
 
