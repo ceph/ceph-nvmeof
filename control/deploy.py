@@ -1,12 +1,3 @@
-#
-#  Copyright (c) 2021 International Business Machines
-#  All rights reserved.
-#
-#  SPDX-License-Identifier: LGPL-3.0-or-later
-#
-#  Authors: anita.shekar@ibm.com, sandy.kaur@ibm.com
-#
-
 import logging
 import argparse
 #from .server import GatewayServer
@@ -29,7 +20,7 @@ class RadosConn():
        # self.version = 1
         self.logger = logging.getLogger(__name__)
         self.watch = None
-       
+
        # self.ceph_fsid = None
 
         try:
@@ -68,12 +59,12 @@ class RadosConn():
         conn = rados.Rados(conffile=ceph_conf, rados_id=rados_id)
         conn.connect()
         print ("connected!")
+        self.conn = conn
        # self.fetch_and_display_ceph_version(conn)
         ioctx = conn.open_ioctx(ceph_pool)
-        conn.mon_command('{"prefix":"nvme-gw create","ids":["GW1","GW2", "GW3"]}', b'')
         return ioctx
 
-    
+
 
 
 if __name__ == '__main__':
@@ -81,7 +72,7 @@ if __name__ == '__main__':
     logging.basicConfig()
     logger = logging.getLogger()
     logger.setLevel(logging.DEBUG)
-    print("Hello world from deploy")
+    print("deploy started ")
     parser = argparse.ArgumentParser(prog="python3 -m control.deploy",
                                      description="sends Gateway deployment command to monitor",
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -92,7 +83,25 @@ if __name__ == '__main__':
         type=str,
         help="Path to config file",
     )
+    parser.add_argument(
+        "-D",
+        "--deployment",
+        type=str,
+        help="Create set of Gateway names",
+    )
+
     args = parser.parse_args()
     config = GatewayConfig(args.config)
+    gw_str = args.deployment
+    print (f"{config=} {gw_str=}")
 
-    conn = RadosConn(config)
+    rads = RadosConn(config)
+    #gw_str = '"GW1","GW2", "GW3"'
+    
+    #rads.conn.mon_command('{"prefix":"nvme-gw create","ids":[' + gw_str + ']}', b'')
+    
+    rads.conn.mon_command('{"prefix":"nvme-gw delete","ids":[' + gw_str + ']}', b'')
+
+  # config.get("ceph", "pool")
+
+
