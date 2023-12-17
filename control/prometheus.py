@@ -38,20 +38,41 @@ def timer(method):
     return call
 
 
-def start_exporter(spdk_rpc_client, port, config):
-    """Start the prometheus exporter and register the NVMeOF collector"""
-
-    cert_filepath = config.get('mtls', 'server_cert')
-    key_filepath = config.get('mtls', 'server_key')
+def start_httpd(**kwargs):
+    """Start the prometheus http endpoint, catching any exception"""
     logger = logging.getLogger(__name__)
-    if os.path.exists(cert_filepath) and os.path.exists(key_filepath):
-        logger.info("Prometheus exporter endpoint mode is https")
-        start_http_server(port=port, certfile=cert_filepath, keyfile=key_filepath)
+    try:
+        start_http_server(**kwargs)
+    except Exception as e:
+        logger.error("Failed to start the prometheus http server", exc_info=True)
+        return False
+    return True
+
+
+def start_exporter(spdk_rpc_client, config):
+    """Start the prometheus exporter and register the NVMeOF custom collector"""
+    logger = logging.getLogger(__name__)
+
+    port = config.getint_with_default("gateway", "prometheus_port", 10008)
+    ssl = config.getboolean_with_default("gateway", "prometheus_exporter_ssl", True)
+    mode = 'https' if ssl else 'http'
+
+    if ssl:
+        cert_filepath = config.get('mtls', 'server_cert')
+        key_filepath = config.get('mtls', 'server_key')
+
+        if os.path.exists(cert_filepath) and os.path.exists(key_filepath):
+            httpd_ok = start_httpd(port=port, certfile=cert_filepath, keyfile=key_filepath)
+        else:
+            httpd_ok = False    
+            logger.error("Unable to start prometheus exporter - missing cert/key file(s)")
     else:
-        # fallback to http if the cert and key are unavailable
-        logger.warning("Prometheus exporter endpoint mode is http. TLS cert and key files not found.")
-        start_http_server(port)
-    REGISTRY.register(NVMeOFCollector(spdk_rpc_client, config))
+        # SSL mode explicitly disabled by config option
+        httpd_ok = start_httpd(port=port)
+    
+    if httpd_ok:
+        logger.info(f"Prometheus exporter running in {mode} mode, listening on port {port}")
+        REGISTRY.register(NVMeOFCollector(spdk_rpc_client, config))
 
 
 class NVMeOFCollector:
