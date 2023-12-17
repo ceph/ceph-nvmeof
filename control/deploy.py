@@ -89,19 +89,19 @@ if __name__ == '__main__':
         type=str,
         help="Create set of Gateway names",
     )
+    subparsers = parser.add_subparsers(dest="subcommand")
+    valid_commands = ['create', 'delete']
+    for cmd in valid_commands:
+        subparsers.add_parser(cmd, help=f'{cmd} nvmeof gateway deployement')
 
     args = parser.parse_args()
     config = GatewayConfig(args.config)
     gw_str = args.deployment
-    print (f"{config=} {gw_str=}")
+    cmd = args.subcommand
+    if cmd not in valid_commands:
+        print(f'Valid commands are {valid_commands}. Use --help for usage information.')
+        raise SystemExit
 
+    print (f"{config=} {cmd=} {gw_str=}")
     rads = RadosConn(config)
-    #gw_str = '"GW1","GW2", "GW3"'
-    
-    #rads.conn.mon_command('{"prefix":"nvme-gw create","ids":[' + gw_str + ']}', b'')
-    
-    rads.conn.mon_command('{"prefix":"nvme-gw delete","ids":[' + gw_str + ']}', b'')
-
-  # config.get("ceph", "pool")
-
-
+    rads.conn.mon_command('{"prefix":"nvme-gw ' + cmd + '","ids":[' + gw_str + ']}', b'')
