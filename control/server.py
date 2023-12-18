@@ -120,8 +120,10 @@ class GatewayServer:
         self.logger.info(f"MonitorGroup server is listening on {self._monitor_address()} for group id")
         self.monitor_event.wait()
         self.monitor_event = None
-        self.logger.info("Stopping the monitor server...")
-        self.monitor_server.stop(None)
+        self.logger.info("Stopping the MonitorGroup server...")
+        grace = self.config.getfloat_with_default("gateway", "monitor_stop_grace", 1/1000)
+        self.monitor_server.stop(grace).wait()
+        self.logger.info("The MonitorGroup gRPC server stopped...")
         self.monitor_server = None
 
     def serve(self):
