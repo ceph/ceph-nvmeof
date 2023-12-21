@@ -11,10 +11,9 @@ import spdk.rpc.bdev as rpc_bdev
 
 image = "mytestdevimage"
 pool = "rbd"
-bdev_prefix = "Ceph_"
 subsystem_prefix = "nqn.2016-06.io.spdk:cnode"
 host_nqn_prefix = "nqn.2014-08.org.nvmexpress:uuid:22207d09-d8af-4ed2-84ec-a6d80b"
-created_resource_count = 200
+created_resource_count = 100
 
 def setup_config(config, gw1_name, gw2_name, gw_group, update_notify ,update_interval_sec, disable_unlock, lock_duration,
                  sock1_name, sock2_name, port_inc):
@@ -134,129 +133,103 @@ def build_host_nqn(i):
     return hostnqn
 
 def create_resource_by_index(stub, i, caplog):
-    bdev = f"{bdev_prefix}{i}"
-    bdev_req = pb2.create_bdev_req(bdev_name=bdev,
-                                   rbd_pool_name=pool,
-                                   rbd_image_name=image,
-                                   block_size=4096)
-    ret_bdev = stub.create_bdev(bdev_req)
-    assert ret_bdev.status
-    if caplog != None:
-        assert f"create_bdev: {bdev}" in caplog.text
-        assert "create_bdev failed" not in caplog.text
     subsystem = f"{subsystem_prefix}{i}"
     subsystem_req = pb2.create_subsystem_req(subsystem_nqn=subsystem)
     ret_subsystem = stub.create_subsystem(subsystem_req)
-    assert ret_subsystem.status
+    assert ret_subsystem.status == 0
     if caplog != None:
         assert f"create_subsystem {subsystem}: True" in caplog.text
-        assert "create_subsystem failed" not in caplog.text
-    namespace_req = pb2.add_namespace_req(subsystem_nqn=subsystem,
-                                          bdev_name=bdev)
-    ret_namespace = stub.add_namespace(namespace_req)
-    assert ret_namespace.status
+        assert f"Failure creating subsystem {subsystem}" not in caplog.text
+    namespace_req = pb2.namespace_add_req(subsystem_nqn=subsystem,
+                                          rbd_pool_name=pool, rbd_image_name=image, block_size=4096)
+    ret_namespace = stub.namespace_add(namespace_req)
+    assert ret_namespace.status == 0
     hostnqn = build_host_nqn(i)
     host_req = pb2.add_host_req(subsystem_nqn=subsystem, host_nqn=hostnqn)
     ret_host = stub.add_host(host_req)
-    assert ret_host.status
+    assert ret_host.status == 0
     host_req = pb2.add_host_req(subsystem_nqn=subsystem, host_nqn="*")
     ret_host = stub.add_host(host_req)
-    assert ret_host.status
+    assert ret_host.status == 0
     if caplog != None:
         assert f"add_host {hostnqn}: True" in caplog.text
         assert "add_host *: True" in caplog.text
-        assert "add_host failed" not in caplog.text
+        assert f"Failure allowing open host access to {subsystem}" not in caplog.text
+        assert f"Failure adding host {hostnqn} to {subsystem}" not in caplog.text
 
-def check_resource_by_index(i, resource_list):
-    # notice that this also verifies the namespace as the bdev name is in the namespaces section
-    bdev = f"{bdev_prefix}{i}"
+def check_resource_by_index(i, subsys_list, hosts_info):
     subsystem = f"{subsystem_prefix}{i}"
     hostnqn = build_host_nqn(i)
-    found_bdev = False
     found_host = False
-    for res in resource_list:
+    for subsys in subsys_list:
         try:
-            if res["nqn"] != subsystem:
+            if subsys["nqn"] != subsystem:
                 continue
-            assert res["allow_any_host"]
-            for host in res["hosts"]:
+            assert subsys["namespace_count"] == 1
+            assert hosts_info["allow_any_host"]
+            for host in hosts_info["hosts"]:
                 if host["nqn"] == hostnqn:
                     found_host = True
-            for ns in res["namespaces"]:
-                if ns["bdev_name"] == bdev:
-                    found_bdev = True
-                    break
             break
         except Exception:
             pass
-    assert found_bdev and found_host
+    assert found_host
 
 def test_multi_gateway_omap_reread(config, conn_omap_reread, caplog):
     """Tests reading out of date OMAP file
     """
     stubA, stubB, gatewayA, gatewayB = conn_omap_reread
-    bdev = bdev_prefix + "X0"
-    bdev2 = bdev_prefix + "X1"
-    bdev3 = bdev_prefix + "X2"
     nqn = subsystem_prefix + "X1"
     serial = "SPDK00000000000001"
     nsid = 10
     num_subsystems = 2
 
     # Send requests to create a subsystem with one namespace to GatewayA
-    bdev_req = pb2.create_bdev_req(bdev_name=bdev,
-                                   rbd_pool_name=pool,
-                                   rbd_image_name=image,
-                                   block_size=4096)
-    subsystem_req = pb2.create_subsystem_req(subsystem_nqn=nqn,
-                                             serial_number=serial)
-    namespace_req = pb2.add_namespace_req(subsystem_nqn=nqn,
-                                          bdev_name=bdev,
-                                          nsid=nsid)
-    get_subsystems_req = pb2.get_subsystems_req()
-    ret_bdev = stubA.create_bdev(bdev_req)
+    subsystem_req = pb2.create_subsystem_req(subsystem_nqn=nqn, serial_number=serial)
+    namespace_req = pb2.namespace_add_req(subsystem_nqn=nqn, nsid=nsid,
+                                          rbd_pool_name=pool, rbd_image_name=image, block_size=4096)
+
+    subsystem_list_req = pb2.list_subsystems_req()
     ret_subsystem = stubA.create_subsystem(subsystem_req)
-    ret_namespace = stubA.add_namespace(namespace_req)
-    assert ret_bdev.status is True
-    assert ret_subsystem.status is True
-    assert ret_namespace.status is True
+    assert ret_subsystem.status == 0
+    ret_namespace = stubA.namespace_add(namespace_req)
+    assert ret_namespace.status == 0
 
     # Until we create some resource on GW-B it shouldn't still have the resrouces created on GW-A, only the discovery subsystem
     listB = json.loads(json_format.MessageToJson(
-        stubB.get_subsystems(get_subsystems_req),
+        stubB.list_subsystems(subsystem_list_req),
         preserving_proto_field_name=True, including_default_value_fields=True))['subsystems']
     assert len(listB) == 1
 
     listA = json.loads(json_format.MessageToJson(
-        stubA.get_subsystems(get_subsystems_req),
+        stubA.list_subsystems(subsystem_list_req),
         preserving_proto_field_name=True, including_default_value_fields=True))['subsystems']
     assert len(listA) == num_subsystems
 
-    bdev2_req = pb2.create_bdev_req(bdev_name=bdev2,
+    ns2_req = pb2.namespace_add_req(subsystem_nqn=nqn,
                                    rbd_pool_name=pool,
                                    rbd_image_name=image,
                                    block_size=4096)
-    ret_bdev2 = stubB.create_bdev(bdev2_req)
-    assert ret_bdev2.status is True
+    ret_ns2 = stubB.namespace_add(ns2_req)
+    assert ret_ns2.status == 0
     assert "The file is not current, will reload it and try again" in caplog.text
 
     # Make sure that after reading the OMAP file GW-B has the subsystem and namespace created on GW-A
     listB = json.loads(json_format.MessageToJson(
-        stubB.get_subsystems(get_subsystems_req),
+        stubB.list_subsystems(subsystem_list_req),
         preserving_proto_field_name=True, including_default_value_fields=True))['subsystems']
     assert len(listB) == num_subsystems
     assert listB[num_subsystems-1]["nqn"] == nqn
     assert listB[num_subsystems-1]["serial_number"] == serial
-    assert listB[num_subsystems-1]["namespaces"][0]["nsid"] == nsid
-    assert listB[num_subsystems-1]["namespaces"][0]["bdev_name"] == bdev
+    assert listB[num_subsystems-1]["namespace_count"] == num_subsystems    # We created one namespace on each subsystem
 
     caplog.clear()
-    bdev3_req = pb2.create_bdev_req(bdev_name=bdev3,
+    ns3_req = pb2.namespace_add_req(subsystem_nqn=nqn,
                                    rbd_pool_name=pool,
                                    rbd_image_name=image,
                                    block_size=4096)
-    ret_bdev3 = stubB.create_bdev(bdev3_req)
-    assert ret_bdev3.status is True
+    ret_ns3 = stubB.namespace_add(ns3_req)
+    assert ret_ns3.status == 0
     assert "The file is not current, will reload it and try again" not in caplog.text
 
     bdevsA = rpc_bdev.bdev_get_bdevs(gatewayA.spdk_rpc_client)
@@ -265,10 +238,7 @@ def test_multi_gateway_omap_reread(config, conn_omap_reread, caplog):
     # GW-A should only have the bdev created on it as we didn't update it after creating the bdev on GW-B
     assert len(bdevsA) == 1
     assert len(bdevsB) == 3
-    assert bdevsA[0]["name"] == bdev
-    assert bdevsB[0]["name"] == bdev
-    assert bdevsB[1]["name"] == bdev2
-    assert bdevsB[2]["name"] == bdev3
+    assert bdevsA[0]["uuid"] == bdevsB[0]["uuid"]
 
 def test_trying_to_lock_twice(config, image, conn_lock_twice, caplog):
     """Tests an attempt to lock the OMAP file from two gateways at the same time
@@ -300,13 +270,21 @@ def test_multi_gateway_concurrent_changes(config, image, conn_concurrent, caplog
     # Let the update some time to bring both gateways to the same page
     time.sleep(15)
     caplog.clear()
-    get_subsystems_req = pb2.get_subsystems_req()
-    listA = json.loads(json_format.MessageToJson(
-        stubA.get_subsystems(get_subsystems_req),
+    subsystem_list_req = pb2.list_subsystems_req()
+    subListA = json.loads(json_format.MessageToJson(
+        stubA.list_subsystems(subsystem_list_req),
         preserving_proto_field_name=True, including_default_value_fields=True))['subsystems']
-    listB = json.loads(json_format.MessageToJson(
-        stubB.get_subsystems(get_subsystems_req),
+    subListB = json.loads(json_format.MessageToJson(
+        stubB.list_subsystems(subsystem_list_req),
         preserving_proto_field_name=True, including_default_value_fields=True))['subsystems']
     for i in range(created_resource_count):
-        check_resource_by_index(i, listA)
-        check_resource_by_index(i, listB)
+        subsystem = f"{subsystem_prefix}{i}"
+        host_list_req = pb2.list_hosts_req(subsystem=subsystem)
+        hostListA = json.loads(json_format.MessageToJson(
+            stubA.list_hosts(host_list_req),
+            preserving_proto_field_name=True, including_default_value_fields=True))
+        hostListB = json.loads(json_format.MessageToJson(
+            stubB.list_hosts(host_list_req),
+            preserving_proto_field_name=True, including_default_value_fields=True))
+        check_resource_by_index(i, subListA, hostListA)
+        check_resource_by_index(i, subListB, hostListB)

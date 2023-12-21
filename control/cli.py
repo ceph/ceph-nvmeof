@@ -12,20 +12,57 @@ import grpc
 import json
 import logging
 import sys
+import errno
 import os
+import yaml
 
 from functools import wraps
 from google.protobuf import json_format
+from tabulate import tabulate
 
 from .proto import gateway_pb2_grpc as pb2_grpc
 from .proto import gateway_pb2 as pb2
 from .config import GatewayConfig
+from .config import GatewayEnumUtils
+
+BASE_GATEWAY_VERSION="0.0.7"
+
+def errprint(msg):
+    print(msg, file = sys.stderr)
 
 def argument(*name_or_flags, **kwargs):
     """Helper function to format arguments for argparse command decorator."""
-
     return (list(name_or_flags), kwargs)
 
+def get_enum_keys_list(e_type, include_first = False):
+    k_list = []
+    for k in e_type.keys():
+        k_list.append(k.lower())
+        k_list.append(k.upper())
+    if not include_first:
+        k_list = k_list[2:]
+
+    return k_list
+
+class ErrorCatchingArgumentParser(argparse.ArgumentParser):
+    def __init__(self, *args, **kwargs):
+        self.logger = logging.getLogger(__name__)
+        super(ErrorCatchingArgumentParser, self).__init__(*args, **kwargs)
+
+    def exit(self, status = 0, message = None):
+        if status != 0:
+            if message:
+                self.logger.error(message)
+        else:
+            if message:
+                self.logger.info(message)
+        exit(status)
+
+    def error(self, message):
+        self.print_usage()
+        if message:
+            self.logger.error(f"error: {message}")
+        exit(2)
 
 class Parser:
     """Class to simplify creation of client CLI.
@@ -36,14 +73,28 @@ class Parser:
     """
 
     def __init__(self):
-        self.parser = argparse.ArgumentParser(
+        self.parser = ErrorCatchingArgumentParser(
             prog="python3 -m control.cli",
             description="CLI to manage NVMe gateways")
+        self.parser.add_argument(
+            "--format",
+            help="CLI output format",
+            type=str,
+            default="text",
+            choices=["text", "json", "yaml", "plain", "python"],
+            required=False)
+        self.parser.add_argument(
+            "--output",
+            help="CLI output method",
+            type=str,
+            default="log",
+            choices=["log", "stdio"],
+            required=False)
         self.parser.add_argument(
             "--server-address",
             default="localhost",
             type=str,
-            help="Server address",
+            help="Server IP address",
         )
         self.parser.add_argument(
             "--server-port",
@@ -113,7 +164,7 @@ class GatewayClient:
 
     def __init__(self):
         self._stub = None
-        logging.basicConfig(level=logging.DEBUG)
+        logging.basicConfig(format='%(message)s', level=logging.DEBUG)
         self.logger = logging.getLogger(__name__)
 
     @property
@@ -156,298 +207,1590 @@ class GatewayClient:
         # Bind the client and the server
         self._stub = pb2_grpc.GatewayStub(channel)
 
-    @cli.cmd([
-        argument("-i", "--image", help="RBD image name", required=True),
-        argument("-p", "--pool", help="RBD pool name", required=True),
-        argument("-b", "--bdev", help="Bdev name"),
-        argument("-s",
-                 "--block-size",
-                 help="Block size",
-                 type=int,
-                 default=512),
-    ])
-    def create_bdev(self, args):
-        """Creates a bdev from an RBD image."""
-        req = pb2.create_bdev_req(
-            rbd_pool_name=args.pool,
-            rbd_image_name=args.image,
-            block_size=args.block_size,
-            bdev_name=args.bdev,
-        )
-        ret = self.stub.create_bdev(req)
-        self.logger.info(f"Created bdev {ret.bdev_name}: {ret.status}")
+    def format_adrfam(self, adrfam):
+        adrfam = adrfam.upper()
+        if adrfam == "IPV4":
+            adrfam = "IPv4"
+        elif adrfam == "IPV6":
+            adrfam = "IPv6"
 
-    @cli.cmd([
-        argument("-b", "--bdev", help="Bdev name", required=True),
-        argument("-s", "--size", help="New size in MiB", type=int, required=True),
-    ])
-    def resize_bdev(self, args):
-        """Resizes a bdev."""
-        req = pb2.resize_bdev_req(
-            bdev_name=args.bdev,
-            new_size=args.size,
-        )
-        ret = self.stub.resize_bdev(req)
-        self.logger.info(f"Resized bdev {args.bdev}: {ret.status}")
+        return adrfam
 
-    @cli.cmd([
-        argument("-b", "--bdev", help="Bdev name", required=True),
-        argument("-f", "--force", help="Delete any namespace using this bdev before deleting bdev", action='store_true', required=False),
-    ])
-    def delete_bdev(self, args):
-        """Deletes a bdev."""
-        req = pb2.delete_bdev_req(bdev_name=args.bdev, force=args.force)
-        ret = self.stub.delete_bdev(req)
-        self.logger.info(f"Deleted bdev {args.bdev}: {ret.status}")
-
-    @cli.cmd([
-        argument("-n", "--subnqn", help="Subsystem NQN", required=True),
-        argument("-s", "--serial", help="Serial number", required=False),
-        argument("-m", "--max-namespaces", help="Maximum number of namespaces", type=int, default=0, required=False),
-        argument("-a", "--ana-reporting", help="Enable ANA reporting", action='store_true', required=False),
-        argument("-t", "--enable-ha", help="Enable automatic HA", action='store_true', required=False),
-    ])
-    def create_subsystem(self, args):
-        """Creates a subsystem."""
-        req = pb2.create_subsystem_req(subsystem_nqn=args.subnqn,
-                                        serial_number=args.serial,
-                                        max_namespaces=args.max_namespaces,
-                                        ana_reporting=args.ana_reporting,
-                                        enable_ha=args.enable_ha)
-        ret = self.stub.create_subsystem(req)
-        self.logger.info(f"Created subsystem {args.subnqn}: {ret.status}")
-
-    @cli.cmd([
-        argument("-n", "--subnqn", help="Subsystem NQN", required=True),
-    ])
-    def delete_subsystem(self, args):
-        """Deletes a subsystem."""
-        req = pb2.delete_subsystem_req(subsystem_nqn=args.subnqn)
-        ret = self.stub.delete_subsystem(req)
-        self.logger.info(f"Deleted subsystem {args.subnqn}: {ret.status}")
-
-    @cli.cmd([
-        argument("-n", "--subnqn", help="Subsystem NQN", required=True),
-        argument("-b", "--bdev", help="Bdev name", required=True),
-        argument("-i", "--nsid", help="Namespace ID", type=int),
-        argument("-a", "--anagrpid", help="ANA group ID", type=int),
-    ])
-    def add_namespace(self, args):
-        """Adds a namespace to a subsystem."""
-        if args.anagrpid == 0:
-	        args.anagrpid = 1
-
-        req = pb2.add_namespace_req(subsystem_nqn=args.subnqn,
-                                    bdev_name=args.bdev,
-                                    nsid=args.nsid,
-                                    anagrpid=args.anagrpid)
-        ret = self.stub.add_namespace(req)
-        self.logger.info(
-            f"Added namespace {ret.nsid} to {args.subnqn}, ANA group id {args.anagrpid} : {ret.status}")
-
-    @cli.cmd([
-        argument("-n", "--subnqn", help="Subsystem NQN", required=True),
-        argument("-i", "--nsid", help="Namespace ID", type=int, required=True),
-    ])
-    def remove_namespace(self, args):
-        """Removes a namespace from a subsystem."""
-        req = pb2.remove_namespace_req(subsystem_nqn=args.subnqn,
-                                        nsid=args.nsid)
-        ret = self.stub.remove_namespace(req)
-        self.logger.info(
-            f"Removed namespace {args.nsid} from {args.subnqn}:"
-            f" {ret.status}")
-
-    @cli.cmd([
-        argument("-n", "--subnqn", help="Subsystem NQN", required=True),
-        argument("-t", "--host", help="Host NQN", required=True),
-    ])
-    def add_host(self, args):
-        """Adds a host to a subsystem."""
-        req = pb2.add_host_req(subsystem_nqn=args.subnqn,
-                                host_nqn=args.host)
-        ret = self.stub.add_host(req)
-        if args.host == "*":
-            self.logger.info(
-                f"Allowed open host access to {args.subnqn}: {ret.status}")
+    def get_output_functions(self, args):
+        if args.output == "log":
+            return (self.logger.info, self.logger.error)
+        elif args.output == "stdio":
+            return (print, errprint)
         else:
-            self.logger.info(
-                f"Added host {args.host} access to {args.subnqn}:"
-                f" {ret.status}")
+            self.cli.parser.error("invalid --output value")
 
     @cli.cmd([
-        argument("-n", "--subnqn", help="Subsystem NQN", required=True),
-        argument("-t", "--host", help="Host NQN", required=True),
     ])
-    def remove_host(self, args):
-        """Removes a host from a subsystem."""
-        req = pb2.remove_host_req(subsystem_nqn=args.subnqn,
-                                    host_nqn=args.host)
-        ret = self.stub.remove_host(req)
-        if args.host == "*":
-            self.logger.info(
-                f"Disabled open host access to {args.subnqn}: {ret.status}")
+    def version(self, args):
+        """Get CLI version"""
+        rc = 0
+        out_func, err_func = self.get_output_functions(args)
+        errmsg = ""
+        ver = os.getenv("NVMEOF_VERSION")
+        if not ver:
+            rc = errno.ENOKEY
+            errmsg = "Can't get CLI version"
         else:
-            self.logger.info(
-                f"Removed host {args.host} access from {args.subnqn}:"
-                f" {ret.status}")
+            rc = 0
+            errmsg = os.strerror(0)
+        if args.format == "text" or args.format == "plain":
+            if not ver:
+                err_func(errmsg)
+            else:
+                out_func(f"CLI version: {ver}")
+        elif args.format == "json" or args.format == "yaml":
+            cli_ver = pb2.cli_version(status=rc, error_message=errmsg, version=ver)
+            out_ver = json_format.MessageToJson(cli_ver,
+                                                indent=4,
+                                                including_default_value_fields=True,
+                                                preserving_proto_field_name=True)
+            if args.format == "json":
+                out_func(f"{out_ver}")
+            elif args.format == "yaml":
+                obj = json.loads(out_ver)
+                out_func(yaml.dump(obj))
+        elif args.format == "python":
+            return pb2.cli_version(status=rc, error_message=errmsg, version=ver)
+        else:
+            assert False
 
-    @cli.cmd([
-        argument("-n", "--subnqn", help="Subsystem NQN", required=True),
-        argument("-g", "--gateway-name", help="Gateway name", required=True),
-        argument("-t", "--trtype", help="Transport type", default="TCP"),
-        argument("-f", "--adrfam", help="Address family", default="IPV4"),
-        argument("-a", "--traddr", help="NVMe host IP", required=True),
-        argument("-s", "--trsvcid", help="Port number", default="4420", required=False),
-    ])
-    def create_listener(self, args):
-        """Creates a listener for a subsystem at a given IP/Port."""
-        traddr = GatewayConfig.escape_address_if_ipv6(args.traddr)
-        trtype = None
-        adrfam = None
-        if args.trtype:
-            trtype = args.trtype.upper()
-        if args.adrfam:
-            adrfam = args.adrfam.lower()
+        return rc
+
+    def parse_version_string(self, version):
+        if not version:
+            return None
         try:
-            req = pb2.create_listener_req(
-                nqn=args.subnqn,
-                gateway_name=args.gateway_name,
-                trtype=trtype,
-                adrfam=adrfam,
-                traddr=traddr,
-                trsvcid=args.trsvcid,
-                auto_ha_state="AUTO_HA_UNSET",
-            )
-            ret = self.stub.create_listener(req)
-            self.logger.info(f"Created {args.subnqn} listener at {traddr}:{args.trsvcid}: {ret.status}")
-        except ValueError as err:
-            self.logger.error(f"{err}")
-            self.logger.info(f"Created {args.subnqn} listener at {traddr}:{args.trsvcid}: {False}")
-            raise
-        except Exception as ex:
-            self.logger.info(f"Created {args.subnqn} listener at {traddr}:{args.trsvcid}: {False}")
-            raise
+            vlist = version.split(".")
+            if len(vlist) != 3:
+                raise Exception
+            v1 = int(vlist[0])
+            v2 = int(vlist[1])
+            v3 = int(vlist[2])
+        except Exception:
+            return None
+        return (v1, v2, v3)
 
-    @cli.cmd([
-        argument("-n", "--subnqn", help="Subsystem NQN", required=True),
-        argument("-g", "--gateway-name", help="Gateway name", required=True),
-        argument("-t", "--trtype", help="Transport type", default="TCP"),
-        argument("-f", "--adrfam", help="Address family", default="IPV4"),
-        argument("-a", "--traddr", help="NVMe host IP", required=True),
-        argument("-s", "--trsvcid", help="Port number", default="4420", required=False),
-    ])
-    def delete_listener(self, args):
-        """Deletes a listener from a subsystem at a given IP/Port."""
-        traddr = GatewayConfig.escape_address_if_ipv6(args.traddr)
-        trtype = None
-        adrfam = None
-        if args.trtype:
-            trtype = args.trtype.upper()
-        if args.adrfam:
-            adrfam = args.adrfam.lower()
-        try:
-            req = pb2.delete_listener_req(
-                nqn=args.subnqn,
-                gateway_name=args.gateway_name,
-                trtype=trtype,
-                adrfam=adrfam,
-                traddr=traddr,
-                trsvcid=args.trsvcid,
-            )
-            ret = self.stub.delete_listener(req)
-            self.logger.info(f"Deleted {traddr}:{args.trsvcid} from {args.subnqn}: {ret.status}")
-        except ValueError as err:
-            self.logger.error(f"{err}")
-            self.logger.info(f"Deleted {traddr}:{args.trsvcid} from {args.subnqn}: {False}")
-            raise
-        except Exception as ex:
-            self.logger.info(f"Deleted {traddr}:{args.trsvcid} from {args.subnqn}: {False}")
-            raise
-
-    @cli.cmd()
-    def get_subsystems(self, args):
-        """Gets subsystems."""
-        subsystems = json_format.MessageToJson(
-                        self.stub.get_subsystems(pb2.get_subsystems_req()),
-                        indent=4, including_default_value_fields=True,
-                        preserving_proto_field_name=True)
-        # The address family enum values are lower case, convert them for display
-        subsystems = subsystems.replace('"adrfam": "ipv4"', '"adrfam": "IPv4"')
-        subsystems = subsystems.replace('"adrfam": "ipv6"', '"adrfam": "IPv6"')
-        self.logger.info(f"Get subsystems:\n{subsystems}")
-
-    @cli.cmd()
-    def get_spdk_nvmf_log_flags_and_level(self, args):
-        """Gets spdk nvmf log levels and flags"""
-        req = pb2.get_spdk_nvmf_log_flags_and_level_req()
-        ret = self.stub.get_spdk_nvmf_log_flags_and_level(req)
-        formatted_flags_log_level = json.dumps(json.loads(ret.flags_level), indent=4)
-        self.logger.info(
-            f"Get SPDK nvmf log flags and level:\n{formatted_flags_log_level}")
-
-    @cli.cmd()
-    def disable_spdk_nvmf_logs(self, args):
-        """Disables spdk nvmf logs and flags"""
-        req = pb2.disable_spdk_nvmf_logs_req()
-        ret = self.stub.disable_spdk_nvmf_logs(req)
-        self.logger.info(
-            f"Disable SPDK nvmf logs: {ret.status}")
-
-    @cli.cmd([
-        argument("-l", "--log_level", \
-                 help="SPDK nvmf log level (ERROR, WARNING, NOTICE, INFO, DEBUG)", required=False),
-        argument("-p", "--log_print_level", \
-                 help="SPDK nvmf log print level (ERROR, WARNING, NOTICE, INFO, DEBUG)", \
-                    required=False),
-    ])
-    def set_spdk_nvmf_logs(self, args):
-        """Set spdk nvmf log and print levels"""
-        log_level = None
-        print_level = None
-        if args.log_level:
-            log_level = args.log_level.upper()
-        if args.log_print_level:
-            print_level = args.log_print_level.upper()
-        try:
-            req = pb2.set_spdk_nvmf_logs_req(log_level=log_level, print_level=print_level)
-            ret = self.stub.set_spdk_nvmf_logs(req)
-            self.logger.info(f"Set SPDK nvmf logs: {ret.status}")
-        except ValueError as err:
-            self.logger.error(f"{err}")
-            self.logger.info(f"Set SPDK nvmf logs: {False}")
-            raise
-        except Exception as ex:
-            self.logger.info(f"Set SPDK nvmf logs: {False}")
-            raise
-
-    @cli.cmd()
-    def get_gateway_info(self, args):
-        """Get gateway's info"""
+    def gw_get_info(self):
         ver = os.getenv("NVMEOF_VERSION")
         req = pb2.get_gateway_info_req(cli_version=ver)
-        gw_info = json_format.MessageToJson(
-                        self.stub.get_gateway_info(req),
+        gw_info = self.stub.get_gateway_info(req)
+        if gw_info.status == 0:
+            base_ver = self.parse_version_string(BASE_GATEWAY_VERSION)
+            assert base_ver != None
+            gw_ver = self.parse_version_string(gw_info.version)
+            if gw_ver == None:
+                gw_info.status = errno.EINVAL
+                gw_info.bool_status = False
+                gw_info.error_message = f"Can't parse gateway version \"{gw_info.version}\"."
+            elif gw_ver < base_ver:
+                gw_info.status = errno.EINVAL
+                gw_info.bool_status = False
+                gw_info.error_message = f"Can't work with gateway version older than {BASE_GATEWAY_VERSION}"
+        return gw_info
+
+    def gw_info(self, args):
+        """Get gateway's information"""
+
+        out_func, err_func = self.get_output_functions(args)
+        try:
+            gw_info = self.gw_get_info()
+        except Exception as ex:
+            gw_info = pb2.gateway_info(status = errno.EINVAL, error_message = f"Failure getting gateway's information:\n{ex}")
+
+        if args.format == "text" or args.format == "plain":
+            if gw_info.status == 0:
+                if gw_info.cli_version:
+                    out_func(f"CLI's version: {gw_info.cli_version}")
+                if gw_info.version:
+                    out_func(f"Gateway's version: {gw_info.version}")
+                if gw_info.name:
+                    out_func(f"Gateway's name: {gw_info.name}")
+                if gw_info.group:
+                    out_func(f"Gateway's group: {gw_info.group}")
+                out_func(f"Gateway's address: {gw_info.addr}")
+                out_func(f"Gateway's port: {gw_info.port}")
+                if not gw_info.bool_status:
+                    err_func(f"Getting gateway's information returned status mismatch")
+            else:
+                err_func(f"{gw_info.error_message}")
+                if gw_info.bool_status:
+                    err_func(f"Getting gateway's information returned status mismatch")
+        elif args.format == "json" or args.format == "yaml":
+            gw_info_str = json_format.MessageToJson(
+                        gw_info,
                         indent=4,
                         including_default_value_fields=True,
                         preserving_proto_field_name=True)
-        self.logger.info(f"Gateway info:\n{gw_info}")
+            if args.format == "json":
+                out_func(f"{gw_info_str}")
+            elif args.format == "yaml":
+                obj = json.loads(gw_info_str)
+                out_func(yaml.dump(obj))
+        elif args.format == "python":
+            return gw_info
+        else:
+            assert False
 
-def main(args=None):
+        return gw_info.status
+
+    def gw_version(self, args):
+        """Get gateway's version"""
+
+        out_func, err_func = self.get_output_functions(args)
+        try:
+            gw_info = self.gw_get_info()
+        except Exception as ex:
+            gw_info = pb2.gateway_info(status = errno.EINVAL, error_message = f"Failure getting gateway's version:\n{ex}")
+
+        if args.format == "text" or args.format == "plain":
+            if gw_info.status == 0:
+                out_func(f"Gateway's version: {gw_info.version}")
+            else:
+                err_func(f"{gw_info.error_message}")
+        elif args.format == "json" or args.format == "yaml":
+            gw_ver = pb2.gw_version(status=gw_info.status, error_message=gw_info.error_message, version=gw_info.version)
+            out_ver = json_format.MessageToJson(gw_ver,
+                                                indent=4,
+                                                including_default_value_fields=True,
+                                                preserving_proto_field_name=True)
+            if args.format == "json":
+                out_func(f"{out_ver}")
+            elif args.format == "yaml":
+                obj = json.loads(out_ver)
+                out_func(yaml.dump(obj))
+        elif args.format == "python":
+            return pb2.gw_version(status=gw_info.status, error_message=gw_info.error_message, version=gw_info.version)
+        else:
+            assert False
+
+        return gw_info.status
+
+    @cli.cmd([
+        argument("gw_command", help="gw sub-command", choices=["version", "info"]),
+    ])
+    def gw(self, args):
+        """Gateway commands"""
+
+        if args.gw_command == "info":
+            return self.gw_info(args)
+        elif args.gw_command == "version":
+            return self.gw_version(args)
+        assert False
+
+    def log_level_disable(self, args):
+        """Disable SPDK nvmf log flags"""
+
+        out_func, err_func = self.get_output_functions(args)
+        if args.level != None:
+            self.cli.parser.error("--level argument is not allowed for disable command")
+        if args.print != None:
+            self.cli.parser.error("--print argument is not allowed for disable command")
+
+        req = pb2.disable_spdk_nvmf_logs_req()
+        try:
+            ret = self.stub.disable_spdk_nvmf_logs(req)
+        except Exception as ex:
+            ret = pb2.req_status(status = errno.EINVAL, error_message = f"Failure disabling SPDK nvmf log flags:\n{ex}")
+
+        if args.format == "text" or args.format == "plain":
+            if ret.status == 0:
+                out_func(f"Disable SPDK nvmf log flags: Successful")
+            else:
+                err_func(f"{ret.error_message}")
+        elif args.format == "json" or args.format == "yaml":
+            ret_str = json_format.MessageToJson(
+                        ret,
+                        indent=4,
+                        including_default_value_fields=True,
+                        preserving_proto_field_name=True)
+            if args.format == "json":
+                out_func(f"{ret_str}")
+            elif args.format == "yaml":
+                obj = json.loads(ret_str)
+                out_func(yaml.dump(obj))
+        elif args.format == "python":
+            return ret
+        else:
+            assert False
+
+        return ret.status
+
+    def log_level_get(self, args):
+        """Get SPDK log levels and nvmf log flags"""
+
+        out_func, err_func = self.get_output_functions(args)
+        if args.level != None:
+            self.cli.parser.error("--level argument is not allowed for get command")
+        if args.print != None:
+            self.cli.parser.error("--print argument is not allowed for get command")
+
+        req = pb2.get_spdk_nvmf_log_flags_and_level_req()
+        try:
+            ret = self.stub.get_spdk_nvmf_log_flags_and_level(req)
+        except Exception as ex:
+            ret = pb2.req_status(status = errno.EINVAL, error_message = f"Failure getting SPDK log levels and nvmf log flags:\n{ex}")
+
+        if args.format == "text" or args.format == "plain":
+            if ret.status == 0:
+                for flag in ret.nvmf_log_flags:
+                    enabled_str = "enabled" if flag.enabled else "disabled"
+                    out_func(f"SPDK nvmf log flag \"{flag.name}\" is {enabled_str}")
+                level = GatewayEnumUtils.get_key_from_value(pb2.LogLevel, ret.log_level)
+                out_func(f"SPDK log level is {level}")
+                level = GatewayEnumUtils.get_key_from_value(pb2.LogLevel, ret.log_print_level)
+                out_func(f"SPDK log print level is {level}")
+            else:
+                err_func(f"{ret.error_message}")
+        elif args.format == "json" or args.format == "yaml":
+            out_log_level = json_format.MessageToJson(ret,
+                                                indent=4,
+                                                including_default_value_fields=True,
+                                                preserving_proto_field_name=True)
+            if args.format == "json":
+                out_func(f"{out_log_level}")
+            elif args.format == "yaml":
+                obj = json.loads(out_log_level)
+                out_func(yaml.dump(obj))
+        elif args.format == "python":
+            return ret
+        else:
+            assert False
+
+        return ret.status
+
+    def log_level_set(self, args):
+        """Set SPDK log levels and nvmf log flags"""
+        rc = 0
+        errmsg = ""
+
+        out_func, err_func = self.get_output_functions(args)
+        log_level = None
+        print_level = None
+
+        if args.level:
+            log_level = args.level.upper()
+
+        if args.print:
+            print_level = args.print.upper()
+
+        try:
+            req = pb2.set_spdk_nvmf_logs_req(log_level=log_level, print_level=print_level)
+        except ValueError as err:
+            errstr = str(err)
+            if errstr.startswith("unknown enum label "):
+                errstr = errstr.removeprefix("unknown enum label ")
+                self.cli.parser.error(f"invalid log level {errstr}")
+            else:
+                self.cli.parser.error(f"{err}")
+
+        try:
+            ret = self.stub.set_spdk_nvmf_logs(req)
+        except Exception as ex:
+            ret = pb2.req_status(status = errno.EINVAL, error_message = f"Failure setting SPDK log levels and nvmf log flags:\n{ex}")
+
+        if args.format == "text" or args.format == "plain":
+            if ret.status == 0:
+                out_func(f"Set SPDK log levels and nvmf log flags: Successful")
+            else:
+                err_func(f"{ret.error_message}")
+        elif args.format == "json" or args.format == "yaml":
+            ret_str = json_format.MessageToJson(
+                        ret,
+                        indent=4,
+                        including_default_value_fields=True,
+                        preserving_proto_field_name=True)
+            if args.format == "json":
+                out_func(f"{ret_str}")
+            elif args.format == "yaml":
+                obj = json.loads(ret_str)
+                out_func(yaml.dump(obj))
+        elif args.format == "python":
+            return ret
+        else:
+            assert False
+
+        return ret.status
+
+    @cli.cmd([
+        argument("log_level_command", help="log level sub-command", choices=["get", "set", "disable"]),
+        argument("--level", "-l", help="SPDK nvmf log level", required=False,
+                 type=str, choices=get_enum_keys_list(pb2.LogLevel)),
+        argument("--print", "-p", help="SPDK nvmf log print level", required=False,
+                 type=str, choices=get_enum_keys_list(pb2.LogLevel)),
+    ])
+    def log_level(self, args):
+        """Log level commands"""
+        if args.log_level_command == "get":
+            return self.log_level_get(args)
+        elif args.log_level_command == "set":
+            return self.log_level_set(args)
+        elif args.log_level_command == "disable":
+            return self.log_level_disable(args)
+        assert False
+
+    def subsystem_add(self, args):
+        """Create a subsystem"""
+
+        out_func, err_func = self.get_output_functions(args)
+        if args.max_namespaces == None:
+            args.max_namespaces = 256
+        if args.max_namespaces < 0:
+            self.cli.parser.error("--max-namespaces value must be positive")
+        if not args.subsystem:
+            self.cli.parser.error("--subsystem argument is mandatory for add command")
+        if args.force:
+            self.cli.parser.error("--force argument is not allowed for add command")
+        if args.enable_ha and not args.ana_reporting:
+            self.cli.parser.error("ANA reporting must be enabled when HA is active")
+        if args.subsystem == GatewayConfig.DISCOVERY_NQN:
+            self.cli.parser.error("Can't add a discovery subsystem")
+
+        req = pb2.create_subsystem_req(subsystem_nqn=args.subsystem,
+                                        serial_number=args.serial_number,
+                                        max_namespaces=args.max_namespaces,
+                                        ana_reporting=args.ana_reporting,
+                                        enable_ha=args.enable_ha)
+        try:
+            ret = self.stub.create_subsystem(req)
+        except Exception as ex:
+            ret = pb2.req_status(status = errno.EINVAL, error_message = f"Failure adding subsystem {args.subsystem}:\n{ex}")
+
+        if args.format == "text" or args.format == "plain":
+            if ret.status == 0:
+                out_func(f"Adding subsystem {args.subsystem}: Successful")
+            else:
+                err_func(f"{ret.error_message}")
+        elif args.format == "json" or args.format == "yaml":
+            ret_str = json_format.MessageToJson(
+                        ret,
+                        indent=4,
+                        including_default_value_fields=True,
+                        preserving_proto_field_name=True)
+            if args.format == "json":
+                out_func(f"{ret_str}")
+            elif args.format == "yaml":
+                obj = json.loads(ret_str)
+                out_func(yaml.dump(obj))
+        elif args.format == "python":
+            return ret
+        else:
+            assert False
+
+        return ret.status
+
+    def subsystem_del(self, args):
+        """Delete a subsystem"""
+
+        out_func, err_func = self.get_output_functions(args)
+        if not args.subsystem:
+            self.cli.parser.error("--subsystem argument is mandatory for del command")
+        if args.serial_number != None:
+            self.cli.parser.error("--serial-number argument is not allowed for del command")
+        if args.max_namespaces != None:
+            self.cli.parser.error("--max-namespaces argument is not allowed for del command")
+        if args.ana_reporting:
+            self.cli.parser.error("--ana-reporting argument is not allowed for del command")
+        if args.enable_ha:
+            self.cli.parser.error("--enable-ha argument is not allowed for del command")
+        if args.subsystem == GatewayConfig.DISCOVERY_NQN:
+            self.cli.parser.error("Can't delete a discovery subsystem")
+
+        req = pb2.delete_subsystem_req(subsystem_nqn=args.subsystem, force=args.force)
+        try:
+            ret = self.stub.delete_subsystem(req)
+        except Exception as ex:
+            ret = pb2.req_status(status = errno.EINVAL, error_message = f"Failure deleting subsystem {args.subsystem}:\n{ex}")
+
+        if args.format == "text" or args.format == "plain":
+            if ret.status == 0:
+                out_func(f"Deleting subsystem {args.subsystem}: Successful")
+            else:
+                err_func(f"{ret.error_message}")
+        elif args.format == "json" or args.format == "yaml":
+            ret_str = json_format.MessageToJson(
+                        ret,
+                        indent=4,
+                        including_default_value_fields=True,
+                        preserving_proto_field_name=True)
+            if args.format == "json":
+                out_func(f"{ret_str}")
+            elif args.format == "yaml":
+                obj = json.loads(ret_str)
+                out_func(yaml.dump(obj))
+        elif args.format == "python":
+            return ret
+        else:
+            assert False
+
+        return ret.status
+
+    def subsystem_list(self, args):
+        """List subsystems"""
+
+        out_func, err_func = self.get_output_functions(args)
+        if args.max_namespaces != None:
+            self.cli.parser.error("--max-namespaces argument is not allowed for list command")
+        if args.ana_reporting:
+            self.cli.parser.error("--ana-reporting argument is not allowed for list command")
+        if args.enable_ha:
+            self.cli.parser.error("--enable-ha argument is not allowed for list command")
+        if args.force:
+            self.cli.parser.error("--force argument is not allowed for list command")
+
+        subsystems = None
+        try:
+            subsystems = self.stub.list_subsystems(pb2.list_subsystems_req(subsystem_nqn=args.subsystem, serial_number=args.serial_number))
+        except Exception as ex:
+            subsystems = pb2.subsystems_info(status = errno.EINVAL, error_message = f"Failure listing subsystems:\n{ex}")
+
+        if args.format == "text" or args.format == "plain":
+            if subsystems.status == 0:
+                subsys_list = []
+                for s in subsystems.subsystems:
+                    if args.subsystem and args.subsystem != s.nqn:
+                        err_func("Failure listing subsystem {args.subsystem}: Got subsystem {s.nqn} instead")
+                        return errno.ENODEV
+                    if args.serial_number and args.serial_number != s.serial_number:
+                        err_func("Failure listing subsystem with serial number {args.serial_number}: Got serial number {s.serial_number} instead")
+                        return errno.ENODEV
+                    ctrls_id = f"{s.min_cntlid}-{s.max_cntlid}"
+                    ha_str = "enabled" if s.enable_ha else "disabled"
+                    one_subsys = [s.subtype, s.nqn, ha_str, s.serial_number, s.model_number, ctrls_id, s.namespace_count]
+                    subsys_list.append(one_subsys)
+                if len(subsys_list) > 0:
+                    if args.format == "text":
+                        table_format = "fancy_grid"
+                    else:
+                        table_format = "plain"
+                    subsys_out = tabulate(subsys_list,
+                                      headers = ["Subtype", "NQN", "HA State", "Serial Number", "Model Number", "Controller IDs",
+                                                 "Namespace\nCount"],
+                                      tablefmt=table_format)
+                    prefix = "Subsystems"
+                    if args.subsystem:
+                        prefix = f"Subsystem {args.subsystem}"
+                    if args.serial_number:
+                        prefix = prefix + f" with serial number {args.serial_number}"
+                    out_func(f"{prefix}:\n{subsys_out}")
+                else:
+                    if args.subsystem:
+                        out_func(f"No subsystem {args.subsystem}")
+                    elif args.serial_number:
+                        out_func(f"No subsystem with serial number {args.serial_number}")
+                    else:
+                        out_func(f"No subsystems")
+            else:
+                err_func(f"{subsystems.error_message}")
+        elif args.format == "json" or args.format == "yaml":
+            ret_str = json_format.MessageToJson(
+                        subsystems,
+                        indent=4,
+                        including_default_value_fields=True,
+                        preserving_proto_field_name=True)
+            if args.format == "json":
+                out_func(f"{ret_str}")
+            elif args.format == "yaml":
+                obj = json.loads(ret_str)
+                out_func(yaml.dump(obj))
+        elif args.format == "python":
+            return subsystems
+        else:
+            assert False
+
+        return subsystems.status
+
+    @cli.cmd([
+        argument("subsystem_command", help="subsystem sub-command", choices=["add", "del", "list"]),
+        argument("--subsystem", "-n", help="Subsystem NQN", required=False),
+        argument("--serial-number", "-s", help="Serial number", required=False),
+        argument("--max-namespaces", "-m", help="Maximum number of namespaces", type=int, required=False),
+        argument("--ana-reporting", "-a", help="Enable ANA reporting", action='store_true', required=False),
+        argument("--enable-ha", "-t", help="Enable automatic HA", action='store_true', required=False),
+        argument("--force", help="Delete subsytem's namespaces if any, then delete subsystem. If not set a subsystem deletion would fail in case it contains namespaces", action='store_true', required=False),
+    ])
+    def subsystem(self, args):
+        """Subsystems commands"""
+        if args.subsystem_command == "add":
+            return self.subsystem_add(args)
+        elif args.subsystem_command == "del":
+            return self.subsystem_del(args)
+        elif args.subsystem_command == "list":
+            return self.subsystem_list(args)
+        assert False
+
+    def listener_add(self, args):
+        """Create a listener"""
+
+        out_func, err_func = self.get_output_functions(args)
+        if not args.gateway_name:
+            self.cli.parser.error("--gateway-name argument is mandatory for add command")
+        if not args.traddr:
+            self.cli.parser.error("--traddr argument is mandatory for add command")
+
+        if not args.trsvcid:
+            args.trsvcid = 4420
+        elif args.trsvcid < 0:
+            self.cli.parser.error("trsvcid value must be positive")
+        if not args.trtype:
+            args.trtype = "TCP"
+        if not args.adrfam:
+            args.adrfam = "IPV4"
+
+        traddr = GatewayConfig.escape_address_if_ipv6(args.traddr)
+        trtype = None
+        adrfam = None
+        if args.trtype:
+            trtype = args.trtype.upper()
+        if args.adrfam:
+            adrfam = args.adrfam.lower()
+
+        req = pb2.create_listener_req(
+            nqn=args.subsystem,
+            gateway_name=args.gateway_name,
+            trtype=trtype,
+            adrfam=adrfam,
+            traddr=traddr,
+            trsvcid=args.trsvcid,
+            auto_ha_state="AUTO_HA_UNSET",
+        )
+
+        try:
+            ret = self.stub.create_listener(req)
+        except Exception as ex:
+            ret = pb2.req_status(status = errno.EINVAL,
+                                 error_message = f"Failure adding {args.subsystem} listener at {traddr}:{args.trsvcid}:\n{ex}")
+
+        if args.format == "text" or args.format == "plain":
+            if ret.status == 0:
+                out_func(f"Adding {args.subsystem} listener at {traddr}:{args.trsvcid}: Successful")
+            else:
+                err_func(f"{ret.error_message}")
+        elif args.format == "json" or args.format == "yaml":
+            ret_str = json_format.MessageToJson(
+                        ret,
+                        indent=4,
+                        including_default_value_fields=True,
+                        preserving_proto_field_name=True)
+            if args.format == "json":
+                out_func(f"{ret_str}")
+            elif args.format == "yaml":
+                obj = json.loads(ret_str)
+                out_func(yaml.dump(obj))
+        elif args.format == "python":
+            return ret
+        else:
+            assert False
+
+        return ret.status
+
+    def listener_del(self, args):
+        """Delete a listener"""
+
+        out_func, err_func = self.get_output_functions(args)
+        if not args.gateway_name:
+            self.cli.parser.error("--gateway-name argument is mandatory for del command")
+        if not args.traddr:
+            self.cli.parser.error("--traddr argument is mandatory for del command")
+
+        if not args.trsvcid:
+            args.trsvcid = 4420
+        elif args.trsvcid < 0:
+            self.cli.parser.error("trsvcid value must be positive")
+        if not args.trtype:
+            args.trtype = "TCP"
+        if not args.adrfam:
+            args.adrfam = "IPV4"
+
+        traddr = GatewayConfig.escape_address_if_ipv6(args.traddr)
+        trtype = None
+        adrfam = None
+        if args.trtype:
+            trtype = args.trtype.upper()
+        if args.adrfam:
+            adrfam = args.adrfam.lower()
+
+        req = pb2.delete_listener_req(
+            nqn=args.subsystem,
+            gateway_name=args.gateway_name,
+            trtype=trtype,
+            adrfam=adrfam,
+            traddr=traddr,
+            trsvcid=args.trsvcid,
+        )
+
+        try:
+            ret = self.stub.delete_listener(req)
+        except Exception as ex:
+            ret = pb2.req_status(status = errno.EINVAL,
+                                 error_message = f"Failure deleting listener {traddr}:{args.trsvcid} from {args.subsystem}:\n{ex}")
+
+        if args.format == "text" or args.format == "plain":
+            if ret.status == 0:
+                out_func(f"Deleting listener {traddr}:{args.trsvcid} from {args.subsystem}: Successful")
+            else:
+                err_func(f"{ret.error_message}")
+        elif args.format == "json" or args.format == "yaml":
+            ret_str = json_format.MessageToJson(
+                        ret,
+                        indent=4,
+                        including_default_value_fields=True,
+                        preserving_proto_field_name=True)
+            if args.format == "json":
+                out_func(f"{ret_str}")
+            elif args.format == "yaml":
+                obj = json.loads(ret_str)
+                out_func(yaml.dump(obj))
+        elif args.format == "python":
+            return ret
+        else:
+            assert False
+
+        return ret.status
+
+    def listener_list(self, args):
+        """List listeners"""
+
+        out_func, err_func = self.get_output_functions(args)
+        if args.gateway_name != None:
+            self.cli.parser.error("--gateway-name argument is not allowed for list command")
+        if args.traddr != None:
+            self.cli.parser.error("--traddr argument is not allowed for list command")
+        if args.trtype:
+            self.cli.parser.error("--trtype argument is not allowed for list command")
+        if args.adrfam:
+            self.cli.parser.error("--adrfam argument is not allowed for list command")
+        if args.trsvcid:
+            self.cli.parser.error("--trsvcid argument is not allowed for list command")
+
+        listeners_info = None
+        try:
+            listeners_info = self.stub.list_listeners(pb2.list_listeners_req(subsystem=args.subsystem))
+        except Exception as ex:
+            listeners_info = pb2.listeners_info(status = errno.EINVAL, error_message = f"Failure listing listeners:\n{ex}", listeners=[])
+
+        if args.format == "text" or args.format == "plain":
+            if listeners_info.status == 0:
+                listeners_list = []
+                for l in listeners_info.listeners:
+                    adrfam = GatewayEnumUtils.get_key_from_value(pb2.AddressFamily, l.adrfam)
+                    adrfam = self.format_adrfam(adrfam)
+                    trtype = GatewayEnumUtils.get_key_from_value(pb2.TransportType, l.trtype)
+                    listeners_list.append([l.gateway_name, trtype, adrfam, f"{l.traddr}:{l.trsvcid}"])
+                if len(listeners_list) > 0:
+                    if args.format == "text":
+                        table_format = "fancy_grid"
+                    else:
+                        table_format = "plain"
+                    listeners_out = tabulate(listeners_list,
+                                      headers = ["Gateway", "Transport", "Address Family", "Address"],
+                                      tablefmt=table_format)
+                    out_func(f"Listeners for {args.subsystem}:\n{listeners_out}")
+                else:
+                    out_func(f"No listeners for {args.subsystem}")
+            else:
+                err_func(f"{listeners_info.error_message}")
+        elif args.format == "json" or args.format == "yaml":
+            ret_str = json_format.MessageToJson(
+                        listeners_info,
+                        indent=4,
+                        including_default_value_fields=True,
+                        preserving_proto_field_name=True)
+            if args.format == "json":
+                out_func(f"{ret_str}")
+            elif args.format == "yaml":
+                obj = json.loads(ret_str)
+                out_func(yaml.dump(obj))
+        elif args.format == "python":
+            return listeners_info
+        else:
+            assert False
+
+        return listeners_info.status
+
+    @cli.cmd([
+        argument("listener_command", help="listener sub-command", choices=["add", "del", "list"]),
+        argument("--subsystem", "-n", help="Subsystem NQN", required=True),
+        argument("--gateway-name", "-g", help="Gateway name", required=False),
+        argument("--trtype", "-t", help="Transport type", default="", choices=get_enum_keys_list(pb2.TransportType)),
+        argument("--adrfam", "-f", help="Address family", default="", choices=get_enum_keys_list(pb2.AddressFamily)),
+        argument("--traddr", "-a", help="NVMe host IP", required=False),
+        argument("--trsvcid", "-s", help="Port number", type=int, required=False),
+    ])
+    def listener(self, args):
+        """Listeners commands"""
+        if args.listener_command == "add":
+            return self.listener_add(args)
+        elif args.listener_command == "del":
+            return self.listener_del(args)
+        elif args.listener_command == "list":
+            return self.listener_list(args)
+        assert False
+
+    def host_add(self, args):
+        """Add a host to a subsystem."""
+
+        out_func, err_func = self.get_output_functions(args)
+        req = pb2.add_host_req(subsystem_nqn=args.subsystem, host_nqn=args.host)
+        try:
+            ret = self.stub.add_host(req)
+        except Exception as ex:
+            if args.host == "*":
+                errmsg = f"Failure allowing open host access to {args.subsystem}"
+            else:
+                errmsg = f"Failure adding host {args.host} to {args.subsystem}"
+            ret = pb2.req_status(status = errno.EINVAL, error_message = f"{errmsg}:\n{ex}")
+
+        if args.format == "text" or args.format == "plain":
+            if ret.status == 0:
+                if args.host == "*":
+                    out_func(f"Allowing open host access to {args.subsystem}: Successful")
+                else:
+                    out_func(f"Adding host {args.host} to {args.subsystem}: Successful")
+            else:
+                err_func(f"{ret.error_message}")
+        elif args.format == "json" or args.format == "yaml":
+            ret_str = json_format.MessageToJson(
+                        ret,
+                        indent=4,
+                        including_default_value_fields=True,
+                        preserving_proto_field_name=True)
+            if args.format == "json":
+                out_func(f"{ret_str}")
+            elif args.format == "yaml":
+                obj = json.loads(ret_str)
+                out_func(yaml.dump(obj))
+        elif args.format == "python":
+            return ret
+        else:
+            assert False
+
+        return ret.status
+
+    def host_del(self, args):
+        """Delete a host from a subsystem."""
+
+        out_func, err_func = self.get_output_functions(args)
+        req = pb2.remove_host_req(subsystem_nqn=args.subsystem, host_nqn=args.host)
+
+        try:
+            ret = self.stub.remove_host(req)
+        except Exception as ex:
+            if args.host == "*":
+                errmsg = f"Failure disabling open host access to {args.subsystem}"
+            else:
+                errmsg = f"Failure removing host {args.host} access to {args.subsystem}"
+            ret = pb2.req_status(status = errno.EINVAL, error_message = f"{errmsg}:\n{ex}")
+
+        if args.format == "text" or args.format == "plain":
+            if ret.status == 0:
+                if args.host == "*":
+                    out_func(f"Disabling open host access to {args.subsystem}: Successful")
+                else:
+                    out_func(f"Removing host {args.host} access from {args.subsystem}: Successful")
+            else:
+                err_func(f"{ret.error_message}")
+        elif args.format == "json" or args.format == "yaml":
+            ret_str = json_format.MessageToJson(
+                        ret,
+                        indent=4,
+                        including_default_value_fields=True,
+                        preserving_proto_field_name=True)
+            if args.format == "json":
+                out_func(f"{ret_str}")
+            elif args.format == "yaml":
+                obj = json.loads(ret_str)
+                out_func(yaml.dump(obj))
+        elif args.format == "python":
+            return ret
+        else:
+            assert False
+
+        return ret.status
+
+    def host_list(self, args):
+        """List a host for a subsystem."""
+
+        out_func, err_func = self.get_output_functions(args)
+        if args.host != None:
+            self.cli.parser.error("--host argument is not allowed for list command")
+
+        hosts_info = None
+        try:
+            hosts_info = self.stub.list_hosts(pb2.list_hosts_req(subsystem=args.subsystem))
+        except Exception as ex:
+            hosts_info = pb2.hosts_info(status = errno.EINVAL, error_message = f"Failure listing hosts:\n{ex}", hosts=[])
+
+        if args.format == "text" or args.format == "plain":
+            if hosts_info.status == 0:
+                hosts_list = []
+                if hosts_info.allow_any_host:
+                    hosts_list.append(["Any host"])
+                for h in hosts_info.hosts:
+                    hosts_list.append([h.nqn])
+                if len(hosts_list) > 0:
+                    if args.format == "text":
+                        table_format = "fancy_grid"
+                    else:
+                        table_format = "plain"
+                    hosts_out = tabulate(hosts_list,
+                                      headers = [f"Host NQN"],
+                                      tablefmt=table_format, stralign="center")
+                    out_func(f"Hosts allowed to access {args.subsystem}:\n{hosts_out}")
+                else:
+                    out_func("No hosts are allowed to access {args.subsystem}")
+            else:
+                err_func(f"{hosts_info.error_message}")
+        elif args.format == "json" or args.format == "yaml":
+            ret_str = json_format.MessageToJson(
+                        hosts_info,
+                        indent=4,
+                        including_default_value_fields=True,
+                        preserving_proto_field_name=True)
+            if args.format == "json":
+                out_func(f"{ret_str}")
+            elif args.format == "yaml":
+                obj = json.loads(ret_str)
+                out_func(yaml.dump(obj))
+        elif args.format == "python":
+            return hosts_info
+        else:
+            assert False
+
+        return hosts_info.status
+
+    @cli.cmd([
+        argument("host_command", help="host sub-command", choices=["add", "del", "list"]),
+        argument("--subsystem", "-n", help="Subsystem NQN", required=True),
+        argument("--host", "-t", help="Host NQN", required=False),
+    ])
+    def host(self, args):
+        """Hosts commands"""
+        if args.host_command == "add":
+            return self.host_add(args)
+        elif args.host_command == "del":
+            return self.host_del(args)
+        elif args.host_command == "list":
+            return self.host_list(args)
+        assert False
+
+    def connection_list(self, args):
+        """List connections for a subsystem."""
+
+        out_func, err_func = self.get_output_functions(args)
+        connections_info = None
+        try:
+            connections_info = self.stub.list_connections(pb2.list_connections_req(subsystem=args.subsystem))
+        except Exception as ex:
+            connections_info = pb2.connections_info(status = errno.EINVAL,
+                                                    error_message = f"Failure listing hosts:\n{ex}", connections=[])
+
+        if args.format == "text" or args.format == "plain":
+            if connections_info.status == 0:
+                connections_list = []
+                for conn in connections_info.connections:
+                    connections_list.append([conn.nqn,
+                                            f"{conn.traddr}:{conn.trsvcid}" if conn.connected else "<n/a>",
+                                            "Yes" if conn.connected else "No",
+                                            conn.qpairs_count if conn.connected else "<n/a>",
+                                            conn.controller_id if conn.connected else "<n/a>"])
+                if len(connections_list) > 0:
+                    if args.format == "text":
+                        table_format = "fancy_grid"
+                    else:
+                        table_format = "plain"
+                    connections_out = tabulate(connections_list,
+                                      headers = ["Host NQN", "Address", "Connected", "QPairs Count", "Controller ID"],
+                                      tablefmt=table_format)
+                    out_func(f"Connections for {args.subsystem}:\n{connections_out}")
+                else:
+                    out_func(f"No connections for {args.subsystem}")
+            else:
+                err_func(f"{connections_info.error_message}")
+        elif args.format == "json" or args.format == "yaml":
+            ret_str = json_format.MessageToJson(
+                        connections_info,
+                        indent=4,
+                        including_default_value_fields=True,
+                        preserving_proto_field_name=True)
+            if args.format == "json":
+                out_func(f"{ret_str}")
+            elif args.format == "yaml":
+                obj = json.loads(ret_str)
+                out_func(yaml.dump(obj))
+        elif args.format == "python":
+            return connections_info
+        else:
+            assert False
+
+        return connections_info.status
+
+    @cli.cmd([
+        argument("connection_command", help="connection sub-command", choices=["list"]),
+        argument("--subsystem", "-n", help="Subsystem NQN", required=True),
+    ])
+    def connection(self, args):
+        """Connections commands"""
+        if args.connection_command == "list":
+            return self.connection_list(args)
+        assert False
+
+    def ns_add(self, args):
+        """Adds a namespace to a subsystem."""
+
+        out_func, err_func = self.get_output_functions(args)
+        if args.block_size == None:
+            args.block_size = 512
+        if args.load_balancing_group == None:
+            args.load_balancing_group = 1
+        if args.load_balancing_group and args.load_balancing_group < 0:
+            self.cli.parser.error("load-balancing-group value must be positive")
+        if args.nsid and args.nsid <= 0:
+            self.cli.parser.error("nsid value must be positive")
+        if args.size != None:
+            self.cli.parser.error("--size argument is not allowed for add command")
+        if not args.rbd_pool:
+            self.cli.parser.error("--rbd-pool argument is mandatory for add command")
+        if not args.rbd_image:
+            self.cli.parser.error("--rbd-image argument is mandatory for add command")
+        if args.block_size <= 0:
+            self.cli.parser.error("block-size value must be positive")
+        if args.load_balancing_group <= 0:
+            self.cli.parser.error("load-balancing-group value must be positive")
+        if args.rw_ios_per_second != None:
+            self.cli.parser.error("--rw-ios-per-second argument is not allowed for add command")
+        if args.rw_megabytes_per_second != None:
+            self.cli.parser.error("--rw-megabytes-per-second argument is not allowed for add command")
+        if args.r_megabytes_per_second != None:
+            self.cli.parser.error("--r-megabytes-per-second argument is not allowed for add command")
+        if args.w_megabytes_per_second != None:
+            self.cli.parser.error("--w-megabytes-per-second argument is not allowed for add command")
+
+        req = pb2.namespace_add_req(rbd_pool_name=args.rbd_pool,
+                                            rbd_image_name=args.rbd_image,
+                                            subsystem_nqn=args.subsystem,
+                                            nsid=args.nsid,
+                                            block_size=args.block_size,
+                                            uuid=args.uuid,
+                                            anagrpid=args.load_balancing_group)
+        try:
+            ret = self.stub.namespace_add(req)
+        except Exception as ex:
+            nsid_msg = ""
+            if args.nsid:
+                nsid_msg = f"using NSID {args.nsid} "
+            errmsg = f"Failure adding namespace {nsid_msg}to {args.subsystem}"
+            ret = pb2.req_status(status = errno.EINVAL, error_message = f"{errmsg}:\n{ex}")
+
+        if args.format == "text" or args.format == "plain":
+            if ret.status == 0:
+                out_func(f"Adding namespace {ret.nsid} to {args.subsystem}, load balancing group {args.load_balancing_group}: Successful")
+            else:
+                err_func(f"{ret.error_message}")
+        elif args.format == "json" or args.format == "yaml":
+            ret_str = json_format.MessageToJson(
+                        ret,
+                        indent=4,
+                        including_default_value_fields=True,
+                        preserving_proto_field_name=True)
+            if args.format == "json":
+                out_func(f"{ret_str}")
+            elif args.format == "yaml":
+                obj = json.loads(ret_str)
+                out_func(yaml.dump(obj))
+        elif args.format == "python":
+            return ret
+        else:
+            assert False
+
+        return ret.status
+
+    def ns_del(self, args):
+        """Deletes a namespace from a subsystem."""
+
+        out_func, err_func = self.get_output_functions(args)
+        if not args.nsid and not args.uuid:
+            self.cli.parser.error("At least one of --nsid or --uuid arguments is mandatory for del command")
+        if args.nsid and args.nsid < 0:
+            self.cli.parser.error("nsid value must be positive")
+        if args.size != None:
+            self.cli.parser.error("--size argument is not allowed for del command")
+        if args.block_size != None:
+            self.cli.parser.error("--block-size argument is not allowed for del command")
+        if args.rbd_pool != None:
+            self.cli.parser.error("--rbd-pool argument is not allowed for del command")
+        if args.rbd_image != None:
+            self.cli.parser.error("--rbd-image argument is not allowed for del command")
+        if args.load_balancing_group:
+            self.cli.parser.error("--load-balancing-group argument is not allowed for del command")
+        if args.rw_ios_per_second != None:
+            self.cli.parser.error("--rw-ios-per-second argument is not allowed for del command")
+        if args.rw_megabytes_per_second != None:
+            self.cli.parser.error("--rw-megabytes-per-second argument is not allowed for del command")
+        if args.r_megabytes_per_second != None:
+            self.cli.parser.error("--r-megabytes-per-second argument is not allowed for del command")
+        if args.w_megabytes_per_second != None:
+            self.cli.parser.error("--w-megabytes-per-second argument is not allowed for del command")
+
+        try:
+            ret = self.stub.namespace_delete(pb2.namespace_delete_req(subsystem_nqn=args.subsystem, nsid=args.nsid, uuid=args.uuid))
+        except Exception as ex:
+            ret = pb2.req_status(status = errno.EINVAL, error_message = f"Failure deleting namespace:\n{ex}")
+
+        if args.format == "text" or args.format == "plain":
+            if ret.status == 0:
+                if args.nsid:
+                    ns_id_str = f"{args.nsid}"
+                elif args.uuid:
+                    ns_id_str = f"with UUID {args.uuid}"
+                else:
+                    assert False
+                out_func(f"Deleting namespace {ns_id_str} from {args.subsystem}: Successful")
+            else:
+                err_func(f"{ret.error_message}")
+        elif args.format == "json" or args.format == "yaml":
+            ret_str = json_format.MessageToJson(
+                        ret,
+                        indent=4,
+                        including_default_value_fields=True,
+                        preserving_proto_field_name=True)
+            if args.format == "json":
+                out_func(f"{ret_str}")
+            elif args.format == "yaml":
+                obj = json.loads(ret_str)
+                out_func(yaml.dump(obj))
+        elif args.format == "python":
+            return ret
+        else:
+            assert False
+
+        return ret.status
+
+    def ns_resize(self, args):
+        """Resizes a namespace."""
+
+        out_func, err_func = self.get_output_functions(args)
+        if not args.nsid and not args.uuid:
+            self.cli.parser.error("At least one of --nsid or --uuid arguments is mandatory for resize command")
+        if args.nsid and args.nsid < 0:
+            self.cli.parser.error("nsid value must be positive")
+        if not args.size:
+            self.cli.parser.error("--size argument is mandatory for resize command")
+        if args.size < 0:
+            self.cli.parser.error("size value must be positive")
+        if args.block_size != None:
+            self.cli.parser.error("--block-size argument is not allowed for resize command")
+        if args.rbd_pool != None:
+            self.cli.parser.error("--rbd-pool argument is not allowed for resize command")
+        if args.rbd_image != None:
+            self.cli.parser.error("--rbd-image argument is not allowed for resize command")
+        if args.load_balancing_group != None:
+            self.cli.parser.error("--load-balancing-group argument is not allowed for resize command")
+        if args.rw_ios_per_second != None:
+            self.cli.parser.error("--rw-ios-per-second argument is not allowed for resize command")
+        if args.rw_megabytes_per_second != None:
+            self.cli.parser.error("--rw-megabytes-per-second argument is not allowed for resize command")
+        if args.r_megabytes_per_second != None:
+            self.cli.parser.error("--r-megabytes-per-second argument is not allowed for resize command")
+        if args.w_megabytes_per_second != None:
+            self.cli.parser.error("--w-megabytes-per-second argument is not allowed for resize command")
+
+        try:
+            ret = self.stub.namespace_resize(pb2.namespace_resize_req(subsystem_nqn=args.subsystem, nsid=args.nsid,
+                                             uuid=args.uuid, new_size=args.size))
+        except Exception as ex:
+            ret = pb2.req_status(status = errno.EINVAL, error_message = f"Failure resizing namespace:\n{ex}")
+
+        if args.format == "text" or args.format == "plain":
+            if ret.status == 0:
+                if args.nsid:
+                    ns_id_str = f"{args.nsid}"
+                elif args.uuid:
+                    ns_id_str = f"with UUID {args.uuid}"
+                else:
+                    assert False
+                out_func(f"Resizing namespace {ns_id_str} in {args.subsystem} to {args.size} MiB: Successful")
+            else:
+                err_func(f"{ret.error_message}")
+        elif args.format == "json" or args.format == "yaml":
+            ret_str = json_format.MessageToJson(
+                        ret,
+                        indent=4,
+                        including_default_value_fields=True,
+                        preserving_proto_field_name=True)
+            if args.format == "json":
+                out_func(f"{ret_str}")
+            elif args.format == "yaml":
+                obj = json.loads(ret_str)
+                out_func(yaml.dump(obj))
+        elif args.format == "python":
+            return ret
+        else:
+            assert False
+
+        return ret.status
+
+    def format_size(self, sz):
+        if sz < 1024:
+            return str(sz) + " B"
+        if sz < 1024 * 1024:
+            sz = sz / 1024.0
+            if sz == int(sz):
+                sz = int(sz)
+                return f"{sz} KiB"
+            return f"{sz:2.1f} KiB"
+        if sz < 1024 * 1024 * 1024:
+            sz = sz / (1024.0 * 1024.0)
+            if sz == int(sz):
+                sz = int(sz)
+                return f"{sz} MiB"
+            return f"{sz:2.1f} MiB"
+        if sz < 1024 * 1024 * 1024 * 1024:
+            sz = sz / (1024.0 * 1024.0 * 1024.0)
+            if sz == int(sz):
+                sz = int(sz)
+                return f"{sz} GiB"
+            return f"{sz:2.1f} GiB"
+        sz = sz / (1024.0 * 1024.0 * 1024.0 * 1024.0)
+        if sz == int(sz):
+            sz = int(sz)
+            return f"{sz} TiB"
+        return f"{sz:2.1f} TiB"
+
+    def ns_list(self, args):
+        """Lists namespaces on a subsystem."""
+
+        out_func, err_func = self.get_output_functions(args)
+        if args.nsid and args.nsid < 0:
+            self.cli.parser.error("nsid value must be positive")
+        if args.size != None:
+            self.cli.parser.error("--size argument is not allowed for list command")
+        if args.block_size != None:
+            self.cli.parser.error("--block-size argument is not allowed for list command")
+        if args.rbd_pool != None:
+            self.cli.parser.error("--rbd-pool argument is not allowed for list command")
+        if args.rbd_image != None:
+            self.cli.parser.error("--rbd-image argument is not allowed for list command")
+        if args.load_balancing_group != None:
+            self.cli.parser.error("--load-balancing-group argument is not allowed for list command")
+        if args.rw_ios_per_second != None:
+            self.cli.parser.error("--rw-ios-per-second argument is not allowed for list command")
+        if args.rw_megabytes_per_second != None:
+            self.cli.parser.error("--rw-megabytes-per-second argument is not allowed for list command")
+        if args.r_megabytes_per_second != None:
+            self.cli.parser.error("--r-megabytes-per-second argument is not allowed for list command")
+        if args.w_megabytes_per_second != None:
+            self.cli.parser.error("--w-megabytes-per-second argument is not allowed for list command")
+
+        try:
+            namespaces_info = self.stub.list_namespaces(pb2.list_namespaces_req(subsystem=args.subsystem,
+                                                        nsid=args.nsid, uuid=args.uuid))
+        except Exception as ex:
+            namespaces_info = pb2.namespaces_info(status = errno.EINVAL, error_message = f"Failure listing namespaces:\n{ex}")
+
+        if args.format == "text" or args.format == "plain":
+            if namespaces_info.status == 0:
+                if args.nsid and len(namespaces_info.namespaces) > 1:
+                    err_func(f"Got more than one namespace for NSID {args.nsid}")
+                if args.uuid and len(namespaces_info.namespaces) > 1:
+                    err_func(f"Got more than one namespace for UUID {args.uuid}")
+                namespaces_list = []
+                for ns in namespaces_info.namespaces:
+                    if args.nsid and args.nsid != ns.nsid:
+                        err_func("Failure listing namespace {args.nsid}: Got namespace {ns.nsid} instead")
+                        return errno.ENODEV
+                    if args.uuid and args.uuid != ns.uuid:
+                        err_func("Failure listing namespace with UUID {args.uuid}: Got namespace {ns.uuid} instead")
+                        return errno.ENODEV
+                    if ns.load_balancing_group == 0:
+                        lb_group = "<n/a>"
+                    else:
+                        lb_group = str(ns.load_balancing_group)
+                    namespaces_list.append([ns.nsid,
+                                            ns.bdev_name,
+                                            ns.rbd_image_name,
+                                            ns.rbd_pool_name,
+                                            self.format_size(ns.rbd_image_size),
+                                            self.format_size(ns.block_size),
+                                            ns.uuid,
+                                            lb_group,
+                                            self.get_qos_limit_str_value(ns.rw_ios_per_second),
+                                            self.get_qos_limit_str_value(ns.rw_mbytes_per_second),
+                                            self.get_qos_limit_str_value(ns.r_mbytes_per_second),
+                                            self.get_qos_limit_str_value(ns.w_mbytes_per_second)])
+
+                if len(namespaces_list) > 0:
+                    if args.format == "text":
+                        table_format = "fancy_grid"
+                    else:
+                        table_format = "plain"
+                    namespaces_out = tabulate(namespaces_list,
+                                      headers = ["NSID", "Bdev Name", "RBD Image", "RBD Pool",
+                                                 "Image Size", "Block Size", "UUID", "Load Balancing\nGroup",
+                                                 "R/W IOs\nper\nsecond", "R/W MBs\nper\nsecond",
+                                                 "Read MBs\nper\nsecond", "Write MBs\nper\nsecond"],
+                                      tablefmt=table_format)
+                    if args.nsid:
+                        prefix = f"Namespace {args.nsid} in"
+                    elif args.uuid:
+                        prefix = f"Namespace with UUID {args.uuid} in"
+                    else:
+                        prefix = "Namespaces in"
+                    out_func(f"{prefix} subsystem {args.subsystem}:\n{namespaces_out}")
+                else:
+                    if args.nsid:
+                        out_func(f"No namespace {args.nsid} in subsystem {args.subsystem}")
+                    elif args.uuid:
+                        out_func(f"No namespace with UUID {args.uuid} in subsystem {args.subsystem}")
+                    else:
+                        out_func(f"No namespaces in subsystem {args.subsystem}")
+            else:
+                err_func(f"{namespaces_info.error_message}")
+        elif args.format == "json" or args.format == "yaml":
+            ret_str = json_format.MessageToJson(
+                        namespaces_info,
+                        indent=4,
+                        including_default_value_fields=True,
+                        preserving_proto_field_name=True)
+            if args.format == "json":
+                out_func(f"{ret_str}")
+            elif args.format == "yaml":
+                obj = json.loads(ret_str)
+                out_func(yaml.dump(obj))
+        elif args.format == "python":
+            return namespaces_info
+        else:
+            assert False
+
+        return namespaces_info.status
+
+    def ns_get_io_stats(self, args):
+        """Get namespace IO statistics."""
+
+        out_func, err_func = self.get_output_functions(args)
+        if not args.nsid and not args.uuid:
+            self.cli.parser.error("At least one of --nsid or --uuid arguments is mandatory for get_io_stats command")
+        if args.nsid and args.nsid < 0:
+            self.cli.parser.error("nsid value must be positive")
+        if args.size != None:
+            self.cli.parser.error("--size argument is not allowed for get_io_stats command")
+        if args.block_size != None:
+            self.cli.parser.error("--block-size argument is not allowed for get_io_stats command")
+        if args.rbd_pool != None:
+            self.cli.parser.error("--rbd-pool argument is not allowed for get_io_stats command")
+        if args.rbd_image != None:
+            self.cli.parser.error("--rbd-image argument is not allowed for get_io_stats command")
+        if args.load_balancing_group != None:
+            self.cli.parser.error("--load-balancing-group argument is not allowed for get_io_stats command")
+        if args.rw_ios_per_second != None:
+            self.cli.parser.error("--rw-ios-per-second argument is not allowed for get_io_stats command")
+        if args.rw_megabytes_per_second != None:
+            self.cli.parser.error("--rw-megabytes-per-second argument is not allowed for get_io_stats command")
+        if args.r_megabytes_per_second != None:
+            self.cli.parser.error("--r-megabytes-per-second argument is not allowed for get_io_stats command")
+        if args.w_megabytes_per_second != None:
+            self.cli.parser.error("--w-megabytes-per-second argument is not allowed for get_io_stats command")
+
+        try:
+            get_stats_req = pb2.namespace_get_io_stats_req(subsystem_nqn=args.subsystem, nsid=args.nsid, uuid=args.uuid)
+            ns_io_stats = self.stub.namespace_get_io_stats(get_stats_req)
+        except Exception as ex:
+            ns_io_stats = pb2.namespace_io_stats_info(status = errno.EINVAL, error_message = f"Failure getting namespace's IO stats:\n{ex}")
+
+        if ns_io_stats.status == 0:
+            if ns_io_stats.subsystem_nqn != args.subsystem:
+                ns_io_stats.status = errno.ENODEV
+                ns_io_stats.error_message = f"Failure getting namespace's IO stats: Returned subsystem {ns_io_stats.subsystem_nqn} differs from requested one {args.subsystem}"
+            elif args.nsid and args.nsid != ns_io_stats.nsid:
+                ns_io_stats.status = errno.ENODEV
+                ns_io_stats.error_message = f"Failure getting namespace's IO stats: Returned namespace NSID {ns_io_stats.nsid} differs from requested one {args.nsid}"
+            elif args.uuid and args.uuid != ns_io_stats.uuid:
+                ns_io_stats.status = errno.ENODEV
+                ns_io_stats.error_message = f"Failure getting namespace's IO stats: Returned namespace UUID {ns_io_stats.uuid} differs from requested one {args.uuid}"
+
+        if args.format == "text" or args.format == "plain":
+            if ns_io_stats.status == 0:
+                stats_list = []
+                stats_list.append(["Tick Rate", ns_io_stats.tick_rate])
+                stats_list.append(["Ticks", ns_io_stats.ticks])
+                stats_list.append(["Bytes Read", ns_io_stats.bytes_read])
+                stats_list.append(["Num Read Ops", ns_io_stats.num_read_ops])
+                stats_list.append(["Bytes Written", ns_io_stats.bytes_written])
+                stats_list.append(["Num Write Ops", ns_io_stats.num_write_ops])
+                stats_list.append(["Bytes Unmapped", ns_io_stats.bytes_unmapped])
+                stats_list.append(["Num Unmap Ops", ns_io_stats.num_unmap_ops])
+                stats_list.append(["Read Latency Ticks", ns_io_stats.read_latency_ticks])
+                stats_list.append(["Max Read Latency Ticks", ns_io_stats.max_read_latency_ticks])
+                stats_list.append(["Min Read Latency Ticks", ns_io_stats.min_read_latency_ticks])
+                stats_list.append(["Write Latency Ticks", ns_io_stats.write_latency_ticks])
+                stats_list.append(["Max Write Latency Ticks", ns_io_stats.max_write_latency_ticks])
+                stats_list.append(["Min Write Latency Ticks", ns_io_stats.min_write_latency_ticks])
+                stats_list.append(["Unmap Latency Ticks", ns_io_stats.unmap_latency_ticks])
+                stats_list.append(["Max Unmap Latency Ticks", ns_io_stats.max_unmap_latency_ticks])
+                stats_list.append(["Min Unmap Latency Ticks", ns_io_stats.min_unmap_latency_ticks])
+                stats_list.append(["Copy Latency Ticks", ns_io_stats.copy_latency_ticks])
+                stats_list.append(["Max Copy Latency Ticks", ns_io_stats.max_copy_latency_ticks])
+                stats_list.append(["Min Copy Latency Ticks", ns_io_stats.min_copy_latency_ticks])
+                stats_list.append(["IO Error", str(ns_io_stats.io_error)])
+
+                if args.format == "text":
+                    table_format = "fancy_grid"
+                else:
+                    table_format = "plain"
+                stats_out = tabulate(stats_list, headers = ["Stat", "Value"], tablefmt=table_format)
+                if args.nsid:
+                    ns_id_str = f"{args.nsid}"
+                elif args.uuid:
+                    ns_id_str = f"with UUID {args.uuid}"
+                else:
+                    assert False
+                out_func(f"IO statistics for namespace {ns_id_str} in {args.subsystem}, bdev {ns_io_stats.bdev_name}:\n{stats_out}")
+            else:
+                err_func(f"{ns_io_stats.error_message}")
+        elif args.format == "json" or args.format == "yaml":
+            ret_str = json_format.MessageToJson(
+                        ns_io_stats,
+                        indent=4,
+                        including_default_value_fields=True,
+                        preserving_proto_field_name=True)
+            if args.format == "json":
+                out_func(f"{ret_str}")
+            elif args.format == "yaml":
+                obj = json.loads(ret_str)
+                out_func(yaml.dump(obj))
+        elif args.format == "python":
+            return ns_io_stats
+        else:
+            assert False
+
+        return ns_io_stats.status
+
+    def ns_change_load_balancing_group(self, args):
+        """Change namespace load balancing group."""
+
+        out_func, err_func = self.get_output_functions(args)
+        if not args.nsid and not args.uuid:
+            self.cli.parser.error("At least one of --nsid or --uuid arguments is mandatory for change_load_balancing_group command")
+        if args.nsid and args.nsid < 0:
+            self.cli.parser.error("nsid value must be positive")
+        if args.load_balancing_group == None:
+            self.cli.parser.error("--load-balancing-group argument is mandatory for change_load_balancing_group command")
+        if args.load_balancing_group <= 0:
+            self.cli.parser.error("load-balancing-group value must be positive")
+        if args.size != None:
+            self.cli.parser.error("--size argument is not allowed for change_load_balancing_group command")
+        if args.block_size != None:
+            self.cli.parser.error("--block-size argument is not allowed for change_load_balancing_group command")
+        if args.rbd_pool != None:
+            self.cli.parser.error("--rbd-pool argument is not allowed for change_load_balancing_group command")
+        if args.rbd_image != None:
+            self.cli.parser.error("--rbd-image argument is not allowed for change_load_balancing_group command")
+        if args.rw_ios_per_second != None:
+            self.cli.parser.error("--rw-ios-per-second argument is not allowed for change_load_balancing_group command")
+        if args.rw_megabytes_per_second != None:
+            self.cli.parser.error("--rw-megabytes-per-second argument is not allowed for change_load_balancing_group command")
+        if args.r_megabytes_per_second != None:
+            self.cli.parser.error("--r-megabytes-per-second argument is not allowed for change_load_balancing_group command")
+        if args.w_megabytes_per_second != None:
+            self.cli.parser.error("--w-megabytes-per-second argument is not allowed for change_load_balancing_group command")
+
+        try:
+            change_lb_group_req = pb2.namespace_change_load_balancing_group_req(subsystem_nqn=args.subsystem,
+                                                                                nsid=args.nsid, uuid=args.uuid,
+                                                                                anagrpid=args.load_balancing_group)
+            ret = self.stub.namespace_change_load_balancing_group(change_lb_group_req)
+        except Exception as ex:
+            ret = pb2.req_status(status = errno.EINVAL, error_message = f"Failure changing namespace load balancing group:\n{ex}")
+
+        if args.format == "text" or args.format == "plain":
+            if ret.status == 0:
+                if args.nsid:
+                    ns_id_str = f"{args.nsid}"
+                elif args.uuid:
+                    ns_id_str = f"with UUID {args.uuid}"
+                else:
+                    assert False
+                out_func(f"Changing load balancing group of namespace {ns_id_str} in {args.subsystem} to {args.load_balancing_group}: Successful")
+            else:
+                err_func(f"{ret.error_message}")
+        elif args.format == "json" or args.format == "yaml":
+            ret_str = json_format.MessageToJson(
+                        ret,
+                        indent=4,
+                        including_default_value_fields=True,
+                        preserving_proto_field_name=True)
+            if args.format == "json":
+                out_func(f"{ret_str}")
+            elif args.format == "yaml":
+                obj = json.loads(ret_str)
+                out_func(yaml.dump(obj))
+        elif args.format == "python":
+            return ret
+        else:
+            assert False
+
+        return ret.status
+
+    def get_qos_limit_str_value(self, qos_limit):
+        if qos_limit == 0:
+            return "unlimited"
+        else:
+            return str(qos_limit)
+
+    def ns_set_qos(self, args):
+        """Set namespace QOS limits."""
+
+        out_func, err_func = self.get_output_functions(args)
+        if not args.nsid and not args.uuid:
+            self.cli.parser.error("At least one of --nsid or --uuid arguments is mandatory for set_qos command")
+        if args.nsid and args.nsid < 0:
+            self.cli.parser.error("nsid value must be positive")
+        if args.load_balancing_group != None:
+            self.cli.parser.error("--load-balancing-group argument is not allowed for set_qos command")
+        if args.size != None:
+            self.cli.parser.error("--size argument is not allowed for set_qos command")
+        if args.block_size != None:
+            self.cli.parser.error("--block-size argument is not allowed for set_qos command")
+        if args.rbd_pool != None:
+            self.cli.parser.error("--rbd-pool argument is not allowed for set_qos command")
+        if args.rbd_image != None:
+            self.cli.parser.error("--rbd-image argument is not allowed for set_qos command")
+        if args.rw_ios_per_second == None and args.rw_megabytes_per_second == None and args.r_megabytes_per_second == None and args.w_megabytes_per_second == None:
+            self.cli.parser.error("At least one QOS limit should be set")
+
+        if args.format == "text" or args.format == "plain":
+            if args.rw_ios_per_second and (args.rw_ios_per_second % 1000) != 0:
+                rounded_rate = int((args.rw_ios_per_second + 1000) / 1000) * 1000
+                err_func(f"IOs per second {args.rw_ios_per_second} will be rounded up to {rounded_rate}")
+
+        qos_args = {}
+        qos_args["subsystem_nqn"] = args.subsystem
+        if args.nsid:
+            qos_args["nsid"] = args.nsid
+        if args.uuid:
+            qos_args["uuid"] = args.uuid
+        if args.rw_ios_per_second != None:
+            qos_args["rw_ios_per_second"] = args.rw_ios_per_second
+        if args.rw_megabytes_per_second != None:
+            qos_args["rw_mbytes_per_second"] = args.rw_megabytes_per_second
+        if args.r_megabytes_per_second != None:
+            qos_args["r_mbytes_per_second"] = args.r_megabytes_per_second
+        if args.w_megabytes_per_second != None:
+            qos_args["w_mbytes_per_second"] = args.w_megabytes_per_second
+        try:
+            set_qos_req = pb2.namespace_set_qos_req(**qos_args)
+            ret = self.stub.namespace_set_qos_limits(set_qos_req)
+        except Exception as ex:
+            ret = pb2.req_status(status = errno.EINVAL, error_message = f"Failure setting namespaces QOS limits:\n{ex}")
+
+        if args.format == "text" or args.format == "plain":
+            if ret.status == 0:
+                if args.nsid:
+                    ns_id_str = f"{args.nsid}"
+                elif args.uuid:
+                    ns_id_str = f"with UUID {args.uuid}"
+                else:
+                    assert False
+                out_func(f"Setting QOS limits of namespace {ns_id_str} in {args.subsystem}: Successful")
+            else:
+                err_func(f"{ret.error_message}")
+        elif args.format == "json" or args.format == "yaml":
+            ret_str = json_format.MessageToJson(
+                        ret,
+                        indent=4,
+                        including_default_value_fields=True,
+                        preserving_proto_field_name=True)
+            if args.format == "json":
+                out_func(f"{ret_str}")
+            elif args.format == "yaml":
+                obj = json.loads(ret_str)
+                out_func(yaml.dump(obj))
+        elif args.format == "python":
+            return ret
+        else:
+            assert False
+
+        return ret.status
+
+    ns_args_list = [
+        argument("ns_command", help="namespace sub-command",
+                 choices=["add", "del", "resize", "list", "get_io_stats", "change_load_balancing_group", "set_qos"]),
+        argument("--subsystem", "-n", help="Subsystem NQN", required=True),
+        argument("--rbd-pool", "-p", help="RBD pool name"),
+        argument("--rbd-image", "-i", help="RBD image name"),
+        argument("--block-size", "-s", help="Block size", type=int),
+        argument("--uuid", "-u", help="UUID"),
+        argument("--nsid", help="Namespace ID", type=int),
+        argument("--load-balancing-group", "-l", help="Load balancing group", type=int),
+        argument("--size", help="New size in MiB", type=int),
+        argument("--rw-ios-per-second", help="R/W IOs per second limit, 0 means unlimited", type=int),
+        argument("--rw-megabytes-per-second", help="R/W megabytes per second limit, 0 means unlimited", type=int),
+        argument("--r-megabytes-per-second", help="Read megabytes per second limit, 0 means unlimited", type=int),
+        argument("--w-megabytes-per-second", help="Write megabytes per second limit, 0 means unlimited", type=int),
+    ]
+    @cli.cmd(ns_args_list)
+    def ns(self, args):
+        """Namespace commands"""
+        if args.ns_command == "add":
+            return self.ns_add(args)
+        elif args.ns_command == "del":
+            return self.ns_del(args)
+        elif args.ns_command == "resize":
+            return self.ns_resize(args)
+        elif args.ns_command == "list":
+            return self.ns_list(args)
+        elif args.ns_command == "get_io_stats":
+            return self.ns_get_io_stats(args)
+        elif args.ns_command == "change_load_balancing_group":
+            return self.ns_change_load_balancing_group(args)
+        elif args.ns_command == "set_qos":
+            return self.ns_set_qos(args)
+        assert False
+
+    @cli.cmd(ns_args_list)
+    def namespace(self, args):
+        """Namespace commands"""
+        return self.ns(args)
+
+def main_common(client, args):
+    server_address = args.server_address
+    server_port = args.server_port
+    client_key = args.client_key
+    client_cert = args.client_cert
+    server_cert = args.server_cert
+    client.connect(server_address, server_port, client_key, client_cert, server_cert)
+    call_function = getattr(client, args.func.__name__)
+    rc = call_function(args)
+    return rc
+
+def main_test(args):
+    if not args:
+        return None
+    try:
+        i = args.index("--format")
+        del args[i:i + 2]
+    except Exception:
+        pass
+    args = ["--format", "python"] + args
+    client = GatewayClient()
+    parsed_args = client.cli.parser.parse_args(args)
+    if parsed_args.subcommand is None:
+        return None
+
+    return main_common(client, parsed_args)
+
+def main(args=None) -> int:
     client = GatewayClient()
     parsed_args = client.cli.parser.parse_args(args)
     if parsed_args.subcommand is None:
         client.cli.parser.print_help()
-        return 0
-    server_address = parsed_args.server_address
-    server_port = parsed_args.server_port
-    client_key = parsed_args.client_key
-    client_cert = parsed_args.client_cert
-    server_cert = parsed_args.server_cert
-    client.connect(server_address, server_port, client_key, client_cert, server_cert)
-    call_function = getattr(client, parsed_args.func.__name__)
-    call_function(parsed_args)
+        return -1
 
+    return main_common(client, parsed_args)
 
 if __name__ == "__main__":
     sys.exit(main())

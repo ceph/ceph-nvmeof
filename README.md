@@ -92,36 +92,25 @@ The following command executes all the steps required to set up the NVMe-oF envi
 
 ```bash
 $ make demo
-
-DOCKER_BUILDKIT=1 docker-compose exec ceph-vstart-cluster bash -c "rbd info demo_image || rbd create demo_image --size 10M"
+docker-compose  exec  ceph bash -c "rbd -p rbd info demo_image || rbd -p rbd create demo_image --size 10M"
 rbd: error opening image demo_image: (2) No such file or directory
-
-DOCKER_BUILDKIT=1 docker-compose run --rm ceph-nvmeof-cli --server-address ceph-nvmeof --server-port 5500 create_bdev --pool rbd --image demo_image --bdev demo_bdev
-Creating nvmeof_ceph-nvmeof-cli_run ... done
-INFO:__main__:Created bdev demo_bdev: True
-
-DOCKER_BUILDKIT=1 docker-compose run --rm ceph-nvmeof-cli --server-address ceph-nvmeof --server-port 5500 create_subsystem --subnqn nqn.2016-06.io.spdk:cnode1 --serial SPDK00000000000001
-Creating nvmeof_ceph-nvmeof-cli_run ... done
-INFO:__main__:Created subsystem nqn.2016-06.io.spdk:cnode1: True
-
-DOCKER_BUILDKIT=1 docker-compose run --rm ceph-nvmeof-cli --server-address ceph-nvmeof --server-port 5500 add_namespace --subnqn nqn.2016-06.io.spdk:cnode1 --bdev demo_bdev
-Creating nvmeof_ceph-nvmeof-cli_run ... done
-INFO:__main__:Added namespace 1 to nqn.2016-06.io.spdk:cnode1: True
-
-DOCKER_BUILDKIT=1 docker-compose run --rm ceph-nvmeof-cli --server-address ceph-nvmeof --server-port 5500 create_listener --subnqn nqn.2016-06.io.spdk:cnode1 -g gateway_name -a gateway_addr -s 4420
-Creating nvmeof_ceph-nvmeof-cli_run ... done
-INFO:__main__:Created nqn.2016-06.io.spdk:cnode1 listener: True
-
-DOCKER_BUILDKIT=1 docker-compose run --rm ceph-nvmeof-cli --server-address ceph-nvmeof --server-port 5500 add_host --subnqn nqn.2016-06.io.spdk:cnode1 --host "*"
-Creating nvmeof_ceph-nvmeof-cli_run ... done
-INFO:__main__:Allowed open host access to nqn.2016-06.io.spdk:cnode1: True
+docker-compose  run --rm nvmeof-cli --server-address 192.168.13.3 --server-port 5500 subsystem add --subsystem "nqn.2016-06.io.spdk:cnode1" --ana-reporting --enable-ha
+Adding subsystem nqn.2016-06.io.spdk:cnode1: Successful
+docker-compose  run --rm nvmeof-cli --server-address 192.168.13.3 --server-port 5500 namespace add --subsystem "nqn.2016-06.io.spdk:cnode1" --rbd-pool rbd --rbd-image demo_image
+Adding namespace 1 to nqn.2016-06.io.spdk:cnode1, load balancing group 1: Successful
+docker-compose  run --rm nvmeof-cli --server-address 192.168.13.3 --server-port 5500 listener add --subsystem "nqn.2016-06.io.spdk:cnode1" --gateway-name fbca1a3d3ed8 --traddr 192.168.13.3 --trsvcid 4420
+Adding listener 192.168.13.3:4420 to nqn.2016-06.io.spdk:cnode1: Successful
+docker-compose  run --rm nvmeof-cli --server-address 2001:db8::3 --server-port 5500 listener add --subsystem "nqn.2016-06.io.spdk:cnode1" --gateway-name fbca1a3d3ed8 --traddr 2001:db8::3 --trsvcid 4420 --adrfam IPV6
+Adding listener [2001:db8::3]:4420 to nqn.2016-06.io.spdk:cnode1: Successful
+docker-compose  run --rm nvmeof-cli --server-address 192.168.13.3 --server-port 5500 host add --subsystem "nqn.2016-06.io.spdk:cnode1" --host "*"
+Allowing any host for nqn.2016-06.io.spdk:cnode1: Successful
 ```
 
 #### Manual Steps
 
 The same configuration can also be manually run:
 
-1. First of all, let's create the `nvmeof-cli` shortcut to interact with the NVMe-oF gateway:
+1. First of all, let's create the `cephnvmf` shortcut to interact with the NVMe-oF gateway:
 
     ```bash
     eval $(make alias)
@@ -133,34 +122,28 @@ The same configuration can also be manually run:
     make rbd
     ```
 
-1. Create a bdev (Block Device) from an RBD image:
-
-    ```bash
-    nvmeof-cli create_bdev --pool rbd --image demo_image --bdev demo_bdev
-    ```
-
 1. Create a subsystem:
 
     ```bash
-    nvmeof-cli create_subsystem --subnqn nqn.2016-06.io.spdk:cnode1 --serial SPDK00000000000001
+    cephnvmf subsystem add --subsystem nqn.2016-06.io.spdk:cnode1
     ```
 
 1. Add a namespace:
 
     ```bash
-    nvmeof-cli add_namespace --subnqn nqn.2016-06.io.spdk:cnode1 --bdev demo_bdev
+    cephnvmf namespace add --subsystem nqn.2016-06.io.spdk:cnode1 --rbd-pool rbd --rbd-image demo_image
     ```
 
 1. Create a listener so that NVMe initiators can connect to:
 
     ```bash
-    nvmeof-cli create_listener ---subnqn nqn.2016-06.io.spdk:cnode1 -g gateway_name -a gateway_addr -s 4420
+    cephnvmf listener add ---subsystem nqn.2016-06.io.spdk:cnode1 -g gateway_name -a gateway_addr -s 4420
     ```
 
 1. Define which hosts can connect:
 
     ```bash
-    nvmeof-cli add_host --subnqn nqn.2016-06.io.spdk:cnode1 --host "*"
+    cephnvmf host add --subsystem nqn.2016-06.io.spdk:cnode1 --host "*"
     ```
 
 

@@ -9,6 +9,34 @@
 
 import configparser
 
+class GatewayEnumUtils:
+    def get_value_from_key(e_type, keyval, ignore_case = False):
+        val = None
+        try:
+            key_index = e_type.keys().index(keyval)
+            val = e_type.values()[key_index]
+        except ValueError:
+            pass
+        except IndexError:
+            pass
+
+        if ignore_case and val == None and type(keyval) == str:
+            val = get_value_from_key(e_type, keyval.lower(), False)
+        if ignore_case and val == None and type(keyval) == str:
+            val = get_value_from_key(e_type, keyval.upper(), False)
+
+        return val
+
+    def get_key_from_value(e_type, val):
+        keyval = None
+        try:
+            val_index = e_type.values().index(val)
+            keyval = e_type.keys()[val_index]
+        except ValueError:
+            pass
+        except IndexError:
+            pass
+        return keyval
 
 class GatewayConfig:
     """Loads and returns config file settings.

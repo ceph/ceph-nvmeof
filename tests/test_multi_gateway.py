@@ -67,7 +67,6 @@ def test_multi_gateway_coordination(config, image, conn):
     periodic polling.
     """
     stubA, stubB = conn
-    bdev = "Ceph0"
     nqn = "nqn.2016-06.io.spdk:cnode1"
     serial = "SPDK00000000000001"
     nsid = 10
@@ -76,43 +75,62 @@ def test_multi_gateway_coordination(config, image, conn):
     pool = config.get("ceph", "pool")
 
     # Send requests to create a subsystem with one namespace to GatewayA
-    bdev_req = pb2.create_bdev_req(bdev_name=bdev,
-                                   rbd_pool_name=pool,
-                                   rbd_image_name=image,
-                                   block_size=4096)
     subsystem_req = pb2.create_subsystem_req(subsystem_nqn=nqn,
                                              serial_number=serial)
-    namespace_req = pb2.add_namespace_req(subsystem_nqn=nqn,
-                                          bdev_name=bdev,
+    namespace_req = pb2.namespace_add_req(subsystem_nqn=nqn,
+                                          rbd_pool_name=pool,
+                                          rbd_image_name=image,
+                                          block_size=4096,
                                           nsid=nsid)
-    get_subsystems_req = pb2.get_subsystems_req()
-    ret_bdev = stubA.create_bdev(bdev_req)
+    list_subsystems_req = pb2.list_subsystems_req()
+    list_namespaces_req = pb2.list_namespaces_req(subsystem=nqn)
     ret_subsystem = stubA.create_subsystem(subsystem_req)
-    ret_namespace = stubA.add_namespace(namespace_req)
-    assert ret_bdev.status is True
-    assert ret_subsystem.status is True
-    assert ret_namespace.status is True
+    ret_namespace = stubA.namespace_add(namespace_req)
+    assert ret_subsystem.status == 0
+    assert ret_namespace.status == 0
+
+    nsListA = json.loads(json_format.MessageToJson(
+        stubA.list_namespaces(list_namespaces_req),
+        preserving_proto_field_name=True, including_default_value_fields=True))['namespaces']
+    assert len(nsListA) == 1
+    assert nsListA[0]["nsid"] == nsid
+    uuid = nsListA[0]["uuid"]
 
     # Watch/Notify
     if update_notify:
         time.sleep(1)
         listB = json.loads(json_format.MessageToJson(
-            stubB.get_subsystems(get_subsystems_req),
+            stubB.list_subsystems(list_subsystems_req),
             preserving_proto_field_name=True, including_default_value_fields=True))['subsystems']
         assert len(listB) == num_subsystems
         assert listB[num_subsystems-1]["nqn"] == nqn
         assert listB[num_subsystems-1]["serial_number"] == serial
-        assert listB[num_subsystems-1]["namespaces"][0]["nsid"] == nsid
-        assert listB[num_subsystems-1]["namespaces"][0]["bdev_name"] == bdev
+        assert listB[num_subsystems-1]["namespace_count"] == 1
+
+        nsListB = json.loads(json_format.MessageToJson(
+            stubB.list_namespaces(list_namespaces_req),
+            preserving_proto_field_name=True, including_default_value_fields=True))['namespaces']
+        assert len(nsListB) == 1
+        assert nsListB[0]["nsid"] == nsid
+        assert nsListB[0]["uuid"] == uuid
+        assert nsListB[0]["rbd_image_name"] == image
+        assert nsListB[0]["rbd_pool_name"] == pool
 
     # Periodic update
     time.sleep(update_interval_sec + 1)
     listB = json.loads(json_format.MessageToJson(
-        stubB.get_subsystems(get_subsystems_req),
+        stubB.list_subsystems(list_subsystems_req),
         preserving_proto_field_name=True, including_default_value_fields=True))['subsystems']
     assert len(listB) == num_subsystems
     assert listB[num_subsystems-1]["nqn"] == nqn
     assert listB[num_subsystems-1]["serial_number"] == serial
-    assert listB[num_subsystems-1]["namespaces"][0]["nsid"] == nsid
-    assert listB[num_subsystems-1]["namespaces"][0]["bdev_name"] == bdev
+    assert listB[num_subsystems-1]["namespace_count"] == 1
+    nsListB = json.loads(json_format.MessageToJson(
+        stubB.list_namespaces(list_namespaces_req),
+        preserving_proto_field_name=True, including_default_value_fields=True))['namespaces']
+    assert len(nsListB) == 1
+    assert nsListB[0]["nsid"] == nsid
+    assert nsListB[0]["uuid"] == uuid
+    assert nsListB[0]["rbd_image_name"] == image
+    assert nsListB[0]["rbd_pool_name"] == pool
 

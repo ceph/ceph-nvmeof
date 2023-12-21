@@ -13,7 +13,7 @@ import json
 import logging
 from .config import GatewayConfig
 from .state import GatewayState, LocalGatewayState, OmapGatewayState, GatewayStateHandler
-from .grpc import GatewayEnumUtils
+from .config import GatewayEnumUtils
 from .proto import gateway_pb2 as pb2
 
 import rados
@@ -738,10 +738,11 @@ class DiscoveryService:
                 log_entry.controller_id = 0xffff
                 log_entry.asqsz = 128
                 # transport service indentifier
+                str_trsvcid = str(allow_listeners[log_entry_counter]["trsvcid"])
                 log_entry.trsvcid = (c_ubyte * 32)(*[c_ubyte(x) for x \
-                    in allow_listeners[log_entry_counter]["trsvcid"].encode()])
-                log_entry.trsvcid[len(allow_listeners[log_entry_counter]["trsvcid"]):] = \
-                    [c_ubyte(0x20)] * (32 - len(allow_listeners[log_entry_counter]["trsvcid"]))
+                    in str_trsvcid.encode()])
+                log_entry.trsvcid[len(str_trsvcid):] = \
+                    [c_ubyte(0x20)] * (32 - len(str_trsvcid))
                 # NVM subsystem qualified name
                 log_entry.subnqn = (c_ubyte * 256)(*[c_ubyte(x) for x \
                     in allow_listeners[log_entry_counter]["nqn"].encode()])

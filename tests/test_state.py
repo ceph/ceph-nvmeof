@@ -78,22 +78,22 @@ def test_state_polling_update(config, ioctx, local_state, omap_state):
                                 _state_polling_update)
     state.update_interval = update_interval_sec
     state.use_notify = False
-    key = "bdev_test"
+    key = "namespace_test"
     state.start_update()
 
-    # Add bdev key to OMAP and update version number
+    # Add namespace key to OMAP and update version number
     version += 1
     add_key(ioctx, key, "add", version, omap_state.omap_name,
             omap_state.OMAP_VERSION_KEY)
     time.sleep(update_interval_sec + 1)  # Allow time for polling
 
-    # Change bdev key and update version number
+    # Change namespace key and update version number
     version += 1
     add_key(ioctx, key, "changed", version, omap_state.omap_name,
             omap_state.OMAP_VERSION_KEY)
     time.sleep(update_interval_sec + 1)  # Allow time for polling
 
-    # Remove bdev key and update version number
+    # Remove namespace key and update version number
     version += 1
     remove_key(ioctx, key, version, omap_state.omap_name,
                omap_state.OMAP_VERSION_KEY)
@@ -137,25 +137,25 @@ def test_state_notify_update(config, ioctx, local_state, omap_state):
     update_interval_sec = 10
     state = GatewayStateHandler(config, local_state, omap_state,
                                 _state_notify_update)
-    key = "bdev_test"
+    key = "namespace_test"
     state.update_interval = update_interval_sec
     state.use_notify = True
     start = time.time()
     state.start_update()
 
-    # Add bdev key to OMAP and update version number
+    # Add namespace key to OMAP and update version number
     version += 1
     add_key(ioctx, key, "add", version, omap_state.omap_name,
             omap_state.OMAP_VERSION_KEY)
     assert (ioctx.notify(omap_state.omap_name))  # Send notify signal
 
-    # Change bdev key and update version number
+    # Change namespace key and update version number
     version += 1
     add_key(ioctx, key, "changed", version, omap_state.omap_name,
             omap_state.OMAP_VERSION_KEY)
     assert (ioctx.notify(omap_state.omap_name))  # Send notify signal
 
-    # Remove bdev key and update version number
+    # Remove namespace key and update version number
     version += 1
     remove_key(ioctx, key, version, omap_state.omap_name,
                omap_state.OMAP_VERSION_KEY)
