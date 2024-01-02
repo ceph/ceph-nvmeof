@@ -392,9 +392,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     max_cntlid=max_cntlid,
                     ana_reporting = request.ana_reporting,
                 )
-                self.logger.info(f"create_subsystem and ana_map {request.subsystem_nqn}: {ret}")
-                for x in range (MAX_ANA_GROUPS):
-                     self.ana_map[request.subsystem_nqn][x+1]  =  pb2.ana_state.INACCESSIBLE
+                self.logger.info(f"create_subsystem {request.subsystem_nqn}: {ret}")
     
             except Exception as ex:
                 self.logger.error(f"create_subsystem failed with: \n {ex}")
@@ -414,8 +412,6 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     self.logger.error(f"Error persisting create_subsystem"
                                       f" {request.subsystem_nqn}: {ex}")
                     raise
-                for x in range (MAX_ANA_GROUPS):
-                    self.ana_map[request.subsystem_nqn][x+1]  =  pb2.ana_state.INACCESSIBLE  
         return pb2.req_status(status=ret)
 
     def create_subsystem(self, request, context=None):
@@ -452,8 +448,6 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     self.logger.error(f"Error persisting delete_subsystem"
                                       f" {request.subsystem_nqn}: {ex}")
                     raise
-                if  self.ana_map[request.subsystem_nqn]:
-                    self.ana_map[request.subsystem_nqn].clear()
         return pb2.req_status(status=ret)
 
     def delete_subsystem(self, request, context=None):
