@@ -84,24 +84,38 @@ if __name__ == '__main__':
         help="Path to config file",
     )
     parser.add_argument(
-        "-D",
-        "--deployment",
+        "-g",
+        "--gateway",
+        required=True,
         type=str,
-        help="Create set of Gateway names",
+        help="gateway id",
+    )
+    parser.add_argument(
+        "-p",
+        "--pool",
+        required=True,
+        type=str,
+        help="gateway pool",
+    )
+    parser.add_argument(
+        "-G",
+        "--group",
+        default='',
+        type=str,
+        help="gateway group",
     )
     subparsers = parser.add_subparsers(dest="subcommand")
     valid_commands = ['create', 'delete']
     for cmd in valid_commands:
-        subparsers.add_parser(cmd, help=f'{cmd} nvmeof gateway deployement')
+        subparsers.add_parser(cmd, help=f'{cmd} nvmeof gateway create/delete')
 
     args = parser.parse_args()
     config = GatewayConfig(args.config)
-    gw_str = args.deployment
     cmd = args.subcommand
     if cmd not in valid_commands:
         print(f'Valid commands are {valid_commands}. Use --help for usage information.')
         raise SystemExit
 
-    print (f"{config=} {cmd=} {gw_str=}")
+    print (f"{config=} {cmd=} {args.gateway=} {args.pool=} {args.group=}")
     rads = RadosConn(config)
-    rads.conn.mon_command('{"prefix":"nvme-gw ' + cmd + '","ids":[' + gw_str + ']}', b'')
+    rads.conn.mon_command(f'{"prefix":"nvme-gw {cmd}","id":"{args.gateway}", "group": "{args.group}", "pool": "{args.pool}"}', b'')
