@@ -24,19 +24,22 @@ class GatewayState(ABC):
         X_PREFIX: Key prefix for key of type "X"
     """
 
-    BDEV_PREFIX = "bdev_"
     NAMESPACE_PREFIX = "namespace_"
     SUBSYSTEM_PREFIX = "subsystem_"
     HOST_PREFIX = "host_"
     LISTENER_PREFIX = "listener_"
-
-    def build_bdev_key(bdev_name: str) -> str:
-        return GatewayState.BDEV_PREFIX + bdev_name
+    NAMESPACE_QOS_PREFIX = "qos_"
 
     def build_namespace_key(subsystem_nqn: str, nsid) -> str:
         key = GatewayState.NAMESPACE_PREFIX + subsystem_nqn
         if nsid is not None:
-            key = key + "_" + nsid
+            key = key + "_" + str(nsid)
+        return key
+
+    def build_namespace_qos_key(subsystem_nqn: str, nsid) -> str:
+        key = GatewayState.NAMESPACE_QOS_PREFIX + subsystem_nqn
+        if nsid is not None:
+            key = key + "_" + str(nsid)
         return key
 
     def build_subsystem_key(subsystem_nqn: str) -> str:
@@ -51,8 +54,8 @@ class GatewayState(ABC):
     def build_partial_listener_key(subsystem_nqn: str) -> str:
         return GatewayState.LISTENER_PREFIX + subsystem_nqn
 
-    def build_listener_key(subsystem_nqn: str, gateway: str, trtype: str, traddr: str, trsvcid: str) -> str:
-        return GatewayState.build_partial_listener_key(subsystem_nqn) + "_" + gateway + "_" + trtype + "_" + traddr + "_" + trsvcid
+    def build_listener_key(subsystem_nqn: str, gateway: str, trtype: str, traddr: str, trsvcid: int) -> str:
+        return GatewayState.build_partial_listener_key(subsystem_nqn) + "_" + gateway + "_" + trtype + "_" + traddr + "_" + str(trsvcid)
 
     @abstractmethod
     def get_state(self) -> Dict[str, str]:
@@ -69,16 +72,6 @@ class GatewayState(ABC):
         """Removes key from state data store."""
         pass
 
-    def add_bdev(self, bdev_name: str, val: str):
-        """Adds a bdev to the state data store."""
-        key = GatewayState.build_bdev_key(bdev_name)
-        self._add_key(key, val)
-
-    def remove_bdev(self, bdev_name: str):
-        """Removes a bdev from the state data store."""
-        key = GatewayState.build_bdev_key(bdev_name)
-        self._remove_key(key)
-
     def add_namespace(self, subsystem_nqn: str, nsid: str, val: str):
         """Adds a namespace to the state data store."""
         key = GatewayState.build_namespace_key(subsystem_nqn, nsid)
@@ -87,6 +80,16 @@ class GatewayState(ABC):
     def remove_namespace(self, subsystem_nqn: str, nsid: str):
         """Removes a namespace from the state data store."""
         key = GatewayState.build_namespace_key(subsystem_nqn, nsid)
+        self._remove_key(key)
+
+    def add_namespace_qos(self, subsystem_nqn: str, nsid: str, val: str):
+        """Adds namespace's QOS settings to the state data store."""
+        key = GatewayState.build_namespace_qos_key(subsystem_nqn, nsid)
+        self._add_key(key, val)
+
+    def remove_namespace_qos(self, subsystem_nqn: str, nsid: str):
+        """Removes namespace's QOS settings from the state data store."""
+        key = GatewayState.build_namespace_qos_key(subsystem_nqn, nsid)
         self._remove_key(key)
 
     def add_subsystem(self, subsystem_nqn: str, val: str):
@@ -118,13 +121,13 @@ class GatewayState(ABC):
         self._remove_key(key)
 
     def add_listener(self, subsystem_nqn: str, gateway: str, trtype: str,
-                     traddr: str, trsvcid: str, val: str):
+                     traddr: str, trsvcid: int, val: str):
         """Adds a listener to the state data store."""
         key = GatewayState.build_listener_key(subsystem_nqn, gateway, trtype, traddr, trsvcid)
         self._add_key(key, val)
 
     def remove_listener(self, subsystem_nqn: str, gateway: str, trtype: str,
-                        traddr: str, trsvcid: str):
+                        traddr: str, trsvcid: int):
         """Removes a listener from the state data store."""
         key = GatewayState.build_listener_key(subsystem_nqn, gateway, trtype, traddr, trsvcid)
         self._remove_key(key)
@@ -174,6 +177,7 @@ class OmapLock:
         self.logger = omap_state.logger
         self.omap_state = omap_state
         self.gateway_state = gateway_state
+        self.is_locked = False
         self.omap_file_lock_duration = self.omap_state.config.getint_with_default("gateway", "omap_file_lock_duration", 60)
         self.omap_file_update_reloads = self.omap_state.config.getint_with_default("gateway", "omap_file_update_reloads", 10)
         self.omap_file_lock_retries = self.omap_state.config.getint_with_default("gateway", "omap_file_lock_retries", 15)
@@ -261,6 +265,7 @@ class OmapLock:
             self.logger.error(f"Unable to lock OMAP file after {self.omap_file_lock_retries} tries. Exiting!")
             raise Exception("Unable to lock OMAP file")
 
+        self.is_locked = True
         omap_version = self.omap_state.get_omap_version()
         local_version = self.omap_state.get_local_version()
 
@@ -278,11 +283,15 @@ class OmapLock:
 
         try:
             self.omap_state.ioctx.unlock(self.omap_state.omap_name, self.OMAP_FILE_LOCK_NAME, self.OMAP_FILE_LOCK_COOKIE)
+            self.is_locked = False
         except rados.ObjectNotFound as ex:
             self.logger.warning(f"No such lock, the lock duration might have passed")
         except Exception as ex:
             self.logger.error(f"Unable to unlock OMAP file: {ex}")
             pass
+
+    def locked(self):
+        return self.is_locked
 
 class OmapGatewayState(GatewayState):
     """Persists gateway NVMeoF target state to an OMAP object.
@@ -334,6 +343,12 @@ class OmapGatewayState(GatewayState):
         if self.watch is not None:
             self.watch.close()
         self.ioctx.close()
+
+    def check_for_old_format_omap_files(self):
+        omap_dict = self.get_state()
+        for omap_item_key in omap_dict.keys():
+           if omap_item_key.startswith("bdev"):
+               raise Exception("Old OMAP file format, still contains bdevs, please remove file and try again")
 
     def fetch_and_display_ceph_version(self, conn):
         try:
@@ -511,16 +526,6 @@ class GatewayStateHandler:
                                                  "state_update_notify")
         self.update_is_active_lock = threading.Lock()
 
-    def add_bdev(self, bdev_name: str, val: str):
-        """Adds a bdev to the state data stores."""
-        self.omap.add_bdev(bdev_name, val)
-        self.local.add_bdev(bdev_name, val)
-
-    def remove_bdev(self, bdev_name: str):
-        """Removes a bdev from the state data stores."""
-        self.omap.remove_bdev(bdev_name)
-        self.local.remove_bdev(bdev_name)
-
     def add_namespace(self, subsystem_nqn: str, nsid: str, val: str):
         """Adds a namespace to the state data store."""
         self.omap.add_namespace(subsystem_nqn, nsid, val)
@@ -530,6 +535,16 @@ class GatewayStateHandler:
         """Removes a namespace from the state data store."""
         self.omap.remove_namespace(subsystem_nqn, nsid)
         self.local.remove_namespace(subsystem_nqn, nsid)
+
+    def add_namespace_qos(self, subsystem_nqn: str, nsid: str, val: str):
+        """Adds namespace's QOS settings to the state data store."""
+        self.omap.add_namespace_qos(subsystem_nqn, nsid, val)
+        self.local.add_namespace_qos(subsystem_nqn, nsid, val)
+
+    def remove_namespace_qos(self, subsystem_nqn: str, nsid: str):
+        """Removes namespace's QOS settings from the state data store."""
+        self.omap.remove_namespace_qos(subsystem_nqn, nsid)
+        self.local.remove_namespace_qos(subsystem_nqn, nsid)
 
     def add_subsystem(self, subsystem_nqn: str, val: str):
         """Adds a subsystem to the state data store."""
@@ -611,8 +626,9 @@ class GatewayStateHandler:
 
         with self.update_is_active_lock:
             prefix_list = [
-                GatewayState.BDEV_PREFIX, GatewayState.SUBSYSTEM_PREFIX,
+                GatewayState.SUBSYSTEM_PREFIX,
                 GatewayState.NAMESPACE_PREFIX, GatewayState.HOST_PREFIX,
+                GatewayState.NAMESPACE_QOS_PREFIX,
                 GatewayState.LISTENER_PREFIX
             ]
 

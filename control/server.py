@@ -102,6 +102,7 @@ class GatewayServer:
 
         omap_state = OmapGatewayState(self.config)
         local_state = LocalGatewayState()
+        omap_state.check_for_old_format_omap_files()
 
         # install SIGCHLD handler
         signal.signal(signal.SIGCHLD, sigchld_handler)
@@ -355,16 +356,7 @@ class GatewayServer:
     def gateway_rpc_caller(self, requests, is_add_req):
         """Passes RPC requests to gateway service."""
         for key, val in requests.items():
-            if key.startswith(GatewayState.BDEV_PREFIX):
-                if is_add_req:
-                    req = json_format.Parse(val, pb2.create_bdev_req())
-                    self.gateway_rpc.create_bdev(req)
-                else:
-                    req = json_format.Parse(val,
-                                            pb2.delete_bdev_req(),
-                                            ignore_unknown_fields=True)
-                    self.gateway_rpc.delete_bdev(req)
-            elif key.startswith(GatewayState.SUBSYSTEM_PREFIX):
+            if key.startswith(GatewayState.SUBSYSTEM_PREFIX):
                 if is_add_req:
                     req = json_format.Parse(val, pb2.create_subsystem_req())
                     self.gateway_rpc.create_subsystem(req)
@@ -375,13 +367,20 @@ class GatewayServer:
                     self.gateway_rpc.delete_subsystem(req)
             elif key.startswith(GatewayState.NAMESPACE_PREFIX):
                 if is_add_req:
-                    req = json_format.Parse(val, pb2.add_namespace_req())
-                    self.gateway_rpc.add_namespace(req)
+                    req = json_format.Parse(val, pb2.namespace_add_req())
+                    self.gateway_rpc.namespace_add(req)
                 else:
                     req = json_format.Parse(val,
-                                            pb2.remove_namespace_req(),
+                                            pb2.namespace_delete_req(),
                                             ignore_unknown_fields=True)
-                    self.gateway_rpc.remove_namespace(req)
+                    self.gateway_rpc.namespace_delete(req)
+            elif key.startswith(GatewayState.NAMESPACE_QOS_PREFIX):
+                if is_add_req:
+                    req = json_format.Parse(val, pb2.namespace_set_qos_req())
+                    self.gateway_rpc.namespace_set_qos_limits(req)
+                else:
+                    # Do nothing, this is covered by the delete namespace code
+                    pass
             elif key.startswith(GatewayState.HOST_PREFIX):
                 if is_add_req:
                     req = json_format.Parse(val, pb2.add_host_req())

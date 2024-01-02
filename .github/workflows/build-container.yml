@@ -65,7 +65,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-          test: ["cli", "state", "multi_gateway", "server", "grpc", "omap_lock"]
+          test: ["cli", "state", "multi_gateway", "server", "grpc", "omap_lock", "old_omap"]
     runs-on: ubuntu-latest
     env:
       HUGEPAGES: 512 # for multi gateway test, approx 256 per gateway instance
@@ -223,13 +223,29 @@ jobs:
         run: |
           make demo OPTS=-T NVMEOF_CONTAINER_NAME="ceph-nvmeof_nvmeof_1"
 
-      - name: Get subsystems
+      - name: List resources
         run: |
           # https://github.com/actions/toolkit/issues/766
           shopt -s expand_aliases
           eval $(make alias)
-          nvmeof-cli get_subsystems
-          nvmeof-cli-ipv6 get_subsystems
+          cephnvmf subsystem list
+          subs=$(cephnvmf --output stdio --format json subsystem list | grep nqn | sed 's/"nqn": "//' | sed 's/",$//')
+          for sub in $subs
+          do
+              cephnvmf namespace list --subsystem $sub
+              cephnvmf listener list --subsystem $sub
+              cephnvmf host list --subsystem $sub
+          done
+
+      - name: Verify no HA
+        run: |
+          shopt -s expand_aliases
+          eval $(make alias)
+          ha_status=$(cephnvmf --output stdio --format json subsystem list | grep "enable_ha" | grep "true" | tr -d '\n\r')
+          if [ -n "$ha_status" ]; then
+              echo "Found a subsystem with HA enabled, failing"
+              exit 1
+          fi
 
       - name: Run bdevperf
         run: |
@@ -390,21 +406,20 @@ jobs:
 
           gw1=$(container_ip $GW1)
           echo ℹ️ Using GW RPC $GW1 address $gw1 port $NVMEOF_GW_PORT
-          cli_gw $gw1 get_subsystems
-          cli_gw $gw1 create_bdev --pool $RBD_POOL --image $RBD_IMAGE_NAME --bdev $BDEV_NAME
-          cli_gw $gw1 create_subsystem --subnqn $NQN --serial $SERIAL
-          cli_gw $gw1 add_namespace --subnqn $NQN --bdev $BDEV_NAME
+          cli_gw $gw1 subsystem list
+          cli_gw $gw1 subsystem add --subsystem $NQN --serial $SERIAL
+          cli_gw $gw1 namespace add --subsystem $NQN --rbd-pool $RBD_POOL --rbd-image $RBD_IMAGE_NAME
           for gw in $GW1 $GW2; do
             ip=$(container_ip $gw)
             name=$(container_id $gw) # default hostname - container id
             echo ℹ️ Create listener address $ip gateway $name
-            cli_gw $ip create_listener --subnqn $NQN --gateway-name $name --traddr $ip --trsvcid $NVMEOF_IO_PORT
+            cli_gw $ip listener add --subsystem $NQN --gateway-name $name --traddr $ip --trsvcid $NVMEOF_IO_PORT
           done
-          cli_gw $gw1 add_host --subnqn $NQN --host "*"
+          cli_gw $gw1 host add --subsystem $NQN --host "*"
           for gw in $GW1 $GW2; do
             ip=$(container_ip $gw)
             echo ℹ️ Subsystems for name $gw ip $ip
-            cli_gw $ip get_subsystems
+            cli_gw $ip subsystem list
           done
 
       - name: Run bdevperf discovery
