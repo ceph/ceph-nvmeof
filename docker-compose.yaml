@@ -141,9 +141,9 @@ services:
     ports:
       - "$NVMEOF_IO_PORT" # I/O controllers
       - "$NVMEOF_GW_PORT" # Gateway
-        #    depends_on:
-        #ceph:
-        #condition: service_healthy
+    depends_on:
+      ceph:
+        condition: service_healthy
   discovery:
     extends:
       service: nvmeof-base
