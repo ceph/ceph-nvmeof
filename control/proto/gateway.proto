@@ -115,7 +115,7 @@ message namespace_add_req {
 	string rbd_image_name = 2;
 	string subsystem_nqn = 3;
 	optional uint32 nsid = 4;
-	int32 block_size = 5;
+	uint32 block_size = 5;
 	optional string uuid = 6;
 	optional int32 anagrpid = 7;
 }
@@ -346,8 +346,8 @@ message namespace {
 	string rbd_image_name = 3;
 	string rbd_pool_name = 4;
 	uint32 load_balancing_group = 5;
-	int32 block_size = 6;
-	int32 rbd_image_size = 7;
+	uint32 block_size = 6;
+	uint64 rbd_image_size = 7;
 	string uuid = 8;
 	uint64 rw_ios_per_second = 9;
 	uint64 rw_mbytes_per_second = 10;

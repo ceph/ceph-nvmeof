@@ -236,7 +236,7 @@ class TestCreate:
         cli(["--format", "json", "namespace", "list", "--subsystem", subsystem, "--nsid", nsid])
         assert f'"nsid": {nsid}' in caplog.text
         assert '"block_size": 512' in caplog.text
-        assert '"rbd_image_size": 16777216' in caplog.text
+        assert '"rbd_image_size": "16777216"' in caplog.text
         assert f'"uuid": "{uuid}"' in caplog.text
         caplog.clear()
         cli(["namespace", "resize", "--subsystem", subsystem, "--nsid", nsid, "--size", "32"])
@@ -245,7 +245,7 @@ class TestCreate:
         cli(["--format", "json", "namespace", "list", "--subsystem", subsystem, "--nsid", nsid])
         assert f'"nsid": {nsid}' in caplog.text
         assert '"block_size": 512' in caplog.text
-        assert '"rbd_image_size": 33554432' in caplog.text
+        assert '"rbd_image_size": "33554432"' in caplog.text
         assert f'"uuid": "{uuid}"' in caplog.text
         assert '"nsid": 2' not in caplog.text
         assert '"nsid": 3' not in caplog.text
@@ -258,7 +258,7 @@ class TestCreate:
         cli(["--format", "json", "namespace", "list", "--subsystem", subsystem, "--uuid", uuid])
         assert f'"nsid": {nsid}' in caplog.text
         assert '"block_size": 512' in caplog.text
-        assert '"rbd_image_size": 67108864' in caplog.text
+        assert '"rbd_image_size": "67108864"' in caplog.text
         assert f'"uuid": "{uuid}"' in caplog.text
         assert '"nsid": 2' not in caplog.text
         assert '"nsid": 3' not in caplog.text
