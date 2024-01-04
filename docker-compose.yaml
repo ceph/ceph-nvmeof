@@ -112,6 +112,7 @@ services:
       - /dev/vfio/vfio:/dev/vfio/vfio
       - $NVMEOF_CONFIG:/src/ceph-nvmeof.conf
       - /tmp/coredump:/tmp/coredump # core dump
+      - /var/log/ceph:/var/log/ceph
       - ceph-conf:/etc/ceph:ro
     cap_add:
       - SYS_ADMIN # huge-pages

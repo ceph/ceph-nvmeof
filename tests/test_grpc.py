@@ -5,8 +5,6 @@ from control.cli import main as cli
 import logging
 import warnings
 
-# Set up a logger
-logger = logging.getLogger(__name__)
 image = "mytestdevimage"
 pool = "rbd"
 subsystem_prefix = "nqn.2016-06.io.spdk:cnode"

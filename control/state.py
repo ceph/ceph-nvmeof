@@ -15,7 +15,7 @@ import errno
 from typing import Dict
 from collections import defaultdict
 from abc import ABC, abstractmethod
-
+from .config import GatewayLogger
 
 class GatewayState(ABC):
     """Persists gateway NVMeoF target state.
@@ -316,7 +316,7 @@ class OmapGatewayState(GatewayState):
     def __init__(self, config):
         self.config = config
         self.version = 1
-        self.logger = logging.getLogger(__name__)
+        self.logger = GatewayLogger(self.config).logger
         self.watch = None
         gateway_group = self.config.get("gateway", "group")
         self.omap_name = f"nvmeof.{gateway_group}.state" if gateway_group else "nvmeof.state"
@@ -516,7 +516,7 @@ class GatewayStateHandler:
         self.omap = omap
         self.gateway_rpc_caller = gateway_rpc_caller
         self.update_timer = None
-        self.logger = logging.getLogger(__name__)
+        self.logger = GatewayLogger(self.config).logger
         self.update_interval = self.config.getint("gateway",
                                                   "state_update_interval_sec")
         if self.update_interval < 1:

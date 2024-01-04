@@ -14,6 +14,7 @@ import logging
 from .config import GatewayConfig
 from .state import GatewayState, LocalGatewayState, OmapGatewayState, GatewayStateHandler
 from .config import GatewayEnumUtils
+from .config import GatewayLogger
 from .proto import gateway_pb2 as pb2
 
 import rados
@@ -297,9 +298,7 @@ class DiscoveryService:
         self.lock = threading.Lock()
         self.omap_state = OmapGatewayState(self.config)
 
-        self.logger = logging.getLogger(__name__)
-        log_level = self.config.getint_with_default("discovery", "debug", 20)
-        self.logger.setLevel(level=log_level)
+        self.logger = GatewayLogger(config).logger
 
         gateway_group = self.config.get_with_default("gateway", "group", "")
         self.omap_name = f"nvmeof.{gateway_group}.state" \
@@ -1032,11 +1031,6 @@ class DiscoveryService:
           self.logger.debug("received a ctrl+C interrupt. exiting...")
 
 def main(args=None):
-    # Set up root logger
-    logging.basicConfig()
-    logger = logging.getLogger()
-    logger.setLevel(logging.DEBUG)
-
     parser = argparse.ArgumentParser(prog="python3 -m control",
                                      description="Discover NVMe gateways")
     parser.add_argument(

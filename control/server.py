@@ -15,7 +15,6 @@ import subprocess
 import grpc
 import json
 import logging
-import signal
 from concurrent import futures
 from google.protobuf import json_format
 
@@ -29,11 +28,12 @@ from .state import GatewayState, LocalGatewayState, OmapLock, OmapGatewayState, 
 from .grpc import GatewayService
 from .discovery import DiscoveryService
 from .config import GatewayConfig
+from .config import GatewayLogger
 
 def sigchld_handler(signum, frame):
     """Handle SIGCHLD, runs when a spdk process terminates."""
-    logger = logging.getLogger(__name__)
-    logger.error(f"GatewayServer: GSIGCHLD received {signum=}")
+    logger = GatewayLogger().logger
+    logger.error(f"GatewayServer: SIGCHLD received {signum=}")
 
     try:
         pid, wait_status = os.waitpid(-1, os.WNOHANG)
@@ -61,8 +61,9 @@ class GatewayServer:
     """
 
     def __init__(self, config):
-        self.logger = logging.getLogger(__name__)
         self.config = config
+        self.gw_logger_object = GatewayLogger(self.config)
+        self.logger = self.gw_logger_object.logger
         self.spdk_process = None
         self.gateway_rpc = None
         self.server = None
@@ -74,7 +75,6 @@ class GatewayServer:
             self.name = socket.gethostname()
         self.logger.info(f"Starting gateway {self.name}")
 
-
     def __enter__(self):
         return self
 
@@ -83,18 +83,24 @@ class GatewayServer:
         if exc_type is not None:
             self.logger.exception("GatewayServer exception occurred:")
 
+        gw_name = self.name
+        gw_logger = self.gw_logger_object
+        logger = gw_logger.logger
         signal.signal(signal.SIGCHLD, signal.SIG_IGN)
         if self.spdk_process is not None:
             self._stop_spdk()
 
         if self.server is not None:
-            self.logger.info("Stopping the server...")
+            if logger:
+                logger.info("Stopping the server...")
             self.server.stop(None)
 
         if self.discovery_pid:
             self._stop_discovery()
 
-        self.logger.info("Exiting the gateway process.")
+        if logger:
+            logger.info("Exiting the gateway process.")
+        gw_logger.compress_final_log_file(gw_name)
 
     def serve(self):
         """Starts gateway server."""
@@ -196,7 +202,7 @@ class GatewayServer:
 
         spdk_rpc_socket_dir = self.config.get_with_default("spdk", "rpc_socket_dir", "")
         if not spdk_rpc_socket_dir:
-            spdk_rpc_socket_dir = "/var/run/ceph/"
+            spdk_rpc_socket_dir = GatewayConfig.CEPH_RUN_DIRECTORY
             if omap_state.ceph_fsid:
                 spdk_rpc_socket_dir += omap_state.ceph_fsid + "/"
         if not spdk_rpc_socket_dir.endswith("/"):
