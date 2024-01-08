@@ -120,6 +120,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
         self.spdk_rpc_client = spdk_rpc_client
         self.gateway_name = self.config.get("gateway", "name")
         self.ana_map = defaultdict(dict)
+        self.cluster_nonce = {}
+        self.bdev_cluster = {}
+        self.subsystem_nsid_bdev = defaultdict(dict)
+        self.subsystem_nsid_anagrp = defaultdict(dict)
 
         if not self.gateway_name:
             self.gateway_name = socket.gethostname()
@@ -157,13 +161,14 @@ class GatewayService(pb2_grpc.GatewayServicer):
     def _alloc_cluster(self) -> str:
         """Allocates a new Rados cluster context"""
         name = f"cluster_context_{len(self.clusters)}"
-        self.logger.info(f"Allocating cluster {name=}")
-        rpc_bdev.bdev_rbd_register_cluster(
+        nonce = rpc_bdev.bdev_rbd_register_cluster(
             self.spdk_rpc_client,
             name = name,
             user = self.rados_id,
             core_mask = self.librbd_core_mask,
         )
+        self.logger.info(f"Allocated cluster {name=} {nonce=}")
+        self.cluster_nonce[name] = nonce
         return name
 
     def _grpc_function_with_lock(self, func, request, context):
@@ -189,16 +194,19 @@ class GatewayService(pb2_grpc.GatewayServicer):
                          f" with block size {request.block_size}, context: {context}")
         with self.omap_lock(context=context):
             try:
+                cluster_name=self._get_cluster()
                 bdev_name = rpc_bdev.bdev_rbd_create(
                     self.spdk_rpc_client,
                     name=name,
-                    cluster_name=self._get_cluster(),
+                    cluster_name=cluster_name,
                     pool_name=request.rbd_pool_name,
                     rbd_name=request.rbd_image_name,
                     block_size=request.block_size,
                     uuid=request.uuid,
                 )
+                self.bdev_cluster[name] = cluster_name
                 self.logger.info(f"create_bdev: {bdev_name}")
+
             except Exception as ex:
                 self.logger.error(f"create_bdev failed with: \n {ex}")
                 if context:
@@ -474,6 +482,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     nsid=request.nsid,
                     anagrpid=request.anagrpid,
                 )
+                self.subsystem_nsid_bdev[request.subsystem_nqn][nsid] = request.bdev_name
+                self.subsystem_nsid_anagrp[request.subsystem_nqn][nsid] = request.anagrpid
                 self.logger.info(f"add_namespace: {nsid}")
             except Exception as ex:
                 self.logger.error(f"add_namespace failed with: \n {ex}")
@@ -956,6 +966,15 @@ class GatewayService(pb2_grpc.GatewayServicer):
                         addr["adrfam"] = addr["adrfam"].lower()
                     except Exception:
                         pass
+                ns_key = "namespaces"
+                if ns_key in s:
+                    for n in s[ns_key]:
+                        nqn = s["nqn"]
+                        nsid = n["nsid"]
+                        n["anagrpid"] = self.subsystem_nsid_anagrp[nqn][nsid]
+                        bdev = self.subsystem_nsid_bdev[nqn][nsid]
+                        nonce = self.cluster_nonce[self.bdev_cluster[bdev]]
+                        n["nonce"] = nonce
                 # Parse the JSON dictionary into the protobuf message
                 subsystem = pb2.subsystem()
                 json_format.Parse(json.dumps(s), subsystem)
