@@ -135,6 +135,7 @@ services:
     ports:
       - "$NVMEOF_IO_PORT" # I/O controllers
       - "$NVMEOF_GW_PORT" # Gateway
+      - "$NVMEOF_PROMETHEUS_PORT" # Prometheus Exporter
     depends_on:
       ceph:
         condition: service_healthy
