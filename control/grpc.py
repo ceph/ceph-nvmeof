@@ -28,6 +28,7 @@ from .proto import gateway_pb2 as pb2
 from .proto import gateway_pb2_grpc as pb2_grpc
 from .config import GatewayConfig
 from .config import GatewayEnumUtils
+from .config import GatewayLogger
 from .state import GatewayState
 
 MAX_ANA_GROUPS = 4
@@ -47,7 +48,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
     def __init__(self, config, gateway_state, omap_lock, spdk_rpc_client) -> None:
         """Constructor"""
-        self.logger = logging.getLogger(__name__)
+        self.logger = GatewayLogger(config).logger
         ver = os.getenv("NVMEOF_VERSION")
         if ver:
             self.logger.info(f"Using NVMeoF gateway version {ver}")
@@ -818,7 +819,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 nsid_msg = f"namespace with NSID {request.nsid} and UUID {request.uuid}"
             else:
                 nsid_msg = f"namespace with NSID {request.nsid}"
-        self.logger.info(f"Received request to list {nsid_msg}for {request.subsystem}, context: {context}")
+        self.logger.info(f"Received request to list {nsid_msg} for {request.subsystem}, context: {context}")
 
         with self.rpc_lock:
             try:

@@ -9,15 +9,19 @@
 
 import logging
 import argparse
+import signal
 from .server import GatewayServer
 from .config import GatewayConfig
+from .config import GatewayLogger
+
+gw_logger = None
+gw_name = None
+
+def sigterm_handler(signum, frame):
+    if gw_logger and gw_name:
+        gw_logger.compress_final_log_file(gw_name)
 
 if __name__ == '__main__':
-    # Set up root logger
-    logging.basicConfig()
-    logger = logging.getLogger()
-    logger.setLevel(logging.DEBUG)
-
     parser = argparse.ArgumentParser(prog="python3 -m control",
                                      description="Manage NVMe gateways",
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -30,8 +34,12 @@ if __name__ == '__main__':
     )
     args = parser.parse_args()
 
+    signal.signal(signal.SIGTERM, sigterm_handler)
+
     config = GatewayConfig(args.config)
-    config.dump_config_file(logger)
+    gw_logger = GatewayLogger(config)
+    config.dump_config_file(gw_logger.logger)
     with GatewayServer(config) as gateway:
+        gw_name = gateway.name
         gateway.serve()
         gateway.keep_alive()
