@@ -64,11 +64,9 @@ services:
       labels:
         io.ceph.nvmeof:
     environment:
-      CEPH_VSTART_ARGS:
-      VSTART_ARGS: --without-dashboard --memstore
       TOUCHFILE: /tmp/ceph.touch
     entrypoint: >-
-      sh -c './vstart.sh --new $$VSTART_ARGS &&
+      sh -c './vstart.sh --new $$CEPH_VSTART_ARGS &&
       ceph osd pool create rbd &&
       sleep infinity'
     healthcheck:
@@ -81,6 +79,13 @@ services:
       default:
         ipv4_address: 192.168.13.2
         ipv6_address: 2001:db8::2
+  ceph-devel:
+    extends:
+      service: ceph
+    image: $QUAY_CEPH-devel:$CEPH_CLUSTER_VERSION
+    container_name: ceph-devel
+    volumes:
+      - ${CEPH_DEVEL_MGR_PATH?Define the path of your local Ceph repo}/src/pybind/mgr:/usr/share/ceph/mgr
   nvmeof-base:
     build:
       context: .

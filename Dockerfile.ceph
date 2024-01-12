@@ -1,4 +1,5 @@
 # syntax = docker/dockerfile:1.4
+# vim: syntax=dockerfile
 FROM quay.io/centos/centos:stream9-minimal AS build
 
 ARG CEPH_CLUSTER_VERSION
@@ -27,11 +28,24 @@ ARG CEPH_PACKAGES="\
     ceph-osd \
     ceph-mds \
     ceph-mgr \
+    ceph-mgr-dashboard \
     ceph-radosgw \
     ceph-exporter \
     hostname \
     jq \
     net-tools \
+    iproute \
+    "
+# TODO: To remove when ceph-mgr-dashboard defines these as deps
+ARG EXTRA_PACKAGES="\
+    python3-grpcio\ 
+    python3-grpcio-tools \
+    "
+ARG DEBUG_PACKAGES="\
+    procps-ng \
+    strace \
+    perf \
+    ltrace \
     "
 
 RUN rpm -vih https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
@@ -47,7 +61,9 @@ RUN \
         --setopt=install_weak_deps=0 \
         --setopt=keepcache=1 \
         --setopt=cachedir=/var/cache/microdnf \
-        $CEPH_PACKAGES
+        $CEPH_PACKAGES \
+        $EXTRA_PACKAGES \
+        $DEBUG_PACKAGES
 
 #------------------------------------------------------------------------------
 FROM build
@@ -67,7 +83,7 @@ ENV MON=1 \
     RGW=0 \
     NFS=0 \
     CEPH_PORT=10000 \
-    CEPH_VSTART_ARGS="--without-dashboard"
+    CEPH_VSTART_ARGS="--memstore"
 
 ENV CEPH_BIN=/usr/bin \
     CEPH_LIB=/usr/lib64/ceph \
@@ -87,6 +103,12 @@ RUN ln -sf $EC_PATH/* $CEPH_LIB && \
 USER ceph
 WORKDIR /ceph
 ADD --chown=ceph:ceph --chmod=755 https://raw.githubusercontent.com/ceph/ceph/v$CEPH_CLUSTER_VERSION/src/vstart.sh .
+
+COPY <<EOF ./CMakeCache.txt
+ceph_SOURCE_DIR:STATIC=/ceph
+WITH_MGR_DASHBOARD_FRONTEND:BOOL=ON
+WITH_RBD:BOOL=ON
+EOF
 
 ENTRYPOINT \
     ./vstart.sh --new $CEPH_VSTART_ARGS && \
