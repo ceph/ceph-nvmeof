@@ -935,6 +935,8 @@ class GatewayClient:
         """Add a host to a subsystem."""
 
         out_func, err_func = self.get_output_functions(args)
+        if not args.host:
+            self.cli.parser.error("--host argument is mandatory for add command")
         req = pb2.add_host_req(subsystem_nqn=args.subsystem, host_nqn=args.host)
         try:
             ret = self.stub.add_host(req)
@@ -975,6 +977,8 @@ class GatewayClient:
         """Delete a host from a subsystem."""
 
         out_func, err_func = self.get_output_functions(args)
+        if not args.host:
+            self.cli.parser.error("--host argument is mandatory for del command")
         req = pb2.remove_host_req(subsystem_nqn=args.subsystem, host_nqn=args.host)
 
         try:
