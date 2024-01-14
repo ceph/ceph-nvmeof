@@ -796,10 +796,9 @@ class GatewayClient:
             self.cli.parser.error("--gateway-name argument is mandatory for del command")
         if not args.traddr:
             self.cli.parser.error("--traddr argument is mandatory for del command")
-
         if not args.trsvcid:
-            args.trsvcid = 4420
-        elif args.trsvcid < 0:
+            self.cli.parser.error("--trsvcid argument is mandatory for del command")
+        if args.trsvcid < 0:
             self.cli.parser.error("trsvcid value must be positive")
         if not args.trtype:
             args.trtype = "TCP"

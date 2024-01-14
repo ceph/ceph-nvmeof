@@ -539,7 +539,16 @@ class TestDelete:
     @pytest.mark.parametrize("listener", listener_list_no_port)
     def test_delete_listener_no_port(self, caplog, listener, gateway):
         caplog.clear()
-        cli(["listener", "del", "--subsystem", subsystem] + listener)
+        rc = 0
+        try:
+            cli(["listener", "del", "--subsystem", subsystem] + listener)
+        except SystemExit as sysex:
+            rc = int(str(sysex))
+            pass
+        assert "error: --trsvcid argument is mandatory for del command" in caplog.text
+        assert rc == 2
+        caplog.clear()
+        cli(["listener", "del", "--trsvcid", "4420", "--subsystem", subsystem] + listener)
         assert f"Deleting listener {listener[3]}:4420 from {subsystem}: Successful" in caplog.text
 
     def test_remove_namespace(self, caplog, gateway):
