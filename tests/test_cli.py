@@ -389,6 +389,15 @@ class TestCreate:
     @pytest.mark.parametrize("host", host_list)
     def test_add_host(self, caplog, host):
         caplog.clear()
+        rc = 0
+        try:
+            cli(["host", "add", "--subsystem", subsystem])
+        except SystemExit as sysex:
+            rc = int(str(sysex))
+            pass
+        assert "error: --host argument is mandatory for add command" in caplog.text
+        assert rc == 2
+        caplog.clear()
         cli(["host", "add", "--subsystem", subsystem, "--host", host])
         if host == "*":
             assert f"Allowing open host access to {subsystem}: Successful" in caplog.text
@@ -499,6 +508,15 @@ class TestCreate:
 class TestDelete:
     @pytest.mark.parametrize("host", host_list)
     def test_remove_host(self, caplog, host, gateway):
+        caplog.clear()
+        rc = 0
+        try:
+            cli(["host", "del", "--subsystem", subsystem])
+        except SystemExit as sysex:
+            rc = int(str(sysex))
+            pass
+        assert "error: --host argument is mandatory for del command" in caplog.text
+        assert rc == 2
         caplog.clear()
         cli(["host", "del", "--subsystem", subsystem, "--host", host])
         if host == "*":
