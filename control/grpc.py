@@ -73,6 +73,15 @@ class GatewayService(pb2_grpc.GatewayServicer):
         git_modified = os.getenv("NVMEOF_GIT_MODIFIED_FILES")
         if git_modified:
             self.logger.info(f"NVMeoF gateway uncommitted modified files: {git_modified}")
+        git_spdk_rep = os.getenv("SPDK_GIT_REPO")
+        if git_spdk_rep:
+            self.logger.info(f"SPDK Git repository: {git_spdk_rep}")
+        git_spdk_branch = os.getenv("SPDK_GIT_BRANCH")
+        if git_spdk_branch:
+            self.logger.info(f"SPDK Git branch: {git_spdk_branch}")
+        git_spdk_commit = os.getenv("NVMEOF_GIT_COMMIT")
+        if git_spdk_commit:
+            self.logger.info(f"SPDK Git commit: {git_spdk_commit}")
         self.config = config
         config.dump_config_file(self.logger)
         self.rpc_lock = threading.Lock()
@@ -2057,11 +2066,13 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         self.logger.info(f"Received request to get gateway's info")
         gw_version_string = os.getenv("NVMEOF_VERSION")
+        spdk_version_string = os.getenv("NVMEOF_SPDK_VERSION")
         cli_version_string = request.cli_version
         addr = self.config.get_with_default("gateway", "addr", "")
         port = self.config.get_with_default("gateway", "port", "")
         ret = pb2.gateway_info(cli_version = request.cli_version,
                                version = gw_version_string,
+                               spdk_version = spdk_version_string,
                                name = self.gateway_name,
                                group = self.gateway_group,
                                addr = addr,
