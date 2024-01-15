@@ -852,6 +852,15 @@ class DiscoveryService:
     def _state_notify_update(self, update, is_add_req):
         """Notify and reply async event."""
 
+        should_send_async_event = False
+        for key in update.keys():
+            if key.startswith(GatewayState.SUBSYSTEM_PREFIX) or key.startswith(GatewayState.LISTENER_PREFIX):
+                should_send_async_event = True
+                break
+
+        if not should_send_async_event:
+            return
+
         for key in list(self.conn_vals.keys()):
             if self.conn_vals[key].recv_async is True:
                 pdu_reply = Pdu()
@@ -869,10 +878,10 @@ class DiscoveryService:
                     self.conn_vals[key].connection.sendall(pdu_reply + async_reply)
                 except BrokenPipeError:
                     self.logger.error("client disconnected unexpectedly.")
-                    return -1
+                    return
                 self.logger.debug("notify and reply async request.")
                 self.conn_vals[key].recv_async = False
-                return 0
+                return
 
     def handle_timeout(self):
         """Handle connection timeout."""
