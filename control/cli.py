@@ -44,6 +44,15 @@ def get_enum_keys_list(e_type, include_first = False):
 
     return k_list
 
+def break_string(s, delim, count):
+    start = 0
+    for i in range(count):
+        ind = s.find(delim, start)
+        if ind < 0:
+            return s
+        start = ind + 1
+    return s[0:ind + 1] + "\n" + s[ind + 1:]
+
 class ErrorCatchingArgumentParser(argparse.ArgumentParser):
     def __init__(self, *args, **kwargs):
         self.logger = logging.getLogger(__name__)
@@ -1414,12 +1423,12 @@ class GatewayClient:
                     else:
                         lb_group = str(ns.load_balancing_group)
                     namespaces_list.append([ns.nsid,
-                                            ns.bdev_name,
+                                            break_string(ns.bdev_name, "-", 2),
                                             ns.rbd_image_name,
                                             ns.rbd_pool_name,
                                             self.format_size(ns.rbd_image_size),
                                             self.format_size(ns.block_size),
-                                            ns.uuid,
+                                            break_string(ns.uuid, "-", 3),
                                             lb_group,
                                             self.get_qos_limit_str_value(ns.rw_ios_per_second),
                                             self.get_qos_limit_str_value(ns.rw_mbytes_per_second),
@@ -1432,8 +1441,8 @@ class GatewayClient:
                     else:
                         table_format = "plain"
                     namespaces_out = tabulate(namespaces_list,
-                                      headers = ["NSID", "Bdev Name", "RBD Image", "RBD Pool",
-                                                 "Image Size", "Block Size", "UUID", "Load Balancing\nGroup",
+                                      headers = ["NSID", "Bdev\nName", "RBD\nImage", "RBD\nPool",
+                                                 "Image\nSize", "Block\nSize", "UUID", "Load\nBalancing\nGroup",
                                                  "R/W IOs\nper\nsecond", "R/W MBs\nper\nsecond",
                                                  "Read MBs\nper\nsecond", "Write MBs\nper\nsecond"],
                                       tablefmt=table_format)
