@@ -323,6 +323,8 @@ class GatewayClient:
                     out_func(f"Gateway's group: {gw_info.group}")
                 out_func(f"Gateway's address: {gw_info.addr}")
                 out_func(f"Gateway's port: {gw_info.port}")
+                if gw_info.spdk_version:
+                    out_func(f"SPDK version: {gw_info.spdk_version}")
                 if not gw_info.bool_status:
                     err_func(f"Getting gateway's information returned status mismatch")
             else:

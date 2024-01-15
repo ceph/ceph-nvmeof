@@ -107,10 +107,12 @@ class TestGet:
         cli(["version"])
         assert f"CLI version: {cli_ver}" in caplog.text
         caplog.clear()
+        spdk_ver = os.getenv("NVMEOF_SPDK_VERSION")
         gw_info = cli_test(["gw", "info"])
         assert gw_info != None
         assert gw_info.cli_version == cli_ver
         assert gw_info.version == cli_ver
+        assert gw_info.spdk_version == spdk_ver
         assert gw_info.name == gw.gateway_name
         assert gw_info.status == 0
         assert gw_info.bool_status == True

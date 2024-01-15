@@ -282,6 +282,7 @@ message gateway_info {
 	bool bool_status = 7;
 	int32 status = 8;
 	string error_message = 9;
+	string spdk_version = 10;
 }
 
 message cli_version {
