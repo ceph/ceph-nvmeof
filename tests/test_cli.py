@@ -34,6 +34,7 @@ listener_list_ib_adrfam = [["-g", gateway_name, "-a", addr, "-s", "5014", "--adr
 listener_list_ipv6 = [["-g", gateway_name, "-a", addr_ipv6, "-s", "5003", "--adrfam", "ipv6"], ["-g", gateway_name, "-a", addr_ipv6, "-s", "5004", "--adrfam", "IPV6"]]
 listener_list_discovery = [["-n", discovery_nqn, "-g", gateway_name, "-a", addr, "-s", "5012"]]
 listener_list_negative_port = [["-g", gateway_name, "-a", addr, "-s", "-2000"]]
+listener_list_wrong_gw = [["-g", "WRONG", "-a", addr, "-s", "5015", "-t", "tcp", "-f", "ipv4"]]
 config = "ceph-nvmeof.conf"
 
 @pytest.fixture(scope="module")
@@ -444,6 +445,12 @@ class TestCreate:
             pass
         assert "error: trsvcid value must be positive" in caplog.text
         assert rc == 2
+
+    @pytest.mark.parametrize("listener", listener_list_wrong_gw)
+    def test_create_listener_wrong_gateway(self, caplog, listener, gateway):
+        caplog.clear()
+        cli(["listener", "add", "--subsystem", subsystem] + listener)
+        assert f"Gateway name must match current gateway ({gateway_name})" in caplog.text
 
     def test_create_listener_wrong_ha_state(self, caplog, gateway):
         gw, stub = gateway
