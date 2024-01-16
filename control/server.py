@@ -29,6 +29,7 @@ from .grpc import GatewayService
 from .discovery import DiscoveryService
 from .config import GatewayConfig
 from .config import GatewayLogger
+from .prometheus import start_exporter
 
 def sigchld_handler(signum, frame):
     """Handle SIGCHLD, runs when a spdk process terminates."""
@@ -135,6 +136,12 @@ class GatewayServer:
         # Start server
         self.server.start()
 
+        # Start the prometheus endpoint if enabled by the config
+        if self.config.getboolean_with_default("gateway", "enable_prometheus_exporter", True):
+            self.logger.info("Prometheus endpoint is enabled")
+            start_exporter(self.spdk_rpc_client, self.config)
+        else:
+            self.logger.info(f"Prometheus endpoint is disabled. To enable, set the config option 'enable_prometheus_exporter = True'")
 
     def _start_discovery_service(self):
         """Runs either SPDK on CEPH NVMEOF Discovery Service."""
