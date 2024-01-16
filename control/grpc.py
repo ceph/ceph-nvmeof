@@ -134,7 +134,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         """Init cluster context management variables"""
         self.clusters = {}
         self.current_cluster = None
-        self.bdevs_per_cluster = self.config.getint_with_default("spdk", "bdevs_per_cluster", 8)
+        self.bdevs_per_cluster = self.config.getint_with_default("spdk", "bdevs_per_cluster", 1)
         if self.bdevs_per_cluster < 1:
             raise Exception(f"invalid configuration: spdk.bdevs_per_cluster_contexts {self.bdevs_per_cluster} < 1")
         self.logger.info(f"NVMeoF bdevs per cluster: {self.bdevs_per_cluster}")
