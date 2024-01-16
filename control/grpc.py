@@ -137,6 +137,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         self.bdevs_per_cluster = self.config.getint_with_default("spdk", "bdevs_per_cluster", 8)
         if self.bdevs_per_cluster < 1:
             raise Exception(f"invalid configuration: spdk.bdevs_per_cluster_contexts {self.bdevs_per_cluster} < 1")
+        self.logger.info(f"NVMeoF bdevs per cluster: {self.bdevs_per_cluster}")
         self.librbd_core_mask = self.config.get_with_default("spdk", "librbd_core_mask", None)
         self.rados_id = self.config.get_with_default("ceph", "id", "")
         if self.rados_id == "":
