@@ -103,7 +103,7 @@ class Parser:
             "--server-address",
             default="localhost",
             type=str,
-            help="Server IP address",
+            help="Server address",
         )
         self.parser.add_argument(
             "--server-port",
@@ -125,9 +125,9 @@ class Parser:
             help="Path to the server certificate file"
         )
 
-        self.subparsers = self.parser.add_subparsers(dest="subcommand")
+        self.subparsers = self.parser.add_subparsers(title="Commands", dest="subcommand")
 
-    def cmd(self, args=[]):
+    def cmd(self, args=[], aliases=[]):
         """Decorator to create an argparse command.
 
         The arguments to this decorator are used as arguments for the argparse
@@ -136,7 +136,7 @@ class Parser:
 
         def decorator(func):
             parser = self.subparsers.add_parser(func.__name__,
-                                                description=func.__doc__)
+                                                description=func.__doc__, aliases=aliases, help=func.__doc__)
             # Add specified arguments to the parser and set the function
             # attribute to point to the subcommand's associated function
             for arg in args:
@@ -725,7 +725,7 @@ class GatewayClient:
         argument("--force", help="Delete subsytem's namespaces if any, then delete subsystem. If not set a subsystem deletion would fail in case it contains namespaces", action='store_true', required=False),
     ])
     def subsystem(self, args):
-        """Subsystems commands"""
+        """Subsystem commands"""
         if args.subsystem_command == "add":
             return self.subsystem_add(args)
         elif args.subsystem_command == "del":
@@ -932,7 +932,7 @@ class GatewayClient:
         argument("--trsvcid", "-s", help="Port number", type=int, required=False),
     ])
     def listener(self, args):
-        """Listeners commands"""
+        """Listener commands"""
         if args.listener_command == "add":
             return self.listener_add(args)
         elif args.listener_command == "del":
@@ -1083,7 +1083,7 @@ class GatewayClient:
         argument("--host", "-t", help="Host NQN", required=False),
     ])
     def host(self, args):
-        """Hosts commands"""
+        """Host commands"""
         if args.host_command == "add":
             return self.host_add(args)
         elif args.host_command == "del":
@@ -1148,7 +1148,7 @@ class GatewayClient:
         argument("--subsystem", "-n", help="Subsystem NQN", required=True),
     ])
     def connection(self, args):
-        """Connections commands"""
+        """Connection commands"""
         if args.connection_command == "list":
             return self.connection_list(args)
         assert False
@@ -1746,8 +1746,8 @@ class GatewayClient:
         argument("--r-megabytes-per-second", help="Read megabytes per second limit, 0 means unlimited", type=int),
         argument("--w-megabytes-per-second", help="Write megabytes per second limit, 0 means unlimited", type=int),
     ]
-    @cli.cmd(ns_args_list)
-    def ns(self, args):
+    @cli.cmd(ns_args_list, ["ns"])
+    def namespace(self, args):
         """Namespace commands"""
         if args.ns_command == "add":
             return self.ns_add(args)
@@ -1764,11 +1764,6 @@ class GatewayClient:
         elif args.ns_command == "set_qos":
             return self.ns_set_qos(args)
         assert False
-
-    @cli.cmd(ns_args_list)
-    def namespace(self, args):
-        """Namespace commands"""
-        return self.ns(args)
 
 def main_common(client, args):
     server_address = args.server_address
