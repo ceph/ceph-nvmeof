@@ -1643,10 +1643,14 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     )
                     self.logger.info(f"create_listener: {ret}")
                 else:
-                    errmsg=f"{create_listener_error_prefix}: Gateway name must match current gateway ({self.gateway_name})"
-                    self.logger.error(f"{errmsg}")
-                    return pb2.req_status(status=errno.ENOENT,
-                                  error_message=errmsg)
+                    if context:
+                        errmsg=f"{create_listener_error_prefix}: Gateway name must match current gateway ({self.gateway_name})"
+                        self.logger.error(f"{errmsg}")
+                        return pb2.req_status(status=errno.ENODEV, error_message=errmsg)
+                    else:
+                        errmsg=f"Listener not created as gateway {self.gateway_name} differs from requested gateway {request.gateway_name}"
+                        self.logger.info(f"{errmsg}")
+                        return pb2.req_status(status=0, error_message=errmsg)
             except Exception as ex:
                 errmsg = f"{create_listener_error_prefix}:\n{ex}"
                 self.logger.error(errmsg)

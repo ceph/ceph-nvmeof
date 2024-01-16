@@ -266,9 +266,22 @@ def test_multi_gateway_concurrent_changes(config, image, conn_concurrent, caplog
         else:
             create_resource_by_index(stubB, i, caplog)
         assert "failed" not in caplog.text.lower()
+    listener_req = pb2.create_listener_req(nqn=f"{subsystem_prefix}0",
+                                           gateway_name="GatewayAAA",
+                                           trtype="TCP",
+                                           adrfam="ipv4",
+                                           traddr="127.0.0.1",
+                                           trsvcid=5001,
+                                           auto_ha_state="AUTO_HA_UNSET")
+    listener_ret = stubA.create_listener(listener_req)
+    assert listener_ret.status == 0
+    assert f"Received request to create GatewayAAA TCP ipv4 listener for {subsystem_prefix}0 at 127.0.0.1:5001" in caplog.text
+    assert f"create_listener: True" in caplog.text
+    caplog.clear()
 
     # Let the update some time to bring both gateways to the same page
     time.sleep(15)
+    assert f"Listener not created as gateway GatewayBBB differs from requested gateway GatewayAAA" in caplog.text
     caplog.clear()
     subsystem_list_req = pb2.list_subsystems_req()
     subListA = json.loads(json_format.MessageToJson(
