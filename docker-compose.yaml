@@ -53,9 +53,7 @@ services:
     ulimits:
       nofile: $NVMEOF_NOFILE
       memlock: -1
-  ceph:
-    image: $QUAY_CEPH:$CEPH_CLUSTER_VERSION
-    container_name: ceph
+  ceph-base:
     build:
       context: .
       dockerfile: Dockerfile.ceph
@@ -68,20 +66,27 @@ services:
     entrypoint: >-
       sh -c './vstart.sh --new $$CEPH_VSTART_ARGS &&
       ceph osd pool create rbd &&
+      ceph dashboard nvmeof-gateway-add -i <(echo nvmeof-devel:5500) nvmeof.1 &&
       sleep infinity'
     healthcheck:
       test: ceph osd pool stats rbd
       start_period: 6s
       interval: 3s
+      retries: 10
     volumes:
       - ceph-conf:/etc/ceph
     networks:
       default:
         ipv4_address: 192.168.13.2
         ipv6_address: 2001:db8::2
+  ceph:
+    extends:
+      service: ceph-base
+    image: $QUAY_CEPH:$CEPH_CLUSTER_VERSION
+    container_name: ceph
   ceph-devel:
     extends:
-      service: ceph
+      service: ceph-base
     image: $QUAY_CEPH-devel:$CEPH_CLUSTER_VERSION
     container_name: ceph-devel
     volumes:
@@ -192,7 +197,7 @@ services:
       args:
         NVMEOF_TARGET: cli
   nvmeof-devel:
-    image: nvmeof-devel
+    image: nvmeof-devel:$NVMEOF_VERSION
     # Runs from source code in current dir
     extends:
       service: nvmeof-base
@@ -201,6 +206,9 @@ services:
       args:
         # https://daobook.github.io/pdm/usage/dependency/#add-development-only-dependencies
         PDM_INSTALL_DEV: "-d"
+    depends_on:
+      ceph-devel:
+        condition: service_healthy
     volumes:
       - ./control:/src/control
   nvmeof-cli:

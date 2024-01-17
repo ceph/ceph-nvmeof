@@ -1,4 +1,5 @@
 # syntax = docker/dockerfile:1.4
+# vim: syntax=dockerfile
 FROM quay.io/centos/centos:stream9 AS build
 
 ARG SPDK_CEPH_VERSION \
