@@ -45,21 +45,6 @@ jobs:
             vstart-cluster.tar
             bdevperf.tar
 
-      - name: Build stand-alone packages (RPMs and Python wheel)
-        id: build-standalone-packages
-        run: |
-          export EXPORT_DIR=$(mktemp -d)
-          make export-rpms
-          make export-python
-          echo "EXPORT_DIR=$EXPORT_DIR" >> "$GITHUB_ENV"
-
-      - name: Upload stand-alone packages
-        uses: actions/upload-artifact@v3
-        with:
-          name: ceph_nvmeof_standalone_packages-${{ github.run_number }}
-          path: |
-            ${{ env.EXPORT_DIR }}/**
-
   pytest:
     needs: build
     strategy:
