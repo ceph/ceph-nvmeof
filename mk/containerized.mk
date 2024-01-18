@@ -65,8 +65,13 @@ down: override OPTS += --volumes --remove-orphans
 
 events: ## Receive real-time events from containers
 
+.PHONY:
 docker_compose_clean: down
 	$(DOCKER) system prune --all --force --volumes --filter label="io.ceph.nvmeof"
+
+.PHONY:
+clean_cache: ## Clean the Docker build cache
+	$(DOCKER) builder prune --force --all
 
 CLEAN += docker_compose_clean
 ALL += pull up ps

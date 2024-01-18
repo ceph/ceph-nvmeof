@@ -2,25 +2,34 @@
 # vim: syntax=dockerfile
 FROM quay.io/centos/centos:stream9-minimal AS build
 
-ARG CEPH_CLUSTER_VERSION
+ARG CEPH_CLUSTER_VERSION \
+    CEPH_CLUSTER_CEPH_REPO_BASEURL="https://download.ceph.com/rpm-$CEPH_CLUSTER_VERSION/el\$releasever" \
+    CEPH_CLUSTER_EPEL_REPO_URL="https://copr.fedorainfracloud.org/coprs/ceph/el9/repo/epel-9/ceph-el9-epel-9.repo"
 
 COPY <<EOF /etc/yum.repos.d/ceph.repo
 [Ceph]
 name=Ceph packages for \$basearch
-baseurl=https://download.ceph.com/rpm-$CEPH_CLUSTER_VERSION/el\$releasever/\$basearch
+baseurl=${CEPH_CLUSTER_CEPH_REPO_BASEURL:?}/\$basearch
 enabled=1
 priority=2
-gpgcheck=1
-gpgkey=https://download.ceph.com/keys/release.asc
+gpgcheck=0
 
 [Ceph-noarch]
 name=Ceph noarch packages
-baseurl=https://download.ceph.com/rpm-$CEPH_CLUSTER_VERSION/el\$releasever/noarch
+baseurl=${CEPH_CLUSTER_CEPH_REPO_BASEURL:?}/noarch
 enabled=1
 priority=2
-gpgcheck=1
-gpgkey=https://download.ceph.com/keys/release.asc
+gpgcheck=0
 EOF
+
+ARG MICRODNF_OPTS="\
+    --enablerepo crb \
+    --nobest \
+    --nodocs \
+    --setopt=install_weak_deps=0 \
+    --setopt=keepcache=1 \
+    --setopt=cachedir=/var/cache/microdnf \
+  "
 
 ARG CEPH_PACKAGES="\
     ceph-common \
@@ -46,24 +55,19 @@ ARG DEBUG_PACKAGES="\
     strace \
     perf \
     ltrace \
+    lsof \
     "
 
 RUN rpm -vih https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
 RUN rpm --import 'https://download.ceph.com/keys/release.asc'
-RUN cd /etc/yum.repos.d/ && curl -O https://copr.fedorainfracloud.org/coprs/ceph/el9/repo/epel-9/ceph-el9-epel-9.repo
+RUN curl -O --output-dir /etc/yum.repos.d/ $CEPH_CLUSTER_EPEL_REPO_URL
 
-RUN \
-    --mount=type=cache,target=/var/cache/microdnf \
-    microdnf install -y \
-        --enablerepo crb \
-        --nobest \
-        --nodocs \
-        --setopt=install_weak_deps=0 \
-        --setopt=keepcache=1 \
-        --setopt=cachedir=/var/cache/microdnf \
-        $CEPH_PACKAGES \
-        $EXTRA_PACKAGES \
-        $DEBUG_PACKAGES
+RUN --mount=type=cache,target=/var/cache/microdnf \
+    microdnf install -y $MICRODNF_OPTS \
+      $CEPH_PACKAGES \
+      $EXTRA_PACKAGES \
+      $DEBUG_PACKAGES
+
 
 #------------------------------------------------------------------------------
 FROM build
