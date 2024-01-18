@@ -105,6 +105,8 @@ services:
         SPDK_GIT_REPO:
         SPDK_GIT_BRANCH:
         SPDK_GIT_COMMIT:
+        HUGEPAGES:
+        HUGEPAGES_DIR:
       labels:
         io.ceph.nvmeof:
     volumes:
@@ -218,6 +220,8 @@ services:
         SPDK_GIT_REPO:
         SPDK_GIT_BRANCH:
         SPDK_GIT_COMMIT:
+        HUGEPAGES:
+        HUGEPAGES_DIR:
       labels:
         io.ceph.nvmeof:
 volumes:
