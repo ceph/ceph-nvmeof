@@ -23,7 +23,8 @@ from tabulate import tabulate
 from .proto import gateway_pb2_grpc as pb2_grpc
 from .proto import gateway_pb2 as pb2
 from .config import GatewayConfig
-from .config import GatewayEnumUtils
+from .utils import GatewayUtils
+from .utils import GatewayEnumUtils
 
 BASE_GATEWAY_VERSION="0.0.7"
 
@@ -187,7 +188,7 @@ class GatewayClient:
     def connect(self, host, port, client_key, client_cert, server_cert):
         """Connects to server and sets stub."""
         # We need to enclose IPv6 addresses in brackets before concatenating a colon and port number to it
-        host = GatewayConfig.escape_address_if_ipv6(host)
+        host = GatewayUtils.escape_address_if_ipv6(host)
         server = f"{host}:{port}"
 
         if client_key and client_cert:
@@ -550,7 +551,7 @@ class GatewayClient:
         out_func, err_func = self.get_output_functions(args)
         if args.max_namespaces == None:
             args.max_namespaces = 256
-        if args.max_namespaces < 0:
+        if args.max_namespaces <= 0:
             self.cli.parser.error("--max-namespaces value must be positive")
         if not args.subsystem:
             self.cli.parser.error("--subsystem argument is mandatory for add command")
@@ -558,7 +559,7 @@ class GatewayClient:
             self.cli.parser.error("--force argument is not allowed for add command")
         if args.enable_ha and not args.ana_reporting:
             self.cli.parser.error("ANA reporting must be enabled when HA is active")
-        if args.subsystem == GatewayConfig.DISCOVERY_NQN:
+        if args.subsystem == GatewayUtils.DISCOVERY_NQN:
             self.cli.parser.error("Can't add a discovery subsystem")
 
         req = pb2.create_subsystem_req(subsystem_nqn=args.subsystem,
@@ -608,7 +609,7 @@ class GatewayClient:
             self.cli.parser.error("--ana-reporting argument is not allowed for del command")
         if args.enable_ha:
             self.cli.parser.error("--enable-ha argument is not allowed for del command")
-        if args.subsystem == GatewayConfig.DISCOVERY_NQN:
+        if args.subsystem == GatewayUtils.DISCOVERY_NQN:
             self.cli.parser.error("Can't delete a discovery subsystem")
 
         req = pb2.delete_subsystem_req(subsystem_nqn=args.subsystem, force=args.force)
@@ -743,16 +744,16 @@ class GatewayClient:
         if not args.traddr:
             self.cli.parser.error("--traddr argument is mandatory for add command")
 
-        if not args.trsvcid:
+        if args.trsvcid == None:
             args.trsvcid = 4420
-        elif args.trsvcid < 0:
+        elif args.trsvcid <= 0:
             self.cli.parser.error("trsvcid value must be positive")
         if not args.trtype:
             args.trtype = "TCP"
         if not args.adrfam:
             args.adrfam = "IPV4"
 
-        traddr = GatewayConfig.escape_address_if_ipv6(args.traddr)
+        traddr = GatewayUtils.escape_address_if_ipv6(args.traddr)
         trtype = None
         adrfam = None
         if args.trtype:
@@ -807,16 +808,16 @@ class GatewayClient:
             self.cli.parser.error("--gateway-name argument is mandatory for del command")
         if not args.traddr:
             self.cli.parser.error("--traddr argument is mandatory for del command")
-        if not args.trsvcid:
+        if args.trsvcid == None:
             self.cli.parser.error("--trsvcid argument is mandatory for del command")
-        if args.trsvcid < 0:
+        if args.trsvcid <= 0:
             self.cli.parser.error("trsvcid value must be positive")
         if not args.trtype:
             args.trtype = "TCP"
         if not args.adrfam:
             args.adrfam = "IPV4"
 
-        traddr = GatewayConfig.escape_address_if_ipv6(args.traddr)
+        traddr = GatewayUtils.escape_address_if_ipv6(args.traddr)
         trtype = None
         adrfam = None
         if args.trtype:
@@ -874,7 +875,7 @@ class GatewayClient:
             self.cli.parser.error("--trtype argument is not allowed for list command")
         if args.adrfam:
             self.cli.parser.error("--adrfam argument is not allowed for list command")
-        if args.trsvcid:
+        if args.trsvcid != None:
             self.cli.parser.error("--trsvcid argument is not allowed for list command")
 
         listeners_info = None
@@ -1161,9 +1162,9 @@ class GatewayClient:
             args.block_size = 512
         if args.load_balancing_group == None:
             args.load_balancing_group = 1
-        if args.load_balancing_group and args.load_balancing_group < 0:
+        if args.load_balancing_group <= 0:
             self.cli.parser.error("load-balancing-group value must be positive")
-        if args.nsid and args.nsid <= 0:
+        if args.nsid != None and args.nsid <= 0:
             self.cli.parser.error("nsid value must be positive")
         if args.size != None:
             self.cli.parser.error("--size argument is not allowed for add command")
@@ -1173,8 +1174,6 @@ class GatewayClient:
             self.cli.parser.error("--rbd-image argument is mandatory for add command")
         if args.block_size <= 0:
             self.cli.parser.error("block-size value must be positive")
-        if args.load_balancing_group <= 0:
-            self.cli.parser.error("load-balancing-group value must be positive")
         if args.rw_ios_per_second != None:
             self.cli.parser.error("--rw-ios-per-second argument is not allowed for add command")
         if args.rw_megabytes_per_second != None:
@@ -1227,9 +1226,9 @@ class GatewayClient:
         """Deletes a namespace from a subsystem."""
 
         out_func, err_func = self.get_output_functions(args)
-        if not args.nsid and not args.uuid:
+        if args.nsid == None and args.uuid == None:
             self.cli.parser.error("At least one of --nsid or --uuid arguments is mandatory for del command")
-        if args.nsid and args.nsid < 0:
+        if args.nsid != None and args.nsid <= 0:
             self.cli.parser.error("nsid value must be positive")
         if args.size != None:
             self.cli.parser.error("--size argument is not allowed for del command")
@@ -1239,7 +1238,7 @@ class GatewayClient:
             self.cli.parser.error("--rbd-pool argument is not allowed for del command")
         if args.rbd_image != None:
             self.cli.parser.error("--rbd-image argument is not allowed for del command")
-        if args.load_balancing_group:
+        if args.load_balancing_group != None:
             self.cli.parser.error("--load-balancing-group argument is not allowed for del command")
         if args.rw_ios_per_second != None:
             self.cli.parser.error("--rw-ios-per-second argument is not allowed for del command")
@@ -1288,13 +1287,13 @@ class GatewayClient:
         """Resizes a namespace."""
 
         out_func, err_func = self.get_output_functions(args)
-        if not args.nsid and not args.uuid:
+        if args.nsid == None and args.uuid == None:
             self.cli.parser.error("At least one of --nsid or --uuid arguments is mandatory for resize command")
-        if args.nsid and args.nsid < 0:
+        if args.nsid != None and args.nsid <= 0:
             self.cli.parser.error("nsid value must be positive")
-        if not args.size:
+        if args.size == None:
             self.cli.parser.error("--size argument is mandatory for resize command")
-        if args.size < 0:
+        if args.size <= 0:
             self.cli.parser.error("size value must be positive")
         if args.block_size != None:
             self.cli.parser.error("--block-size argument is not allowed for resize command")
@@ -1379,7 +1378,7 @@ class GatewayClient:
         """Lists namespaces on a subsystem."""
 
         out_func, err_func = self.get_output_functions(args)
-        if args.nsid and args.nsid < 0:
+        if args.nsid != None and args.nsid <= 0:
             self.cli.parser.error("nsid value must be positive")
         if args.size != None:
             self.cli.parser.error("--size argument is not allowed for list command")
@@ -1486,9 +1485,9 @@ class GatewayClient:
         """Get namespace IO statistics."""
 
         out_func, err_func = self.get_output_functions(args)
-        if not args.nsid and not args.uuid:
+        if args.nsid == None and args.uuid == None:
             self.cli.parser.error("At least one of --nsid or --uuid arguments is mandatory for get_io_stats command")
-        if args.nsid and args.nsid < 0:
+        if args.nsid != None and args.nsid <= 0:
             self.cli.parser.error("nsid value must be positive")
         if args.size != None:
             self.cli.parser.error("--size argument is not allowed for get_io_stats command")
@@ -1587,9 +1586,9 @@ class GatewayClient:
         """Change namespace load balancing group."""
 
         out_func, err_func = self.get_output_functions(args)
-        if not args.nsid and not args.uuid:
+        if args.nsid == None and args.uuid == None:
             self.cli.parser.error("At least one of --nsid or --uuid arguments is mandatory for change_load_balancing_group command")
-        if args.nsid and args.nsid < 0:
+        if args.nsid != None and args.nsid <= 0:
             self.cli.parser.error("nsid value must be positive")
         if args.load_balancing_group == None:
             self.cli.parser.error("--load-balancing-group argument is mandatory for change_load_balancing_group command")
@@ -1659,9 +1658,9 @@ class GatewayClient:
         """Set namespace QOS limits."""
 
         out_func, err_func = self.get_output_functions(args)
-        if not args.nsid and not args.uuid:
+        if args.nsid == None and args.uuid == None:
             self.cli.parser.error("At least one of --nsid or --uuid arguments is mandatory for set_qos command")
-        if args.nsid and args.nsid < 0:
+        if args.nsid != None and args.nsid <= 0:
             self.cli.parser.error("nsid value must be positive")
         if args.load_balancing_group != None:
             self.cli.parser.error("--load-balancing-group argument is not allowed for set_qos command")

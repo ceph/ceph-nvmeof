@@ -13,7 +13,7 @@ import json
 import logging
 from .config import GatewayConfig
 from .state import GatewayState, LocalGatewayState, OmapGatewayState, GatewayStateHandler
-from .config import GatewayEnumUtils
+from .utils import GatewayEnumUtils
 from .config import GatewayLogger
 from .proto import gateway_pb2 as pb2
 
