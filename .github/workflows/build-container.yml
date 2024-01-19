@@ -1,11 +1,13 @@
 name: "CI"
 on:
   push:
-    branches:
-      - '*'
     tags:
       - 'v*'
   pull_request:
+    branches:
+      - devel
+  schedule:
+    - cron: '0 0 * * *'
   workflow_dispatch:
   release:
     types:
@@ -22,8 +24,26 @@ jobs:
           # git submodule update --init --recursive
           submodules: recursive
 
-      - name: Build container images
-        run: make build SPDK_DISABLE_VPCLMULQDQ="yes" SPDK_DISABLE_AVX512="yes"
+      - name: Build container images - ceph
+        run: make build SVC=ceph SPDK_TARGET_ARCH=x86-64-v2
+
+      - name: Build container images - spdk
+        run: make build SVC="spdk" SPDK_TARGET_ARCH=x86-64-v2
+
+      - name: Build container images - bdevperf
+        run: make build SVC="bdevperf" SPDK_TARGET_ARCH=x86-64-v2
+
+      - name: Build container images - nvmeof
+        run: make build SVC="nvmeof" SPDK_TARGET_ARCH=x86-64-v2
+
+      - name: Build container images - nvmeof-devel
+        run: make build SVC="nvmeof-devel" SPDK_TARGET_ARCH=x86-64-v2
+
+      - name: Build container images - nvmeof-cli
+        run: make build SVC="nvmeof-cli" SPDK_TARGET_ARCH=x86-64-v2
+
+      - name: Build container images - discovery
+        run: make build SVC="discovery" SPDK_TARGET_ARCH=x86-64-v2
 
       - name: Save container images
         run: |

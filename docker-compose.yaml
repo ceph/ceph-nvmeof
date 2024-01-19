@@ -13,14 +13,13 @@ services:
         SPDK_CEPH_VERSION:
         SPDK_PKGDEP_ARGS:
         SPDK_CONFIGURE_ARGS:
+        SPDK_TARGET_ARCH:
         SPDK_MAKEFLAGS:
         SPDK_NAME:
         SPDK_SUMMARY:
         SPDK_DESCRIPTION:
         SPDK_URL:
         SPDK_MAINTAINER: $MAINTAINER
-        SPDK_DISABLE_VPCLMULQDQ:
-        SPDK_DISABLE_AVX512:
         BUILD_DATE:
         SPDK_GIT_REPO:
         SPDK_GIT_BRANCH:
@@ -67,7 +66,7 @@ services:
     entrypoint: >-
       sh -c './vstart.sh --new $$CEPH_VSTART_ARGS &&
       ceph osd pool create rbd &&
-      ceph dashboard nvmeof-gateway-add -i <(echo nvmeof-devel:5500) nvmeof.1 &&
+      echo ceph dashboard nvmeof-gateway-add -i <(echo nvmeof-devel:5500) nvmeof.1 &&
       sleep infinity'
     healthcheck:
       test: ceph osd pool stats rbd
