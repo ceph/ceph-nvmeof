@@ -36,9 +36,6 @@ jobs:
       - name: Build container images - nvmeof
         run: make build SVC="nvmeof" SPDK_TARGET_ARCH=x86-64-v2
 
-      - name: Build container images - nvmeof-devel
-        run: make build SVC="nvmeof-devel" SPDK_TARGET_ARCH=x86-64-v2
-
       - name: Build container images - nvmeof-cli
         run: make build SVC="nvmeof-cli" SPDK_TARGET_ARCH=x86-64-v2
 
@@ -52,7 +49,6 @@ jobs:
           docker save $QUAY_NVMEOFCLI:$NVMEOF_VERSION > nvmeof-cli.tar
           docker save $QUAY_CEPH:$CEPH_VERSION  > vstart-cluster.tar
           docker save bdevperf > bdevperf.tar
-          docker save nvmeof-devel > nvmeof-devel.tar
 
       - name: Upload container images
         uses: actions/upload-artifact@v3
@@ -61,7 +57,6 @@ jobs:
           path: |
             nvmeof.tar
             nvmeof-cli.tar
-            nvmeof-devel.tar
             vstart-cluster.tar
             bdevperf.tar
 
@@ -89,7 +84,7 @@ jobs:
 
       - name: Load container images
         run: |
-          docker load < nvmeof-devel.tar
+          docker load < nvmeof.tar
           docker load < vstart-cluster.tar
 
       - name: Clear space on disk
@@ -149,7 +144,7 @@ jobs:
         run: |
           # Run tests code in current dir
           # Managing pytest’s output: https://docs.pytest.org/en/7.1.x/how-to/output.html
-          make run SVC="nvmeof-devel" OPTS="--volume=$(pwd)/tests:/src/tests --entrypoint=python3" CMD="-m pytest --show-capture=all -s --full-trace -vv -rA tests/test_${{ matrix.test }}.py"
+          make run SVC="nvmeof" OPTS="--volume=$(pwd)/tests:/src/tests --entrypoint=python3" CMD="-m pytest --show-capture=all -s --full-trace -vv -rA tests/test_${{ matrix.test }}.py"
 
       - name: Check coredump existence
         if: success() || failure()
