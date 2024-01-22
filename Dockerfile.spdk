@@ -134,6 +134,7 @@ LABEL io.spdk.version="$SPDK_VERSION" \
       io.spdk.build.pkgdep-args="$SPDK_PKGDEP_ARGS" \
       io.spdk.build.configure-args="$SPDK_CONFIGURE_ARGS" \
       io.spdk.build.makeflags="$SPDK_MAKEFLAGS" \
+      io.spdk.build.target-arch="$SPDK_TARGET_ARCH" \
       io.spdk.build.ceph-release="$SPDK_CEPH_VERSION" \
       io.spdk.git.repo="$SPDK_GIT_REPO" \
       io.spdk.git.branch="$SPDK_GIT_BRANCH" \

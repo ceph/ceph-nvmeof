@@ -66,6 +66,10 @@ down: override OPTS += --volumes --remove-orphans
 events: ## Receive real-time events from containers
 
 .PHONY:
+image_name:
+	@$(DOCKER_COMPOSE) config --format=json | jq '.services."$(SVC)".image'
+
+.PHONY:
 docker_compose_clean: down
 	$(DOCKER) system prune --all --force --volumes --filter label="io.ceph.nvmeof"
 

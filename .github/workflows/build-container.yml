@@ -1,5 +1,7 @@
+---
+# yamllint disable rule:line-length
 name: "CI"
-on:
+on:  # yamllint disable rule:truthy
   push:
     tags:
       - 'v*'
@@ -47,7 +49,7 @@ jobs:
           . .env
           docker save $QUAY_NVMEOF:$NVMEOF_VERSION > nvmeof.tar
           docker save $QUAY_NVMEOFCLI:$NVMEOF_VERSION > nvmeof-cli.tar
-          docker save $QUAY_CEPH:$CEPH_VERSION  > vstart-cluster.tar
+          docker save $QUAY_CEPH:$CEPH_VERSION > ceph.tar
           docker save bdevperf > bdevperf.tar
 
       - name: Upload container images
@@ -57,7 +59,7 @@ jobs:
           path: |
             nvmeof.tar
             nvmeof-cli.tar
-            vstart-cluster.tar
+            ceph.tar
             bdevperf.tar
 
   pytest:
@@ -65,10 +67,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-          test: ["cli", "state", "multi_gateway", "server", "grpc", "omap_lock", "old_omap", "log_files"]
+        test: ["cli", "state", "multi_gateway", "server", "grpc", "omap_lock", "old_omap", "log_files"]
     runs-on: ubuntu-latest
     env:
-      HUGEPAGES: 512 # for multi gateway test, approx 256 per gateway instance
+      HUGEPAGES: 512  # for multi gateway test, approx 256 per gateway instance
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -85,7 +87,7 @@ jobs:
       - name: Load container images
         run: |
           docker load < nvmeof.tar
-          docker load < vstart-cluster.tar
+          docker load < ceph.tar
 
       - name: Clear space on disk
         run: |
@@ -149,7 +151,7 @@ jobs:
       - name: Check coredump existence
         if: success() || failure()
         id: check_coredumps
-        uses: andstor/file-existence-action@20b4d2e596410855db8f9ca21e96fbe18e12930b # v2, pinned to SHA for security reasons
+        uses: andstor/file-existence-action@20b4d2e596410855db8f9ca21e96fbe18e12930b  # v2, pinned to SHA for security reasons
         with:
           files: "/tmp/coredump/core.*"
 
@@ -193,7 +195,7 @@ jobs:
         run: |
           docker load < nvmeof.tar
           docker load < nvmeof-cli.tar
-          docker load < vstart-cluster.tar
+          docker load < ceph.tar
           docker load < bdevperf.tar
 
       - name: Start containers
@@ -272,9 +274,9 @@ jobs:
       - name: Check coredump existence
         if: success() || failure()
         id: check_coredumps
-        uses: andstor/file-existence-action@20b4d2e596410855db8f9ca21e96fbe18e12930b # v2, pinned to SHA for security reasons
+        uses: andstor/file-existence-action@20b4d2e596410855db8f9ca21e96fbe18e12930b  # v2, pinned to SHA for security reasons
         with:
-            files: "/tmp/coredump/core.*"
+          files: "/tmp/coredump/core.*"
 
       - name: Upload demo core dumps
         if: steps.check_coredumps.outputs.files_exists == 'true'
@@ -285,10 +287,10 @@ jobs:
             /tmp/coredump/core.*
 
       # For debugging purposes (provides an SSH connection to the runner)
-      #- name: Setup tmate session
-      #  uses: mxschmitt/action-tmate@v3
-      #  with:
-      #    limit-access-to-actor: true
+      # - name: Setup tmate session
+      #   uses: mxschmitt/action-tmate@v3
+      #   with:
+      #     limit-access-to-actor: true
 
       - name: Display logs
         if: success() || failure()
@@ -305,10 +307,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-          integration: ["container", "embedded"]
+        integration: ["container", "embedded"]
     runs-on: ubuntu-latest
     env:
-      HUGEPAGES: 768 # 3 spdk instances
+      HUGEPAGES: 768  # 3 spdk instances
 
     steps:
       - name: Checkout code
@@ -326,7 +328,7 @@ jobs:
         run: |
           docker load < nvmeof.tar
           docker load < nvmeof-cli.tar
-          docker load < vstart-cluster.tar
+          docker load < ceph.tar
           docker load < bdevperf.tar
 
       - name: Start discovery controller
@@ -463,9 +465,9 @@ jobs:
       - name: Check coredump existence
         if: success() || failure()
         id: check_coredumps
-        uses: andstor/file-existence-action@20b4d2e596410855db8f9ca21e96fbe18e12930b # v2, pinned to SHA for security reasons
+        uses: andstor/file-existence-action@20b4d2e596410855db8f9ca21e96fbe18e12930b  # v2, pinned to SHA for security reasons
         with:
-            files: "/tmp/coredump/core.*"
+          files: "/tmp/coredump/core.*"
 
       - name: Upload demo core dumps
         if: steps.check_coredumps.outputs.files_exists == 'true'
