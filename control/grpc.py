@@ -27,7 +27,8 @@ from google.protobuf import json_format
 from .proto import gateway_pb2 as pb2
 from .proto import gateway_pb2_grpc as pb2_grpc
 from .config import GatewayConfig
-from .config import GatewayEnumUtils
+from .utils import GatewayEnumUtils
+from .utils import GatewayUtils
 from .config import GatewayLogger
 from .state import GatewayState
 
@@ -129,7 +130,14 @@ class GatewayService(pb2_grpc.GatewayServicer):
         if not self.gateway_name:
             self.gateway_name = socket.gethostname()
         self.gateway_group = self.config.get("gateway", "group")
+        self.verify_nqns = self.config.getboolean_with_default("gateway", "verify_nqns", True)
         self._init_cluster_context()
+
+    def is_valid_host_nqn(nqn):
+        if nqn == "*":
+            return pb2.req_status(status=0, error_message=os.strerror(0))
+        rc = GatewayUtils.is_valid_nqn(nqn)
+        return pb2.req_status(status=rc[0], error_message=rc[1])
 
     def parse_json_exeption(self, ex):
         if type(ex) != JSONRPCException:
@@ -299,9 +307,6 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         return pb2.req_status(status=0, error_message=os.strerror(0))
 
-    def is_discovery_nqn(self, nqn) -> bool:
-        return nqn == GatewayConfig.DISCOVERY_NQN
-
     def subsystem_already_exists(self, context, nqn) -> bool:
         if not context:
             return False
@@ -344,24 +349,27 @@ class GatewayService(pb2_grpc.GatewayServicer):
             f"Received request to create subsystem {request.subsystem_nqn}, enable_ha: {request.enable_ha}, ana reporting: {request.ana_reporting}, context: {context}")
 
         errmsg = ""
-        if self.is_discovery_nqn(request.subsystem_nqn):
+        if self.verify_nqns:
+            rc = GatewayUtils.is_valid_nqn(request.subsystem_nqn)
+            if rc[0] != 0:
+                errmsg = f"{create_subsystem_error_prefix}: {rc[1]}"
+                self.logger.error(f"{errmsg}")
+                return pb2.req_status(status = rc.status, error_message = errmsg)
+        if GatewayUtils.is_discovery_nqn(request.subsystem_nqn):
             errmsg = f"{create_subsystem_error_prefix}: Can't create a discovery subsystem"
-            ret = pb2.req_status(status = errno.EINVAL, error_message = errmsg)
             self.logger.error(f"{errmsg}")
-            return ret
+            return pb2.req_status(status = errno.EINVAL, error_message = errmsg)
         if request.enable_ha and not request.ana_reporting:
             errmsg = f"{create_subsystem_error_prefix}: HA is enabled but ANA reporting is disabled"
-            ret = pb2.req_status(status = errno.EINVAL, error_message = errmsg)
             self.logger.error(f"{errmsg}")
-            return ret
+            return pb2.req_status(status = errno.EINVAL, error_message = errmsg)
 
         min_cntlid = self.config.getint_with_default("gateway", "min_controller_id", 1)
         max_cntlid = self.config.getint_with_default("gateway", "max_controller_id", 65519)
         if min_cntlid > max_cntlid:
             errmsg = f"{create_subsystem_error_prefix}: Min controller id {min_cntlid} is bigger than max controller id {max_cntlid}"
-            ret = pb2.req_status(status = errno.EINVAL, error_message = errmsg)
             self.logger.error(f"{errmsg}")
-            return ret
+            return pb2.req_status(status = errno.EINVAL, error_message = errmsg)
 
         if not request.serial_number:
             random.seed()
@@ -509,11 +517,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
         delete_subsystem_error_prefix = f"Failure deleting subsystem {request.subsystem_nqn}"
         self.logger.info(f"Received request to delete subsystem {request.subsystem_nqn}, context: {context}")
 
-        if self.is_discovery_nqn(request.subsystem_nqn):
+        if GatewayUtils.is_discovery_nqn(request.subsystem_nqn):
             errmsg = f"{delete_subsystem_error_prefix}: Can't delete a discovery subsystem"
-            ret = pb2.req_status(status = errno.EINVAL, error_message = errmsg)
             self.logger.error(f"{errmsg}")
-            return ret
+            return pb2.req_status(status = errno.EINVAL, error_message = errmsg)
 
         ns_list = []
         if context:
@@ -560,7 +567,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
             self.logger.error(errmsg)
             return pb2.nsid_status(status=errno.EINVAL, error_message=errmsg)
 
-        if self.is_discovery_nqn(subsystem_nqn):
+        if GatewayUtils.is_discovery_nqn(subsystem_nqn):
             errmsg = f"{add_namespace_error_prefix}: Can't add namespaces to a discovery subsystem"
             self.logger.error(errmsg)
             return pb2.nsid_status(status=errno.EINVAL, error_message=errmsg)
@@ -808,7 +815,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         namespace_failure_prefix = f"Failure removing namespace {nsid} from {subsystem_nqn}"
         self.logger.info(f"Received request to remove namespace {nsid} from {subsystem_nqn}")
 
-        if self.is_discovery_nqn(subsystem_nqn):
+        if GatewayUtils.is_discovery_nqn(subsystem_nqn):
             errmsg=f"{namespace_failure_prefix}: Can't remove a namespace from a discovery subsystem"
             self.logger.error(f"{errmsg}")
             return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
@@ -1261,7 +1268,14 @@ class GatewayService(pb2_grpc.GatewayServicer):
         all_host_failure_prefix=f"Failure allowing open host access to {request.subsystem_nqn}"
         host_failure_prefix=f"Failure adding host {request.host_nqn} to {request.subsystem_nqn}"
 
-        if self.is_discovery_nqn(request.subsystem_nqn):
+        if self.verify_nqns:
+            rc = GatewayService.is_valid_host_nqn(request.host_nqn)
+            if rc.status != 0:
+                errmsg = f"{host_failure_prefix}: {rc.error_message}"
+                self.logger.error(f"{errmsg}")
+                return pb2.req_status(status = rc.status, error_message = errmsg)
+
+        if GatewayUtils.is_discovery_nqn(request.subsystem_nqn):
             if request.host_nqn == "*":
                 errmsg=f"{all_host_failure_prefix}: Can't allow host access to a discovery subsystem"
             else:
@@ -1269,7 +1283,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
             self.logger.error(f"{errmsg}")
             return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
 
-        if self.is_discovery_nqn(request.host_nqn):
+        if GatewayUtils.is_discovery_nqn(request.host_nqn):
             errmsg=f"{host_failure_prefix}: Can't use a discovery NQN as host's"
             self.logger.error(f"{errmsg}")
             return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
@@ -1367,7 +1381,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         all_host_failure_prefix=f"Failure disabling open host access to {request.subsystem_nqn}"
         host_failure_prefix=f"Failure removing host {request.host_nqn} access from {request.subsystem_nqn}"
 
-        if self.is_discovery_nqn(request.subsystem_nqn):
+        if GatewayUtils.is_discovery_nqn(request.subsystem_nqn):
             if request.host_nqn == "*":
                 errmsg=f"{all_host_failure_prefix}: Can't disable open host access to a discovery subsystem"
             else:
@@ -1375,7 +1389,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
             self.logger.error(f"{errmsg}")
             return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
 
-        if self.is_discovery_nqn(request.host_nqn):
+        if GatewayUtils.is_discovery_nqn(request.host_nqn):
             if request.host_nqn == "*":
                 errmsg=f"{all_host_failure_prefix}: Can't use a discovery NQN as host's"
             else:
@@ -1631,7 +1645,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         """Creates a listener for a subsystem at a given IP/Port."""
 
         ret = True
-        traddr = GatewayConfig.escape_address_if_ipv6(request.traddr)
+        traddr = GatewayUtils.escape_address_if_ipv6(request.traddr)
         create_listener_error_prefix = f"Failure adding {request.nqn} listener at {traddr}:{request.trsvcid}"
 
         trtype = GatewayEnumUtils.get_key_from_value(pb2.TransportType, request.trtype)
@@ -1656,7 +1670,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                          f" {trtype} {adrfam} listener for {request.nqn} at"
                          f" {traddr}:{request.trsvcid}, auto HA state: {auto_ha_state}, context: {context}")
 
-        if self.is_discovery_nqn(request.nqn):
+        if GatewayUtils.is_discovery_nqn(request.nqn):
             errmsg=f"{create_listener_error_prefix}: Can't create a listener for a discovery subsystem"
             self.logger.error(f"{errmsg}")
             return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
@@ -1793,7 +1807,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         """Deletes a listener from a subsystem at a given IP/Port."""
 
         ret = True
-        traddr = GatewayConfig.escape_address_if_ipv6(request.traddr)
+        traddr = GatewayUtils.escape_address_if_ipv6(request.traddr)
         delete_listener_error_prefix = f"Failure deleting listener {traddr}:{request.trsvcid} from {request.nqn}"
 
         trtype = GatewayEnumUtils.get_key_from_value(pb2.TransportType, request.trtype)
@@ -1812,7 +1826,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                          f" {trtype} listener for {request.nqn} at"
                          f" {traddr}:{request.trsvcid}, context: {context}")
 
-        if self.is_discovery_nqn(request.nqn):
+        if GatewayUtils.is_discovery_nqn(request.nqn):
             errmsg=f"{delete_listener_error_prefix}: Can't delete a listener from a discovery subsystem"
             self.logger.error(errmsg)
             return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
@@ -1912,7 +1926,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         if request.subsystem_nqn:
             self.logger.info(f"Received request to list subsystem {request.subsystem_nqn}, context: {context}")
         else:
-            self.logger.info(f"Received request to list subsystems{ser_msg}, context: {context}")
+            self.logger.info(f"Received request to list the subsystem{ser_msg}, context: {context}")
 
         subsystems = []
         try:

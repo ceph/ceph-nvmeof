@@ -121,6 +121,40 @@ class TestGet:
 class TestCreate:
     def test_create_subsystem(self, caplog, gateway):
         caplog.clear()
+        cli(["subsystem", "add", "--subsystem", "nqn.2016"])
+        assert f'NQN "nqn.2016" is too short, minimal length is 11' in caplog.text
+        caplog.clear()
+        cli(["subsystem", "add", "--subsystem",
+"nqn.2016-06XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"])
+        assert f"is too long, maximal length is 223" in caplog.text
+        caplog.clear()
+        cli(["subsystem", "add", "--subsystem", "nqn.2014-08.org.nvmexpress:uuid:0"])
+        assert f"UUID is not the correct length" in caplog.text
+        caplog.clear()
+        cli(["subsystem", "add", "--subsystem", "nqn.2014-08.org.nvmexpress:uuid:9e9134-3cb431-4f3e-91eb-a13cefaabebf"])
+        assert f"UUID is not formatted correctly" in caplog.text
+        caplog.clear()
+        cli(["subsystem", "add", "--subsystem", "qqn.2016-06.io.spdk:cnode1"])
+        assert f"doesn't start with" in caplog.text
+        caplog.clear()
+        cli(["subsystem", "add", "--subsystem", "nqn.016-206.io.spdk:cnode1"])
+        assert f"invalid date code" in caplog.text
+        caplog.clear()
+        cli(["subsystem", "add", "--subsystem", "nqn.2X16-06.io.spdk:cnode1"])
+        assert f"invalid date code" in caplog.text
+        caplog.clear()
+        cli(["subsystem", "add", "--subsystem", "nqn.2016-06.io.spdk:"])
+        assert f"must contain a user specified name starting with" in caplog.text
+        caplog.clear()
+        cli(["subsystem", "add", "--subsystem", "nqn.2016-06.io..spdk:cnode1"])
+        assert f"reverse domain is not formatted correctly" in caplog.text
+        caplog.clear()
+        cli(["subsystem", "add", "--subsystem", "nqn.2016-06.io.XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX.spdk:cnode1"])
+        assert f"reverse domain is not formatted correctly" in caplog.text
+        caplog.clear()
+        cli(["subsystem", "add", "--subsystem", "nqn.2016-06.io.-spdk:cnode1"])
+        assert f"reverse domain is not formatted correctly" in caplog.text
+        caplog.clear()
         cli(["subsystem", "add", "--subsystem", subsystem])
         assert f"create_subsystem {subsystem}: True" in caplog.text
         assert "ana reporting: False" in caplog.text
@@ -160,10 +194,6 @@ class TestCreate:
         caplog.clear()
         cli(["subsystem", "list", "--subsystem", "JUNK"])
         assert f"Failure listing subsystems: No such device" in caplog.text
-        assert f'"nqn": "JUNK"' in caplog.text
-        caplog.clear()
-        cli(["subsystem", "add", "--subsystem", "JUNK"])
-        assert f"Failure creating subsystem JUNK: Unable to create subsystem JUNK" in caplog.text
         assert f'"nqn": "JUNK"' in caplog.text
         caplog.clear()
         subs_list = cli_test(["--format", "text", "subsystem", "list"])
@@ -406,6 +436,14 @@ class TestCreate:
             assert f"Allowing open host access to {subsystem}: Successful" in caplog.text
         else:
             assert f"Adding host {host} to {subsystem}: Successful" in caplog.text
+
+    def test_add_host_invalid_nqn(self, caplog):
+        caplog.clear()
+        cli(["host", "add", "--subsystem", subsystem, "--host", "nqn.2016"])
+        assert f'NQN "nqn.2016" is too short, minimal length is 11' in caplog.text
+        caplog.clear()
+        cli(["host", "add", "--subsystem", subsystem, "--host", "nqn.2X16-06.io.spdk:host1"])
+        assert f"invalid date code" in caplog.text
 
     @pytest.mark.parametrize("listener", listener_list)
     def test_create_listener(self, caplog, listener, gateway):

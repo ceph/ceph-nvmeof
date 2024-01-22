@@ -15,35 +15,6 @@ import logging.handlers
 import gzip
 import shutil
 
-class GatewayEnumUtils:
-    def get_value_from_key(e_type, keyval, ignore_case = False):
-        val = None
-        try:
-            key_index = e_type.keys().index(keyval)
-            val = e_type.values()[key_index]
-        except ValueError:
-            pass
-        except IndexError:
-            pass
-
-        if ignore_case and val == None and type(keyval) == str:
-            val = get_value_from_key(e_type, keyval.lower(), False)
-        if ignore_case and val == None and type(keyval) == str:
-            val = get_value_from_key(e_type, keyval.upper(), False)
-
-        return val
-
-    def get_key_from_value(e_type, val):
-        keyval = None
-        try:
-            val_index = e_type.values().index(val)
-            keyval = e_type.keys()[val_index]
-        except ValueError:
-            pass
-        except IndexError:
-            pass
-        return keyval
-
 class GatewayConfig:
     """Loads and returns config file settings.
 
@@ -51,7 +22,6 @@ class GatewayConfig:
         config: Config parser object
     """
 
-    DISCOVERY_NQN = "nqn.2014-08.org.nvmexpress.discovery"
     CEPH_RUN_DIRECTORY = "/var/run/ceph/"
 
     def __init__(self, conffile):
@@ -102,13 +72,6 @@ class GatewayConfig:
                 self.conffile_logged = True
         except Exception:
             pass
-
-    # We need to enclose IPv6 addresses in brackets before concatenating a colon and port number to it
-    def escape_address_if_ipv6(addr) -> str:
-        ret_addr = addr
-        if ":" in addr and not addr.strip().startswith("["):
-            ret_addr = f"[{addr}]"
-        return ret_addr
 
 class GatewayLogger:
     CEPH_LOG_DIRECTORY = "/var/log/ceph/"
