@@ -80,7 +80,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         git_spdk_branch = os.getenv("SPDK_GIT_BRANCH")
         if git_spdk_branch:
             self.logger.info(f"SPDK Git branch: {git_spdk_branch}")
-        git_spdk_commit = os.getenv("NVMEOF_GIT_COMMIT")
+        git_spdk_commit = os.getenv("SPDK_GIT_COMMIT")
         if git_spdk_commit:
             self.logger.info(f"SPDK Git commit: {git_spdk_commit}")
         hugepages_file = os.getenv("HUGEPAGES_DIR")
