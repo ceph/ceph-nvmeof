@@ -1,5 +1,6 @@
 ---
 # yamllint disable rule:line-length
+# yamllint disable rule:comments
 name: "CI"
 on:  # yamllint disable rule:truthy
   push:
@@ -20,7 +21,38 @@ concurrency:
   cancel-in-progress: true
 env:
   WAIT_INTERVAL_SECS: 1
+  DOCKER_COMPOSE: docker compose  # This is to deal with v1 (docker-compose) and v2 (docker compose)
 jobs:
+  build-ceph:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Expose GitHub Runtime
+        # Pinned to https://github.com/crazy-max/ghaction-github-runtime/releases/tag/v3.0.0
+        # Required to expose $ACTIONS_RUNTIME_TOKEN (suggested by Docker:
+        # https://docs.docker.com/build/cache/backends/gha/#authentication )
+        uses: crazy-max/ghaction-github-runtime@b3a9207c0e1ef41f4cf215303c976869d0c2c1c4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build container images - ceph
+        run: make build SVC=ceph
+
+      - name: Save container images
+        run: |
+          . .env
+          docker save $QUAY_CEPH:$CEPH_VERSION > ceph.tar
+
+      - name: Upload container images
+        uses: actions/upload-artifact@v4
+        with:
+          name: container_images_ceph
+          path: |
+            ceph.tar
+
   build:
     runs-on: ubuntu-latest
     steps:
@@ -28,6 +60,15 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
+
+      - name: Expose GitHub Runtime
+        # Pinned to https://github.com/crazy-max/ghaction-github-runtime/releases/tag/v3.0.0
+        # Required to expose $ACTIONS_RUNTIME_TOKEN (suggested by Docker:
+        # https://docs.docker.com/build/cache/backends/gha/#authentication )
+        uses: crazy-max/ghaction-github-runtime@b3a9207c0e1ef41f4cf215303c976869d0c2c1c4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Build container images - spdk
         run: make build SVC="spdk" SPDK_TARGET_ARCH=x86-64-v2
@@ -59,27 +100,6 @@ jobs:
             nvmeof.tar
             nvmeof-cli.tar
             bdevperf.tar
-
-  build-ceph:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Build container images - ceph
-        run: make build SVC=ceph
-
-      - name: Save container images
-        run: |
-          . .env
-          docker save $QUAY_CEPH:$CEPH_VERSION > ceph.tar
-
-      - name: Upload container images
-        uses: actions/upload-artifact@v4
-        with:
-          name: container_images_ceph
-          path: |
-            ceph.tar
 
   pytest:
     needs: [build, build-ceph]
@@ -354,7 +374,7 @@ jobs:
       - name: Start discovery controller
         if: matrix.integration == 'container'
         run: |
-          docker-compose up --detach discovery
+          $DOCKER_COMPOSE up --detach discovery
 
       - name: Wait for discovery controller to be listening
         if: matrix.integration == 'container'
@@ -374,7 +394,7 @@ jobs:
 
       - name: Start gateway with scale=2
         run: |
-          docker-compose up --detach --scale nvmeof=2 nvmeof
+          $DOCKER_COMPOSE up --detach --scale nvmeof=2 nvmeof
 
       - name: Wait for gateways to be listening
         timeout-minutes: 3
@@ -397,12 +417,12 @@ jobs:
       - name: List containers
         if: success() || failure()
         run: |
-          docker-compose ps
+          $DOCKER_COMPOSE ps
 
       - name: List processes
         if: success() || failure()
         run: |
-          docker-compose top
+          $DOCKER_COMPOSE top
 
       - name: Create RBD image
         run: |
@@ -423,7 +443,7 @@ jobs:
           cli_gw() {
             gw=$1
             shift
-            docker-compose run --rm nvmeof-cli --server-address $gw --server-port $NVMEOF_GW_PORT "$@"
+            $DOCKER_COMPOSE run --rm nvmeof-cli --server-address $gw --server-port $NVMEOF_GW_PORT "$@"
           }
 
           gw1=$(container_ip $GW1)

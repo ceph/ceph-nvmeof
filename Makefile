@@ -37,7 +37,6 @@ build: export NVMEOF_GIT_MODIFIED_FILES != git status -s | grep -e "^ *M" | sed 
 up: ## Launch services
 up: SVC ?= ceph nvmeof ## Services
 up: OPTS ?= --abort-on-container-exit --exit-code-from $(SVC) --remove-orphans
-#up: override OPTS += --scale nvmeof=$(SCALE)
 
 clean: $(CLEAN) setup  ## Clean-up environment
 clean: override HUGEPAGES = 0
