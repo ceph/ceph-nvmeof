@@ -14,6 +14,10 @@ on:  # yamllint disable rule:truthy
   release:
     types:
       - created
+# Credit: https://stackoverflow.com/a/72408109
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 env:
   WAIT_INTERVAL_SECS: 1
 jobs:
