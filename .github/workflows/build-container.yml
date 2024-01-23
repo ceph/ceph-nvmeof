@@ -21,13 +21,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
-          # git submodule update --init --recursive
           submodules: recursive
-
-      - name: Build container images - ceph
-        run: make build SVC=ceph SPDK_TARGET_ARCH=x86-64-v2
 
       - name: Build container images - spdk
         run: make build SVC="spdk" SPDK_TARGET_ARCH=x86-64-v2
@@ -49,21 +45,40 @@ jobs:
           . .env
           docker save $QUAY_NVMEOF:$NVMEOF_VERSION > nvmeof.tar
           docker save $QUAY_NVMEOFCLI:$NVMEOF_VERSION > nvmeof-cli.tar
-          docker save $QUAY_CEPH:$CEPH_VERSION > ceph.tar
           docker save bdevperf > bdevperf.tar
 
       - name: Upload container images
         uses: actions/upload-artifact@v4
         with:
-          name: ceph_nvmeof_container_images-${{ github.run_number }}
+          name: container_images
           path: |
             nvmeof.tar
             nvmeof-cli.tar
-            ceph.tar
             bdevperf.tar
 
+  build-ceph:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build container images - ceph
+        run: make build SVC=ceph
+
+      - name: Save container images
+        run: |
+          . .env
+          docker save $QUAY_CEPH:$CEPH_VERSION > ceph.tar
+
+      - name: Upload container images
+        uses: actions/upload-artifact@v4
+        with:
+          name: container_images_ceph
+          path: |
+            ceph.tar
+
   pytest:
-    needs: build
+    needs: [build, build-ceph]
     strategy:
       fail-fast: false
       matrix:
@@ -73,7 +88,7 @@ jobs:
       HUGEPAGES: 512  # for multi gateway test, approx 256 per gateway instance
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Setup huge pages
         run: |
@@ -82,7 +97,8 @@ jobs:
       - name: Download container images
         uses: actions/download-artifact@v4
         with:
-          name: ceph_nvmeof_container_images-${{ github.run_number }}
+          pattern: container_images*
+          merge-multiple: true
 
       - name: Load container images
         run: |
@@ -157,11 +173,10 @@ jobs:
 
       - name: Upload ${{ matrix.test }} test core dumps
         if: steps.check_coredumps.outputs.files_exists == 'true'
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: ceph_nvmeof_pytest_${{ matrix.test }}_cores-${{ github.run_number }}
-          path: |
-            /tmp/coredump/core.*
+          name: core_pytest_${{ matrix.test }}
+          path: /tmp/coredump/core.*
 
       - name: Display logs
         if: success() || failure()
@@ -175,13 +190,13 @@ jobs:
           make clean
 
   demo:
-    needs: build
+    needs: [build, build-ceph]
     runs-on: ubuntu-latest
     env:
       HUGEPAGES: 512
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Setup huge-pages
         run: make setup HUGEPAGES=$HUGEPAGES
@@ -189,7 +204,8 @@ jobs:
       - name: Download container images
         uses: actions/download-artifact@v4
         with:
-          name: ceph_nvmeof_container_images-${{ github.run_number }}
+          pattern: container_images*
+          merge-multiple: true
 
       - name: Load container images
         run: |
@@ -280,11 +296,10 @@ jobs:
 
       - name: Upload demo core dumps
         if: steps.check_coredumps.outputs.files_exists == 'true'
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: ceph_nvmeof_demo_cores-${{ github.run_number }}
-          path: |
-            /tmp/coredump/core.*
+          name: core_demo
+          path: /tmp/coredump/core.*
 
       # For debugging purposes (provides an SSH connection to the runner)
       # - name: Setup tmate session
@@ -303,7 +318,7 @@ jobs:
           make clean
 
   discovery:
-    needs: build
+    needs: [build, build-ceph]
     strategy:
       fail-fast: false
       matrix:
@@ -314,7 +329,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Setup huge-pages
         run: make setup HUGEPAGES=$HUGEPAGES
@@ -322,7 +337,8 @@ jobs:
       - name: Download container images
         uses: actions/download-artifact@v4
         with:
-          name: ceph_nvmeof_container_images-${{ github.run_number }}
+          pattern: container_images*
+          merge-multiple: true
 
       - name: Load container images
         run: |
@@ -471,9 +487,9 @@ jobs:
 
       - name: Upload demo core dumps
         if: steps.check_coredumps.outputs.files_exists == 'true'
-        uses: actions/upload-artifact@v1
+        uses: actions/upload-artifact@v4
         with:
-          name: ceph_nvmeof_demo_cores-${{ github.run_number }}
+          name: core_demo
           path: /tmp/coredump/core.*
 
       - name: Display logs
@@ -493,12 +509,12 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Download container images
         uses: actions/download-artifact@v4
         with:
-          name: ceph_nvmeof_container_images-${{ github.run_number }}
+          name: container_images
 
       - name: Load container images
         run: |
