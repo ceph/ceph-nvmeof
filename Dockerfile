@@ -38,8 +38,8 @@ RUN \
     --mount=type=cache,target=/var/lib/dnf \
     dnf install -y protobuf grpc grpc-cpp snappy gperftools-libs fmt thrift
 
-COPY ceph-monitor/ceph-nvmeof /usr/local/bin/
-COPY ceph-monitor/libceph-common.so.2 /lib64/
+COPY ceph-nvmeof-monitor-client/ceph-nvmeof-monitor-client /usr/local/bin/
+COPY ceph-nvmeof-monitor-client/libceph-common.so.2 /lib64/
 
 ENTRYPOINT ["python3", "-m", "control"]
 CMD ["-c", "/src/ceph-nvmeof.conf"]

@@ -23,10 +23,10 @@ setup: ## Configure huge-pages (requires sudo/root password)
 	@[ $$(cat $(HUGEPAGES_DIR)) -eq $(HUGEPAGES) ]
 
 ceph-monitor-copy:
-	mkdir -p ceph-monitor
-	cp ../../../build/bin/ceph-nvmeof ceph-monitor/
-	cp ../../../build/lib/libceph-common.so.2 ceph-monitor/
-	ls -l ceph-monitor
+	mkdir -p ceph-nvmeof-monitor-client
+	cp ../../../build/bin/ceph-nvmeof-monitor-client ceph-nvmeof-monitor-client/
+	cp ../../../build/lib/libceph-common.so.2 ceph-nvmeof-monitor-client/
+	ls -l ceph-nvmeof-monitor-client
 
 build: ceph-monitor-copy
 
