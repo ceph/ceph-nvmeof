@@ -19,7 +19,7 @@ pull: ## Download SVC images
 build:  ## Build SVC images
 build: DOCKER_COMPOSE_ENV = DOCKER_BUILDKIT=1 COMPOSE_DOCKER_CLI_BUILD=1
 
-GIT_LATEST_TAG != git describe --tags --abbrev=0
+GIT_LATEST_TAG != git describe --tags --abbrev=0 2>/dev/null
 push: ## Push nvmeof and nvmeof-cli containers images to quay.io registries
 	docker tag $(QUAY_NVMEOF):$(VERSION) $(QUAY_NVMEOF):$(GIT_LATEST_TAG)
 	docker tag $(QUAY_NVMEOFCLI):$(VERSION) $(QUAY_NVMEOFCLI):$(GIT_LATEST_TAG)
@@ -65,8 +65,17 @@ down: override OPTS += --volumes --remove-orphans
 
 events: ## Receive real-time events from containers
 
+.PHONY:
+image_name:
+	@$(DOCKER_COMPOSE) config --format=json | jq '.services."$(SVC)".image'
+
+.PHONY:
 docker_compose_clean: down
 	$(DOCKER) system prune --all --force --volumes --filter label="io.ceph.nvmeof"
+
+.PHONY:
+clean_cache: ## Clean the Docker build cache
+	$(DOCKER) builder prune --force --all
 
 CLEAN += docker_compose_clean
 ALL += pull up ps

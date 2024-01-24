@@ -1,25 +1,20 @@
 # syntax = docker/dockerfile:1.4
+# vim: syntax=dockerfile
 FROM quay.io/centos/centos:stream9-minimal AS build
 
+
 ARG CEPH_CLUSTER_VERSION
+ARG CEPH_CLUSTER_CEPH_REPO_BASEURL
+ARG CEPH_CLUSTER_EPEL_REPO_URL="https://copr.fedorainfracloud.org/coprs/ceph/el9/repo/epel-9/ceph-el9-epel-9.repo"
 
-COPY <<EOF /etc/yum.repos.d/ceph.repo
-[Ceph]
-name=Ceph packages for \$basearch
-baseurl=https://download.ceph.com/rpm-$CEPH_CLUSTER_VERSION/el\$releasever/\$basearch
-enabled=1
-priority=2
-gpgcheck=1
-gpgkey=https://download.ceph.com/keys/release.asc
-
-[Ceph-noarch]
-name=Ceph noarch packages
-baseurl=https://download.ceph.com/rpm-$CEPH_CLUSTER_VERSION/el\$releasever/noarch
-enabled=1
-priority=2
-gpgcheck=1
-gpgkey=https://download.ceph.com/keys/release.asc
-EOF
+ARG MICRODNF_OPTS="\
+    --enablerepo crb \
+    --nobest \
+    --nodocs \
+    --setopt=install_weak_deps=0 \
+    --setopt=keepcache=1 \
+    --setopt=cachedir=/var/cache/microdnf \
+  "
 
 ARG CEPH_PACKAGES="\
     ceph-common \
@@ -27,27 +22,63 @@ ARG CEPH_PACKAGES="\
     ceph-osd \
     ceph-mds \
     ceph-mgr \
+    ceph-mgr-dashboard \
     ceph-radosgw \
     ceph-exporter \
     hostname \
     jq \
     net-tools \
+    iproute \
     "
+# TODO: To remove when ceph-mgr-dashboard defines these as deps
+ARG EXTRA_PACKAGES="\
+    python3-grpcio\ 
+    python3-grpcio-tools \
+    "
+ARG DEBUG_PACKAGES="\
+    procps-ng \
+    strace \
+    perf \
+    ltrace \
+    lsof \
+    "
+
+RUN <<EOF
+    echo Log variables
+    echo ======================================================================
+    echo CEPH_CLUSTER_CEPH_REPO_BASEURL=$CEPH_CLUSTER_CEPH_REPO_BASEURL
+    echo CEPH_CLUSTER_VERSION=$CEPH_CLUSTER_VERSION
+    echo ======================================================================
+EOF
+
+COPY <<EOF /etc/yum.repos.d/ceph.repo
+[Ceph]
+name=Ceph packages for \$basearch
+baseurl=${CEPH_CLUSTER_CEPH_REPO_BASEURL:-https://download.ceph.com/rpm-${CEPH_CLUSTER_VERSION}/el\$releasever}/\$basearch
+enabled=1
+priority=2
+gpgcheck=0
+
+[Ceph-noarch]
+name=Ceph noarch packages
+baseurl=${CEPH_CLUSTER_CEPH_REPO_BASEURL:-https://download.ceph.com/rpm-${CEPH_CLUSTER_VERSION}/el\$releasever}/noarch
+enabled=1
+priority=2
+gpgcheck=0
+EOF
+
+RUN cat /etc/yum.repos.d/ceph.repo
 
 RUN rpm -vih https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
 RUN rpm --import 'https://download.ceph.com/keys/release.asc'
-RUN cd /etc/yum.repos.d/ && curl -O https://copr.fedorainfracloud.org/coprs/ceph/el9/repo/epel-9/ceph-el9-epel-9.repo
+RUN curl -O --output-dir /etc/yum.repos.d/ ${CEPH_CLUSTER_EPEL_REPO_URL:?}
 
-RUN \
-    --mount=type=cache,target=/var/cache/microdnf \
-    microdnf install -y \
-        --enablerepo crb \
-        --nobest \
-        --nodocs \
-        --setopt=install_weak_deps=0 \
-        --setopt=keepcache=1 \
-        --setopt=cachedir=/var/cache/microdnf \
-        $CEPH_PACKAGES
+RUN --mount=type=cache,target=/var/cache/microdnf \
+    microdnf install -y $MICRODNF_OPTS \
+      $CEPH_PACKAGES \
+      $EXTRA_PACKAGES \
+      $DEBUG_PACKAGES
+
 
 #------------------------------------------------------------------------------
 FROM build
@@ -67,7 +98,7 @@ ENV MON=1 \
     RGW=0 \
     NFS=0 \
     CEPH_PORT=10000 \
-    CEPH_VSTART_ARGS="--without-dashboard"
+    CEPH_VSTART_ARGS="--memstore"
 
 ENV CEPH_BIN=/usr/bin \
     CEPH_LIB=/usr/lib64/ceph \
@@ -86,7 +117,14 @@ RUN ln -sf $EC_PATH/* $CEPH_LIB && \
 
 USER ceph
 WORKDIR /ceph
-ADD --chown=ceph:ceph --chmod=755 https://raw.githubusercontent.com/ceph/ceph/v$CEPH_CLUSTER_VERSION/src/vstart.sh .
+ADD --chown=ceph:ceph --chmod=755 \
+    https://raw.githubusercontent.com/ceph/ceph/v${CEPH_CLUSTER_VERSION:?}/src/vstart.sh .
+
+COPY <<EOF ./CMakeCache.txt
+ceph_SOURCE_DIR:STATIC=/ceph
+WITH_MGR_DASHBOARD_FRONTEND:BOOL=ON
+WITH_RBD:BOOL=ON
+EOF
 
 ENTRYPOINT \
     ./vstart.sh --new $CEPH_VSTART_ARGS && \

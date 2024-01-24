@@ -1,13 +1,55 @@
 # syntax = docker/dockerfile:1.4
+# vim: syntax=dockerfile
+
+ARG DNF_OPTS="\
+  --enablerepo crb \
+  --nobest \
+  --nodocs \
+  --setopt=install_weak_deps=0 \
+  --setopt=keepcache=1 \
+  --setopt=cachedir=/var/cache/dnf \
+  "
+
 FROM quay.io/centos/centos:stream9 AS build
 
 ARG SPDK_CEPH_VERSION \
-    SPDK_VERSION
+    SPDK_VERSION \
+    DNF_OPTS \
+    SPDK_PKGDEP_ARGS \
+    SPDK_CONFIGURE_ARGS \
+    SPDK_TARGET_ARCH \
+    SPDK_MAKEFLAGS
+
+RUN <<EOF
+    echo Log variables
+    echo ======================================================================
+    echo SPDK_PKGDEP_ARGS=$SPDK_PKGDEP_ARGS
+    echo SPDK_CONFIGURE_ARGS=$SPDK_CONFIGURE_ARGS
+    echo SPDK_TARGET_ARCH=$SPDK_TARGET_ARCH
+    echo SPDK_MAKEFLAGS=$SPDK_MAKEFLAGS
+    echo ======================================================================
+EOF
+
+WORKDIR /src
+COPY . .
+
+COPY <<EOF /etc/yum.conf
+[main]
+gpgcheck=1
+installonly_limit=3
+clean_requirements_on_remove=True
+best=False
+skip_if_unavailable=False
+cachedir=/var/cache/dnf
+install_weak_deps=0
+keepcache=True
+tsflags=nodocs
+EOF
 
 COPY <<EOF /etc/yum.repos.d/ceph.repo
 [Ceph]
 name=Ceph packages for \$basearch
-baseurl=https://download.ceph.com/rpm-${SPDK_CEPH_VERSION?}/el\$releasever/\$basearch
+baseurl=https://download.ceph.com/rpm-${SPDK_CEPH_VERSION:?}/el\$releasever/\$basearch
 enabled=1
 priority=2
 gpgcheck=1
@@ -22,47 +64,27 @@ gpgcheck=1
 gpgkey=https://download.ceph.com/keys/release.asc
 EOF
 
-ARG SPDK_PKGDEP_ARGS \
-    SPDK_CONFIGURE_ARGS \
-    SPDK_MAKEFLAGS \
-    SPDK_DISABLE_VPCLMULQDQ \
-    SPDK_DISABLE_AVX512
-
-WORKDIR /src
-COPY . .
-
 RUN \
     --mount=type=cache,target=/var/cache/dnf \
     --mount=type=cache,target=/var/lib/dnf \
     --mount=type=cache,target=/root/.cache/pip \
-    dnf install -y 'dnf-command(config-manager)' \
+    dnf install $DNF_OPTS -y 'dnf-command(config-manager)' \
     && dnf config-manager --set-enabled crb \
-    && dnf install -y \
+    && dnf install $DNF_OPTS -y \
         rpm-build \
         git-core \
     && rpm -vih https://buildlogs.centos.org/centos/9-stream/storage/x86_64/ceph-reef/Packages/t/thrift-0.15.0-3.el9s.x86_64.rpm \
     && scripts/pkgdep.sh $SPDK_PKGDEP_ARGS \
-    && dnf update -y
-
-# Disable RDSEED, see https://github.com/ceph/ceph-nvmeof/issues/259
-RUN \
-    sed -i "s/^\( \+'RDSEED'\)/#\1/" dpdk/config/x86/meson.build
-# If we run from github disable also VPCLMULQDQ as some of github's runners don't have it
-RUN \
-    if [[ -n "$SPDK_DISABLE_VPCLMULQDQ" ]]; then sed -i "s/^\( \+'VPCLMULQDQ'\)/#\1/" dpdk/config/x86/meson.build ; fi
-RUN \
-    if [[ -n "$SPDK_DISABLE_AVX512" ]]; then sed -i "s/^\( \+'AVX512\)/#\1/" dpdk/config/x86/meson.build ; fi
-RUN \
-    cat dpdk/config/x86/meson.build
+    && dnf $DNF_OPTS update -y
 
 RUN \
     --mount=type=cache,target=/var/cache/dnf \
     --mount=type=cache,target=/var/lib/dnf \
     DEPS="no" \
-    SPDK_VERSION=${SPDK_VERSION?} \
+    SPDK_VERSION=${SPDK_VERSION:?} \
     RPM_RELEASE=0 \
     MAKEFLAGS=$SPDK_MAKEFLAGS \
-    rpmbuild/rpm.sh $SPDK_CONFIGURE_ARGS
+    rpmbuild/rpm.sh $SPDK_CONFIGURE_ARGS --target-arch="${SPDK_TARGET_ARCH:?}"
 
 # build bdevperf example, will not be a part of generated rpm
 RUN make -C ./examples/bdev/bdevperf
@@ -75,7 +97,8 @@ COPY --from=build /root/rpmbuild/rpm /rpm
 FROM registry.access.redhat.com/ubi9/ubi as spdk
 
 ARG SPDK_CEPH_VERSION \
-    SPDK_VERSION
+    SPDK_VERSION \
+    DNF_OPTS
 
 ARG SPDK_CENTOS_BASE="https://mirror.stream.centos.org/9-stream/BaseOS/x86_64/os/Packages/"
 # This would become obsolete as the release rolls out new packages
@@ -111,6 +134,7 @@ LABEL io.spdk.version="$SPDK_VERSION" \
       io.spdk.build.pkgdep-args="$SPDK_PKGDEP_ARGS" \
       io.spdk.build.configure-args="$SPDK_CONFIGURE_ARGS" \
       io.spdk.build.makeflags="$SPDK_MAKEFLAGS" \
+      io.spdk.build.target-arch="$SPDK_TARGET_ARCH" \
       io.spdk.build.ceph-release="$SPDK_CEPH_VERSION" \
       io.spdk.git.repo="$SPDK_GIT_REPO" \
       io.spdk.git.branch="$SPDK_GIT_BRANCH" \
@@ -120,6 +144,7 @@ LABEL io.spdk.version="$SPDK_VERSION" \
 LABEL org.centos.url="$SPDK_CENTOS_BASE" \
       org.centos.version="$SPDK_CENTOS_REPO_VER"
 
+COPY --from=build /etc/yum.conf /etc/yum.conf
 COPY --from=build /etc/yum.repos.d/ceph.repo /etc/yum.repos.d/ceph.repo
 
 RUN \
@@ -128,9 +153,9 @@ RUN \
     --mount=type=cache,target=/var/lib/dnf \
     rpm -vih $SPDK_CENTOS_BASE/centos-stream-repos-$SPDK_CENTOS_REPO_VER.noarch.rpm \
              $SPDK_CENTOS_BASE/centos-gpg-keys-$SPDK_CENTOS_REPO_VER.noarch.rpm \
-             https://buildlogs.centos.org/centos/9-stream/storage/x86_64/ceph-reef/Packages/t/thrift-0.15.0-3.el9s.x86_64.rpm \
-    && dnf install -y /rpm/$(uname -m)/*.rpm \
-    && dnf update -y
+    && rpm -vih https://buildlogs.centos.org/centos/9-stream/storage/x86_64/ceph-reef/Packages/t/thrift-0.15.0-3.el9s.x86_64.rpm \
+    && dnf $DNF_OPTS install -y /rpm/$(uname -m)/*.rpm \
+    && dnf $DNF_OPTS update -y
 
 ENTRYPOINT [ "/usr/local/bin/nvmf_tgt" ]
 CMD [ "-u", "-r", "/var/tmp/spdk.sock" ]

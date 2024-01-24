@@ -13,14 +13,13 @@ services:
         SPDK_CEPH_VERSION:
         SPDK_PKGDEP_ARGS:
         SPDK_CONFIGURE_ARGS:
+        SPDK_TARGET_ARCH:
         SPDK_MAKEFLAGS:
         SPDK_NAME:
         SPDK_SUMMARY:
         SPDK_DESCRIPTION:
         SPDK_URL:
         SPDK_MAINTAINER: $MAINTAINER
-        SPDK_DISABLE_VPCLMULQDQ:
-        SPDK_DISABLE_AVX512:
         BUILD_DATE:
         SPDK_GIT_REPO:
         SPDK_GIT_BRANCH:
@@ -53,34 +52,47 @@ services:
     ulimits:
       nofile: $NVMEOF_NOFILE
       memlock: -1
-  ceph:
-    image: $QUAY_CEPH:$CEPH_CLUSTER_VERSION
-    container_name: ceph
+  ceph-base:
     build:
       context: .
       dockerfile: Dockerfile.ceph
       args:
         CEPH_CLUSTER_VERSION:
+        CEPH_CLUSTER_CEPH_REPO_BASEURL:
       labels:
         io.ceph.nvmeof:
     environment:
-      CEPH_VSTART_ARGS:
-      VSTART_ARGS: --without-dashboard --memstore
       TOUCHFILE: /tmp/ceph.touch
     entrypoint: >-
-      sh -c './vstart.sh --new $$VSTART_ARGS &&
+      sh -c './vstart.sh --new $$CEPH_VSTART_ARGS &&
       ceph osd pool create rbd &&
+      echo ceph dashboard nvmeof-gateway-add -i <(echo nvmeof-devel:5500) nvmeof.1 &&
       sleep infinity'
     healthcheck:
       test: ceph osd pool stats rbd
       start_period: 6s
       interval: 3s
+      retries: 10
     volumes:
       - ceph-conf:/etc/ceph
+    ulimits:
+      nofile: 1024
     networks:
       default:
         ipv4_address: 192.168.13.2
         ipv6_address: 2001:db8::2
+  ceph:
+    extends:
+      service: ceph-base
+    image: $QUAY_CEPH:$CEPH_CLUSTER_VERSION
+    container_name: ceph
+  ceph-devel:
+    extends:
+      service: ceph-base
+    image: $QUAY_CEPH-devel:$CEPH_CLUSTER_VERSION
+    container_name: ceph-devel
+    volumes:
+      - ${CEPH_DEVEL_MGR_PATH?Define the path of your local Ceph repo}/src/pybind/mgr:/usr/share/ceph/mgr
   nvmeof-base:
     build:
       context: .
@@ -187,7 +199,7 @@ services:
       args:
         NVMEOF_TARGET: cli
   nvmeof-devel:
-    image: nvmeof-devel
+    image: nvmeof-devel:$NVMEOF_VERSION
     # Runs from source code in current dir
     extends:
       service: nvmeof-base
@@ -196,6 +208,9 @@ services:
       args:
         # https://daobook.github.io/pdm/usage/dependency/#add-development-only-dependencies
         PDM_INSTALL_DEV: "-d"
+    depends_on:
+      ceph-devel:
+        condition: service_healthy
     volumes:
       - ./control:/src/control
   nvmeof-cli:

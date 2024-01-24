@@ -1,15 +1,23 @@
+---
+# yamllint disable rule:line-length
 name: "CI"
-on:
+on:  # yamllint disable rule:truthy
   push:
-    branches:
-      - '*'
     tags:
       - 'v*'
   pull_request:
+    branches:
+      - devel
+  schedule:
+    - cron: '0 0 * * *'
   workflow_dispatch:
   release:
     types:
       - created
+# Credit: https://stackoverflow.com/a/72408109
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 env:
   WAIT_INTERVAL_SECS: 1
 jobs:
@@ -17,60 +25,89 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
-          # git submodule update --init --recursive
           submodules: recursive
 
-      - name: Build container images
-        run: make build SPDK_DISABLE_VPCLMULQDQ="yes" SPDK_DISABLE_AVX512="yes"
+      - name: Build container images - spdk
+        run: make build SVC="spdk" SPDK_TARGET_ARCH=x86-64-v2
+
+      - name: Build container images - bdevperf
+        run: make build SVC="bdevperf" SPDK_TARGET_ARCH=x86-64-v2
+
+      - name: Build container images - nvmeof
+        run: make build SVC="nvmeof" SPDK_TARGET_ARCH=x86-64-v2
+
+      - name: Build container images - nvmeof-cli
+        run: make build SVC="nvmeof-cli" SPDK_TARGET_ARCH=x86-64-v2
+
+      - name: Build container images - discovery
+        run: make build SVC="discovery" SPDK_TARGET_ARCH=x86-64-v2
 
       - name: Save container images
         run: |
           . .env
           docker save $QUAY_NVMEOF:$NVMEOF_VERSION > nvmeof.tar
           docker save $QUAY_NVMEOFCLI:$NVMEOF_VERSION > nvmeof-cli.tar
-          docker save $QUAY_CEPH:$CEPH_VERSION  > vstart-cluster.tar
           docker save bdevperf > bdevperf.tar
-          docker save nvmeof-devel > nvmeof-devel.tar
 
       - name: Upload container images
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: ceph_nvmeof_container_images-${{ github.run_number }}
+          name: container_images
           path: |
             nvmeof.tar
             nvmeof-cli.tar
-            nvmeof-devel.tar
-            vstart-cluster.tar
             bdevperf.tar
 
+  build-ceph:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build container images - ceph
+        run: make build SVC=ceph
+
+      - name: Save container images
+        run: |
+          . .env
+          docker save $QUAY_CEPH:$CEPH_VERSION > ceph.tar
+
+      - name: Upload container images
+        uses: actions/upload-artifact@v4
+        with:
+          name: container_images_ceph
+          path: |
+            ceph.tar
+
   pytest:
-    needs: build
+    needs: [build, build-ceph]
     strategy:
       fail-fast: false
       matrix:
-          test: ["cli", "state", "multi_gateway", "server", "grpc", "omap_lock", "old_omap", "log_files"]
+        test: ["cli", "state", "multi_gateway", "server", "grpc", "omap_lock", "old_omap", "log_files"]
     runs-on: ubuntu-latest
     env:
-      HUGEPAGES: 512 # for multi gateway test, approx 256 per gateway instance
+      HUGEPAGES: 512  # for multi gateway test, approx 256 per gateway instance
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Setup huge pages
         run: |
           make setup HUGEPAGES=$HUGEPAGES
 
       - name: Download container images
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
-          name: ceph_nvmeof_container_images-${{ github.run_number }}
+          pattern: container_images*
+          merge-multiple: true
 
       - name: Load container images
         run: |
-          docker load < nvmeof-devel.tar
-          docker load < vstart-cluster.tar
+          docker load < nvmeof.tar
+          docker load < ceph.tar
 
       - name: Clear space on disk
         run: |
@@ -129,22 +166,21 @@ jobs:
         run: |
           # Run tests code in current dir
           # Managing pytest’s output: https://docs.pytest.org/en/7.1.x/how-to/output.html
-          make run SVC="nvmeof-devel" OPTS="--volume=$(pwd)/tests:/src/tests --entrypoint=python3" CMD="-m pytest --show-capture=all -s --full-trace -vv -rA tests/test_${{ matrix.test }}.py"
+          make run SVC="nvmeof" OPTS="--volume=$(pwd)/tests:/src/tests --entrypoint=python3" CMD="-m pytest --show-capture=all -s --full-trace -vv -rA tests/test_${{ matrix.test }}.py"
 
       - name: Check coredump existence
         if: success() || failure()
         id: check_coredumps
-        uses: andstor/file-existence-action@20b4d2e596410855db8f9ca21e96fbe18e12930b # v2, pinned to SHA for security reasons
+        uses: andstor/file-existence-action@20b4d2e596410855db8f9ca21e96fbe18e12930b  # v2, pinned to SHA for security reasons
         with:
           files: "/tmp/coredump/core.*"
 
       - name: Upload ${{ matrix.test }} test core dumps
         if: steps.check_coredumps.outputs.files_exists == 'true'
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: ceph_nvmeof_pytest_${{ matrix.test }}_cores-${{ github.run_number }}
-          path: |
-            /tmp/coredump/core.*
+          name: core_pytest_${{ matrix.test }}
+          path: /tmp/coredump/core.*
 
       - name: Display logs
         if: success() || failure()
@@ -158,27 +194,28 @@ jobs:
           make clean
 
   demo:
-    needs: build
+    needs: [build, build-ceph]
     runs-on: ubuntu-latest
     env:
       HUGEPAGES: 512
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Setup huge-pages
         run: make setup HUGEPAGES=$HUGEPAGES
 
       - name: Download container images
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
-          name: ceph_nvmeof_container_images-${{ github.run_number }}
+          pattern: container_images*
+          merge-multiple: true
 
       - name: Load container images
         run: |
           docker load < nvmeof.tar
           docker load < nvmeof-cli.tar
-          docker load < vstart-cluster.tar
+          docker load < ceph.tar
           docker load < bdevperf.tar
 
       - name: Start containers
@@ -257,23 +294,22 @@ jobs:
       - name: Check coredump existence
         if: success() || failure()
         id: check_coredumps
-        uses: andstor/file-existence-action@20b4d2e596410855db8f9ca21e96fbe18e12930b # v2, pinned to SHA for security reasons
+        uses: andstor/file-existence-action@20b4d2e596410855db8f9ca21e96fbe18e12930b  # v2, pinned to SHA for security reasons
         with:
-            files: "/tmp/coredump/core.*"
+          files: "/tmp/coredump/core.*"
 
       - name: Upload demo core dumps
         if: steps.check_coredumps.outputs.files_exists == 'true'
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: ceph_nvmeof_demo_cores-${{ github.run_number }}
-          path: |
-            /tmp/coredump/core.*
+          name: core_demo
+          path: /tmp/coredump/core.*
 
       # For debugging purposes (provides an SSH connection to the runner)
-      #- name: Setup tmate session
-      #  uses: mxschmitt/action-tmate@v3
-      #  with:
-      #    limit-access-to-actor: true
+      # - name: Setup tmate session
+      #   uses: mxschmitt/action-tmate@v3
+      #   with:
+      #     limit-access-to-actor: true
 
       - name: Display logs
         if: success() || failure()
@@ -286,32 +322,33 @@ jobs:
           make clean
 
   discovery:
-    needs: build
+    needs: [build, build-ceph]
     strategy:
       fail-fast: false
       matrix:
-          integration: ["container", "embedded"]
+        integration: ["container", "embedded"]
     runs-on: ubuntu-latest
     env:
-      HUGEPAGES: 768 # 3 spdk instances
+      HUGEPAGES: 768  # 3 spdk instances
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Setup huge-pages
         run: make setup HUGEPAGES=$HUGEPAGES
 
       - name: Download container images
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
-          name: ceph_nvmeof_container_images-${{ github.run_number }}
+          pattern: container_images*
+          merge-multiple: true
 
       - name: Load container images
         run: |
           docker load < nvmeof.tar
           docker load < nvmeof-cli.tar
-          docker load < vstart-cluster.tar
+          docker load < ceph.tar
           docker load < bdevperf.tar
 
       - name: Start discovery controller
@@ -448,15 +485,15 @@ jobs:
       - name: Check coredump existence
         if: success() || failure()
         id: check_coredumps
-        uses: andstor/file-existence-action@20b4d2e596410855db8f9ca21e96fbe18e12930b # v2, pinned to SHA for security reasons
+        uses: andstor/file-existence-action@20b4d2e596410855db8f9ca21e96fbe18e12930b  # v2, pinned to SHA for security reasons
         with:
-            files: "/tmp/coredump/core.*"
+          files: "/tmp/coredump/core.*"
 
       - name: Upload demo core dumps
         if: steps.check_coredumps.outputs.files_exists == 'true'
-        uses: actions/upload-artifact@v1
+        uses: actions/upload-artifact@v4
         with:
-          name: ceph_nvmeof_demo_cores-${{ github.run_number }}
+          name: core_demo
           path: /tmp/coredump/core.*
 
       - name: Display logs
@@ -476,12 +513,12 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Download container images
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
-          name: ceph_nvmeof_container_images-${{ github.run_number }}
+          name: container_images
 
       - name: Load container images
         run: |
