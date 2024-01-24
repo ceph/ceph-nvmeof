@@ -15,7 +15,7 @@ import errno
 from typing import Dict
 from collections import defaultdict
 from abc import ABC, abstractmethod
-from .config import GatewayLogger
+from .utils import GatewayLogger
 
 class GatewayState(ABC):
     """Persists gateway NVMeoF target state.
@@ -320,7 +320,7 @@ class OmapGatewayState(GatewayState):
         self.watch = None
         gateway_group = self.config.get("gateway", "group")
         self.omap_name = f"nvmeof.{gateway_group}.state" if gateway_group else "nvmeof.state"
-        self.ceph_fsid = None
+        self.conn = None
 
         try:
             self.ioctx = self.open_rados_connection(self.config)
@@ -350,34 +350,13 @@ class OmapGatewayState(GatewayState):
            if omap_item_key.startswith("bdev"):
                raise Exception("Old OMAP file format, still contains bdevs, please remove file and try again")
 
-    def fetch_and_display_ceph_version(self, conn):
-        try:
-            rply = conn.mon_command('{"prefix":"mon versions"}', b'')
-            ceph_ver = rply[1].decode().removeprefix("{").strip().split(":")[0].removeprefix('"').removesuffix('"')
-            ceph_ver = ceph_ver.removeprefix("ceph version ")
-            self.logger.info(f"Connected to Ceph with version \"{ceph_ver}\"")
-        except Exception as ex:
-            self.logger.debug(f"Got exception trying to fetch Ceph version: {ex}")
-            pass
-
-    def fetch_ceph_fsid(self, conn) -> str:
-        fsid = None
-        try:
-            fsid = conn.get_fsid()
-        except Exception as ex:
-            self.logger.debug(f"Got exception trying to fetch Ceph fsid: {ex}")
-            pass
-
-        return fsid
-
     def open_rados_connection(self, config):
         ceph_pool = config.get("ceph", "pool")
         ceph_conf = config.get("ceph", "config_file")
         rados_id = config.get_with_default("ceph", "id", "")
         conn = rados.Rados(conffile=ceph_conf, rados_id=rados_id)
         conn.connect()
-        self.fetch_and_display_ceph_version(conn)
-        self.ceph_fsid = self.fetch_ceph_fsid(conn)
+        self.conn = conn
         ioctx = conn.open_ioctx(ceph_pool)
         return ioctx
 

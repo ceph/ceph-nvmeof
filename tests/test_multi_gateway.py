@@ -81,7 +81,7 @@ def test_multi_gateway_coordination(config, image, conn):
                                           rbd_pool_name=pool,
                                           rbd_image_name=image,
                                           block_size=4096,
-                                          nsid=nsid)
+                                          nsid=nsid, create_image=True, size=16*1024*1024)
     list_subsystems_req = pb2.list_subsystems_req()
     list_namespaces_req = pb2.list_namespaces_req(subsystem=nqn)
     ret_subsystem = stubA.create_subsystem(subsystem_req)

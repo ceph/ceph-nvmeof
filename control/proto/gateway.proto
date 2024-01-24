@@ -118,6 +118,8 @@ message namespace_add_req {
 	uint32 block_size = 5;
 	optional string uuid = 6;
 	optional int32 anagrpid = 7;
+	optional bool create_image = 8;
+	optional uint32 size = 9;
 }
 
 message namespace_resize_req {

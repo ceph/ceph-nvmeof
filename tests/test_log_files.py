@@ -1,6 +1,6 @@
 import pytest
 from control.server import GatewayServer
-from control.config import GatewayLogger
+from control.utils import GatewayLogger
 import socket
 from control.cli import main as cli
 from control.cli import main_test as cli_test
