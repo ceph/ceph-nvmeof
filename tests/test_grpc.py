@@ -14,7 +14,7 @@ subsys_list_count = 50
 def create_resource_by_index(i):
     subsystem = f"{subsystem_prefix}{i}"
     cli(["subsystem", "add", "--subsystem", subsystem, "--ana-reporting", "--enable-ha" ])
-    cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool, "--rbd-image", image])
+    cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool, "--rbd-image", image, "--size", "16MiB"])
 
 def check_resource_by_index(i, caplog):
     subsystem = f"{subsystem_prefix}{i}"
@@ -36,6 +36,7 @@ def test_create_get_subsys(caplog, config):
         for i in range(created_resource_count):
             create_resource_by_index(i)
             assert "failed" not in caplog.text.lower()
+            assert "Failure" not in caplog.text
 
         assert f"{subsystem_prefix}0 with ANA group id 1" in caplog.text
 

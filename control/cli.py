@@ -1157,6 +1157,7 @@ class GatewayClient:
     def ns_add(self, args):
         """Adds a namespace to a subsystem."""
 
+        img_size = 0
         out_func, err_func = self.get_output_functions(args)
         if args.block_size == None:
             args.block_size = 512
@@ -1166,8 +1167,15 @@ class GatewayClient:
             self.cli.parser.error("load-balancing-group value must be positive")
         if args.nsid != None and args.nsid <= 0:
             self.cli.parser.error("nsid value must be positive")
-        if args.size != None:
-            self.cli.parser.error("--size argument is not allowed for add command")
+        if args.rbd_no_create_image:
+            if args.size != None:
+                self.cli.parser.error("--size argument is not allowed for add command when RBD image creation is disabled")
+        else:
+            if args.size == None:
+                self.cli.parser.error("--size argument is mandatory for add command when RBD image creation is enabled")
+            img_size = self.get_size_in_bytes(args.size)
+            if img_size <= 0:
+                self.cli.parser.error("size value must be positive")
         if not args.rbd_pool:
             self.cli.parser.error("--rbd-pool argument is mandatory for add command")
         if not args.rbd_image:
@@ -1189,7 +1197,9 @@ class GatewayClient:
                                             nsid=args.nsid,
                                             block_size=args.block_size,
                                             uuid=args.uuid,
-                                            anagrpid=args.load_balancing_group)
+                                            anagrpid=args.load_balancing_group,
+                                            create_image=not args.rbd_no_create_image,
+                                            size=img_size)
         try:
             ret = self.stub.namespace_add(req)
         except Exception as ex:
@@ -1238,6 +1248,8 @@ class GatewayClient:
             self.cli.parser.error("--rbd-pool argument is not allowed for del command")
         if args.rbd_image != None:
             self.cli.parser.error("--rbd-image argument is not allowed for del command")
+        if args.rbd_no_create_image:
+            self.cli.parser.error("--rbd-no-create-image argument is not allowed for del command")
         if args.load_balancing_group != None:
             self.cli.parser.error("--load-balancing-group argument is not allowed for del command")
         if args.rw_ios_per_second != None:
@@ -1286,6 +1298,7 @@ class GatewayClient:
     def ns_resize(self, args):
         """Resizes a namespace."""
 
+        ns_size = 0
         out_func, err_func = self.get_output_functions(args)
         if args.nsid == None and args.uuid == None:
             self.cli.parser.error("At least one of --nsid or --uuid arguments is mandatory for resize command")
@@ -1293,14 +1306,19 @@ class GatewayClient:
             self.cli.parser.error("nsid value must be positive")
         if args.size == None:
             self.cli.parser.error("--size argument is mandatory for resize command")
-        if args.size <= 0:
+        ns_size = self.get_size_in_bytes(args.size)
+        if ns_size <= 0:
             self.cli.parser.error("size value must be positive")
+        mib = 1024 * 1024
+        ns_size = int((ns_size + mib - 1) / mib)    # Convert to MiB
         if args.block_size != None:
             self.cli.parser.error("--block-size argument is not allowed for resize command")
         if args.rbd_pool != None:
             self.cli.parser.error("--rbd-pool argument is not allowed for resize command")
         if args.rbd_image != None:
             self.cli.parser.error("--rbd-image argument is not allowed for resize command")
+        if args.rbd_no_create_image:
+            self.cli.parser.error("--rbd-no-create-image argument is not allowed for resize command")
         if args.load_balancing_group != None:
             self.cli.parser.error("--load-balancing-group argument is not allowed for resize command")
         if args.rw_ios_per_second != None:
@@ -1314,7 +1332,7 @@ class GatewayClient:
 
         try:
             ret = self.stub.namespace_resize(pb2.namespace_resize_req(subsystem_nqn=args.subsystem, nsid=args.nsid,
-                                             uuid=args.uuid, new_size=args.size))
+                                             uuid=args.uuid, new_size=ns_size))
         except Exception as ex:
             ret = pb2.req_status(status = errno.EINVAL, error_message = f"Failure resizing namespace:\n{ex}")
 
@@ -1326,7 +1344,7 @@ class GatewayClient:
                     ns_id_str = f"with UUID {args.uuid}"
                 else:
                     assert False
-                out_func(f"Resizing namespace {ns_id_str} in {args.subsystem} to {args.size} MiB: Successful")
+                out_func(f"Resizing namespace {ns_id_str} in {args.subsystem} to {ns_size} MiB: Successful")
             else:
                 err_func(f"{ret.error_message}")
         elif args.format == "json" or args.format == "yaml":
@@ -1368,11 +1386,69 @@ class GatewayClient:
                 sz = int(sz)
                 return f"{sz} GiB"
             return f"{sz:2.1f} GiB"
-        sz = sz / (1024.0 * 1024.0 * 1024.0 * 1024.0)
-        if sz == int(sz):
-            sz = int(sz)
-            return f"{sz} TiB"
-        return f"{sz:2.1f} TiB"
+        if sz < 1024 * 1024 * 1024 * 1024 * 1024:
+            sz = sz / (1024.0 * 1024.0 * 1024.0 * 1024.0)
+            if sz == int(sz):
+                sz = int(sz)
+                return f"{sz} TiB"
+        return f"{sz:2.1f} PiB"
+
+    def get_size_in_bytes(self, sz):
+        multiply = 1
+        sz = sz.strip()
+        if sz.endswith("K"):
+            sz = sz[:-1]
+            multiply = 1024
+        elif sz.endswith("KB"):
+            sz = sz[:-2]
+            multiply = 1000
+        elif sz.endswith("KiB"):
+            sz = sz[:-3]
+            multiply = 1024
+        elif sz.endswith("M"):
+            sz = sz[:-1]
+            multiply = 1024 * 1024
+        elif sz.endswith("MB"):
+            sz = sz[:-2]
+            multiply = 1000 * 1000
+        elif sz.endswith("MiB"):
+            sz = sz[:-3]
+            multiply = 1024 * 1024
+        elif sz.endswith("G"):
+            sz = sz[:-1]
+            multiply = 1024 * 1024 * 1024
+        elif sz.endswith("GB"):
+            sz = sz[:-2]
+            multiply = 1000 * 1000 * 1000
+        elif sz.endswith("GiB"):
+            sz = sz[:-3]
+            multiply = 1024 * 1024 * 1024
+        elif sz.endswith("T"):
+            sz = sz[:-1]
+            multiply = 1024 * 1024 * 1024 * 1024
+        elif sz.endswith("TB"):
+            sz = sz[:-2]
+            multiply = 1000 * 1000 * 1000 * 1000
+        elif sz.endswith("TiB"):
+            sz = sz[:-3]
+            multiply = 1024 * 1024 * 1024 * 1024
+        elif sz.endswith("P"):
+            sz = sz[:-1]
+            multiply = 1024 * 1024 * 1024 * 1024 * 1024
+        elif sz.endswith("PB"):
+            sz = sz[:-2]
+            multiply = 1000 * 1000 * 1000 * 1000 * 1000
+        elif sz.endswith("PiB"):
+            sz = sz[:-3]
+            multiply = 1024 * 1024 * 1024 * 1024 * 1024
+
+        try:
+            int_size = int(sz)
+        except:
+            self.cli.parser.error(f"Size {sz} must be numeric")
+
+        int_size *= multiply
+        return int_size
 
     def ns_list(self, args):
         """Lists namespaces on a subsystem."""
@@ -1388,6 +1464,8 @@ class GatewayClient:
             self.cli.parser.error("--rbd-pool argument is not allowed for list command")
         if args.rbd_image != None:
             self.cli.parser.error("--rbd-image argument is not allowed for list command")
+        if args.rbd_no_create_image:
+            self.cli.parser.error("--rbd-no-create-image argument is not allowed for list command")
         if args.load_balancing_group != None:
             self.cli.parser.error("--load-balancing-group argument is not allowed for list command")
         if args.rw_ios_per_second != None:
@@ -1425,8 +1503,8 @@ class GatewayClient:
                         lb_group = str(ns.load_balancing_group)
                     namespaces_list.append([ns.nsid,
                                             break_string(ns.bdev_name, "-", 2),
-                                            ns.rbd_image_name,
                                             ns.rbd_pool_name,
+                                            ns.rbd_image_name,
                                             self.format_size(ns.rbd_image_size),
                                             self.format_size(ns.block_size),
                                             break_string(ns.uuid, "-", 3),
@@ -1442,7 +1520,7 @@ class GatewayClient:
                     else:
                         table_format = "plain"
                     namespaces_out = tabulate(namespaces_list,
-                                      headers = ["NSID", "Bdev\nName", "RBD\nImage", "RBD\nPool",
+                                      headers = ["NSID", "Bdev\nName", "RBD\nPool", "RBD\nImage",
                                                  "Image\nSize", "Block\nSize", "UUID", "Load\nBalancing\nGroup",
                                                  "R/W IOs\nper\nsecond", "R/W MBs\nper\nsecond",
                                                  "Read MBs\nper\nsecond", "Write MBs\nper\nsecond"],
@@ -1497,6 +1575,8 @@ class GatewayClient:
             self.cli.parser.error("--rbd-pool argument is not allowed for get_io_stats command")
         if args.rbd_image != None:
             self.cli.parser.error("--rbd-image argument is not allowed for get_io_stats command")
+        if args.rbd_no_create_image:
+            self.cli.parser.error("--rbd-no-create-image argument is not allowed for get_io_stats command")
         if args.load_balancing_group != None:
             self.cli.parser.error("--load-balancing-group argument is not allowed for get_io_stats command")
         if args.rw_ios_per_second != None:
@@ -1602,6 +1682,8 @@ class GatewayClient:
             self.cli.parser.error("--rbd-pool argument is not allowed for change_load_balancing_group command")
         if args.rbd_image != None:
             self.cli.parser.error("--rbd-image argument is not allowed for change_load_balancing_group command")
+        if args.rbd_no_create_image:
+            self.cli.parser.error("--rbd-no-create-image argument is not allowed for change_load_balancing_group command")
         if args.rw_ios_per_second != None:
             self.cli.parser.error("--rw-ios-per-second argument is not allowed for change_load_balancing_group command")
         if args.rw_megabytes_per_second != None:
@@ -1672,6 +1754,8 @@ class GatewayClient:
             self.cli.parser.error("--rbd-pool argument is not allowed for set_qos command")
         if args.rbd_image != None:
             self.cli.parser.error("--rbd-image argument is not allowed for set_qos command")
+        if args.rbd_no_create_image:
+            self.cli.parser.error("--rbd-no-create-image argument is not allowed for set_qos command")
         if args.rw_ios_per_second == None and args.rw_megabytes_per_second == None and args.r_megabytes_per_second == None and args.w_megabytes_per_second == None:
             self.cli.parser.error("At least one QOS limit should be set")
 
@@ -1735,11 +1819,12 @@ class GatewayClient:
         argument("--subsystem", "-n", help="Subsystem NQN", required=True),
         argument("--rbd-pool", "-p", help="RBD pool name"),
         argument("--rbd-image", "-i", help="RBD image name"),
+        argument("--rbd-no-create-image", "-c", help="Do not create RBD image, fail if image does not exist", action='store_true', required=False),
         argument("--block-size", "-s", help="Block size", type=int),
         argument("--uuid", "-u", help="UUID"),
         argument("--nsid", help="Namespace ID", type=int),
         argument("--load-balancing-group", "-l", help="Load balancing group", type=int),
-        argument("--size", help="New size in MiB", type=int),
+        argument("--size", help="Size in bytes or specified unit (KB, KiB, MB, MiB, GB, GiB, TB, TiB)"),
         argument("--rw-ios-per-second", help="R/W IOs per second limit, 0 means unlimited", type=int),
         argument("--rw-megabytes-per-second", help="R/W megabytes per second limit, 0 means unlimited", type=int),
         argument("--r-megabytes-per-second", help="Read megabytes per second limit, 0 means unlimited", type=int),

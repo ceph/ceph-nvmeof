@@ -29,8 +29,9 @@ from .proto import gateway_pb2_grpc as pb2_grpc
 from .config import GatewayConfig
 from .utils import GatewayEnumUtils
 from .utils import GatewayUtils
-from .config import GatewayLogger
+from .utils import GatewayLogger
 from .state import GatewayState
+from .cephutils import CephUtils
 
 MAX_ANA_GROUPS = 4
 
@@ -47,9 +48,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
         spdk_rpc_client: Client of SPDK RPC server
     """
 
-    def __init__(self, config, gateway_state, omap_lock, spdk_rpc_client) -> None:
+    def __init__(self, config, gateway_state, omap_lock, spdk_rpc_client, ceph_utils) -> None:
         """Constructor"""
         self.logger = GatewayLogger(config).logger
+        self.ceph_utils = ceph_utils
         ver = os.getenv("NVMEOF_VERSION")
         if ver:
             self.logger.info(f"Using NVMeoF gateway version {ver}")
@@ -83,6 +85,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         git_spdk_commit = os.getenv("SPDK_GIT_COMMIT")
         if git_spdk_commit:
             self.logger.info(f"SPDK Git commit: {git_spdk_commit}")
+        self.ceph_utils.fetch_and_display_ceph_version()
         hugepages_file = os.getenv("HUGEPAGES_DIR")
         hugepages_file = hugepages_file.strip()
         requested_hugepages_val = os.getenv("HUGEPAGES")
@@ -212,12 +215,34 @@ class GatewayService(pb2_grpc.GatewayServicer):
         """
         return self.omap_lock.execute_omap_locking_function(self._grpc_function_with_lock, func, request, context)
 
-    def create_bdev(self, name, uuid, rbd_pool_name, rbd_image_name, block_size):
+    def create_bdev(self, name, uuid, rbd_pool_name, rbd_image_name, block_size, create_image, rbd_image_size):
         """Creates a bdev from an RBD image."""
 
+        if create_image:
+            cr_img_msg = "will create image if doesn't exist"
+        else:
+            cr_img_msg = "will not create image if doesn't exist"
+
         self.logger.info(f"Received request to create bdev {name} from"
-                         f" {rbd_pool_name}/{rbd_image_name}"
-                         f" with block size {block_size}")
+                         f" {rbd_pool_name}/{rbd_image_name} (size {rbd_image_size} MiB)"
+                         f" with block size {block_size}, {cr_img_msg}")
+
+        if create_image:
+            rc = self.ceph_utils.pool_exists(rbd_pool_name)
+            if not rc:
+                return pb2.bdev_status(status=errno.ENODEV,
+                                       error_message=f"Failure creating bdev {name}: RBD pool {rbd_pool_name} doesn't exist")
+
+            try:
+                rc = self.ceph_utils.create_image(rbd_pool_name, rbd_image_name, rbd_image_size)
+                if rc:
+                    self.logger.info(f"Image {rbd_image_name} created")
+                else:
+                    self.logger.info(f"Image {rbd_image_name} already exists")
+            except Exception:
+                self.logger.exception(f"Can't create RBD image {rbd_image_name}")
+                return pb2.bdev_status(status=errno.ENODEV, error_message=f"Failure creating bdev {name}: Can't create RBD image {rbd_image_name}")
+
         try:
             bdev_name = rpc_bdev.bdev_rbd_create(
                 self.spdk_rpc_client,
@@ -228,12 +253,12 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 block_size=block_size,
                 uuid=uuid,
             )
-            self.logger.info(f"create_bdev: {bdev_name}")
+            self.logger.info(f"bdev_rbd_create: {bdev_name}")
         except Exception as ex:
-            errmsg = f"create_bdev {name} failed with:\n{ex}"
+            errmsg = f"bdev_rbd_create {name} failed with:\n{ex}"
             self.logger.error(errmsg)
             resp = self.parse_json_exeption(ex)
-            status = errno.EINVAL
+            status = errno.ENODEV
             if resp:
                 status = resp["code"]
                 errmsg = f"Failure creating bdev {name}: {resp['message']}"
@@ -243,7 +268,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         if not bdev_name:
             errmsg = f"Can't create bdev {name}"
             self.logger.error(errmsg)
-            return pb2.bdev_status(status=errno.EINVAL, error_message=errmsg)
+            return pb2.bdev_status(status=errno.ENODEV, error_message=errmsg)
 
         if name != bdev_name:
             self.logger.warning(f"Created bdev name {bdev_name} differs from requested name {name}")
@@ -354,7 +379,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
             if rc[0] != 0:
                 errmsg = f"{create_subsystem_error_prefix}: {rc[1]}"
                 self.logger.error(f"{errmsg}")
-                return pb2.req_status(status = rc.status, error_message = errmsg)
+                return pb2.req_status(status = rc[0], error_message = errmsg)
         if GatewayUtils.is_discovery_nqn(request.subsystem_nqn):
             errmsg = f"{create_subsystem_error_prefix}: Can't create a discovery subsystem"
             self.logger.error(f"{errmsg}")
@@ -626,16 +651,19 @@ class GatewayService(pb2_grpc.GatewayServicer):
         with self.omap_lock(context=context):
             bdev_name = self.find_unique_bdev_name(request.uuid)
 
-            ret_bdev = self.create_bdev(bdev_name, request.uuid, request.rbd_pool_name, request.rbd_image_name, request.block_size)
+            ret_bdev = self.create_bdev(bdev_name, request.uuid, request.rbd_pool_name,
+                                        request.rbd_image_name, request.block_size, request.create_image, request.size)
             if ret_bdev.status != 0:
                 errmsg = f"Failure adding namespace {nsid_msg}to {request.subsystem_nqn}: {ret_bdev.error_message}"
                 self.logger.error(errmsg)
                 # Delete the bdev just to be on the safe side
-                try:
-                    ret_del = self.delete_bdev(bdev_name)
-                    self.logger.info(f"delete_bdev({bdev_name}): {ret_del.status}")
-                except Exception as ex:
-                    self.logger.warning(f"Got exception while trying to delete bdev {bdev_name}:\n{ex}")
+                ns_bdev = self.get_bdev_info(bdev_name, False)
+                if ns_bdev != None:
+                    try:
+                        ret_del = self.delete_bdev(bdev_name)
+                        self.logger.info(f"delete_bdev({bdev_name}): {ret_del.status}")
+                    except Exception as ex:
+                        self.logger.warning(f"Got exception while trying to delete bdev {bdev_name}:\n{ex}")
                 return pb2.nsid_status(status=ret_bdev.status, error_message=errmsg)
 
             if ret_bdev.bdev_name != bdev_name:
@@ -844,18 +872,23 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         return pb2.req_status(status=0, error_message=os.strerror(0))
 
-    def get_bdev_info(self, bdev_name):
+    def get_bdev_info(self, bdev_name, need_to_lock):
         """Get bdev info"""
 
         ret_bdev = None
-        with self.rpc_lock:
+        if need_to_lock:
+            lock_to_use = self.rpc_lock
+        else:
+            lock_to_use = contextlib.suppress()
+
+        with lock_to_use:
             try:
                 bdevs = rpc_bdev.bdev_get_bdevs(self.spdk_rpc_client, name=bdev_name)
                 if (len(bdevs) > 1):
                     self.logger.warning(f"Got {len(bdevs)} bdevs for bdev name {bdev_name}, will use the first one")
                 ret_bdev = bdevs[0]
-            except Exception as ex:
-                self.logger.error(f"Got exception while getting bdev {bdev_name} info:\n{ex}")
+            except Exception:
+                self.logger.exception(f"Got exception while getting bdev {bdev_name} info")
 
         return ret_bdev
 
@@ -907,7 +940,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                         self.logger.debug(f'Filter out namespace with UUID {n["uuid"]} which is different than requested UUID {request.uuid}')
                         continue
                     bdev_name = n["bdev_name"]
-                    ns_bdev = self.get_bdev_info(bdev_name)
+                    ns_bdev = self.get_bdev_info(bdev_name, True)
                     lb_group = 0
                     try:
                         lb_group = n["anagrpid"]

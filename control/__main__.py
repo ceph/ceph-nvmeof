@@ -12,7 +12,7 @@ import argparse
 import signal
 from .server import GatewayServer
 from .config import GatewayConfig
-from .config import GatewayLogger
+from .utils import GatewayLogger
 
 gw_logger = None
 gw_name = None

@@ -28,8 +28,9 @@ from .state import GatewayState, LocalGatewayState, OmapLock, OmapGatewayState, 
 from .grpc import GatewayService
 from .discovery import DiscoveryService
 from .config import GatewayConfig
-from .config import GatewayLogger
+from .utils import GatewayLogger
 from .utils import GatewayUtils
+from .cephutils import CephUtils
 from .prometheus import start_exporter
 
 def sigchld_handler(signum, frame):
@@ -71,6 +72,7 @@ class GatewayServer:
         self.server = None
         self.discovery_pid = None
         self.spdk_rpc_socket_path = None
+        self.ceph_utils = None
 
         self.name = self.config.get("gateway", "name")
         if not self.name:
@@ -115,6 +117,8 @@ class GatewayServer:
         # install SIGCHLD handler
         signal.signal(signal.SIGCHLD, sigchld_handler)
 
+        self.ceph_utils = CephUtils(self.config)
+
         # Start SPDK
         self._start_spdk(omap_state)
 
@@ -124,7 +128,7 @@ class GatewayServer:
         # Register service implementation with server
         gateway_state = GatewayStateHandler(self.config, local_state, omap_state, self.gateway_rpc_caller)
         omap_lock = OmapLock(omap_state, gateway_state)
-        self.gateway_rpc = GatewayService(self.config, gateway_state, omap_lock, self.spdk_rpc_client)
+        self.gateway_rpc = GatewayService(self.config, gateway_state, omap_lock, self.spdk_rpc_client, self.ceph_utils)
         self.server = grpc.server(futures.ThreadPoolExecutor(max_workers=1))
         pb2_grpc.add_GatewayServicer_to_server(self.gateway_rpc, self.server)
 
@@ -211,8 +215,10 @@ class GatewayServer:
         spdk_rpc_socket_dir = self.config.get_with_default("spdk", "rpc_socket_dir", "")
         if not spdk_rpc_socket_dir:
             spdk_rpc_socket_dir = GatewayConfig.CEPH_RUN_DIRECTORY
-            if omap_state.ceph_fsid:
-                spdk_rpc_socket_dir += omap_state.ceph_fsid + "/"
+            if self.ceph_utils:
+                fsid = self.ceph_utils.fetch_ceph_fsid()
+                if fsid:
+                    spdk_rpc_socket_dir += fsid + "/"
         if not spdk_rpc_socket_dir.endswith("/"):
             spdk_rpc_socket_dir += "/"
         try:
