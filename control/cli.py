@@ -1167,15 +1167,15 @@ class GatewayClient:
             self.cli.parser.error("load-balancing-group value must be positive")
         if args.nsid != None and args.nsid <= 0:
             self.cli.parser.error("nsid value must be positive")
-        if args.rbd_no_create_image:
-            if args.size != None:
-                self.cli.parser.error("--size argument is not allowed for add command when RBD image creation is disabled")
-        else:
+        if args.rbd_create_image:
             if args.size == None:
                 self.cli.parser.error("--size argument is mandatory for add command when RBD image creation is enabled")
             img_size = self.get_size_in_bytes(args.size)
             if img_size <= 0:
                 self.cli.parser.error("size value must be positive")
+        else:
+            if args.size != None:
+                self.cli.parser.error("--size argument is not allowed for add command when RBD image creation is disabled")
         if not args.rbd_pool:
             self.cli.parser.error("--rbd-pool argument is mandatory for add command")
         if not args.rbd_image:
@@ -1198,7 +1198,7 @@ class GatewayClient:
                                             block_size=args.block_size,
                                             uuid=args.uuid,
                                             anagrpid=args.load_balancing_group,
-                                            create_image=not args.rbd_no_create_image,
+                                            create_image=args.rbd_create_image,
                                             size=img_size)
         try:
             ret = self.stub.namespace_add(req)
@@ -1248,8 +1248,8 @@ class GatewayClient:
             self.cli.parser.error("--rbd-pool argument is not allowed for del command")
         if args.rbd_image != None:
             self.cli.parser.error("--rbd-image argument is not allowed for del command")
-        if args.rbd_no_create_image:
-            self.cli.parser.error("--rbd-no-create-image argument is not allowed for del command")
+        if args.rbd_create_image:
+            self.cli.parser.error("--rbd-create-image argument is not allowed for del command")
         if args.load_balancing_group != None:
             self.cli.parser.error("--load-balancing-group argument is not allowed for del command")
         if args.rw_ios_per_second != None:
@@ -1317,8 +1317,8 @@ class GatewayClient:
             self.cli.parser.error("--rbd-pool argument is not allowed for resize command")
         if args.rbd_image != None:
             self.cli.parser.error("--rbd-image argument is not allowed for resize command")
-        if args.rbd_no_create_image:
-            self.cli.parser.error("--rbd-no-create-image argument is not allowed for resize command")
+        if args.rbd_create_image:
+            self.cli.parser.error("--rbd-create-image argument is not allowed for resize command")
         if args.load_balancing_group != None:
             self.cli.parser.error("--load-balancing-group argument is not allowed for resize command")
         if args.rw_ios_per_second != None:
@@ -1464,8 +1464,8 @@ class GatewayClient:
             self.cli.parser.error("--rbd-pool argument is not allowed for list command")
         if args.rbd_image != None:
             self.cli.parser.error("--rbd-image argument is not allowed for list command")
-        if args.rbd_no_create_image:
-            self.cli.parser.error("--rbd-no-create-image argument is not allowed for list command")
+        if args.rbd_create_image:
+            self.cli.parser.error("--rbd-create-image argument is not allowed for list command")
         if args.load_balancing_group != None:
             self.cli.parser.error("--load-balancing-group argument is not allowed for list command")
         if args.rw_ios_per_second != None:
@@ -1575,8 +1575,8 @@ class GatewayClient:
             self.cli.parser.error("--rbd-pool argument is not allowed for get_io_stats command")
         if args.rbd_image != None:
             self.cli.parser.error("--rbd-image argument is not allowed for get_io_stats command")
-        if args.rbd_no_create_image:
-            self.cli.parser.error("--rbd-no-create-image argument is not allowed for get_io_stats command")
+        if args.rbd_create_image:
+            self.cli.parser.error("--rbd-create-image argument is not allowed for get_io_stats command")
         if args.load_balancing_group != None:
             self.cli.parser.error("--load-balancing-group argument is not allowed for get_io_stats command")
         if args.rw_ios_per_second != None:
@@ -1682,8 +1682,8 @@ class GatewayClient:
             self.cli.parser.error("--rbd-pool argument is not allowed for change_load_balancing_group command")
         if args.rbd_image != None:
             self.cli.parser.error("--rbd-image argument is not allowed for change_load_balancing_group command")
-        if args.rbd_no_create_image:
-            self.cli.parser.error("--rbd-no-create-image argument is not allowed for change_load_balancing_group command")
+        if args.rbd_create_image:
+            self.cli.parser.error("--rbd-create-image argument is not allowed for change_load_balancing_group command")
         if args.rw_ios_per_second != None:
             self.cli.parser.error("--rw-ios-per-second argument is not allowed for change_load_balancing_group command")
         if args.rw_megabytes_per_second != None:
@@ -1754,8 +1754,8 @@ class GatewayClient:
             self.cli.parser.error("--rbd-pool argument is not allowed for set_qos command")
         if args.rbd_image != None:
             self.cli.parser.error("--rbd-image argument is not allowed for set_qos command")
-        if args.rbd_no_create_image:
-            self.cli.parser.error("--rbd-no-create-image argument is not allowed for set_qos command")
+        if args.rbd_create_image:
+            self.cli.parser.error("--rbd-create-image argument is not allowed for set_qos command")
         if args.rw_ios_per_second == None and args.rw_megabytes_per_second == None and args.r_megabytes_per_second == None and args.w_megabytes_per_second == None:
             self.cli.parser.error("At least one QOS limit should be set")
 
@@ -1819,7 +1819,7 @@ class GatewayClient:
         argument("--subsystem", "-n", help="Subsystem NQN", required=True),
         argument("--rbd-pool", "-p", help="RBD pool name"),
         argument("--rbd-image", "-i", help="RBD image name"),
-        argument("--rbd-no-create-image", "-c", help="Do not create RBD image, fail if image does not exist", action='store_true', required=False),
+        argument("--rbd-create-image", "-c", help="Create RBD image if needed", action='store_true', required=False),
         argument("--block-size", "-s", help="Block size", type=int),
         argument("--uuid", "-u", help="UUID"),
         argument("--nsid", help="Namespace ID", type=int),
