@@ -426,7 +426,7 @@ jobs:
           echo ℹ️ Using GW RPC $GW1 address $gw1 port $NVMEOF_GW_PORT
           cli_gw $gw1 subsystem list
           cli_gw $gw1 subsystem add --subsystem $NQN --serial $SERIAL
-          cli_gw $gw1 namespace add --subsystem $NQN --rbd-pool $RBD_POOL --rbd-image $RBD_IMAGE_NAME --size $RBD_IMAGE_SIZE
+          cli_gw $gw1 namespace add --subsystem $NQN --rbd-pool $RBD_POOL --rbd-image $RBD_IMAGE_NAME --size $RBD_IMAGE_SIZE --rbd-create-image
           for gw in $GW1 $GW2; do
             ip=$(container_ip $gw)
             name=$(container_id $gw) # default hostname - container id
