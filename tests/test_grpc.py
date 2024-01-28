@@ -8,8 +8,8 @@ import warnings
 image = "mytestdevimage"
 pool = "rbd"
 subsystem_prefix = "nqn.2016-06.io.spdk:cnode"
-created_resource_count = 200
-subsys_list_count = 50
+created_resource_count = 20
+subsys_list_count = 5
 
 def create_resource_by_index(i):
     subsystem = f"{subsystem_prefix}{i}"

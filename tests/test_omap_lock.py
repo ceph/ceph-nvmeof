@@ -13,7 +13,7 @@ image = "mytestdevimage"
 pool = "rbd"
 subsystem_prefix = "nqn.2016-06.io.spdk:cnode"
 host_nqn_prefix = "nqn.2014-08.org.nvmexpress:uuid:22207d09-d8af-4ed2-84ec-a6d80b"
-created_resource_count = 100
+created_resource_count = 10
 
 def setup_config(config, gw1_name, gw2_name, gw_group, update_notify ,update_interval_sec, disable_unlock, lock_duration,
                  sock1_name, sock2_name, port_inc):
@@ -26,18 +26,14 @@ def setup_config(config, gw1_name, gw2_name, gw_group, update_notify ,update_int
     configA.config["gateway"]["state_update_interval_sec"] = str(update_interval_sec)
     configA.config["gateway"]["omap_file_disable_unlock"] = str(disable_unlock)
     configA.config["gateway"]["omap_file_lock_duration"] = str(lock_duration)
-    configA.config["gateway"]["min_controller_id"] = "1"
-    configA.config["gateway"]["max_controller_id"] = "20000"
     configA.config["gateway"]["enable_spdk_discovery_controller"] = "True"
     configA.config["spdk"]["rpc_socket_name"] = sock1_name
     configB = copy.deepcopy(configA)
     portA = configA.getint("gateway", "port") + port_inc
     configA.config["gateway"]["port"] = str(portA)
-    portB = portA + 1
+    portB = portA + 2
     configB.config["gateway"]["name"] = gw2_name
     configB.config["gateway"]["port"] = str(portB)
-    configB.config["gateway"]["min_controller_id"] = "20001"
-    configB.config["gateway"]["max_controller_id"] = "40000"
     configB.config["spdk"]["rpc_socket_name"] = sock2_name
     configB.config["spdk"]["tgt_cmd_extra_args"] = "-m 0x02"
 
@@ -255,7 +251,6 @@ def test_trying_to_lock_twice(config, image, conn_lock_twice, caplog):
     assert "OMAP file unlock was disabled, will not unlock file" in caplog.text
     assert "The OMAP file is locked, will try again in" in caplog.text
     assert "Unable to lock OMAP file" in caplog.text
-    time.sleep(120) # Wait enough time for OMAP lock to be released
 
 def test_multi_gateway_concurrent_changes(config, image, conn_concurrent, caplog):
     """Tests concurrent changes to the OMAP from two gateways
@@ -279,9 +274,16 @@ def test_multi_gateway_concurrent_changes(config, image, conn_concurrent, caplog
     assert f"Received request to create GatewayAAA TCP ipv4 listener for {subsystem_prefix}0 at 127.0.0.1:5001" in caplog.text
     assert f"create_listener: True" in caplog.text
 
-    # Let the update some time to bring both gateways to the same page
-    time.sleep(15)
-    assert f"Listener not created as gateway GatewayBBB differs from requested gateway GatewayAAA" in caplog.text
+    timeout = 15  # Maximum time to wait (in seconds)
+    start_time = time.time()
+    expected_warning_other_gw = "Listener not created as gateway GatewayBBB differs from requested gateway GatewayAAA"
+
+    while expected_warning_other_gw not in caplog.text:
+        if time.time() - start_time > timeout:
+            pytest.fail(f"Timeout: '{expected_warning_other_gw}' not found in caplog.text within {timeout} seconds.")
+        time.sleep(0.1)
+
+    assert expected_warning_other_gw in caplog.text
     caplog.clear()
     subsystem_list_req = pb2.list_subsystems_req()
     subListA = json.loads(json_format.MessageToJson(

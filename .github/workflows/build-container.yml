@@ -502,9 +502,92 @@ jobs:
           make down
           make clean
 
+  ha:
+    needs: [build, build-ceph]
+    strategy:
+      fail-fast: false
+      matrix:
+        test: ["sanity", "state_transitions"]
+    runs-on: ubuntu-latest
+    env:
+      HUGEPAGES: 768  # 3 spdk instances
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup huge-pages
+        run: make setup HUGEPAGES=$HUGEPAGES
+
+      - name: Download container images
+        uses: actions/download-artifact@v4
+        with:
+          pattern: container_images*
+          merge-multiple: true
+
+      - name: Load container images
+        run: |
+          docker load < nvmeof.tar
+          docker load < nvmeof-cli.tar
+          docker load < ceph.tar
+          docker load < bdevperf.tar
+
+      - name: Start HA with two gateways
+        run: |
+          docker-compose up -d --scale nvmeof=2 nvmeof
+
+      - name: Wait for gateways to be listening
+        timeout-minutes: 3
+        run: |
+          source tests/ha/wait_gateways.sh
+
+      - name: List containers
+        if: success() || failure()
+        run: |
+          docker-compose ps
+
+      - name: List processes
+        if: success() || failure()
+        run: |
+          docker-compose top
+
+      - name: Set up target
+        run: |
+          source tests/ha/setup.sh
+
+      - name: Run HA ${{ matrix.test }} test
+        timeout-minutes: 5
+        run: |
+          . .env
+          source "tests/ha/${{ matrix.test }}.sh"
+
+      - name: Check coredump existence
+        if: success() || failure()
+        id: check_coredumps
+        uses: andstor/file-existence-action@20b4d2e596410855db8f9ca21e96fbe18e12930b  # v2, pinned to SHA for security reasons
+        with:
+          files: "/tmp/coredump/core.*"
+
+      - name: Upload ha core dumps
+        if: steps.check_coredumps.outputs.files_exists == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: core_demo
+          path: /tmp/coredump/core.*
+
+      - name: Display logs
+        if: success() || failure()
+        run: make logs OPTS=''
+
+      - name: Tear down
+        if: success() || failure()
+        run: |
+          make down
+          make clean
+
   push-to-registry:
     if: github.event_name == 'release'
-    needs: [pytest, demo, discovery]
+    needs: [pytest, demo, discovery, ha]
     runs-on: ubuntu-latest
 
     steps:
