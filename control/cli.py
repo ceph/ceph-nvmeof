@@ -649,7 +649,7 @@ class GatewayClient:
         try:
             subsystems = self.stub.list_subsystems(pb2.list_subsystems_req(subsystem_nqn=args.subsystem, serial_number=args.serial_number))
         except Exception as ex:
-            subsystems = pb2.subsystems_info(status = errno.EINVAL, error_message = f"Failure listing subsystems:\n{ex}")
+            subsystems = pb2.subsystems_info_cli(status = errno.EINVAL, error_message = f"Failure listing subsystems:\n{ex}")
 
         if args.format == "text" or args.format == "plain":
             if subsystems.status == 0:
@@ -1825,6 +1825,15 @@ class GatewayClient:
         elif args.ns_command == "set_qos":
             return self.ns_set_qos(args)
         assert False
+
+    @cli.cmd()
+    def get_subsystems(self, args):
+        """Gets subsystems."""
+        subsystems = json_format.MessageToJson(
+                        self.stub.get_subsystems(pb2.get_subsystems_req()),
+                        indent=4, including_default_value_fields=True,
+                        preserving_proto_field_name=True)
+        self.logger.info(f"Get subsystems:\n{subsystems}")
 
 def main_common(client, args):
     server_address = args.server_address

@@ -1,0 +1,19 @@
+//
+//  Copyright (c) 2023 International Business Machines
+//  All rights reserved.
+//
+//  SPDX-License-Identifier: MIT
+//
+
+syntax = "proto3";
+import "google/protobuf/empty.proto";
+
+service MonitorGroup {
+	// Called by the monitor client to set the gateway's group id
+	rpc group_id(group_id_req) returns (google.protobuf.Empty) {}
+}
+
+// Request messages
+message group_id_req {
+	uint32 id = 1;
+}

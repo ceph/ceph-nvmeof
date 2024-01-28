@@ -24,6 +24,7 @@ services:
         SPDK_GIT_REPO:
         SPDK_GIT_BRANCH:
         SPDK_GIT_COMMIT:
+        CEPH_CLUSTER_CEPH_REPO_BASEURL:
       labels:
         io.ceph.nvmeof:
   # Used to export RPM packages externally (via bind mount)
