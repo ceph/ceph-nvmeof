@@ -10,31 +10,17 @@
 
 syntax = "proto3";
 
-enum TransportType {
-    INVALID = 0;
-    RDMA = 1;
-    FC = 2;
-    TCP = 3;
-    PCIE = 256;
-    VFIOUSER = 1024;
-    CUSTOM = 4096;
-}
-
 enum AddressFamily {
-    invalid = 0;
-    ipv4 = 1;
-    ipv6 = 2;
-    ib = 3;
-    fc = 4;
+    ipv4 = 0;
+    ipv6 = 1;
 }
 
 enum LogLevel {
-    DISABLED = 0;
-    ERROR = 1;
-    WARNING = 2;
-    NOTICE = 3;
-    INFO = 4;
-    DEBUG = 5;
+    ERROR = 0;
+    WARNING = 1;
+    NOTICE = 2;
+    INFO = 3;
+    DEBUG = 4;
 }
 
 enum AutoHAState {
@@ -199,7 +185,6 @@ message create_listener_req {
 	string nqn = 1;
 	string gateway_name = 2;
 	string traddr = 3;
-	optional TransportType trtype = 4;
 	optional AddressFamily adrfam = 5;
 	optional uint32 trsvcid = 6;
 	optional AutoHAState auto_ha_state = 7;
@@ -209,7 +194,6 @@ message delete_listener_req {
 	string nqn = 1;
 	string gateway_name = 2;
 	string traddr = 3;
-	optional TransportType trtype = 4;
 	optional AddressFamily adrfam = 5;
 	optional uint32 trsvcid = 6;
 }
@@ -239,12 +223,6 @@ message get_gateway_info_req {
 }
 
 // Return messages 
-
-message bdev_status {
-	int32 status = 1;
-	string error_message = 2;
-	string bdev_name = 3;
-}
 
 message req_status {
 	int32 status = 1;
@@ -301,7 +279,7 @@ message gw_version {
 
 message listener_info {
 	string gateway_name = 1;
-	TransportType trtype = 2;
+	string trtype = 2;
 	AddressFamily adrfam = 3;
 	string traddr = 4;
 	uint32 trsvcid = 5;
@@ -329,7 +307,7 @@ message connection {
 	string nqn = 1;
 	string traddr = 2;
 	uint32 trsvcid = 3;
-	TransportType trtype = 4;
+        string trtype = 4;
 	AddressFamily adrfam = 5;
 	bool connected = 6;
 	int32 qpairs_count = 7;

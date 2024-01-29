@@ -270,7 +270,6 @@ def test_multi_gateway_concurrent_changes(config, image, conn_concurrent, caplog
         assert "failed" not in caplog.text.lower()
     listener_req = pb2.create_listener_req(nqn=f"{subsystem_prefix}0",
                                            gateway_name="GatewayAAA",
-                                           trtype="TCP",
                                            adrfam="ipv4",
                                            traddr="127.0.0.1",
                                            trsvcid=5001,

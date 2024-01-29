@@ -26,16 +26,14 @@ gateway_name = socket.gethostname()
 addr = "127.0.0.1"
 addr_ipv6 = "::1"
 server_addr_ipv6 = "2001:db8::3"
-listener_list = [["-g", gateway_name, "-a", addr, "-s", "5001", "-t", "tcp", "-f", "ipv4"], ["-g", gateway_name, "-a", addr, "-s", "5002"]]
+listener_list = [["-g", gateway_name, "-a", addr, "-s", "5001", "-f", "ipv4"], ["-g", gateway_name, "-a", addr, "-s", "5002"]]
 listener_list_no_port = [["-g", gateway_name, "-a", addr]]
-listener_list_fc_trtype = [["-g", gateway_name, "-a", addr, "-s", "5010", "--trtype", "FC"]]
-listener_list_invalid_trtype = [["-g", gateway_name, "-a", addr, "-s", "5011", "--trtype", "JUNK"]]
 listener_list_invalid_adrfam = [["-g", gateway_name, "-a", addr, "-s", "5013", "--adrfam", "JUNK"]]
-listener_list_ib_adrfam = [["-g", gateway_name, "-a", addr, "-s", "5014", "--adrfam", "ib"]]
 listener_list_ipv6 = [["-g", gateway_name, "-a", addr_ipv6, "-s", "5003", "--adrfam", "ipv6"], ["-g", gateway_name, "-a", addr_ipv6, "-s", "5004", "--adrfam", "IPV6"]]
 listener_list_discovery = [["-n", discovery_nqn, "-g", gateway_name, "-a", addr, "-s", "5012"]]
 listener_list_negative_port = [["-g", gateway_name, "-a", addr, "-s", "-2000"]]
-listener_list_wrong_gw = [["-g", "WRONG", "-a", addr, "-s", "5015", "-t", "tcp", "-f", "ipv4"]]
+listener_list_big_port = [["-g", gateway_name, "-a", addr, "-s", "70000"]]
+listener_list_wrong_gw = [["-g", "WRONG", "-a", addr, "-s", "5015", "-f", "ipv4"]]
 config = "ceph-nvmeof.conf"
 
 @pytest.fixture(scope="module")
@@ -555,6 +553,18 @@ class TestCreate:
         assert "error: trsvcid value must be positive" in caplog.text
         assert rc == 2
 
+    @pytest.mark.parametrize("listener", listener_list_big_port)
+    def test_create_listener_port_too_big(self, caplog, listener, gateway):
+        caplog.clear()
+        rc = 0
+        try:
+            cli(["listener", "add", "--subsystem", subsystem] + listener)
+        except SystemExit as sysex:
+            rc = int(str(sysex))
+            pass
+        assert "error: trsvcid value must be smaller than 65536" in caplog.text
+        assert rc == 2
+
     @pytest.mark.parametrize("listener", listener_list_wrong_gw)
     def test_create_listener_wrong_gateway(self, caplog, listener, gateway):
         caplog.clear()
@@ -564,38 +574,12 @@ class TestCreate:
     def test_create_listener_wrong_ha_state(self, caplog, gateway):
         gw, stub = gateway
         caplog.clear()
-        listener_add_req = pb2.create_listener_req(nqn=subsystem, gateway_name=gateway_name, trtype="TCP",
+        listener_add_req = pb2.create_listener_req(nqn=subsystem, gateway_name=gateway_name,
                                                    adrfam="ipv4", traddr=addr, trsvcid=5021, auto_ha_state="AUTO_HA_ON")
         ret = stub.create_listener(listener_add_req)
         assert "ipv4" in caplog.text.lower()
         assert f"auto HA state: AUTO_HA_ON" in caplog.text
         assert f"auto_ha_state is set to AUTO_HA_ON but we are not in an update()" in caplog.text
-
-    @pytest.mark.parametrize("listener", listener_list_fc_trtype)
-    def test_create_listener_fc_trtype(self, caplog, listener, gateway):
-        caplog.clear()
-        cli(["listener", "add", "--subsystem", subsystem] + listener)
-        assert f"Failure adding {subsystem} listener at {listener[3]}:{listener[5]}: Invalid parameters" in caplog.text
-        assert '"trtype": "FC"' in caplog.text
-
-    @pytest.mark.parametrize("listener", listener_list_invalid_trtype)
-    def test_create_listener_invalid_trtype(self, caplog, listener, gateway):
-        caplog.clear()
-        rc = 0
-        try:
-            cli(["listener", "add", "--subsystem", subsystem] + listener)
-        except SystemExit as sysex:
-            rc = int(str(sysex))
-            pass
-        assert "error: argument --trtype/-t: invalid choice: 'JUNK'" in caplog.text
-        assert rc == 2
-
-    def test_create_listener_invalid_trtype_no_cli(self, caplog, gateway):
-        caplog.clear()
-        with pytest.raises(Exception) as ex:
-            listener_add_req = pb2.create_listener_req(nqn=subsystem, gateway_name=gateway_name, trtype="JUNK",
-                                                   adrfam="ipv4", traddr=addr, trsvcid=5031, auto_ha_state="AUTO_HA_UNSET")
-            assert f'ValueError: unknown enum label "JUNK"' in str(ex.value)
 
     @pytest.mark.parametrize("listener", listener_list_invalid_adrfam)
     def test_create_listener_invalid_adrfam(self, caplog, listener, gateway):
@@ -608,14 +592,6 @@ class TestCreate:
             pass
         assert "error: argument --adrfam/-f: invalid choice: 'JUNK'" in caplog.text
         assert rc == 2
-
-    @pytest.mark.parametrize("listener", listener_list_ib_adrfam)
-    def test_create_listener_ib_adrfam(self, caplog, listener, gateway):
-        caplog.clear()
-        cli(["listener", "add", "--subsystem", subsystem] + listener)
-        assert f"Failure adding {subsystem} listener at {listener[3]}:{listener[5]}" in caplog.text
-        assert "Invalid parameters" in caplog.text
-        assert '"adrfam": "ib"' in caplog.text
 
     @pytest.mark.parametrize("listener", listener_list_discovery)
     def test_create_listener_on_discovery(self, caplog, listener, gateway):

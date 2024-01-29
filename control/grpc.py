@@ -35,6 +35,12 @@ from .cephutils import CephUtils
 
 MAX_ANA_GROUPS = 4
 
+class BdevStatus:
+    def __init__(self, status, error_message, bdev_name = ""):
+        self.status = status
+        self.error_message = error_message
+        self.bdev_name = bdev_name
+
 class GatewayService(pb2_grpc.GatewayServicer):
     """Implements gateway service interface.
 
@@ -230,7 +236,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         if create_image:
             rc = self.ceph_utils.pool_exists(rbd_pool_name)
             if not rc:
-                return pb2.bdev_status(status=errno.ENODEV,
+                return BdevStatus(status=errno.ENODEV,
                                        error_message=f"Failure creating bdev {name}: RBD pool {rbd_pool_name} doesn't exist")
 
             try:
@@ -241,7 +247,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     self.logger.info(f"Image {rbd_image_name} already exists")
             except Exception:
                 self.logger.exception(f"Can't create RBD image {rbd_image_name}")
-                return pb2.bdev_status(status=errno.ENODEV, error_message=f"Failure creating bdev {name}: Can't create RBD image {rbd_image_name}")
+                return BdevStatus(status=errno.ENODEV, error_message=f"Failure creating bdev {name}: Can't create RBD image {rbd_image_name}")
 
         try:
             bdev_name = rpc_bdev.bdev_rbd_create(
@@ -262,18 +268,18 @@ class GatewayService(pb2_grpc.GatewayServicer):
             if resp:
                 status = resp["code"]
                 errmsg = f"Failure creating bdev {name}: {resp['message']}"
-            return pb2.bdev_status(status=status, error_message=errmsg)
+            return BdevStatus(status=status, error_message=errmsg)
 
         # Just in case SPDK failed with no exception
         if not bdev_name:
             errmsg = f"Can't create bdev {name}"
             self.logger.error(errmsg)
-            return pb2.bdev_status(status=errno.ENODEV, error_message=errmsg)
+            return BdevStatus(status=errno.ENODEV, error_message=errmsg)
 
         if name != bdev_name:
             self.logger.warning(f"Created bdev name {bdev_name} differs from requested name {name}")
 
-        return pb2.bdev_status(bdev_name=name, status=0, error_message=os.strerror(0))
+        return BdevStatus(status=0, error_message=os.strerror(0), bdev_name=name)
 
     def resize_bdev(self, bdev_name, new_size):
         """Resizes a bdev."""
@@ -1598,7 +1604,6 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 traddr = ""
                 trsvcid = 0
                 adrfam = ""
-                trtype = ""
                 hostnqn = conn["hostnqn"]
                 connected = False
 
@@ -1664,10 +1669,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
             self.logger.warning(f"Subsystem {nqn} not found")
         return enable_ha
 
-    def matching_listener_exists(self, context, nqn, gw_name, trtype, traddr, trsvcid) -> bool:
+    def matching_listener_exists(self, context, nqn, gw_name, traddr, trsvcid) -> bool:
         if not context:
             return False
-        listener_key = GatewayState.build_listener_key(nqn, gw_name, trtype, traddr, trsvcid)
+        listener_key = GatewayState.build_listener_key(nqn, gw_name, "TCP", traddr, trsvcid)
         state = self.gateway_state.local.get_state()
         if state.get(listener_key):
             return True
@@ -1680,12 +1685,6 @@ class GatewayService(pb2_grpc.GatewayServicer):
         ret = True
         traddr = GatewayUtils.escape_address_if_ipv6(request.traddr)
         create_listener_error_prefix = f"Failure adding {request.nqn} listener at {traddr}:{request.trsvcid}"
-
-        trtype = GatewayEnumUtils.get_key_from_value(pb2.TransportType, request.trtype)
-        if trtype == None:
-            errmsg=f"{create_listener_error_prefix}: Unknown transport type {request.trtype}"
-            self.logger.error(f"{errmsg}")
-            return pb2.req_status(status=errno.ENOKEY, error_message=errmsg)
 
         adrfam = GatewayEnumUtils.get_key_from_value(pb2.AddressFamily, request.adrfam)
         if adrfam == None:
@@ -1700,7 +1699,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
             return pb2.req_status(status=errno.ENOKEY, error_message=errmsg)
 
         self.logger.info(f"Received request to create {request.gateway_name}"
-                         f" {trtype} {adrfam} listener for {request.nqn} at"
+                         f" TCP {adrfam} listener for {request.nqn} at"
                          f" {traddr}:{request.trsvcid}, auto HA state: {auto_ha_state}, context: {context}")
 
         if GatewayUtils.is_discovery_nqn(request.nqn):
@@ -1712,7 +1711,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
             try:
                 if request.gateway_name == self.gateway_name:
                     listener_already_exist = self.matching_listener_exists(
-                            context, request.nqn, request.gateway_name, trtype, request.traddr, request.trsvcid)
+                            context, request.nqn, request.gateway_name, request.traddr, request.trsvcid)
                     if listener_already_exist:
                         self.logger.error(f"{request.nqn} already listens on address {traddr}:{request.trsvcid}")
                         return pb2.req_status(status=errno.EEXIST,
@@ -1720,7 +1719,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     ret = rpc_nvmf.nvmf_subsystem_add_listener(
                         self.spdk_rpc_client,
                         nqn=request.nqn,
-                        trtype=trtype,
+                        trtype="TCP",
                         traddr=request.traddr,
                         trsvcid=str(request.trsvcid),
                         adrfam=adrfam,
@@ -1787,7 +1786,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                             self.spdk_rpc_client,
                             nqn=request.nqn,
                             ana_state="inaccessible",
-                            trtype=trtype,
+                            trtype="TCP",
                             traddr=request.traddr,
                             trsvcid=str(request.trsvcid),
                             adrfam=adrfam,
@@ -1809,7 +1808,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                         request, preserving_proto_field_name=True, including_default_value_fields=True)
                     self.gateway_state.add_listener(request.nqn,
                                                     request.gateway_name,
-                                                    trtype, request.traddr,
+                                                    "TCP", request.traddr,
                                                     request.trsvcid, json_req)
                 except Exception as ex:
                     errmsg = f"Error persisting listener {traddr}:{request.trsvcid}:\n{ex}"
@@ -1821,7 +1820,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
     def create_listener(self, request, context=None):
         return self.execute_grpc_function(self.create_listener_safe, request, context)
 
-    def remove_listener_from_state(self, nqn, gw_name, trtype, traddr, port, context):
+    def remove_listener_from_state(self, nqn, gw_name, traddr, port, context):
         if not context:
             return pb2.req_status(status=0, error_message=os.strerror(0))
 
@@ -1829,7 +1828,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
             assert self.omap_lock.locked()
         # Update gateway state
         try:
-            self.gateway_state.remove_listener(nqn, gw_name, trtype, traddr, port)
+            self.gateway_state.remove_listener(nqn, gw_name, "TCP", traddr, port)
         except Exception as ex:
             errmsg = f"Error persisting deletion of listener {traddr}:{port} from {nqn}:\n{ex}"
             self.logger.error(errmsg)
@@ -1843,12 +1842,6 @@ class GatewayService(pb2_grpc.GatewayServicer):
         traddr = GatewayUtils.escape_address_if_ipv6(request.traddr)
         delete_listener_error_prefix = f"Failure deleting listener {traddr}:{request.trsvcid} from {request.nqn}"
 
-        trtype = GatewayEnumUtils.get_key_from_value(pb2.TransportType, request.trtype)
-        if trtype == None:
-            errmsg=f"{delete_listener_error_prefix}: Unknown transport type {request.trtype}"
-            self.logger.error(errmsg)
-            return pb2.req_status(status=errno.ENOKEY, error_message=errmsg)
-
         adrfam = GatewayEnumUtils.get_key_from_value(pb2.AddressFamily, request.adrfam)
         if adrfam == None:
             errmsg=f"{delete_listener_error_prefix}: Unknown address family {request.adrfam}"
@@ -1856,7 +1849,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
             return pb2.req_status(status=errno.ENOKEY, error_message=errmsg)
 
         self.logger.info(f"Received request to delete {request.gateway_name}"
-                         f" {trtype} listener for {request.nqn} at"
+                         f" TCP listener for {request.nqn} at"
                          f" {traddr}:{request.trsvcid}, context: {context}")
 
         if GatewayUtils.is_discovery_nqn(request.nqn):
@@ -1870,7 +1863,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     ret = rpc_nvmf.nvmf_subsystem_remove_listener(
                         self.spdk_rpc_client,
                         nqn=request.nqn,
-                        trtype=trtype,
+                        trtype="TCP",
                         traddr=request.traddr,
                         trsvcid=str(request.trsvcid),
                         adrfam=adrfam,
@@ -1883,7 +1876,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
             except Exception as ex:
                 errmsg = f"{delete_listener_error_prefix}:\n{ex}"
                 self.logger.error(errmsg)
-                self.remove_listener_from_state(request.nqn, request.gateway_name, trtype,
+                self.remove_listener_from_state(request.nqn, request.gateway_name,
                                                 request.traddr, request.trsvcid, context)
                 resp = self.parse_json_exeption(ex)
                 status = errno.EINVAL
@@ -1895,11 +1888,11 @@ class GatewayService(pb2_grpc.GatewayServicer):
             # Just in case SPDK failed with no exception
             if not ret:
                 self.logger.error(delete_listener_error_prefix)
-                self.remove_listener_from_state(request.nqn, request.gateway_name, trtype,
+                self.remove_listener_from_state(request.nqn, request.gateway_name,
                                                 request.traddr, request.trsvcid, context)
                 return pb2.req_status(status=errno.EINVAL, error_message=delete_listener_error_prefix)
 
-            return self.remove_listener_from_state(request.nqn, request.gateway_name, trtype,
+            return self.remove_listener_from_state(request.nqn, request.gateway_name,
                                                    request.traddr, request.trsvcid, context)
 
     def delete_listener(self, request, context=None):
@@ -2044,14 +2037,15 @@ class GatewayService(pb2_grpc.GatewayServicer):
         print_level = None
         ret_log = False
         ret_print = False
-        if request.log_level:
+
+        if request.HasField("log_level"):
             log_level = GatewayEnumUtils.get_key_from_value(pb2.LogLevel, request.log_level)
             if log_level == None:
                 errmsg=f"Unknown log level {request.log_level}"
                 self.logger.error(f"{errmsg}")
                 return pb2.req_status(status=errno.ENOKEY, error_message=errmsg)
 
-        if request.print_level:
+        if request.HasField("print_level"):
             print_level = GatewayEnumUtils.get_key_from_value(pb2.LogLevel, request.print_level)
             if print_level == None:
                 errmsg=f"Unknown print level {request.print_level}"
@@ -2067,10 +2061,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 ret = [rpc_log.log_set_flag(
                     self.spdk_rpc_client, flag=flag) for flag in nvmf_log_flags]
                 self.logger.info(f"Set SPDK nvmf log flags {nvmf_log_flags} to TRUE: {ret}")
-                if log_level:
+                if log_level != None:
                     ret_log = rpc_log.log_set_level(self.spdk_rpc_client, level=log_level)
                     self.logger.info(f"Set log level to {log_level}: {ret_log}")
-                if print_level:
+                if print_level != None:
                     ret_print = rpc_log.log_set_print_level(
                         self.spdk_rpc_client, level=print_level)
                     self.logger.info(f"Set log print level to {print_level}: {ret_print}")
@@ -2088,10 +2082,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         status = 0
         errmsg = os.strerror(0)
-        if log_level and not ret_log:
+        if log_level != None and not ret_log:
             status = errno.EINVAL
             errmsg = "Failure setting SPDK log level"
-        elif print_level and not ret_print:
+        elif print_level != None and not ret_print:
             status = errno.EINVAL
             errmsg = "Failure setting SPDK print log level"
         elif not all(ret):
