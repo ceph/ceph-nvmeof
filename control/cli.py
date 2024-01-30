@@ -35,13 +35,11 @@ def argument(*name_or_flags, **kwargs):
     """Helper function to format arguments for argparse command decorator."""
     return (list(name_or_flags), kwargs)
 
-def get_enum_keys_list(e_type, include_first = False):
+def get_enum_keys_list(e_type):
     k_list = []
     for k in e_type.keys():
         k_list.append(k.lower())
         k_list.append(k.upper())
-    if not include_first:
-        k_list = k_list[2:]
 
     return k_list
 
@@ -748,23 +746,19 @@ class GatewayClient:
             args.trsvcid = 4420
         elif args.trsvcid <= 0:
             self.cli.parser.error("trsvcid value must be positive")
-        if not args.trtype:
-            args.trtype = "TCP"
+        elif args.trsvcid > 0xffff:
+            self.cli.parser.error("trsvcid value must be smaller than 65536")
         if not args.adrfam:
             args.adrfam = "IPV4"
 
         traddr = GatewayUtils.escape_address_if_ipv6(args.traddr)
-        trtype = None
         adrfam = None
-        if args.trtype:
-            trtype = args.trtype.upper()
         if args.adrfam:
             adrfam = args.adrfam.lower()
 
         req = pb2.create_listener_req(
             nqn=args.subsystem,
             gateway_name=args.gateway_name,
-            trtype=trtype,
             adrfam=adrfam,
             traddr=traddr,
             trsvcid=args.trsvcid,
@@ -812,23 +806,19 @@ class GatewayClient:
             self.cli.parser.error("--trsvcid argument is mandatory for del command")
         if args.trsvcid <= 0:
             self.cli.parser.error("trsvcid value must be positive")
-        if not args.trtype:
-            args.trtype = "TCP"
+        elif args.trsvcid > 0xffff:
+            self.cli.parser.error("trsvcid value must be smaller than 65536")
         if not args.adrfam:
             args.adrfam = "IPV4"
 
         traddr = GatewayUtils.escape_address_if_ipv6(args.traddr)
-        trtype = None
         adrfam = None
-        if args.trtype:
-            trtype = args.trtype.upper()
         if args.adrfam:
             adrfam = args.adrfam.lower()
 
         req = pb2.delete_listener_req(
             nqn=args.subsystem,
             gateway_name=args.gateway_name,
-            trtype=trtype,
             adrfam=adrfam,
             traddr=traddr,
             trsvcid=args.trsvcid,
@@ -871,8 +861,6 @@ class GatewayClient:
             self.cli.parser.error("--gateway-name argument is not allowed for list command")
         if args.traddr != None:
             self.cli.parser.error("--traddr argument is not allowed for list command")
-        if args.trtype:
-            self.cli.parser.error("--trtype argument is not allowed for list command")
         if args.adrfam:
             self.cli.parser.error("--adrfam argument is not allowed for list command")
         if args.trsvcid != None:
@@ -890,8 +878,7 @@ class GatewayClient:
                 for l in listeners_info.listeners:
                     adrfam = GatewayEnumUtils.get_key_from_value(pb2.AddressFamily, l.adrfam)
                     adrfam = self.format_adrfam(adrfam)
-                    trtype = GatewayEnumUtils.get_key_from_value(pb2.TransportType, l.trtype)
-                    listeners_list.append([l.gateway_name, trtype, adrfam, f"{l.traddr}:{l.trsvcid}"])
+                    listeners_list.append([l.gateway_name, l.trtype, adrfam, f"{l.traddr}:{l.trsvcid}"])
                 if len(listeners_list) > 0:
                     if args.format == "text":
                         table_format = "fancy_grid"
@@ -927,7 +914,6 @@ class GatewayClient:
         argument("listener_command", help="listener sub-command", choices=["add", "del", "list"]),
         argument("--subsystem", "-n", help="Subsystem NQN", required=True),
         argument("--gateway-name", "-g", help="Gateway name", required=False),
-        argument("--trtype", "-t", help="Transport type", default="", choices=get_enum_keys_list(pb2.TransportType)),
         argument("--adrfam", "-f", help="Address family", default="", choices=get_enum_keys_list(pb2.AddressFamily)),
         argument("--traddr", "-a", help="NVMe host IP", required=False),
         argument("--trsvcid", "-s", help="Port number", type=int, required=False),
