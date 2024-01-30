@@ -1,3 +1,6 @@
+---
+# yamllint disable rule:line-length
+# yamllint disable rule:comments
 version: "3.8"
 services:
   spdk:
@@ -8,6 +11,10 @@ services:
       context: spdk/
       dockerfile: ../Dockerfile.spdk
       target: spdk
+      cache_from:
+        - type=gha,scope=spdk
+      cache_to:
+        - type=gha,scope=spdk,mode=max
       args:
         SPDK_VERSION:
         SPDK_CEPH_VERSION:
@@ -39,6 +46,10 @@ services:
     image: bdevperf
     build:
       target: bdevperf
+      cache_from:
+        - type=gha,scope=bdevperf
+      cache_to:
+        - type=gha,scope=bdevperf,mode=max
     volumes:
       # sudo bash -c 'echo 2048 > /sys/devices/system/node/node0/hugepages/hugepages-2048kB/nr_hugepages'
       # https://spdk.io/doc/containers.html
@@ -56,6 +67,10 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.ceph
+      cache_from:
+        - type=gha,scope=ceph
+      cache_to:
+        - type=gha,scope=ceph,mode=max
       args:
         CEPH_CLUSTER_VERSION:
         CEPH_CLUSTER_CEPH_REPO_BASEURL:
@@ -96,6 +111,10 @@ services:
   nvmeof-base:
     build:
       context: .
+      cache_from:
+        - type=gha,scope=nvmeof
+      cache_to:
+        - type=gha,scope=nvmeof,mode=max
       args:
         NVMEOF_TARGET: gateway
         NVMEOF_SPDK_VERSION:
