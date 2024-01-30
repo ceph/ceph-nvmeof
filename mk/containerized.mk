@@ -2,7 +2,11 @@
 
 # Docker and docker-compose specific commands
 DOCKER = docker
-DOCKER_COMPOSE = docker-compose ## Docker-compose command
+# Docker-compose v1 or v2
+DOCKER_COMPOSE != command -v docker-compose || (DOCKER=$$(command -v docker) && printf "%s compose\n" $$DOCKER)
+ifndef DOCKER_COMPOSE
+$(error DOCKER_COMPOSE command not found. Please install from: https://docs.docker.com/engine/install/))
+endif
 DOCKER_COMPOSE_COMMANDS = pull build up run exec ps top images logs port \
 	pause unpause stop restart down events
 
