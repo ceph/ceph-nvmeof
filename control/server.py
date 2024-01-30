@@ -406,12 +406,12 @@ class GatewayServer:
                     req = json_format.Parse(val, pb2.add_host_req())
                     self.gateway_rpc.add_host(req)
                 else:
-                    req = json_format.Parse(val, pb2.remove_host_req())
+                    req = json_format.Parse(val, pb2.remove_host_req(), ignore_unknown_fields=True)
                     self.gateway_rpc.remove_host(req)
             elif key.startswith(GatewayState.LISTENER_PREFIX):
                 if is_add_req:
                     req = json_format.Parse(val, pb2.create_listener_req())
                     self.gateway_rpc.create_listener(req)
                 else:
-                    req = json_format.Parse(val, pb2.delete_listener_req())
+                    req = json_format.Parse(val, pb2.delete_listener_req(), ignore_unknown_fields=True)
                     self.gateway_rpc.delete_listener(req)

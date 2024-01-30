@@ -115,6 +115,7 @@ def conn_concurrent(config, request):
     # Setup GatewayA and GatewayB configs
     configA, configB = setup_config(config, "GatewayAAA", "GatewayBBB", "Group3", True, 5, False, 60,
                                     "spdk_GatewayAAA.sock", "spdk_GatewayBBB.sock", 4)
+
     addr = configA.get("gateway", "addr")
     portA = configA.getint("gateway", "port")
     portB = configB.getint("gateway", "port")
@@ -278,7 +279,6 @@ def test_multi_gateway_concurrent_changes(config, image, conn_concurrent, caplog
     assert listener_ret.status == 0
     assert f"Received request to create GatewayAAA TCP ipv4 listener for {subsystem_prefix}0 at 127.0.0.1:5001" in caplog.text
     assert f"create_listener: True" in caplog.text
-    caplog.clear()
 
     # Let the update some time to bring both gateways to the same page
     time.sleep(15)
@@ -302,3 +302,61 @@ def test_multi_gateway_concurrent_changes(config, image, conn_concurrent, caplog
             preserving_proto_field_name=True, including_default_value_fields=True))
         check_resource_by_index(i, subListA, hostListA)
         check_resource_by_index(i, subListB, hostListB)
+
+def test_multi_gateway_listener_update(config, image, conn_concurrent, caplog):
+    """Tests listener update after subsystem deletion
+    """
+    stubA, stubB = conn_concurrent
+
+    caplog.clear()
+    subsystem = f"{subsystem_prefix}QQQ"
+    subsystem_add_req = pb2.create_subsystem_req(subsystem_nqn=subsystem)
+    ret_subsystem = stubA.create_subsystem(subsystem_add_req)
+    assert ret_subsystem.status == 0
+    assert f"create_subsystem {subsystem}: True" in caplog.text
+    assert f"Failure creating subsystem {subsystem}" not in caplog.text
+    caplog.clear()
+    listenerA_req = pb2.create_listener_req(nqn=subsystem,
+                                           gateway_name="GatewayAAA",
+                                           adrfam="ipv4",
+                                           traddr="127.0.0.1",
+                                           trsvcid=5101,
+                                           auto_ha_state="AUTO_HA_UNSET")
+    listener_ret = stubA.create_listener(listenerA_req)
+    assert listener_ret.status == 0
+    assert f"Received request to create GatewayAAA TCP ipv4 listener for {subsystem} at 127.0.0.1:5101" in caplog.text
+    assert f"create_listener: True" in caplog.text
+    caplog.clear()
+    listenerB_req = pb2.create_listener_req(nqn=subsystem,
+                                           gateway_name="GatewayBBB",
+                                           adrfam="ipv4",
+                                           traddr="127.0.0.1",
+                                           trsvcid=5102,
+                                           auto_ha_state="AUTO_HA_UNSET")
+    listener_ret = stubB.create_listener(listenerB_req)
+    assert listener_ret.status == 0
+    assert f"Received request to create GatewayBBB TCP ipv4 listener for {subsystem} at 127.0.0.1:5102" in caplog.text
+    assert f"create_listener: True" in caplog.text
+    caplog.clear()
+    subsystem_del_req = pb2.delete_subsystem_req(subsystem_nqn=subsystem)
+    ret_subsystem = stubA.delete_subsystem(subsystem_del_req)
+    assert ret_subsystem.status == 0
+    assert f"delete_subsystem {subsystem}: True" in caplog.text
+    assert f"Failure deleting subsystem {subsystem}" not in caplog.text
+    caplog.clear()
+    ret_subsystem = stubA.create_subsystem(subsystem_add_req)
+    assert ret_subsystem.status == 0
+    assert f"create_subsystem {subsystem}: True" in caplog.text
+    assert f"Failure creating subsystem {subsystem}" not in caplog.text
+    caplog.clear()
+    listener_ret = stubA.create_listener(listenerA_req)
+    assert listener_ret.status == 0
+    assert f"Received request to create GatewayAAA TCP ipv4 listener for {subsystem} at 127.0.0.1:5101" in caplog.text
+    assert f"create_listener: True" in caplog.text
+    assert f"Failure adding {subsystem} listener at 127.0.0.1:5101" not in caplog.text
+    caplog.clear()
+    listener_ret = stubB.create_listener(listenerB_req)
+    assert listener_ret.status == 0
+    assert f"Received request to create GatewayBBB TCP ipv4 listener for {subsystem} at 127.0.0.1:5102" in caplog.text
+    assert f"create_listener: True" in caplog.text
+    assert f"Failure adding {subsystem} listener at 127.0.0.1:5102" not in caplog.text
