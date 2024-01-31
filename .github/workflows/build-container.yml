@@ -4,7 +4,7 @@ name: "CI"
 on:  # yamllint disable rule:truthy
   push:
     tags:
-      - 'v*'
+      - '*'
   pull_request:
     branches:
       - devel
@@ -503,7 +503,7 @@ jobs:
           make clean
 
   push-to-registry:
-    if: github.event_name == 'release' && startsWith(github.ref, 'refs/tags/v')
+    if: github.event_name == 'release'
     needs: [pytest, demo, discovery]
     runs-on: ubuntu-latest
 
