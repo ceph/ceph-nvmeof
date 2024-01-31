@@ -4,7 +4,7 @@ build-backend = "pdm.backend"
 
 [project]
 name = "ceph-nvmeof"
-version = "0.0.7"
+version = "1.0.0"
 description = "Service to provide Ceph storage over NVMe-oF protocol"
 readme = "README.md"
 requires-python = "~=3.9"
