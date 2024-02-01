@@ -180,6 +180,7 @@ class GatewayLogger:
     NVME_LOG_FILE_NAME = "nvmeof-log"
     logger = None
     handler = None
+    init_executed = False
 
     def __init__(self, config=None):
         if config:
@@ -218,6 +219,7 @@ class GatewayLogger:
             log_leGatewayLoggervel = "info"
 
         self.handler = None
+        logdir_ok = False
         if log_files_enabled:
             GatewayLogger.rotate_backup_directories(self.log_directory, 5)
             if not log_files_rotation_enabled:
@@ -225,6 +227,7 @@ class GatewayLogger:
                 max_log_files_count = 0
             try:
                 os.makedirs(self.log_directory, 0o777, True)
+                logdir_ok = True
                 self.handler = logging.handlers.RotatingFileHandler(self.log_directory + "/" + GatewayLogger.NVME_LOG_FILE_NAME,
                                                  maxBytes = max_log_file_size * 1024 * 1024,
                                                  backupCount = max_log_files_count)
@@ -240,6 +243,20 @@ class GatewayLogger:
             self.logger.addHandler(self.handler)
         GatewayLogger.logger = self.logger
         GatewayLogger.handler = self.handler
+        if not GatewayLogger.init_executed:
+            if log_files_enabled:
+                if not logdir_ok:
+                    self.logger.error(f"Failed to create directory {self.log_directory}, the log wouldn't be saved to a file")
+                elif not self.handler:
+                    self.logger.error(f"Failed to set up log file handler, the log wouldn't be saved to a file")
+                else:
+                    rot_msg = ""
+                    if log_files_rotation_enabled:
+                        rot_msg = ", using rotation"
+                    self.logger.info(f"Log files will be saved in {self.log_directory}{rot_msg}")
+            else:
+                self.logger.warning(f"Log files are disabled, the log wouldn't be saved to a file")
+            GatewayLogger.init_executed = True
 
     def rotate_backup_directories(dirname, count):
         try:
