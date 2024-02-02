@@ -273,8 +273,7 @@ def test_multi_gateway_concurrent_changes(config, image, conn_concurrent, caplog
                                            gateway_name="GatewayAAA",
                                            adrfam="ipv4",
                                            traddr="127.0.0.1",
-                                           trsvcid=5001,
-                                           auto_ha_state="AUTO_HA_UNSET")
+                                           trsvcid=5001)
     listener_ret = stubA.create_listener(listener_req)
     assert listener_ret.status == 0
     assert f"Received request to create GatewayAAA TCP ipv4 listener for {subsystem_prefix}0 at 127.0.0.1:5001" in caplog.text
@@ -320,8 +319,7 @@ def test_multi_gateway_listener_update(config, image, conn_concurrent, caplog):
                                            gateway_name="GatewayAAA",
                                            adrfam="ipv4",
                                            traddr="127.0.0.1",
-                                           trsvcid=5101,
-                                           auto_ha_state="AUTO_HA_UNSET")
+                                           trsvcid=5101)
     listener_ret = stubA.create_listener(listenerA_req)
     assert listener_ret.status == 0
     assert f"Received request to create GatewayAAA TCP ipv4 listener for {subsystem} at 127.0.0.1:5101" in caplog.text
@@ -331,8 +329,7 @@ def test_multi_gateway_listener_update(config, image, conn_concurrent, caplog):
                                            gateway_name="GatewayBBB",
                                            adrfam="ipv4",
                                            traddr="127.0.0.1",
-                                           trsvcid=5102,
-                                           auto_ha_state="AUTO_HA_UNSET")
+                                           trsvcid=5102)
     listener_ret = stubB.create_listener(listenerB_req)
     assert listener_ret.status == 0
     assert f"Received request to create GatewayBBB TCP ipv4 listener for {subsystem} at 127.0.0.1:5102" in caplog.text

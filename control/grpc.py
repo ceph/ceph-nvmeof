@@ -141,6 +141,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         self.gateway_group = self.config.get("gateway", "group")
         self.verify_nqns = self.config.getboolean_with_default("gateway", "verify_nqns", True)
         self._init_cluster_context()
+        self.subsys_ha = {}
 
     def is_valid_host_nqn(nqn):
         if nqn == "*":
@@ -377,7 +378,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         create_subsystem_error_prefix = f"Failure creating subsystem {request.subsystem_nqn}"
 
         self.logger.info(
-            f"Received request to create subsystem {request.subsystem_nqn}, enable_ha: {request.enable_ha}, ana reporting: {request.ana_reporting}, context: {context}")
+            f"Received request to create subsystem {request.subsystem_nqn}, enable_ha: {request.enable_ha}, context: {context}")
 
         errmsg = ""
         if self.verify_nqns:
@@ -388,10 +389,6 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 return pb2.req_status(status = rc[0], error_message = errmsg)
         if GatewayUtils.is_discovery_nqn(request.subsystem_nqn):
             errmsg = f"{create_subsystem_error_prefix}: Can't create a discovery subsystem"
-            self.logger.error(f"{errmsg}")
-            return pb2.req_status(status = errno.EINVAL, error_message = errmsg)
-        if request.enable_ha and not request.ana_reporting:
-            errmsg = f"{create_subsystem_error_prefix}: HA is enabled but ANA reporting is disabled"
             self.logger.error(f"{errmsg}")
             return pb2.req_status(status = errno.EINVAL, error_message = errmsg)
 
@@ -424,6 +421,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     errmsg = f"{create_subsystem_error_prefix}: {errmsg}"
                     self.logger.error(f"{errmsg}")
                     return pb2.req_status(status=errno.EEXIST, error_message=errmsg)
+                enable_ha = (request.enable_ha == True)
                 ret = rpc_nvmf.nvmf_create_subsystem(
                     self.spdk_rpc_client,
                     nqn=request.subsystem_nqn,
@@ -431,8 +429,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     max_namespaces=request.max_namespaces,
                     min_cntlid=min_cntlid,
                     max_cntlid=max_cntlid,
-                    ana_reporting = request.ana_reporting,
+                    ana_reporting = enable_ha,
                 )
+                self.subsys_ha[request.subsystem_nqn] = enable_ha
                 self.logger.info(f"create_subsystem {request.subsystem_nqn}: {ret}")
             except Exception as ex:
                 errmsg = f"{create_subsystem_error_prefix}:\n{ex}"
@@ -522,6 +521,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     self.spdk_rpc_client,
                     nqn=request.subsystem_nqn,
                 )
+                self.subsys_ha.pop(request.subsystem_nqn)
                 self.logger.info(f"delete_subsystem {request.subsystem_nqn}: {ret}")
             except Exception as ex:
                 errmsg = f"{delete_subsystem_error_prefix}:\n{ex}"
@@ -1649,24 +1649,12 @@ class GatewayService(pb2_grpc.GatewayServicer):
         return self.execute_grpc_function(self.list_connections_safe, request, context)
 
     def get_subsystem_ha_status(self, nqn) -> bool:
-        enable_ha = False
-        state = self.gateway_state.local.get_state()
-        subsys_str = state.get(GatewayState.build_subsystem_key(nqn))
-        if subsys_str:
-            self.logger.debug(f"value of sub-system: {subsys_str}")
-            try:
-                subsys_dict = json.loads(subsys_str)
-                try:
-                    enable_ha = subsys_dict["enable_ha"]
-                except KeyError:
-                    enable_ha = False
-                self.logger.info(f"Subsystem {nqn} enable_ha: {enable_ha}")
-            except Exception as ex:
-                self.logger.error(f"Got exception trying to parse subsystem {nqn}:\n{ex}")
-                enable_ha = False
-                pass
-        else:
+        if nqn not in self.subsys_ha:
             self.logger.warning(f"Subsystem {nqn} not found")
+            return False
+
+        enable_ha = self.subsys_ha[nqn]
+        self.logger.info(f"Subsystem {nqn} enable_ha: {enable_ha}")
         return enable_ha
 
     def matching_listener_exists(self, context, nqn, gw_name, traddr, trsvcid) -> bool:
@@ -1692,15 +1680,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
             self.logger.error(f"{errmsg}")
             return pb2.req_status(status=errno.ENOKEY, error_message=errmsg)
 
-        auto_ha_state = GatewayEnumUtils.get_key_from_value(pb2.AutoHAState, request.auto_ha_state)
-        if auto_ha_state == None:
-            errmsg=f"{create_listener_error_prefix}: Unknown auto HA state {request.auto_ha_state}"
-            self.logger.error(f"{errmsg}")
-            return pb2.req_status(status=errno.ENOKEY, error_message=errmsg)
-
         self.logger.info(f"Received request to create {request.gateway_name}"
                          f" TCP {adrfam} listener for {request.nqn} at"
-                         f" {traddr}:{request.trsvcid}, auto HA state: {auto_ha_state}, context: {context}")
+                         f" {traddr}:{request.trsvcid}, context: {context}")
 
         if GatewayUtils.is_discovery_nqn(request.nqn):
             errmsg=f"{create_listener_error_prefix}: Can't create a listener for a discovery subsystem"
@@ -1749,35 +1731,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 self.logger.error(create_listener_error_prefix)
                 return pb2.req_status(status=errno.EINVAL, error_message=create_listener_error_prefix)
 
-            enable_ha = False
-            if auto_ha_state == "AUTO_HA_UNSET":
-                if context == None:
-                    self.logger.error(f"auto_ha_state is not set but we are in an update()")
-                state = self.gateway_state.local.get_state()
-                subsys_str = state.get(GatewayState.build_subsystem_key(request.nqn))
-                if subsys_str:
-                    self.logger.debug(f"value of sub-system: {subsys_str}")
-                    try:
-                        subsys_dict = json.loads(subsys_str)
-                        try:
-                            enable_ha = subsys_dict["enable_ha"]
-                            auto_ha_state_key = "AUTO_HA_ON" if enable_ha else "AUTO_HA_OFF"
-                            request.auto_ha_state = GatewayEnumUtils.get_value_from_key(pb2.AutoHAState, auto_ha_state_key)
-                        except KeyError:
-                            enable_ha = False
-                        self.logger.info(f"enable_ha: {enable_ha}")
-                    except Exception as ex:
-                        self.logger.error(f"Got exception trying to parse subsystem {request.nqn}:\n{ex}")
-                        pass
-                else:
-                    self.logger.warning(f"No subsystem for {request.nqn}")
-            else:
-                if context != None:
-                    self.logger.error(f"auto_ha_state is set to {auto_ha_state} but we are not in an update()")
-                if auto_ha_state == "AUTO_HA_OFF":
-                    enable_ha = False
-                elif auto_ha_state == "AUTO_HA_ON":
-                    enable_ha = True
+            enable_ha = self.get_subsystem_ha_status(request.nqn)
 
             if enable_ha:
                   for x in range (MAX_ANA_GROUPS):

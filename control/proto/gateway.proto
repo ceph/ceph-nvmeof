@@ -23,12 +23,6 @@ enum LogLevel {
     DEBUG = 4;
 }
 
-enum AutoHAState {
-    AUTO_HA_UNSET = 0;
-    AUTO_HA_OFF = 1;
-    AUTO_HA_ON = 2;
-}
-
 service Gateway {
 	// Creates a namespace from an RBD image
 	rpc namespace_add(namespace_add_req) returns (nsid_status) {}
@@ -148,8 +142,7 @@ message create_subsystem_req {
 	string subsystem_nqn = 1;
 	string serial_number = 2;
 	optional uint32 max_namespaces = 3;
-	bool ana_reporting = 4;
-	bool enable_ha = 5;
+	bool enable_ha = 4;
 }
 
 message delete_subsystem_req {
@@ -187,7 +180,6 @@ message create_listener_req {
 	string traddr = 3;
 	optional AddressFamily adrfam = 5;
 	optional uint32 trsvcid = 6;
-	optional AutoHAState auto_ha_state = 7;
 }
 
 message delete_listener_req {

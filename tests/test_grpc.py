@@ -13,7 +13,7 @@ subsys_list_count = 50
 
 def create_resource_by_index(i):
     subsystem = f"{subsystem_prefix}{i}"
-    cli(["subsystem", "add", "--subsystem", subsystem, "--ana-reporting", "--enable-ha" ])
+    cli(["subsystem", "add", "--subsystem", subsystem, "--enable-ha" ])
     cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool, "--rbd-image", image, "--size", "16MiB", "--rbd-create-image"])
 
 def check_resource_by_index(i, caplog):
@@ -44,7 +44,6 @@ def test_create_get_subsys(caplog, config):
         # add a listener
         cli(["listener", "add", "--subsystem", f"{subsystem_prefix}0", "--gateway-name",
              gateway.name, "--traddr", "127.0.0.1", "--trsvcid", "5001"])
-        assert f"auto HA state: AUTO_HA_UNSET" in caplog.text
         assert f"Adding {subsystem_prefix}0 listener at 127.0.0.1:5001: Successful" in caplog.text
 
         # Change ANA group id for the first namesapce
@@ -76,7 +75,6 @@ def test_create_get_subsys(caplog, config):
             time.sleep(0.1)
 
         time.sleep(20)     # Make sure update() is over
-        assert f"auto HA state: AUTO_HA_ON" in caplog.text
         assert f"{subsystem_prefix}0 with ANA group id 4" in caplog.text
         assert f"Received request to set QOS limits for namespace using NSID 1 on {subsystem_prefix}0, R/W IOs per second: 2000 Read megabytes per second: 5" in caplog.text
         caplog.clear()
