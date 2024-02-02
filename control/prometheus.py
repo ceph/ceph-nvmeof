@@ -14,10 +14,12 @@ import threading
 import inspect
 import spdk.rpc as rpc
 
+from .proto import gateway_pb2 as pb2
 from prometheus_client.core import REGISTRY, GaugeMetricFamily, CounterMetricFamily, InfoMetricFamily
 from prometheus_client import start_http_server, GC_COLLECTOR
 from typing import NamedTuple
 from functools import wraps
+from .utils import NICS
 
 COLLECTION_ELAPSED_WARNING = 0.8   # Percentage of the refresh interval before a warning message is issued
 REGISTRY.unregister(GC_COLLECTOR)  # Turn off garbage collector metrics
@@ -72,7 +74,7 @@ def start_httpd(**kwargs):
     return True
 
 
-def start_exporter(spdk_rpc_client, config):
+def start_exporter(spdk_rpc_client, config, gateway_rpc):
     """Start the prometheus exporter and register the NVMeOF custom collector"""
 
     port = config.getint_with_default("gateway", "prometheus_port", 10008)
@@ -94,26 +96,33 @@ def start_exporter(spdk_rpc_client, config):
 
     if httpd_ok:
         logger.info(f"Prometheus exporter running in {mode} mode, listening on port {port}")
-        REGISTRY.register(NVMeOFCollector(spdk_rpc_client, config))
+        REGISTRY.register(NVMeOFCollector(spdk_rpc_client, config, gateway_rpc))
 
 
 class NVMeOFCollector:
     """Provide a prometheus endpoint for nvmeof gateway statistics"""
 
-    def __init__(self, spdk_rpc_client, config):
+    def __init__(self, spdk_rpc_client, config, gateway_rpc):
         self.spdk_rpc_client = spdk_rpc_client
+        self.gateway_rpc = gateway_rpc
         self.metric_prefix = "ceph_nvmeof"
         self.gw_config = config
         _bdev_pools = config.get_with_default('gateway', 'prometheus_bdev_pools', '')
         self.bdev_pools = _bdev_pools.split(',') if _bdev_pools else []
         self.interval = config.getint_with_default('gateway', 'prometheus_stats_inteval', 10)
         self.lock = threading.Lock()
+        self.hostname = os.getenv('NODE_NAME') or os.getenv('HOSTNAME')
 
-        self.spdk_version = {}
+        # gw metadata is static, so fetch the data only at startup
+        self.gw_metadata = self._get_gw_metadata()  # proto.gateway_pb2.gateway_info
+
         self.bdev_info = []
         self.bdev_io_stats = {}
         self.spdk_thread_stats = {}
         self.subsystems = []
+        self.subsystems_cli = {}
+        self.connections = {}
+        self.listeners = {}
         self.method_timings = {}
 
         if self.bdev_pools:
@@ -126,9 +135,18 @@ class NVMeOFCollector:
         # age the last obs time, so the first scrape will return values
         self.last_obs = time.time() - self.interval
 
-    @timer
-    def _get_version(self):
-        return rpc.spdk_get_version(self.spdk_rpc_client)
+    def _get_gw_metadata(self):
+        """Fetch Gateway metadata"""
+        ver = os.getenv("NVMEOF_VERSION")
+        req = pb2.get_gateway_info_req(cli_version=ver)
+        metadata = self.gateway_rpc.get_gateway_info(req)
+
+        # Since empty values result in a missing label, when the group name is not
+        # defined _null_ is used to ensure any promql queries will always work against
+        # a valid label.
+        if not metadata.group:
+            metadata.group = "_null_"
+        return metadata
 
     @timer
     def _get_bdev_info(self):
@@ -144,15 +162,40 @@ class NVMeOFCollector:
 
     @timer
     def _get_subsystems(self):
-        return rpc.nvmf.nvmf_get_subsystems(self.spdk_rpc_client)
+        """Fetch aggregated subsystem information"""
+        subsystems_info = self.gateway_rpc.get_subsystems(pb2.get_subsystems_req(), None)
+        return subsystems_info.subsystems
 
-    def _get_rpc_data(self):
+    @timer
+    def _list_subsystems(self):
+        """Fetch abbreviated subsystem information used by the CLI"""
+        resp = self.gateway_rpc.list_subsystems(pb2.list_subsystems_req())
+        if resp.status != 0:
+            logger.error(f"Exporter failed to execute list_subsystems: {resp.error_message}")
+            return {}
+
+        return {subsys.nqn: subsys for subsys in resp.subsystems}
+
+    @timer
+    def _get_connection_map(self, subsystem_list):
+        """Fetch connection information for all defined subsystems"""
+        connection_map = {}
+        for subsys in subsystem_list:
+            resp = self.gateway_rpc.list_connections(pb2.list_connections_req(subsystem=subsys.nqn))
+            if resp.status != 0:
+                logger.error(f"Exporter failed to fetch connection info for {subsys.nqn}: {resp.error_message}")
+                continue
+            connection_map[subsys.nqn] = resp
+        return connection_map
+
+    def _get_data(self):
         """Gather data from the SPDK"""
-        self.spdk_version = self._get_version()
         self.bdev_info = self._get_bdev_info()
         self.bdev_io_stats = self._get_bdev_io_stats()
         self.spdk_thread_stats = self._get_spdk_thread_stats()
         self.subsystems = self._get_subsystems()
+        self.subsystems_cli = self._list_subsystems()
+        self.connections = self._get_connection_map(self.subsystems)
 
     @ttl
     def collect(self):
@@ -164,7 +207,7 @@ class NVMeOFCollector:
         bdev_lookup = {}
 
         logger.debug("Collecting stats from the SPDK")
-        self._get_rpc_data()
+        self._get_data()
 
         elapsed = sum(self.method_timings.values())
         if elapsed > self.interval:
@@ -174,16 +217,24 @@ class NVMeOFCollector:
         else:
             logger.debug(f"Stats refresh completed in {elapsed:.3f} secs.")
 
-        spdk = InfoMetricFamily(
-            f"{self.metric_prefix}_spdk_info",
-            "SPDK Version information",
-            value={'version': self.spdk_version.get("version", "Unknown")})
-        yield spdk
+        gateway_info = InfoMetricFamily(
+            f"{self.metric_prefix}_gateway",
+            "Gateway information",
+            value={
+                'spdk_version': self.gw_metadata.spdk_version,
+                'version': self.gw_metadata.version,
+                'addr': self.gw_metadata.addr,
+                'port': self.gw_metadata.port,
+                'name': self.gw_metadata.name,
+                'hostname': self.hostname,
+                'group': self.gw_metadata.group
+            })
+        yield gateway_info
 
         bdev_metadata = GaugeMetricFamily(
             f"{self.metric_prefix}_bdev_metadata",
             "BDEV Metadata",
-            labels=["bdev_name", "pool_name", "namespace", "rbd_name"])
+            labels=["bdev_name", "pool_name", "namespace", "rbd_name", "block_size"])
         bdev_capacity = GaugeMetricFamily(
             f"{self.metric_prefix}_bdev_capacity_bytes",
             "BDEV Capacity",
@@ -205,7 +256,12 @@ class NVMeOFCollector:
                     continue
 
             bdev_lookup[bdev_name] = RBD(rbd_pool, rbd_namespace, rbd_image)
-            bdev_metadata.add_metric([bdev_name, rbd_pool, rbd_namespace, rbd_image], 1)
+            bdev_metadata.add_metric([
+                bdev_name,
+                rbd_pool,
+                rbd_namespace,
+                rbd_image,
+                str(bdev.get('block_size'))], 1)
             bdev_size = bdev.get("block_size") * bdev.get("num_blocks")
             bdev_capacity.add_metric([bdev.get("name")], bdev_size)
 
@@ -276,7 +332,7 @@ class NVMeOFCollector:
         subsystem_metadata = GaugeMetricFamily(
             f"{self.metric_prefix}_subsystem_metadata",
             "Metadata describing the subsystem configuration",
-            labels=["nqn", "serial_number", "model_number", "allow_any_host"])
+            labels=["nqn", "serial_number", "model_number", "allow_any_host", "ha_enabled", "group"])
         subsystem_listeners = GaugeMetricFamily(
             f"{self.metric_prefix}_subsystem_listener_count",
             "Number of listener addresses used by the subsystem",
@@ -289,28 +345,104 @@ class NVMeOFCollector:
             f"{self.metric_prefix}_subsystem_namespace_limit",
             "Maximum namespaces supported",
             labels=["nqn"])
+        subsystem_namespace_count = GaugeMetricFamily(
+            f"{self.metric_prefix}_subsystem_namespace_count",
+            "Number of namespaces associated with the subsystem",
+            labels=["nqn"])
         subsystem_namespace_metadata = GaugeMetricFamily(
             f"{self.metric_prefix}_subsystem_namespace_metadata",
             "Namespace information for the subsystem",
-            labels=["nqn", "nsid", "bdev_name", "name"])
+            labels=["nqn", "nsid", "bdev_name", "anagrpid"])
+        host_connection_state = GaugeMetricFamily(
+            f"{self.metric_prefix}_host_connection_state",
+            "Host connection state 0=disconnected, 1=connected",
+            labels=["gw_name", "nqn", "host_nqn", "host_addr"])
+
+        listener_map = {}
 
         for subsys in self.subsystems:
-            nqn = subsys.get("nqn", "")
+            nqn = subsys.nqn
             if not nqn or "discovery" in nqn:
                 continue
-            subsys_is_open = "yes" if subsys.get("allow_any_host") else "no"
-            subsystem_metadata.add_metric([nqn, subsys.get("serial_number"), subsys.get("model_number"), subsys_is_open], 1)
-            subsystem_listeners.add_metric([nqn], len(subsys.get("listen_addresses", [])))
-            subsystem_host_count.add_metric([nqn], len(subsys.get("hosts", [])))
-            subsystem_namespace_limit.add_metric([nqn], subsys.get("max_namespaces"))
-            for ns in subsys.get("namespaces", []):
-                subsystem_namespace_metadata.add_metric([nqn, str(ns.get("nsid")), ns.get("bdev_name"), ns.get("name")], 1)
+            subsys_is_open = "yes" if subsys.allow_any_host else "no"
+            subsys_cli_data = self.subsystems_cli.get(nqn)
+            ha_enabled = "yes" if subsys_cli_data.enable_ha else "no"
+
+            # extract any listen addresses from the subsystem
+            for listener in subsys.listen_addresses:
+                if listener.traddr in listener_map:
+                    listener_map[listener.traddr].append(nqn)
+                else:
+                    listener_map[listener.traddr] = [nqn]
+
+            subsystem_metadata.add_metric([nqn, subsys.serial_number, subsys.model_number, subsys_is_open, ha_enabled, self.gw_metadata.group], 1)
+            subsystem_listeners.add_metric([nqn], len(subsys.listen_addresses))
+            subsystem_host_count.add_metric([nqn], len(subsys.hosts))
+            subsystem_namespace_count.add_metric([nqn], len(subsys.namespaces))
+            subsystem_namespace_limit.add_metric([nqn], subsys.max_namespaces)
+            for ns in subsys.namespaces:
+                subsystem_namespace_metadata.add_metric([
+                    nqn,
+                    str(ns.nsid),
+                    ns.bdev_name,
+                    str(ns.anagrpid)
+                ], 1)
+
+            conn_info = self.connections[nqn]
+            for conn in conn_info.connections:
+                host_connection_state.add_metric([
+                    self.gw_metadata.name,
+                    nqn,
+                    conn.nqn,
+                    f"{conn.traddr}:{conn.trsvcid}" if conn.connected else "<n/a>"
+                ], 1 if conn.connected else 0)
 
         yield subsystem_metadata
         yield subsystem_listeners
         yield subsystem_host_count
         yield subsystem_namespace_limit
         yield subsystem_namespace_metadata
+        yield host_connection_state
+
+        subsystem_listener_iface_info = GaugeMetricFamily(
+            f"{self.metric_prefix}_subsystem_listener_iface_info",
+            "Interface information",
+            labels=["device", "operstate", "duplex", "mac_address"])
+        subsystem_listener_iface_speed_bytes = GaugeMetricFamily(
+            f"{self.metric_prefix}_subsystem_listener_iface_speed_bytes",
+            "Link speed of the Listener interface",
+            labels=["device"])
+        subsystem_listener_iface_nqn_info = GaugeMetricFamily(
+            f"{self.metric_prefix}_subsystem_listener_iface_nqn_info",
+            "Subsystem usage of a NIC device",
+            labels=["device", "nqn"])
+
+        nics = NICS()
+        for addr in listener_map.keys():
+            device_name = nics.addresses.get(addr)
+            if not device_name:
+                # listener defined to an unbound address!
+                continue
+            nic = nics.adapters[device_name]
+            subsystem_listener_iface_info.add_metric([
+                device_name,
+                nic.operstate,
+                nic.duplex,
+                nic.mac_address
+            ], 1)
+            subsystem_listener_iface_speed_bytes.add_metric([
+                device_name
+            ], nic.speed)
+
+            for nqn in listener_map[addr]:
+                subsystem_listener_iface_nqn_info.add_metric([
+                    device_name,
+                    nqn
+                ], 1)
+
+        yield subsystem_listener_iface_info
+        yield subsystem_listener_iface_speed_bytes
+        yield subsystem_listener_iface_nqn_info
 
         method_runtimes = GaugeMetricFamily(
             f"{self.metric_prefix}_rpc_method_seconds",
