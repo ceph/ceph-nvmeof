@@ -94,7 +94,7 @@ The following command executes all the steps required to set up the NVMe-oF envi
 $ make demo
 docker-compose  exec  ceph bash -c "rbd -p rbd info demo_image || rbd -p rbd create demo_image --size 10M"
 rbd: error opening image demo_image: (2) No such file or directory
-docker-compose  run --rm nvmeof-cli --server-address 192.168.13.3 --server-port 5500 subsystem add --subsystem "nqn.2016-06.io.spdk:cnode1" --ana-reporting --enable-ha
+docker-compose  run --rm nvmeof-cli --server-address 192.168.13.3 --server-port 5500 subsystem add --subsystem "nqn.2016-06.io.spdk:cnode1" --enable-ha
 Adding subsystem nqn.2016-06.io.spdk:cnode1: Successful
 docker-compose  run --rm nvmeof-cli --server-address 192.168.13.3 --server-port 5500 namespace add --subsystem "nqn.2016-06.io.spdk:cnode1" --rbd-pool rbd --rbd-image demo_image
 Adding namespace 1 to nqn.2016-06.io.spdk:cnode1, load balancing group 1: Successful

@@ -156,14 +156,12 @@ class TestCreate:
         caplog.clear()
         cli(["subsystem", "add", "--subsystem", subsystem])
         assert f"create_subsystem {subsystem}: True" in caplog.text
-        assert "ana reporting: False" in caplog.text
         cli(["--format", "json", "subsystem", "list"])
         assert f'"serial_number": "{serial}"' not in caplog.text
         assert f'"nqn": "{subsystem}"' in caplog.text
         caplog.clear()
         cli(["subsystem", "add", "--subsystem", subsystem2, "--serial-number", serial])
         assert f"create_subsystem {subsystem2}: True" in caplog.text
-        assert "ana reporting: False" in caplog.text
         caplog.clear()
         cli(["--format", "json", "subsystem", "list"])
         assert f'"serial_number": "{serial}"' in caplog.text
@@ -521,7 +519,7 @@ class TestCreate:
         assert "enable_ha: False" in caplog.text
         assert "ipv4" in caplog.text.lower()
         assert f"Adding {subsystem} listener at {listener[3]}:{listener[5]}: Successful" in caplog.text
-        assert f"auto HA state: AUTO_HA_UNSET" in caplog.text
+
 
     @pytest.mark.parametrize("listener_ipv6", listener_list_ipv6)
     def test_create_listener_ipv6(self, caplog, listener_ipv6, gateway):
@@ -530,7 +528,6 @@ class TestCreate:
         assert "enable_ha: False" in caplog.text
         assert "ipv6" in caplog.text.lower()
         assert f"Adding {subsystem} listener at [{listener_ipv6[3]}]:{listener_ipv6[5]}: Successful" in caplog.text
-        assert f"auto HA state: AUTO_HA_UNSET" in caplog.text
 
     @pytest.mark.parametrize("listener", listener_list_no_port)
     def test_create_listener_no_port(self, caplog, listener, gateway):
@@ -539,7 +536,6 @@ class TestCreate:
         assert "enable_ha: False" in caplog.text
         assert "ipv4" in caplog.text.lower()
         assert f"Adding {subsystem} listener at {listener[3]}:4420: Successful" in caplog.text
-        assert f"auto HA state: AUTO_HA_UNSET" in caplog.text
 
     @pytest.mark.parametrize("listener", listener_list_negative_port)
     def test_create_listener_negative_port(self, caplog, listener, gateway):
@@ -570,16 +566,6 @@ class TestCreate:
         caplog.clear()
         cli(["listener", "add", "--subsystem", subsystem] + listener)
         assert f"Gateway name must match current gateway ({gateway_name})" in caplog.text
-
-    def test_create_listener_wrong_ha_state(self, caplog, gateway):
-        gw, stub = gateway
-        caplog.clear()
-        listener_add_req = pb2.create_listener_req(nqn=subsystem, gateway_name=gateway_name,
-                                                   adrfam="ipv4", traddr=addr, trsvcid=5021, auto_ha_state="AUTO_HA_ON")
-        ret = stub.create_listener(listener_add_req)
-        assert "ipv4" in caplog.text.lower()
-        assert f"auto HA state: AUTO_HA_ON" in caplog.text
-        assert f"auto_ha_state is set to AUTO_HA_ON but we are not in an update()" in caplog.text
 
     @pytest.mark.parametrize("listener", listener_list_invalid_adrfam)
     def test_create_listener_invalid_adrfam(self, caplog, listener, gateway):
@@ -714,21 +700,9 @@ class TestCreateWithAna:
         caplog.clear()
         cli(["subsystem", "list"])
         assert "No subsystems" in caplog.text
-        rc = 0
-        try:
-            cli(["subsystem", "add", "--subsystem", subsystem, "--enable-ha"])
-        except SystemExit as sysex:
-            # should fail with non-zero return code
-            rc = int(str(sysex))
-        assert "ANA reporting must be enabled when HA is active" in caplog.text
-        assert rc != 0
         caplog.clear()
-        cli(["subsystem", "list"])
-        assert "No subsystems" in caplog.text
-        caplog.clear()
-        cli(["subsystem", "add", "--subsystem", subsystem, "--ana-reporting", "--enable-ha"])
+        cli(["subsystem", "add", "--subsystem", subsystem, "--enable-ha"])
         assert f"Adding subsystem {subsystem}: Successful" in caplog.text
-        assert "ana reporting: True" in caplog.text
         caplog.clear()
         cli(["subsystem", "list"])
         assert serial not in caplog.text
@@ -761,7 +735,6 @@ class TestCreateWithAna:
         assert "enable_ha: True" in caplog.text
         assert "ipv4" in caplog.text.lower()
         assert f"Adding {subsystem} listener at {listener[3]}:{listener[5]}: Successful" in caplog.text
-        assert f"auto HA state: AUTO_HA_UNSET" in caplog.text
 
 class TestDeleteAna:
 

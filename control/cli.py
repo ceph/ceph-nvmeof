@@ -555,15 +555,12 @@ class GatewayClient:
             self.cli.parser.error("--subsystem argument is mandatory for add command")
         if args.force:
             self.cli.parser.error("--force argument is not allowed for add command")
-        if args.enable_ha and not args.ana_reporting:
-            self.cli.parser.error("ANA reporting must be enabled when HA is active")
         if args.subsystem == GatewayUtils.DISCOVERY_NQN:
             self.cli.parser.error("Can't add a discovery subsystem")
 
         req = pb2.create_subsystem_req(subsystem_nqn=args.subsystem,
                                         serial_number=args.serial_number,
                                         max_namespaces=args.max_namespaces,
-                                        ana_reporting=args.ana_reporting,
                                         enable_ha=args.enable_ha)
         try:
             ret = self.stub.create_subsystem(req)
@@ -603,8 +600,6 @@ class GatewayClient:
             self.cli.parser.error("--serial-number argument is not allowed for del command")
         if args.max_namespaces != None:
             self.cli.parser.error("--max-namespaces argument is not allowed for del command")
-        if args.ana_reporting:
-            self.cli.parser.error("--ana-reporting argument is not allowed for del command")
         if args.enable_ha:
             self.cli.parser.error("--enable-ha argument is not allowed for del command")
         if args.subsystem == GatewayUtils.DISCOVERY_NQN:
@@ -645,8 +640,6 @@ class GatewayClient:
         out_func, err_func = self.get_output_functions(args)
         if args.max_namespaces != None:
             self.cli.parser.error("--max-namespaces argument is not allowed for list command")
-        if args.ana_reporting:
-            self.cli.parser.error("--ana-reporting argument is not allowed for list command")
         if args.enable_ha:
             self.cli.parser.error("--enable-ha argument is not allowed for list command")
         if args.force:
@@ -719,7 +712,6 @@ class GatewayClient:
         argument("--subsystem", "-n", help="Subsystem NQN", required=False),
         argument("--serial-number", "-s", help="Serial number", required=False),
         argument("--max-namespaces", "-m", help="Maximum number of namespaces", type=int, required=False),
-        argument("--ana-reporting", "-a", help="Enable ANA reporting", action='store_true', required=False),
         argument("--enable-ha", "-t", help="Enable automatic HA", action='store_true', required=False),
         argument("--force", help="Delete subsytem's namespaces if any, then delete subsystem. If not set a subsystem deletion would fail in case it contains namespaces", action='store_true', required=False),
     ])
@@ -762,7 +754,6 @@ class GatewayClient:
             adrfam=adrfam,
             traddr=traddr,
             trsvcid=args.trsvcid,
-            auto_ha_state="AUTO_HA_UNSET",
         )
 
         try:
