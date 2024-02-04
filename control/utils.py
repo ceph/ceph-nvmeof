@@ -202,16 +202,19 @@ class GatewayLogger:
             if self.handler:
                 return
 
-        frmtr = logging.Formatter(fmt='[%(asctime)s] %(levelname)s %(filename)s:%(lineno)d: %(message)s')
-        frmtr.default_msec_format = None
+        format_string = "[%(asctime)s] %(levelname)s %(filename)s:%(lineno)d: %(message)s"
+        date_fmt_string = "%d-%b-%Y %H:%M:%S"
+        frmtr = logging.Formatter(fmt=format_string, datefmt=date_fmt_string)
 
         if config:
+            verbose = config.getboolean_with_default("gateway", "verbose_log_messages", True)
             log_files_enabled = config.getboolean_with_default("gateway", "log_files_enabled", True)
             log_files_rotation_enabled = config.getboolean_with_default("gateway", "log_files_rotation_enabled", True)
             max_log_file_size = config.getint_with_default("gateway", "max_log_file_size_in_mb", GatewayLogger.MAX_LOG_FILE_SIZE_DEFAULT)
             max_log_files_count = config.getint_with_default("gateway", "max_log_files_count", GatewayLogger.MAX_LOG_FILES_COUNT_DEFAULT)
             log_level = config.get_with_default("gateway", "log_level", "info")
         else:
+            verbose = True
             log_files_enabled = False
             log_files_rotation_enabled = False
             max_log_file_size = GatewayLogger.MAX_LOG_FILE_SIZE_DEFAULT
@@ -237,7 +240,9 @@ class GatewayLogger:
             except Exception:
                 pass
 
-        logging.basicConfig(level=GatewayLogger.get_log_level(log_level))
+        if not verbose:
+            format_string = None
+        logging.basicConfig(level=GatewayLogger.get_log_level(log_level), format=format_string, datefmt=date_fmt_string)
         self.logger = logging.getLogger("nvmeof")
         if self.handler:
             self.logger.addHandler(self.handler)
