@@ -202,9 +202,6 @@ class GatewayLogger:
             if self.handler:
                 return
 
-        frmtr = logging.Formatter(fmt='[%(asctime)s] %(levelname)s %(filename)s:%(lineno)d: %(message)s')
-        frmtr.default_msec_format = None
-
         if config:
             log_files_enabled = config.getboolean_with_default("gateway", "log_files_enabled", True)
             log_files_rotation_enabled = config.getboolean_with_default("gateway", "log_files_rotation_enabled", True)
@@ -225,22 +222,24 @@ class GatewayLogger:
             if not log_files_rotation_enabled:
                 max_log_file_size = 0
                 max_log_files_count = 0
-            try:
-                os.makedirs(self.log_directory, 0o777, True)
-                logdir_ok = True
-                self.handler = logging.handlers.RotatingFileHandler(self.log_directory + "/" + GatewayLogger.NVME_LOG_FILE_NAME,
-                                                 maxBytes = max_log_file_size * 1024 * 1024,
-                                                 backupCount = max_log_files_count)
-                self.handler.setFormatter(frmtr)
-                if log_files_rotation_enabled:
-                    self.handler.rotator = GatewayLogger.log_file_rotate
-            except Exception:
-                pass
+            os.makedirs(self.log_directory, 0o755, True)
+            logdir_ok = True
+            self.handler = logging.handlers.RotatingFileHandler(self.log_directory + "/" + GatewayLogger.NVME_LOG_FILE_NAME,
+                                                maxBytes = max_log_file_size * 1024 * 1024,
+                                                backupCount = max_log_files_count)
+            if log_files_rotation_enabled:
+                self.handler.rotator = GatewayLogger.log_file_rotate
+        else:
+            self.handler = logging.StreamHandler(stream=sys.stdout)
+
 
         logging.basicConfig(level=GatewayLogger.get_log_level(log_level))
         self.logger = logging.getLogger("nvmeof")
-        if self.handler:
-            self.logger.addHandler(self.handler)
+
+        frmtr = logging.Formatter(fmt='[%(asctime)s] %(levelname)s %(filename)s:%(lineno)d: %(message)s')
+        frmtr.default_msec_format = None
+        self.logger.addHandler(self.handler)
+        self.handler.setFormatter(frmtr)
         GatewayLogger.logger = self.logger
         GatewayLogger.handler = self.handler
         if not GatewayLogger.init_executed:
