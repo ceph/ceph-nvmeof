@@ -685,7 +685,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         # Iterate over nqn_ana_states in ana_info
         for nas in ana_info.states:
             nqn = nas.nqn
-            prefix = f"{self.gateway_state.local.LISTENER_PREFIX}{nqn}_{self.gateway_name}_"
+            prefix = f"{self.gateway_state.local.LISTENER_PREFIX}{nqn}{GatewayState.OMAP_KEY_DELIMITER}{self.gateway_name}{GatewayState.OMAP_KEY_DELIMITER}"
             listener_keys = [key for key in state.keys() if key.startswith(prefix)]
             self.logger.info(f"Iterate over {nqn=} {prefix=} {listener_keys=}")
             # fill the static gateway dictionary per nqn and grp_id
@@ -1741,12 +1741,20 @@ class GatewayService(pb2_grpc.GatewayServicer):
     def matching_listener_exists(self, context, nqn, gw_name, traddr, trsvcid) -> bool:
         if not context:
             return False
-        listener_key = GatewayState.build_listener_key(nqn, gw_name, "TCP", traddr, trsvcid)
+
         state = self.gateway_state.local.get_state()
-        if state.get(listener_key):
+        # We want to check for all the listeners for this address and port, regardless of the gateway
+        key_prefix = GatewayState.build_partial_listener_key(nqn)
+        key_suffix = GatewayState.build_listener_key_suffix("", "TCP", traddr, trsvcid)
+
+        for key, val in state.items():
+            if not key.startswith(key_prefix):
+                continue
+            if not key.endswith(key_suffix):
+                continue
             return True
-        else:
-            return False
+
+        return False
 
     def create_listener_safe(self, request, context):
         """Creates a listener for a subsystem at a given IP/Port."""
@@ -1945,41 +1953,29 @@ class GatewayService(pb2_grpc.GatewayServicer):
         """List listeners."""
 
         self.logger.info(f"Received request to list listeners for {request.subsystem}, context: {context}")
-        try:
-            ret = rpc_nvmf.nvmf_get_subsystems(self.spdk_rpc_client, nqn=request.subsystem)
-            self.logger.info(f"list_listeners: {ret}")
-        except Exception as ex:
-            errmsg = f"Failure listing listeners, can't get subsystems:\n{ex}"
-            self.logger.error(f"{errmsg}")
-            resp = self.parse_json_exeption(ex)
-            status = errno.EINVAL
-            if resp:
-                status = resp["code"]
-                errmsg = f"Failure listing listeners, can't get subsystems: {resp['message']}"
-            return pb2.listeners_info(status=status, error_message=errmsg, listeners=[])
 
         listeners = []
-        for s in ret:
-            try:
-                if s["nqn"] != request.subsystem:
-                    self.logger.warning(f'Got subsystem {s["nqn"]} instead of {request.subsystem}, ignore')
+        with self.omap_lock(context=context):
+            state = self.gateway_state.local.get_state()
+            listener_prefix = GatewayState.build_partial_listener_key(request.subsystem)
+            for key, val in state.items():
+                if not key.startswith(listener_prefix):
                     continue
                 try:
-                    listen_addrs = s["listen_addresses"]
-                except Exception:
-                    listen_addrs = []
-                    pass
-                for addr in listen_addrs:
-                    one_listener = pb2.listener_info(gateway_name = self.gateway_name,
-                                                     trtype = addr["trtype"].upper(),
-                                                     adrfam = addr["adrfam"].lower(),
-                                                     traddr = addr["traddr"],
-                                                     trsvcid = int(addr["trsvcid"]))
+                    listener = json.loads(val)
+                    nqn = listener["nqn"]
+                    if nqn != request.subsystem:
+                        self.logger.warning(f"Got subsystem {nqn} instead of {request.subsystem}, ignore")
+                        continue
+                    one_listener = pb2.listener_info(gateway_name = listener["gateway_name"],
+                                                     trtype = "TCP",
+                                                     adrfam = listener["adrfam"],
+                                                     traddr = listener["traddr"],
+                                                     trsvcid = listener["trsvcid"])
                     listeners.append(one_listener)
-                break
-            except Exception:
-                self.logger.exception(f"{s=} parse error: ")
-                pass
+                except Exception as ex:
+                    self.logger.warning(f"Got exception while parsing {val}:\n{ex}")
+                    continue
 
         return pb2.listeners_info(status = 0, error_message = os.strerror(0), listeners=listeners)
 
