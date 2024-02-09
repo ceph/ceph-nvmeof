@@ -15,6 +15,9 @@ import logging
 import logging.handlers
 import gzip
 import shutil
+import netifaces
+from typing import Tuple, List
+
 
 class GatewayEnumUtils:
     def get_value_from_key(e_type, keyval, ignore_case = False):
@@ -398,3 +401,102 @@ class GatewayLogger:
             self.logger.error(e)
         self.logger = None
         GatewayLogger.logger = None
+
+
+class NICS:
+    ignored_device_prefixes = ('lo')
+
+    def __init__(self):
+        self.addresses = {}
+        self.adapters = {}
+        self._build_adapter_info()
+
+    def _build_adapter_info(self):
+        for device_name in [nic for nic in netifaces.interfaces() if not nic.startswith(NICS.ignored_device_prefixes)]:
+            nic = NIC(device_name)
+            for ipv4_addr in nic.ipv4_addresses:
+                self.addresses[ipv4_addr] = device_name
+            for ipv6_addr in nic.ipv6_addresses:
+                self.addresses[ipv6_addr] = device_name
+
+            self.adapters[device_name] = nic
+
+
+class NIC:
+
+    sysfs_root = '/sys/class/net'
+
+    def __init__(self, device_name: str) -> None:
+        self.device_name = device_name
+
+        self.mac_list = ''
+        self.ipv4_list = []
+        self.ipv6_list = []
+
+        self._extract_addresses()
+
+    def _extract_addresses(self) -> None:
+        addr_info = netifaces.ifaddresses(self.device_name)
+        self.mac_list = addr_info.get(netifaces.AF_LINK, [])
+        self.ipv4_list = addr_info.get(netifaces.AF_INET, [])
+        self.ipv6_list = addr_info.get(netifaces.AF_INET6, [])
+
+    def _read_sysfs(self, file_name: str) -> Tuple[int, str]:
+        err = 0
+        try:
+            with open(file_name) as f:
+                content = f.read().rstrip()
+        except Exception:
+            # log the error and the filename
+            err = 1
+            content = ''
+
+        return err, content
+
+    @property
+    def operstate(self) -> str:
+        err, content = self._read_sysfs(f"{NIC.sysfs_root}/{self.device_name}/operstate")
+        return content if not err else ''
+
+    @property
+    def mtu(self) -> int:
+        err, content = self._read_sysfs(f"{NIC.sysfs_root}/{self.device_name}/mtu")
+        return int(content) if not err else 0
+
+    @property
+    def duplex(self) -> str:
+        err, content = self._read_sysfs(f"{NIC.sysfs_root}/{self.device_name}/duplex")
+        return content if not err else ''
+
+    @property
+    def speed(self) -> int:
+        err, content = self._read_sysfs(f"{NIC.sysfs_root}/{self.device_name}/speed")
+        return int(content) if not err else 0
+
+    @property
+    def mac_address(self) -> str:
+        if self.mac_list:
+            return self.mac_list[0].get('addr')
+        else:
+            return ''
+
+    @property
+    def ipv4_addresses(self) -> List[str]:
+        return [ipv4_info.get('addr') for ipv4_info in self.ipv4_list]
+
+    @property
+    def ipv6_addresses(self) -> List[str]:
+        # Note. ipv6 addresses are suffixed by the adapter name
+        return [ipv6_info.get('addr').split('%')[0] for ipv6_info in self.ipv6_list]
+
+    def __str__(self):
+        return (
+            f"Device: {self.device_name}\n"
+            f"Status: {self.operstate}\n"
+            f"Speed: {self.speed}\n"
+            f"MTU: {self.mtu}\n"
+            f"Duplex: {self.duplex}\n"
+            f"MAC: {self.mac_address}\n"
+            f"ip v4: {','.join(self.ipv4_addresses)}\n"
+            f"ip v6: {','.join(self.ipv6_addresses)}\n"
+        )
