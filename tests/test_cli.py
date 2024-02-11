@@ -221,10 +221,10 @@ class TestCreate:
         cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", "junk", "--rbd-image", image2, "--uuid", uuid, "--size", "16MiB", "--rbd-create-image"])
         assert f"RBD pool junk doesn't exist" in caplog.text
         caplog.clear()
-        cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool, "--rbd-image", image2, "--uuid", uuid, "--size", "16MiB", "--rbd-create-image"])
+        cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool, "--rbd-image", image2, "--uuid", uuid, "--size", "16MiB", "--rbd-create-image", "--force"])
         assert f"Adding namespace 1 to {subsystem}, load balancing group 1: Successful" in caplog.text
         caplog.clear()
-        cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool, "--rbd-image", image2, "--size", "36M", "--rbd-create-image"])
+        cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool, "--rbd-image", image2, "--size", "36M", "--rbd-create-image", "--force"])
         assert f"Image {pool}/{image2} already exists with a size of 16777216 bytes which differs from the requested size of 37748736 bytes" in caplog.text
         assert f"Can't create RBD image {image}" in caplog.text
         caplog.clear()
@@ -292,16 +292,36 @@ class TestCreate:
 
     def test_add_namespace_ipv6(self, caplog, gateway):
         caplog.clear()
-        cli(["--server-address", server_addr_ipv6, "namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool, "--rbd-image", image])
+        cli(["--server-address", server_addr_ipv6, "namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool, "--rbd-image", image, "--force"])
         assert f"Adding namespace 3 to {subsystem}, load balancing group 1: Successful" in caplog.text
+        assert f'will continue as the "force" argument was used' in caplog.text
         caplog.clear()
         cli(["--format", "json", "namespace", "list", "--subsystem", subsystem, "--nsid", "3"])
         assert '"load_balancing_group": 0' in caplog.text
-        cli(["--server-address", server_addr_ipv6, "namespace", "add", "--subsystem", subsystem, "--nsid", "8", "--rbd-pool", pool, "--rbd-image", image])
+        cli(["--server-address", server_addr_ipv6, "namespace", "add", "--subsystem", subsystem, "--nsid", "8", "--rbd-pool", pool, "--rbd-image", image, "--force"])
         assert f"Adding namespace 8 to {subsystem}, load balancing group 1: Successful" in caplog.text
         caplog.clear()
         cli(["--format", "json", "namespace", "list", "--subsystem", subsystem, "--nsid", "8"])
         assert '"load_balancing_group": 0' in caplog.text
+
+    def test_add_namespace_same_image(self, caplog, gateway):
+        caplog.clear()
+        img_name = f"{image}_test"
+        cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool, "--rbd-image", img_name, "--size", "16MiB", "--rbd-create-image"])
+        assert f"Adding namespace 4 to {subsystem}, load balancing group 1: Successful" in caplog.text
+        caplog.clear()
+        cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool, "--rbd-image", img_name, "--size", "16MiB", "--rbd-create-image"])
+        assert f"RBD image {pool}/{img_name} is already used by a namespace" in caplog.text
+        assert f"you can find the offending namespace by using" in caplog.text
+        caplog.clear()
+        cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool, "--rbd-image", img_name])
+        assert f"RBD image {pool}/{img_name} is already used by a namespace" in caplog.text
+        assert f"you can find the offending namespace by using" in caplog.text
+        caplog.clear()
+        cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool, "--rbd-image", img_name, "--force"])
+        assert f"Adding namespace 5 to {subsystem}, load balancing group 1: Successful" in caplog.text
+        assert f"RBD image {pool}/{img_name} is already used by a namespace" in caplog.text
+        assert f'will continue as the "force" argument was used' in caplog.text
 
     def test_resize_namespace(self, caplog, gateway):
         gw, stub = gateway
@@ -382,7 +402,7 @@ class TestCreate:
         cli(["namespace", "resize", "--subsystem", subsystem, "--nsid", nsid, "--size", "128MiB"])
         assert f"Failure resizing namespace using NSID {nsid} on {subsystem}: Can't find namespace" in caplog.text
         caplog.clear()
-        cli(["namespace", "add", "--subsystem", subsystem, "--nsid", nsid, "--rbd-pool", pool, "--rbd-image", image, "--uuid", uuid])
+        cli(["namespace", "add", "--subsystem", subsystem, "--nsid", nsid, "--rbd-pool", pool, "--rbd-image", image, "--uuid", uuid, "--force"])
         assert f"Adding namespace 1 to {subsystem}, load balancing group 1: Successful" in caplog.text
 
     def test_set_namespace_qos_limits(self, caplog, gateway):

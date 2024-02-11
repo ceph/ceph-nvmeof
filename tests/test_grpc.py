@@ -14,7 +14,7 @@ subsys_list_count = 5
 def create_resource_by_index(i):
     subsystem = f"{subsystem_prefix}{i}"
     cli(["subsystem", "add", "--subsystem", subsystem, "--enable-ha" ])
-    cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool, "--rbd-image", image, "--size", "16MiB", "--rbd-create-image"])
+    cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool, "--rbd-image", image, "--size", "16MiB", "--rbd-create-image", "--force"])
 
 def check_resource_by_index(i, caplog):
     subsystem = f"{subsystem_prefix}{i}"
