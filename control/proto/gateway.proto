@@ -75,8 +75,8 @@ service Gateway {
 	// List subsystems
 	rpc list_subsystems(list_subsystems_req) returns(subsystems_info_cli) {}
 
-        // Gets subsystems
-        rpc get_subsystems(get_subsystems_req) returns(subsystems_info) {}
+	// Gets subsystems
+	rpc get_subsystems(get_subsystems_req) returns(subsystems_info) {}
 
 	// Set gateway ANA states
 	rpc set_ana_state(ana_info) returns(req_status) {}
@@ -84,8 +84,8 @@ service Gateway {
 	// Gets spdk nvmf log flags and level
 	rpc get_spdk_nvmf_log_flags_and_level(get_spdk_nvmf_log_flags_and_level_req) returns(spdk_nvmf_log_flags_and_level_info) {}
 
-        // Disables spdk nvmf logs
-        rpc disable_spdk_nvmf_logs(disable_spdk_nvmf_logs_req) returns(req_status) {}
+	// Disables spdk nvmf logs
+	rpc disable_spdk_nvmf_logs(disable_spdk_nvmf_logs_req) returns(req_status) {}
 
 	// Set spdk nvmf logs
 	rpc set_spdk_nvmf_logs(set_spdk_nvmf_logs_req) returns(req_status) {}
@@ -336,22 +336,10 @@ message gateway_info {
         uint32 load_balancing_group = 11;
 }
 
-message cli_version {
-	int32 status = 1;
-	string error_message = 2;
-	string version = 3;
-}
-
-message gw_version {
-	int32 status = 1;
-	string error_message = 2;
-	string version = 3;
-}
-
 message listener_info {
 	string gateway_name = 1;
 	string trtype = 2;
-	AddressFamily adrfam = 3;
+	string adrfam = 3;
 	string traddr = 4;
 	uint32 trsvcid = 5;
 }
@@ -378,8 +366,8 @@ message connection {
 	string nqn = 1;
 	string traddr = 2;
 	uint32 trsvcid = 3;
-        string trtype = 4;
-	AddressFamily adrfam = 5;
+	string trtype = 4;
+	string adrfam = 5;
 	bool connected = 6;
 	int32 qpairs_count = 7;
 	int32 controller_id = 8;

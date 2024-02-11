@@ -1900,16 +1900,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
                         addr = qp["listen_address"]
                         traddr = addr["traddr"]
                         trsvcid = int(addr["trsvcid"])
-                        try:
-                            trtype = addr["trtype"].upper()
-                        except Exception:
-                            pass
-                        try:
-                            adrfam = addr["adrfam"].lower()
-                        except Exception:
-                            pass
-                        break
-                    except Exception:
+                        trtype = addr["trtype"]
+                        adrfam = addr["adrfam"]
+                    except Exception as ex:
                         self.logger.exception(f"Got exception while parsing qpair: {qp}")
                         pass
                 one_conn = pb2.connection(nqn=hostnqn, connected=True,
