@@ -5,6 +5,8 @@ on:  # yamllint disable rule:truthy
   push:
     tags:
       - '*'
+    branches:
+      - '*'
   pull_request:
     branches:
       - devel
@@ -507,7 +509,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        test: ["sanity", "state_transitions"]
+        test: ["sanity", "state_transitions", "state_transitions_both_gws", "state_transitions_loop", "state_transitions_rand_loop"]
     runs-on: ubuntu-latest
     env:
       HUGEPAGES: 768  # 3 spdk instances
@@ -556,7 +558,7 @@ jobs:
           source tests/ha/setup.sh
 
       - name: Run HA ${{ matrix.test }} test
-        timeout-minutes: 5
+        timeout-minutes: 30
         run: |
           . .env
           source "tests/ha/${{ matrix.test }}.sh"
