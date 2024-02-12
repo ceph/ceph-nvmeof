@@ -139,7 +139,7 @@ def create_resource_by_index(stub, i, caplog):
         assert f"Failure creating subsystem {subsystem}" not in caplog.text
     namespace_req = pb2.namespace_add_req(subsystem_nqn=subsystem,
                                           rbd_pool_name=pool, rbd_image_name=image, block_size=4096,
-                                          create_image=True, size=16*1024*1024)
+                                          create_image=True, size=16*1024*1024, force=True)
     ret_namespace = stub.namespace_add(namespace_req)
     assert ret_namespace.status == 0
     hostnqn = build_host_nqn(i)
@@ -186,7 +186,7 @@ def test_multi_gateway_omap_reread(config, conn_omap_reread, caplog):
     subsystem_req = pb2.create_subsystem_req(subsystem_nqn=nqn, serial_number=serial)
     namespace_req = pb2.namespace_add_req(subsystem_nqn=nqn, nsid=nsid,
                                           rbd_pool_name=pool, rbd_image_name=image, block_size=4096,
-                                          create_image=True, size=16*1024*1024)
+                                          create_image=True, size=16*1024*1024, force=True)
 
     subsystem_list_req = pb2.list_subsystems_req()
     ret_subsystem = stubA.create_subsystem(subsystem_req)
@@ -208,7 +208,7 @@ def test_multi_gateway_omap_reread(config, conn_omap_reread, caplog):
     ns2_req = pb2.namespace_add_req(subsystem_nqn=nqn,
                                    rbd_pool_name=pool,
                                    rbd_image_name=image,
-                                   block_size=4096, create_image=True, size=16*1024*1024)
+                                   block_size=4096, create_image=True, size=16*1024*1024, force=True)
     ret_ns2 = stubB.namespace_add(ns2_req)
     assert ret_ns2.status == 0
     assert "The file is not current, will reload it and try again" in caplog.text
@@ -226,7 +226,7 @@ def test_multi_gateway_omap_reread(config, conn_omap_reread, caplog):
     ns3_req = pb2.namespace_add_req(subsystem_nqn=nqn,
                                    rbd_pool_name=pool,
                                    rbd_image_name=image,
-                                   block_size=4096, create_image=True, size=16*1024*1024)
+                                   block_size=4096, create_image=True, size=16*1024*1024, force=True)
     ret_ns3 = stubB.namespace_add(ns3_req)
     assert ret_ns3.status == 0
     assert "The file is not current, will reload it and try again" not in caplog.text

@@ -106,6 +106,7 @@ message namespace_add_req {
 	optional int32 anagrpid = 7;
 	optional bool create_image = 8;
 	optional uint32 size = 9;
+	optional bool force = 10;
 }
 
 message namespace_resize_req {

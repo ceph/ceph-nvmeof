@@ -1176,7 +1176,8 @@ class GatewayClient:
                                             uuid=args.uuid,
                                             anagrpid=args.load_balancing_group,
                                             create_image=args.rbd_create_image,
-                                            size=img_size)
+                                            size=img_size,
+                                            force=args.force)
         try:
             ret = self.stub.namespace_add(req)
         except Exception as ex:
@@ -1237,6 +1238,8 @@ class GatewayClient:
             self.cli.parser.error("--r-megabytes-per-second argument is not allowed for del command")
         if args.w_megabytes_per_second != None:
             self.cli.parser.error("--w-megabytes-per-second argument is not allowed for del command")
+        if args.force:
+            self.cli.parser.error("--force argument is not allowed for del command")
 
         try:
             ret = self.stub.namespace_delete(pb2.namespace_delete_req(subsystem_nqn=args.subsystem, nsid=args.nsid, uuid=args.uuid))
@@ -1306,6 +1309,8 @@ class GatewayClient:
             self.cli.parser.error("--r-megabytes-per-second argument is not allowed for resize command")
         if args.w_megabytes_per_second != None:
             self.cli.parser.error("--w-megabytes-per-second argument is not allowed for resize command")
+        if args.force:
+            self.cli.parser.error("--force argument is not allowed for resize command")
 
         try:
             ret = self.stub.namespace_resize(pb2.namespace_resize_req(subsystem_nqn=args.subsystem, nsid=args.nsid,
@@ -1453,6 +1458,8 @@ class GatewayClient:
             self.cli.parser.error("--r-megabytes-per-second argument is not allowed for list command")
         if args.w_megabytes_per_second != None:
             self.cli.parser.error("--w-megabytes-per-second argument is not allowed for list command")
+        if args.force:
+            self.cli.parser.error("--force argument is not allowed for list command")
 
         try:
             namespaces_info = self.stub.list_namespaces(pb2.list_namespaces_req(subsystem=args.subsystem,
@@ -1564,6 +1571,8 @@ class GatewayClient:
             self.cli.parser.error("--r-megabytes-per-second argument is not allowed for get_io_stats command")
         if args.w_megabytes_per_second != None:
             self.cli.parser.error("--w-megabytes-per-second argument is not allowed for get_io_stats command")
+        if args.force:
+            self.cli.parser.error("--force argument is not allowed for get_io_stats command")
 
         try:
             get_stats_req = pb2.namespace_get_io_stats_req(subsystem_nqn=args.subsystem, nsid=args.nsid, uuid=args.uuid)
@@ -1669,6 +1678,8 @@ class GatewayClient:
             self.cli.parser.error("--r-megabytes-per-second argument is not allowed for change_load_balancing_group command")
         if args.w_megabytes_per_second != None:
             self.cli.parser.error("--w-megabytes-per-second argument is not allowed for change_load_balancing_group command")
+        if args.force:
+            self.cli.parser.error("--force argument is not allowed for change_load_balancing_group command")
 
         try:
             change_lb_group_req = pb2.namespace_change_load_balancing_group_req(subsystem_nqn=args.subsystem,
@@ -1733,6 +1744,8 @@ class GatewayClient:
             self.cli.parser.error("--rbd-image argument is not allowed for set_qos command")
         if args.rbd_create_image:
             self.cli.parser.error("--rbd-create-image argument is not allowed for set_qos command")
+        if args.force:
+            self.cli.parser.error("--force argument is not allowed for set_qos command")
         if args.rw_ios_per_second == None and args.rw_megabytes_per_second == None and args.r_megabytes_per_second == None and args.w_megabytes_per_second == None:
             self.cli.parser.error("At least one QOS limit should be set")
 
@@ -1806,6 +1819,7 @@ class GatewayClient:
         argument("--rw-megabytes-per-second", help="R/W megabytes per second limit, 0 means unlimited", type=int),
         argument("--r-megabytes-per-second", help="Read megabytes per second limit, 0 means unlimited", type=int),
         argument("--w-megabytes-per-second", help="Write megabytes per second limit, 0 means unlimited", type=int),
+        argument("--force", help="Create a namespace even its image is already used by another namespace", action='store_true', required=False),
     ]
     @cli.cmd(ns_args_list, ["ns"])
     def namespace(self, args):

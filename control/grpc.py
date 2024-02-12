@@ -602,6 +602,28 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 self.logger.warning(f"Will continue deleting {request.subsystem_nqn} anyway")
         return self.execute_grpc_function(self.delete_subsystem_safe, request, context)
 
+    def check_if_image_used(self, pool_name, image_name):
+        """Check if image is used by any other namespace."""
+
+        errmsg = ""
+        nqn = None
+        state = self.gateway_state.local.get_state()
+        for key, val in state.items():
+            if not key.startswith(self.gateway_state.local.NAMESPACE_PREFIX):
+                continue
+            try:
+                ns = json.loads(val)
+                ns_pool = ns["rbd_pool_name"]
+                ns_image = ns["rbd_image_name"]
+                if pool_name and pool_name == ns_pool and image_name and image_name == ns_image:
+                    nqn = ns["subsystem_nqn"]
+                    errmsg = f"RBD image {ns_pool}/{ns_image} is already used by a namespace in subsystem {nqn}"
+                    break
+            except Exception:
+                self.logger.exception(f"Got exception while parsing {val}")
+                continue
+        return errmsg, nqn
+
     def create_namespace(self, subsystem_nqn, bdev_name, nsid, anagrpid, uuid, context):
         """Adds a namespace to a subsystem."""
  
@@ -736,6 +758,15 @@ class GatewayService(pb2_grpc.GatewayServicer):
             request.uuid = str(uuid.uuid4())
 
         with self.omap_lock(context=context):
+            errmsg, ns_nqn = self.check_if_image_used(request.rbd_pool_name, request.rbd_image_name)
+            if errmsg and ns_nqn:
+                if request.force:
+                    self.logger.warning(f"{errmsg}, will continue as the \"force\" argument was used")
+                else:
+                    errmsg = f"{errmsg}, either delete the namespace or use the \"force\" argument,\nyou can find the offending namespace by using the \"namespace list --subsystem {ns_nqn}\" CLI command"
+                    self.logger.error(errmsg)
+                    return pb2.nsid_status(status=errno.EEXIST, error_message=errmsg)
+
             bdev_name = self.find_unique_bdev_name(request.uuid)
 
             ret_bdev = self.create_bdev(bdev_name, request.uuid, request.rbd_pool_name,
