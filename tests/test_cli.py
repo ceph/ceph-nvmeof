@@ -525,7 +525,7 @@ class TestCreate:
         except SystemExit as sysex:
             rc = int(str(sysex))
             pass
-        assert "error: --host argument is mandatory for add command" in caplog.text
+        assert "error: the following arguments are required: --host/-t" in caplog.text
         assert rc == 2
         caplog.clear()
         cli(["host", "add", "--subsystem", subsystem, "--host", host])
@@ -625,7 +625,7 @@ class TestDelete:
         except SystemExit as sysex:
             rc = int(str(sysex))
             pass
-        assert "error: --host argument is mandatory for del command" in caplog.text
+        assert "error: the following arguments are required: --host/-t" in caplog.text
         assert rc == 2
         caplog.clear()
         cli(["host", "del", "--subsystem", subsystem, "--host", host])
@@ -655,7 +655,7 @@ class TestDelete:
         except SystemExit as sysex:
             rc = int(str(sysex))
             pass
-        assert "error: --trsvcid argument is mandatory for del command" in caplog.text
+        assert "error: the following arguments are required: --trsvcid/-s" in caplog.text
         assert rc == 2
         caplog.clear()
         cli(["listener", "del", "--trsvcid", "4420", "--subsystem", subsystem] + listener)

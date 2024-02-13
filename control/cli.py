@@ -126,7 +126,7 @@ class Parser:
 
         self.subparsers = self.parser.add_subparsers(title="Commands", dest="subcommand")
 
-    def cmd(self, args=[], aliases=[]):
+    def cmd(self, actions=[], aliases=[], hlp=None):
         """Decorator to create an argparse command.
 
         The arguments to this decorator are used as arguments for the argparse
@@ -134,12 +134,20 @@ class Parser:
         """
 
         def decorator(func):
+            helpstr = func.__doc__
+            if hlp:
+                helpstr = hlp
+
             parser = self.subparsers.add_parser(func.__name__,
-                                                description=func.__doc__, aliases=aliases, help=func.__doc__)
-            # Add specified arguments to the parser and set the function
-            # attribute to point to the subcommand's associated function
-            for arg in args:
-                parser.add_argument(*arg[0], **arg[1])
+                                                description=helpstr, aliases=aliases, help=helpstr)
+            subp = parser.add_subparsers(title="Action", dest="action")
+            for act in actions:
+                act_name = act["name"]
+                act_args = act["args"]
+                act_help = act["help"]
+                pr = subp.add_parser(act_name, description=act_help, help=act_help)
+                for arg in act_args:
+                    pr.add_argument(*arg[0], **arg[1])
 
             @wraps(func)
             def wrapper(*args, **kwargs):
@@ -232,8 +240,7 @@ class GatewayClient:
         else:
             self.cli.parser.error("invalid --output value")
 
-    @cli.cmd([
-    ])
+    @cli.cmd()
     def version(self, args):
         """Get CLI version"""
         rc = 0
@@ -380,26 +387,24 @@ class GatewayClient:
 
         return gw_info.status
 
-    @cli.cmd([
-        argument("gw_command", help="gw sub-command", choices=["version", "info"]),
-    ])
+    gw_actions = []
+    gw_actions.append({"name" : "version", "args" : [], "help" : "Display gateway's version"})
+    gw_actions.append({"name" : "info", "args" : [], "help" : "Display gateway's information"})
+    @cli.cmd(gw_actions)
     def gw(self, args):
         """Gateway commands"""
 
-        if args.gw_command == "info":
+        if args.action == "info":
             return self.gw_info(args)
-        elif args.gw_command == "version":
+        elif args.action == "version":
             return self.gw_version(args)
-        assert False
+        if not args.action:
+            self.cli.parser.error("missing action for gw command")
 
     def log_level_disable(self, args):
         """Disable SPDK nvmf log flags"""
 
         out_func, err_func = self.get_output_functions(args)
-        if args.level != None:
-            self.cli.parser.error("--level argument is not allowed for disable command")
-        if args.print != None:
-            self.cli.parser.error("--print argument is not allowed for disable command")
 
         req = pb2.disable_spdk_nvmf_logs_req()
         try:
@@ -434,10 +439,6 @@ class GatewayClient:
         """Get SPDK log levels and nvmf log flags"""
 
         out_func, err_func = self.get_output_functions(args)
-        if args.level != None:
-            self.cli.parser.error("--level argument is not allowed for get command")
-        if args.print != None:
-            self.cli.parser.error("--print argument is not allowed for get command")
 
         req = pb2.get_spdk_nvmf_log_flags_and_level_req()
         try:
@@ -526,22 +527,29 @@ class GatewayClient:
 
         return ret.status
 
-    @cli.cmd([
-        argument("log_level_command", help="log level sub-command", choices=["get", "set", "disable"]),
+    log_get_args = []
+    log_set_args = [
         argument("--level", "-l", help="SPDK nvmf log level", required=False,
                  type=str, choices=get_enum_keys_list(pb2.LogLevel)),
         argument("--print", "-p", help="SPDK nvmf log print level", required=False,
                  type=str, choices=get_enum_keys_list(pb2.LogLevel)),
-    ])
+    ]
+    log_disable_args = []
+    log_actions = []
+    log_actions.append({"name" : "get", "args" : log_get_args, "help" : "Get SPDK log levels and nvmf log flags"})
+    log_actions.append({"name" : "set", "args" : log_set_args, "help" : "Set SPDK log levels and nvmf log flags"})
+    log_actions.append({"name" : "disable", "args" : log_disable_args, "help" : "Disable SPDK nvmf log flags"})
+    @cli.cmd(log_actions)
     def log_level(self, args):
-        """Log level commands"""
-        if args.log_level_command == "get":
+        """SPDK nvmf log level commands"""
+        if args.action == "get":
             return self.log_level_get(args)
-        elif args.log_level_command == "set":
+        elif args.action == "set":
             return self.log_level_set(args)
-        elif args.log_level_command == "disable":
+        elif args.action == "disable":
             return self.log_level_disable(args)
-        assert False
+        if not args.action:
+            self.cli.parser.error("missing action for log_level command")
 
     def subsystem_add(self, args):
         """Create a subsystem"""
@@ -551,10 +559,6 @@ class GatewayClient:
             args.max_namespaces = 256
         if args.max_namespaces <= 0:
             self.cli.parser.error("--max-namespaces value must be positive")
-        if not args.subsystem:
-            self.cli.parser.error("--subsystem argument is mandatory for add command")
-        if args.force:
-            self.cli.parser.error("--force argument is not allowed for add command")
         if args.subsystem == GatewayUtils.DISCOVERY_NQN:
             self.cli.parser.error("Can't add a discovery subsystem")
 
@@ -594,14 +598,6 @@ class GatewayClient:
         """Delete a subsystem"""
 
         out_func, err_func = self.get_output_functions(args)
-        if not args.subsystem:
-            self.cli.parser.error("--subsystem argument is mandatory for del command")
-        if args.serial_number != None:
-            self.cli.parser.error("--serial-number argument is not allowed for del command")
-        if args.max_namespaces != None:
-            self.cli.parser.error("--max-namespaces argument is not allowed for del command")
-        if args.enable_ha:
-            self.cli.parser.error("--enable-ha argument is not allowed for del command")
         if args.subsystem == GatewayUtils.DISCOVERY_NQN:
             self.cli.parser.error("Can't delete a discovery subsystem")
 
@@ -638,12 +634,6 @@ class GatewayClient:
         """List subsystems"""
 
         out_func, err_func = self.get_output_functions(args)
-        if args.max_namespaces != None:
-            self.cli.parser.error("--max-namespaces argument is not allowed for list command")
-        if args.enable_ha:
-            self.cli.parser.error("--enable-ha argument is not allowed for list command")
-        if args.force:
-            self.cli.parser.error("--force argument is not allowed for list command")
 
         subsystems = None
         try:
@@ -707,32 +697,40 @@ class GatewayClient:
 
         return subsystems.status
 
-    @cli.cmd([
-        argument("subsystem_command", help="subsystem sub-command", choices=["add", "del", "list"]),
-        argument("--subsystem", "-n", help="Subsystem NQN", required=False),
+    subsys_add_args = [
+        argument("--subsystem", "-n", help="Subsystem NQN", required=True),
         argument("--serial-number", "-s", help="Serial number", required=False),
         argument("--max-namespaces", "-m", help="Maximum number of namespaces", type=int, required=False),
         argument("--enable-ha", "-t", help="Enable automatic HA", action='store_true', required=False),
+    ]
+    subsys_del_args = [
+        argument("--subsystem", "-n", help="Subsystem NQN", required=True),
         argument("--force", help="Delete subsytem's namespaces if any, then delete subsystem. If not set a subsystem deletion would fail in case it contains namespaces", action='store_true', required=False),
-    ])
+    ]
+    subsys_list_args = [
+        argument("--subsystem", "-n", help="Subsystem NQN", required=False),
+        argument("--serial-number", "-s", help="Serial number", required=False),
+    ]
+    subsystem_actions = []
+    subsystem_actions.append({"name" : "add", "args" : subsys_add_args, "help" : "Create a subsystem"})
+    subsystem_actions.append({"name" : "del", "args" : subsys_del_args, "help" : "Delete a subsystem"})
+    subsystem_actions.append({"name" : "list", "args" : subsys_list_args, "help" : "List subsystems"})
+    @cli.cmd(subsystem_actions)
     def subsystem(self, args):
         """Subsystem commands"""
-        if args.subsystem_command == "add":
+        if args.action == "add":
             return self.subsystem_add(args)
-        elif args.subsystem_command == "del":
+        elif args.action == "del":
             return self.subsystem_del(args)
-        elif args.subsystem_command == "list":
+        elif args.action == "list":
             return self.subsystem_list(args)
-        assert False
+        if not args.action:
+            self.cli.parser.error("missing action for subsystem command")
 
     def listener_add(self, args):
         """Create a listener"""
 
         out_func, err_func = self.get_output_functions(args)
-        if not args.gateway_name:
-            self.cli.parser.error("--gateway-name argument is mandatory for add command")
-        if not args.traddr:
-            self.cli.parser.error("--traddr argument is mandatory for add command")
 
         if args.trsvcid == None:
             args.trsvcid = 4420
@@ -789,12 +787,6 @@ class GatewayClient:
         """Delete a listener"""
 
         out_func, err_func = self.get_output_functions(args)
-        if not args.gateway_name:
-            self.cli.parser.error("--gateway-name argument is mandatory for del command")
-        if not args.traddr:
-            self.cli.parser.error("--traddr argument is mandatory for del command")
-        if args.trsvcid == None:
-            self.cli.parser.error("--trsvcid argument is mandatory for del command")
         if args.trsvcid <= 0:
             self.cli.parser.error("trsvcid value must be positive")
         elif args.trsvcid > 0xffff:
@@ -848,15 +840,6 @@ class GatewayClient:
         """List listeners"""
 
         out_func, err_func = self.get_output_functions(args)
-        if args.gateway_name != None:
-            self.cli.parser.error("--gateway-name argument is not allowed for list command")
-        if args.traddr != None:
-            self.cli.parser.error("--traddr argument is not allowed for list command")
-        if args.adrfam:
-            self.cli.parser.error("--adrfam argument is not allowed for list command")
-        if args.trsvcid != None:
-            self.cli.parser.error("--trsvcid argument is not allowed for list command")
-
         listeners_info = None
         try:
             listeners_info = self.stub.list_listeners(pb2.list_listeners_req(subsystem=args.subsystem))
@@ -901,23 +884,38 @@ class GatewayClient:
 
         return listeners_info.status
 
-    @cli.cmd([
-        argument("listener_command", help="listener sub-command", choices=["add", "del", "list"]),
+    listener_common_args = [
         argument("--subsystem", "-n", help="Subsystem NQN", required=True),
-        argument("--gateway-name", "-g", help="Gateway name", required=False),
-        argument("--adrfam", "-f", help="Address family", default="", choices=get_enum_keys_list(pb2.AddressFamily)),
-        argument("--traddr", "-a", help="NVMe host IP", required=False),
+    ]
+    listener_add_args = listener_common_args + [
+        argument("--gateway-name", "-g", help="Gateway name", required=True),
+        argument("--traddr", "-a", help="NVMe host IP", required=True),
         argument("--trsvcid", "-s", help="Port number", type=int, required=False),
-    ])
+        argument("--adrfam", "-f", help="Address family", default="", choices=get_enum_keys_list(pb2.AddressFamily)),
+    ]
+    listener_del_args = listener_common_args + [
+        argument("--gateway-name", "-g", help="Gateway name", required=True),
+        argument("--traddr", "-a", help="NVMe host IP", required=True),
+        argument("--trsvcid", "-s", help="Port number", type=int, required=True),
+        argument("--adrfam", "-f", help="Address family", default="", choices=get_enum_keys_list(pb2.AddressFamily)),
+    ]
+    listener_list_args = listener_common_args + [
+    ]
+    listener_actions = []
+    listener_actions.append({"name" : "add", "args" : listener_add_args, "help" : "Create a listener"})
+    listener_actions.append({"name" : "del", "args" : listener_del_args, "help" : "Delete a listener"})
+    listener_actions.append({"name" : "list", "args" : listener_list_args, "help" : "List listeners"})
+    @cli.cmd(listener_actions)
     def listener(self, args):
         """Listener commands"""
-        if args.listener_command == "add":
+        if args.action == "add":
             return self.listener_add(args)
-        elif args.listener_command == "del":
+        elif args.action == "del":
             return self.listener_del(args)
-        elif args.listener_command == "list":
+        elif args.action == "list":
             return self.listener_list(args)
-        assert False
+        if not args.action:
+            self.cli.parser.error("missing action for listener command")
 
     def host_add(self, args):
         """Add a host to a subsystem."""
@@ -1008,8 +1006,6 @@ class GatewayClient:
         """List a host for a subsystem."""
 
         out_func, err_func = self.get_output_functions(args)
-        if args.host != None:
-            self.cli.parser.error("--host argument is not allowed for list command")
 
         hosts_info = None
         try:
@@ -1055,20 +1051,32 @@ class GatewayClient:
 
         return hosts_info.status
 
-    @cli.cmd([
-        argument("host_command", help="host sub-command", choices=["add", "del", "list"]),
+    host_common_args = [
         argument("--subsystem", "-n", help="Subsystem NQN", required=True),
-        argument("--host", "-t", help="Host NQN", required=False),
-    ])
+    ]
+    host_add_args = host_common_args + [
+        argument("--host", "-t", help="Host NQN", required=True),
+    ]
+    host_del_args = host_common_args + [
+        argument("--host", "-t", help="Host NQN", required=True),
+    ]
+    host_list_args = host_common_args + [
+    ]
+    host_actions = []
+    host_actions.append({"name" : "add", "args" : host_add_args, "help" : "Add host access to a subsystem"})
+    host_actions.append({"name" : "del", "args" : host_del_args, "help" : "Remove host access from a subsystem"})
+    host_actions.append({"name" : "list", "args" : host_list_args, "help" : "List subsystem's host access"})
+    @cli.cmd(host_actions)
     def host(self, args):
         """Host commands"""
-        if args.host_command == "add":
+        if args.action == "add":
             return self.host_add(args)
-        elif args.host_command == "del":
+        elif args.action == "del":
             return self.host_del(args)
-        elif args.host_command == "list":
+        elif args.action == "list":
             return self.host_list(args)
-        assert False
+        if not args.action:
+            self.cli.parser.error("missing action for host command")
 
     def connection_list(self, args):
         """List connections for a subsystem."""
@@ -1121,15 +1129,18 @@ class GatewayClient:
 
         return connections_info.status
 
-    @cli.cmd([
-        argument("connection_command", help="connection sub-command", choices=["list"]),
+    connection_list_args = [
         argument("--subsystem", "-n", help="Subsystem NQN", required=True),
-    ])
+    ]
+    connection_actions = []
+    connection_actions.append({"name" : "list", "args" : connection_list_args, "help" : "List active connections"})
+    @cli.cmd(connection_actions)
     def connection(self, args):
         """Connection commands"""
-        if args.connection_command == "list":
+        if args.action == "list":
             return self.connection_list(args)
-        assert False
+        if not args.action:
+            self.cli.parser.error("missing action for connection command")
 
     def ns_add(self, args):
         """Adds a namespace to a subsystem."""
@@ -1138,6 +1149,8 @@ class GatewayClient:
         out_func, err_func = self.get_output_functions(args)
         if args.block_size == None:
             args.block_size = 512
+        if args.block_size <= 0:
+            self.cli.parser.error("block-size value must be positive")
         if args.load_balancing_group == None:
             args.load_balancing_group = 1
         if args.load_balancing_group <= 0:
@@ -1153,20 +1166,6 @@ class GatewayClient:
         else:
             if args.size != None:
                 self.cli.parser.error("--size argument is not allowed for add command when RBD image creation is disabled")
-        if not args.rbd_pool:
-            self.cli.parser.error("--rbd-pool argument is mandatory for add command")
-        if not args.rbd_image:
-            self.cli.parser.error("--rbd-image argument is mandatory for add command")
-        if args.block_size <= 0:
-            self.cli.parser.error("block-size value must be positive")
-        if args.rw_ios_per_second != None:
-            self.cli.parser.error("--rw-ios-per-second argument is not allowed for add command")
-        if args.rw_megabytes_per_second != None:
-            self.cli.parser.error("--rw-megabytes-per-second argument is not allowed for add command")
-        if args.r_megabytes_per_second != None:
-            self.cli.parser.error("--r-megabytes-per-second argument is not allowed for add command")
-        if args.w_megabytes_per_second != None:
-            self.cli.parser.error("--w-megabytes-per-second argument is not allowed for add command")
 
         req = pb2.namespace_add_req(rbd_pool_name=args.rbd_pool,
                                             rbd_image_name=args.rbd_image,
@@ -1218,28 +1217,6 @@ class GatewayClient:
             self.cli.parser.error("At least one of --nsid or --uuid arguments is mandatory for del command")
         if args.nsid != None and args.nsid <= 0:
             self.cli.parser.error("nsid value must be positive")
-        if args.size != None:
-            self.cli.parser.error("--size argument is not allowed for del command")
-        if args.block_size != None:
-            self.cli.parser.error("--block-size argument is not allowed for del command")
-        if args.rbd_pool != None:
-            self.cli.parser.error("--rbd-pool argument is not allowed for del command")
-        if args.rbd_image != None:
-            self.cli.parser.error("--rbd-image argument is not allowed for del command")
-        if args.rbd_create_image:
-            self.cli.parser.error("--rbd-create-image argument is not allowed for del command")
-        if args.load_balancing_group != None:
-            self.cli.parser.error("--load-balancing-group argument is not allowed for del command")
-        if args.rw_ios_per_second != None:
-            self.cli.parser.error("--rw-ios-per-second argument is not allowed for del command")
-        if args.rw_megabytes_per_second != None:
-            self.cli.parser.error("--rw-megabytes-per-second argument is not allowed for del command")
-        if args.r_megabytes_per_second != None:
-            self.cli.parser.error("--r-megabytes-per-second argument is not allowed for del command")
-        if args.w_megabytes_per_second != None:
-            self.cli.parser.error("--w-megabytes-per-second argument is not allowed for del command")
-        if args.force:
-            self.cli.parser.error("--force argument is not allowed for del command")
 
         try:
             ret = self.stub.namespace_delete(pb2.namespace_delete_req(subsystem_nqn=args.subsystem, nsid=args.nsid, uuid=args.uuid))
@@ -1284,33 +1261,11 @@ class GatewayClient:
             self.cli.parser.error("At least one of --nsid or --uuid arguments is mandatory for resize command")
         if args.nsid != None and args.nsid <= 0:
             self.cli.parser.error("nsid value must be positive")
-        if args.size == None:
-            self.cli.parser.error("--size argument is mandatory for resize command")
         ns_size = self.get_size_in_bytes(args.size)
         if ns_size <= 0:
             self.cli.parser.error("size value must be positive")
         mib = 1024 * 1024
         ns_size = int((ns_size + mib - 1) / mib)    # Convert to MiB
-        if args.block_size != None:
-            self.cli.parser.error("--block-size argument is not allowed for resize command")
-        if args.rbd_pool != None:
-            self.cli.parser.error("--rbd-pool argument is not allowed for resize command")
-        if args.rbd_image != None:
-            self.cli.parser.error("--rbd-image argument is not allowed for resize command")
-        if args.rbd_create_image:
-            self.cli.parser.error("--rbd-create-image argument is not allowed for resize command")
-        if args.load_balancing_group != None:
-            self.cli.parser.error("--load-balancing-group argument is not allowed for resize command")
-        if args.rw_ios_per_second != None:
-            self.cli.parser.error("--rw-ios-per-second argument is not allowed for resize command")
-        if args.rw_megabytes_per_second != None:
-            self.cli.parser.error("--rw-megabytes-per-second argument is not allowed for resize command")
-        if args.r_megabytes_per_second != None:
-            self.cli.parser.error("--r-megabytes-per-second argument is not allowed for resize command")
-        if args.w_megabytes_per_second != None:
-            self.cli.parser.error("--w-megabytes-per-second argument is not allowed for resize command")
-        if args.force:
-            self.cli.parser.error("--force argument is not allowed for resize command")
 
         try:
             ret = self.stub.namespace_resize(pb2.namespace_resize_req(subsystem_nqn=args.subsystem, nsid=args.nsid,
@@ -1438,28 +1393,6 @@ class GatewayClient:
         out_func, err_func = self.get_output_functions(args)
         if args.nsid != None and args.nsid <= 0:
             self.cli.parser.error("nsid value must be positive")
-        if args.size != None:
-            self.cli.parser.error("--size argument is not allowed for list command")
-        if args.block_size != None:
-            self.cli.parser.error("--block-size argument is not allowed for list command")
-        if args.rbd_pool != None:
-            self.cli.parser.error("--rbd-pool argument is not allowed for list command")
-        if args.rbd_image != None:
-            self.cli.parser.error("--rbd-image argument is not allowed for list command")
-        if args.rbd_create_image:
-            self.cli.parser.error("--rbd-create-image argument is not allowed for list command")
-        if args.load_balancing_group != None:
-            self.cli.parser.error("--load-balancing-group argument is not allowed for list command")
-        if args.rw_ios_per_second != None:
-            self.cli.parser.error("--rw-ios-per-second argument is not allowed for list command")
-        if args.rw_megabytes_per_second != None:
-            self.cli.parser.error("--rw-megabytes-per-second argument is not allowed for list command")
-        if args.r_megabytes_per_second != None:
-            self.cli.parser.error("--r-megabytes-per-second argument is not allowed for list command")
-        if args.w_megabytes_per_second != None:
-            self.cli.parser.error("--w-megabytes-per-second argument is not allowed for list command")
-        if args.force:
-            self.cli.parser.error("--force argument is not allowed for list command")
 
         try:
             namespaces_info = self.stub.list_namespaces(pb2.list_namespaces_req(subsystem=args.subsystem,
@@ -1551,28 +1484,6 @@ class GatewayClient:
             self.cli.parser.error("At least one of --nsid or --uuid arguments is mandatory for get_io_stats command")
         if args.nsid != None and args.nsid <= 0:
             self.cli.parser.error("nsid value must be positive")
-        if args.size != None:
-            self.cli.parser.error("--size argument is not allowed for get_io_stats command")
-        if args.block_size != None:
-            self.cli.parser.error("--block-size argument is not allowed for get_io_stats command")
-        if args.rbd_pool != None:
-            self.cli.parser.error("--rbd-pool argument is not allowed for get_io_stats command")
-        if args.rbd_image != None:
-            self.cli.parser.error("--rbd-image argument is not allowed for get_io_stats command")
-        if args.rbd_create_image:
-            self.cli.parser.error("--rbd-create-image argument is not allowed for get_io_stats command")
-        if args.load_balancing_group != None:
-            self.cli.parser.error("--load-balancing-group argument is not allowed for get_io_stats command")
-        if args.rw_ios_per_second != None:
-            self.cli.parser.error("--rw-ios-per-second argument is not allowed for get_io_stats command")
-        if args.rw_megabytes_per_second != None:
-            self.cli.parser.error("--rw-megabytes-per-second argument is not allowed for get_io_stats command")
-        if args.r_megabytes_per_second != None:
-            self.cli.parser.error("--r-megabytes-per-second argument is not allowed for get_io_stats command")
-        if args.w_megabytes_per_second != None:
-            self.cli.parser.error("--w-megabytes-per-second argument is not allowed for get_io_stats command")
-        if args.force:
-            self.cli.parser.error("--force argument is not allowed for get_io_stats command")
 
         try:
             get_stats_req = pb2.namespace_get_io_stats_req(subsystem_nqn=args.subsystem, nsid=args.nsid, uuid=args.uuid)
@@ -1656,30 +1567,8 @@ class GatewayClient:
             self.cli.parser.error("At least one of --nsid or --uuid arguments is mandatory for change_load_balancing_group command")
         if args.nsid != None and args.nsid <= 0:
             self.cli.parser.error("nsid value must be positive")
-        if args.load_balancing_group == None:
-            self.cli.parser.error("--load-balancing-group argument is mandatory for change_load_balancing_group command")
         if args.load_balancing_group <= 0:
             self.cli.parser.error("load-balancing-group value must be positive")
-        if args.size != None:
-            self.cli.parser.error("--size argument is not allowed for change_load_balancing_group command")
-        if args.block_size != None:
-            self.cli.parser.error("--block-size argument is not allowed for change_load_balancing_group command")
-        if args.rbd_pool != None:
-            self.cli.parser.error("--rbd-pool argument is not allowed for change_load_balancing_group command")
-        if args.rbd_image != None:
-            self.cli.parser.error("--rbd-image argument is not allowed for change_load_balancing_group command")
-        if args.rbd_create_image:
-            self.cli.parser.error("--rbd-create-image argument is not allowed for change_load_balancing_group command")
-        if args.rw_ios_per_second != None:
-            self.cli.parser.error("--rw-ios-per-second argument is not allowed for change_load_balancing_group command")
-        if args.rw_megabytes_per_second != None:
-            self.cli.parser.error("--rw-megabytes-per-second argument is not allowed for change_load_balancing_group command")
-        if args.r_megabytes_per_second != None:
-            self.cli.parser.error("--r-megabytes-per-second argument is not allowed for change_load_balancing_group command")
-        if args.w_megabytes_per_second != None:
-            self.cli.parser.error("--w-megabytes-per-second argument is not allowed for change_load_balancing_group command")
-        if args.force:
-            self.cli.parser.error("--force argument is not allowed for change_load_balancing_group command")
 
         try:
             change_lb_group_req = pb2.namespace_change_load_balancing_group_req(subsystem_nqn=args.subsystem,
@@ -1732,20 +1621,6 @@ class GatewayClient:
             self.cli.parser.error("At least one of --nsid or --uuid arguments is mandatory for set_qos command")
         if args.nsid != None and args.nsid <= 0:
             self.cli.parser.error("nsid value must be positive")
-        if args.load_balancing_group != None:
-            self.cli.parser.error("--load-balancing-group argument is not allowed for set_qos command")
-        if args.size != None:
-            self.cli.parser.error("--size argument is not allowed for set_qos command")
-        if args.block_size != None:
-            self.cli.parser.error("--block-size argument is not allowed for set_qos command")
-        if args.rbd_pool != None:
-            self.cli.parser.error("--rbd-pool argument is not allowed for set_qos command")
-        if args.rbd_image != None:
-            self.cli.parser.error("--rbd-image argument is not allowed for set_qos command")
-        if args.rbd_create_image:
-            self.cli.parser.error("--rbd-create-image argument is not allowed for set_qos command")
-        if args.force:
-            self.cli.parser.error("--force argument is not allowed for set_qos command")
         if args.rw_ios_per_second == None and args.rw_megabytes_per_second == None and args.r_megabytes_per_second == None and args.w_megabytes_per_second == None:
             self.cli.parser.error("At least one QOS limit should be set")
 
@@ -1803,46 +1678,69 @@ class GatewayClient:
 
         return ret.status
 
-    ns_args_list = [
-        argument("ns_command", help="namespace sub-command",
-                 choices=["add", "del", "resize", "list", "get_io_stats", "change_load_balancing_group", "set_qos"]),
+    ns_common_args = [
         argument("--subsystem", "-n", help="Subsystem NQN", required=True),
-        argument("--rbd-pool", "-p", help="RBD pool name"),
-        argument("--rbd-image", "-i", help="RBD image name"),
-        argument("--rbd-create-image", "-c", help="Create RBD image if needed", action='store_true', required=False),
-        argument("--block-size", "-s", help="Block size", type=int),
         argument("--uuid", "-u", help="UUID"),
         argument("--nsid", help="Namespace ID", type=int),
+    ]
+    ns_add_args_list = ns_common_args + [
+        argument("--rbd-pool", "-p", help="RBD pool name", required=True),
+        argument("--rbd-image", "-i", help="RBD image name", required=True),
+        argument("--rbd-create-image", "-c", help="Create RBD image if needed", action='store_true', required=False),
+        argument("--block-size", "-s", help="Block size", type=int),
         argument("--load-balancing-group", "-l", help="Load balancing group", type=int),
         argument("--size", help="Size in bytes or specified unit (KB, KiB, MB, MiB, GB, GiB, TB, TiB)"),
+        argument("--force", help="Create a namespace even its image is already used by another namespace", action='store_true', required=False),
+    ]
+    ns_del_args_list = ns_common_args + [
+    ]
+    ns_resize_args_list = ns_common_args + [
+        argument("--size", help="Size in bytes or specified unit (KB, KiB, MB, MiB, GB, GiB, TB, TiB)", required=True),
+    ]
+    ns_list_args_list = ns_common_args + [
+    ]
+    ns_get_io_stats_args_list = ns_common_args + [
+    ]
+    ns_change_load_balancing_group_args_list = ns_common_args + [
+        argument("--load-balancing-group", "-l", help="Load balancing group", type=int, required=True),
+    ]
+    ns_set_qos_args_list = ns_common_args + [
         argument("--rw-ios-per-second", help="R/W IOs per second limit, 0 means unlimited", type=int),
         argument("--rw-megabytes-per-second", help="R/W megabytes per second limit, 0 means unlimited", type=int),
         argument("--r-megabytes-per-second", help="Read megabytes per second limit, 0 means unlimited", type=int),
         argument("--w-megabytes-per-second", help="Write megabytes per second limit, 0 means unlimited", type=int),
-        argument("--force", help="Create a namespace even its image is already used by another namespace", action='store_true', required=False),
     ]
-    @cli.cmd(ns_args_list, ["ns"])
+    ns_actions = []
+    ns_actions.append({"name" : "add", "args" : ns_add_args_list, "help" : "Create a namespace"})
+    ns_actions.append({"name" : "del", "args" : ns_del_args_list, "help" : "Delete a namespace"})
+    ns_actions.append({"name" : "resize", "args" : ns_resize_args_list, "help" : "Resize a namespace"})
+    ns_actions.append({"name" : "list", "args" : ns_list_args_list, "help" : "List namespaces"})
+    ns_actions.append({"name" : "get_io_stats", "args" : ns_get_io_stats_args_list, "help" : "Get I/O stats for a namespace"})
+    ns_actions.append({"name" : "change_load_balancing_group", "args" : ns_change_load_balancing_group_args_list, "help" : "Change load balancing group for a namespace"})
+    ns_actions.append({"name" : "set_qos", "args" : ns_set_qos_args_list, "help" : "Set QOS limits for a namespace"})
+    @cli.cmd(ns_actions, ["ns"])
     def namespace(self, args):
         """Namespace commands"""
-        if args.ns_command == "add":
+        if args.action == "add":
             return self.ns_add(args)
-        elif args.ns_command == "del":
+        elif args.action == "del":
             return self.ns_del(args)
-        elif args.ns_command == "resize":
+        elif args.action == "resize":
             return self.ns_resize(args)
-        elif args.ns_command == "list":
+        elif args.action == "list":
             return self.ns_list(args)
-        elif args.ns_command == "get_io_stats":
+        elif args.action == "get_io_stats":
             return self.ns_get_io_stats(args)
-        elif args.ns_command == "change_load_balancing_group":
+        elif args.action == "change_load_balancing_group":
             return self.ns_change_load_balancing_group(args)
-        elif args.ns_command == "set_qos":
+        elif args.action == "set_qos":
             return self.ns_set_qos(args)
-        assert False
+        if not args.action:
+            self.cli.parser.error("missing action for namespace command")
 
     @cli.cmd()
     def get_subsystems(self, args):
-        """Gets subsystems."""
+        """Get subsystems"""
         subsystems = json_format.MessageToJson(
                         self.stub.get_subsystems(pb2.get_subsystems_req()),
                         indent=4, including_default_value_fields=True,
