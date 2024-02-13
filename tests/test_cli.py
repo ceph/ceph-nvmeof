@@ -216,6 +216,16 @@ class TestCreate:
         assert "Can't add a discovery subsystem" in caplog.text
         assert rc == 2
 
+    def test_add_namespace_wrong_block_size(self, caplog, gateway):
+        gw, stub = gateway
+        caplog.clear()
+        add_namespace_req = pb2.namespace_add_req(subsystem_nqn=subsystem, rbd_pool_name=pool, rbd_image_name="junkimage",
+                                                  create_image=True, size=16*1024*1024, force=True)
+        ret = stub.namespace_add(add_namespace_req)
+        assert ret.status != 0
+        assert f"Failure adding namespace" in caplog.text
+        assert f"block size can't be zero" in caplog.text
+
     def test_add_namespace(self, caplog, gateway):
         caplog.clear()
         cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", "junk", "--rbd-image", image2, "--uuid", uuid, "--size", "16MiB", "--rbd-create-image"])

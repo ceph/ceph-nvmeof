@@ -176,7 +176,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
             return None
 
         json_error_text = "Got JSON-RPC error response"
-        rsp = None
+        resp = None
         try:
             resp_index = ex.message.find(json_error_text)
             if resp_index >= 0:
@@ -191,6 +191,14 @@ class GatewayService(pb2_grpc.GatewayServicer):
         if resp:
             if resp["code"] < 0:
                 resp["code"] = -resp["code"]
+        else:
+            resp={}
+            if "timeout" in ex.message.lower():
+                resp["code"] = errno.ETIMEDOUT
+            else:
+                resp["code"] = errno.EINVAL
+            resp["message"] = ex.message
+
         return resp
 
     def _init_cluster_context(self) -> None:
@@ -257,6 +265,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
         self.logger.info(f"Received request to create bdev {name} from"
                          f" {rbd_pool_name}/{rbd_image_name} (size {rbd_image_size} MiB)"
                          f" with block size {block_size}, {cr_img_msg}")
+
+        if block_size == 0:
+            return BdevStatus(status=errno.EINVAL,
+                                   error_message=f"Failure creating bdev {name}: block size can't be zero")
 
         if create_image:
             rc = self.ceph_utils.pool_exists(rbd_pool_name)
@@ -758,19 +770,23 @@ class GatewayService(pb2_grpc.GatewayServicer):
             request.uuid = str(uuid.uuid4())
 
         with self.omap_lock(context=context):
-            errmsg, ns_nqn = self.check_if_image_used(request.rbd_pool_name, request.rbd_image_name)
-            if errmsg and ns_nqn:
-                if request.force:
-                    self.logger.warning(f"{errmsg}, will continue as the \"force\" argument was used")
-                else:
-                    errmsg = f"{errmsg}, either delete the namespace or use the \"force\" argument,\nyou can find the offending namespace by using the \"namespace list --subsystem {ns_nqn}\" CLI command"
-                    self.logger.error(errmsg)
-                    return pb2.nsid_status(status=errno.EEXIST, error_message=errmsg)
+            if context:
+                errmsg, ns_nqn = self.check_if_image_used(request.rbd_pool_name, request.rbd_image_name)
+                if errmsg and ns_nqn:
+                    if request.force:
+                        self.logger.warning(f"{errmsg}, will continue as the \"force\" argument was used")
+                    else:
+                        errmsg = f"{errmsg}, either delete the namespace or use the \"force\" argument,\nyou can find the offending namespace by using the \"namespace list --subsystem {ns_nqn}\" CLI command"
+                        self.logger.error(errmsg)
+                        return pb2.nsid_status(status=errno.EEXIST, error_message=errmsg)
 
             bdev_name = self.find_unique_bdev_name(request.uuid)
 
+            create_image = request.create_image
+            if not context:
+                create_image = False
             ret_bdev = self.create_bdev(bdev_name, request.uuid, request.rbd_pool_name,
-                                        request.rbd_image_name, request.block_size, request.create_image, request.size)
+                                        request.rbd_image_name, request.block_size, create_image, request.size)
             if ret_bdev.status != 0:
                 errmsg = f"Failure adding namespace {nsid_msg}to {request.subsystem_nqn}: {ret_bdev.error_message}"
                 self.logger.error(errmsg)
@@ -788,6 +804,13 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 self.logger.warning(f"Returned bdev name {ret_bdev.bdev_name} differs from requested one {bdev_name}")
 
             ret_ns = self.create_namespace(request.subsystem_nqn, bdev_name, request.nsid, request.anagrpid, request.uuid, context)
+
+            if ret_ns.status == 0 and request.nsid and ret_ns.nsid != request.nsid:
+                errmsg = f"Returned NSID {ret_ns.nsid} differs from requested one {request.nsid}"
+                self.logger.error(errmsg)
+                ret_ns.status = errno.ENODEV
+                ret_ns.error_message = errmsg
+
             if ret_ns.status != 0:
                 try:
                     ret_del = self.delete_bdev(bdev_name)
@@ -799,11 +822,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 self.logger.error(errmsg)
                 return pb2.nsid_status(status=ret_ns.status, error_message=errmsg)
 
-            if request.nsid and ret_ns.nsid != request.nsid:
-                self.logger.warning(f"Return NSID {ret_ns.nsid} differs from requested one {request.nsid}")
-
             if context:
                 # Update gateway state
+                request.nsid = ret_ns.nsid
                 try:
                     json_req = json_format.MessageToJson(
                         request, preserving_proto_field_name=True, including_default_value_fields=True)
