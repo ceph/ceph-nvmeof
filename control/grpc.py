@@ -12,7 +12,6 @@ import grpc
 import json
 import uuid
 import random
-import logging
 import os
 import threading
 import errno
@@ -203,9 +202,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
     def _init_cluster_context(self) -> None:
         """Init cluster context management variables"""
-        self.clusters = {}
-        self.current_cluster = None
-        self.bdevs_per_cluster = self.config.getint_with_default("spdk", "bdevs_per_cluster", 1)
+        self.clusters = defaultdict(dict)
+        self.bdevs_per_cluster = self.config.getint_with_default("spdk", "bdevs_per_cluster", 32)
         if self.bdevs_per_cluster < 1:
             raise Exception(f"invalid configuration: spdk.bdevs_per_cluster_contexts {self.bdevs_per_cluster} < 1")
         self.logger.info(f"NVMeoF bdevs per cluster: {self.bdevs_per_cluster}")
@@ -214,25 +212,51 @@ class GatewayService(pb2_grpc.GatewayServicer):
         if self.rados_id == "":
             self.rados_id = None
 
-    def _get_cluster(self) -> str:
+    def _get_cluster(self, anagrp: int) -> str:
         """Returns cluster name, enforcing bdev per cluster context"""
         cluster_name = None
-        if self.current_cluster is None:
-            cluster_name = self._alloc_cluster()
-            self.current_cluster = cluster_name
-            self.clusters[cluster_name] = 1
-        elif self.clusters[self.current_cluster] >= self.bdevs_per_cluster:
-            self.current_cluster = None
-            cluster_name = self._get_cluster()
+        for name in self.clusters[anagrp]:
+            if self.clusters[anagrp][name] < self.bdevs_per_cluster:
+                cluster_name = name
+                break
+
+        if not cluster_name:
+            cluster_name = self._alloc_cluster(anagrp)
+            self.clusters[anagrp][cluster_name] = 1
         else:
-            cluster_name = self.current_cluster
-            self.clusters[cluster_name] += 1
+            self.clusters[anagrp][cluster_name] += 1
 
         return cluster_name
 
-    def _alloc_cluster(self) -> str:
+    def _put_cluster(self, name: str) -> None:
+        for anagrp in self.clusters:
+            if name in self.clusters[anagrp]:
+                self.clusters[anagrp][name] -= 1
+                assert self.clusters[anagrp][name] >= 0
+                # free the cluster context if no longer used by any bdev
+                if self.clusters[anagrp][name] == 0:
+                    ret = rpc_bdev.bdev_rbd_unregister_cluster(
+                        self.spdk_rpc_client,
+                        name = name
+                    )
+                    self.logger.info(f"Free cluster {name=} {ret=}")
+                    assert ret
+                    self.clusters[anagrp].pop(name)
+                return
+        assert False # we should find the cluster in our state
+
+    def _alloc_cluster_name(self, anagrp: int) -> str:
+        """Allocates a new cluster name for ana group"""
+        x = 0
+        while True:
+            name = f"cluster_context_{anagrp}_{x}"
+            if name not in self.clusters[anagrp]:
+                return name
+            x += 1
+
+    def _alloc_cluster(self, anagrp: int) -> str:
         """Allocates a new Rados cluster context"""
-        name = f"cluster_context_{len(self.clusters)}"
+        name = self._alloc_cluster_name(anagrp)
         nonce = rpc_bdev.bdev_rbd_register_cluster(
             self.spdk_rpc_client,
             name = name,
@@ -254,7 +278,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         """
         return self.omap_lock.execute_omap_locking_function(self._grpc_function_with_lock, func, request, context)
 
-    def create_bdev(self, name, uuid, rbd_pool_name, rbd_image_name, block_size, create_image, rbd_image_size):
+    def create_bdev(self, anagrp: int, name, uuid, rbd_pool_name, rbd_image_name, block_size, create_image, rbd_image_size):
         """Creates a bdev from an RBD image."""
 
         if create_image:
@@ -288,7 +312,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 return BdevStatus(status=errno.ENODEV, error_message=f"Failure creating bdev {name}: {errmsg}")
 
         try:
-            cluster_name=self._get_cluster()
+            cluster_name=self._get_cluster(anagrp)
             bdev_name = rpc_bdev.bdev_rbd_create(
                 self.spdk_rpc_client,
                 name=name,
@@ -361,6 +385,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 self.spdk_rpc_client,
                 bdev_name,
             )
+            self._put_cluster(self.bdev_cluster[bdev_name])
             self.logger.info(f"delete_bdev {bdev_name}: {ret}")
         except Exception as ex:
             errmsg = f"Failure deleting bdev {bdev_name}"
@@ -791,7 +816,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
             create_image = request.create_image
             if not context:
                 create_image = False
-            ret_bdev = self.create_bdev(bdev_name, request.uuid, request.rbd_pool_name,
+            anagrp = int(request.anagrpid) if request.anagrpid is not None else 0
+            ret_bdev = self.create_bdev(anagrp, bdev_name, request.uuid, request.rbd_pool_name,
                                         request.rbd_image_name, request.block_size, create_image, request.size)
             if ret_bdev.status != 0:
                 errmsg = f"Failure adding namespace {nsid_msg}to {request.subsystem_nqn}: {ret_bdev.error_message}"

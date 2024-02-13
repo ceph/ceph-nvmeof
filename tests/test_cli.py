@@ -233,6 +233,7 @@ class TestCreate:
         caplog.clear()
         cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool, "--rbd-image", image2, "--uuid", uuid, "--size", "16MiB", "--rbd-create-image", "--force"])
         assert f"Adding namespace 1 to {subsystem}, load balancing group 1: Successful" in caplog.text
+        assert "Allocated cluster name='cluster_context_1_0'" in caplog.text
         caplog.clear()
         cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool, "--rbd-image", image2, "--size", "36M", "--rbd-create-image", "--force"])
         assert f"Image {pool}/{image2} already exists with a size of 16777216 bytes which differs from the requested size of 37748736 bytes" in caplog.text
@@ -742,6 +743,7 @@ class TestCreateWithAna:
         caplog.clear()
         cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool, "--rbd-image", image, "--load-balancing-group", anagrpid])
         assert f"Adding namespace {nsid} to {subsystem}, load balancing group {anagrpid}: Successful" in caplog.text
+        assert "Allocated cluster name='cluster_context_2_0'" in caplog.text
         caplog.clear()
         cli(["--format", "json", "namespace", "list", "--subsystem", subsystem, "--nsid", nsid])
         assert f'"load_balancing_group": {anagrpid}' in caplog.text
