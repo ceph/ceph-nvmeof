@@ -43,8 +43,9 @@ def sigchld_handler(signum, frame):
     try:
         pid, wait_status = os.waitpid(-1, os.WNOHANG)
     except OSError:
-        logger.exception(f"waitpid error:")
+        logger.exception(f"waitpid error")
         # eat the exception, in signal handler context
+        pass
 
     exit_code = os.waitstatus_to_exitcode(wait_status)
 
@@ -219,8 +220,8 @@ class GatewayServer:
 
         try:
             rpc_nvmf.nvmf_delete_subsystem(self.spdk_rpc_ping_client, GatewayUtils.DISCOVERY_NQN)
-        except Exception as ex:
-            self.logger.error(f"  Delete Discovery subsystem returned with error: \n {ex}")
+        except Exception:
+            self.logger.exception(f"Delete Discovery subsystem returned with error")
             raise
 
         # run ceph nvmeof discovery service in sub-process
@@ -301,6 +302,7 @@ class GatewayServer:
         try:
             os.makedirs(spdk_rpc_socket_dir, 0o777, True)
         except Exception:
+            logger.exception(f"makedirs({spdk_rpc_socket_dir}, 0o777, True) failed")
             pass
         spdk_rpc_socket = spdk_rpc_socket_dir + self.config.get_with_default("spdk", "rpc_socket_name", "spdk.sock")
         return spdk_rpc_socket
@@ -323,8 +325,8 @@ class GatewayServer:
         try:
             # start spdk process
             self.spdk_process = subprocess.Popen(cmd)
-        except Exception as ex:
-            self.logger.error(f"Unable to start SPDK: \n {ex}")
+        except Exception:
+            self.logger.exception(f"Unable to start SPDK")
             raise
 
         # Initialization
@@ -352,8 +354,8 @@ class GatewayServer:
                 log_level=log_level,
                 conn_retries=conn_retries,
             )
-        except Exception as ex:
-            self.logger.error(f"Unable to initialize SPDK: \n {ex}")
+        except Exception:
+            self.logger.exception(f"Unable to initialize SPDK")
             raise
 
         # Implicitly create transports
@@ -399,8 +401,7 @@ class GatewayServer:
             try:
                 os.remove(self.spdk_rpc_socket_path)
             except Exception:
-                self.logger.exception(f"An error occurred while removing "
-                                      f"rpc socket {self.spdk_rpc_socket_path}:")
+                self.logger.exception(f"An error occurred while removing RPC socket {self.spdk_rpc_socket_path}")
 
     def _stop_discovery(self):
         """Stops Discovery service process."""
@@ -428,17 +429,15 @@ class GatewayServer:
         if options:
             try:
                 args.update(json.loads(options))
-            except json.decoder.JSONDecodeError as ex:
-                self.logger.error(
-                    f"Failed to parse spdk {name} ({options}): \n {ex}")
+            except json.decoder.JSONDecodeError:
+                self.logger.exception(f"Failed to parse spdk {name} ({options})")
                 raise
 
         try:
             status = rpc_nvmf.nvmf_create_transport(
                 self.spdk_rpc_client, **args)
-        except Exception as ex:
-            self.logger.error(
-                f"Create Transport {trtype} returned with error: \n {ex}")
+        except Exception:
+            self.logger.exception(f"Create Transport {trtype} returned with error")
             raise
 
     def keep_alive(self):
@@ -456,8 +455,8 @@ class GatewayServer:
         try:
             ret = spdk.rpc.spdk_get_version(self.spdk_rpc_ping_client)
             return True
-        except Exception as ex:
-            self.logger.error(f"spdk_get_version failed with: \n {ex}")
+        except Exception:
+            self.logger.exception(f"spdk_get_version failed")
             return False
 
     def gateway_rpc_caller(self, requests, is_add_req):

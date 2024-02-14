@@ -185,8 +185,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 if resp_index >= 0:
                     resp_str = resp_str[resp_index + len("response:") :]
                     resp = json.loads(resp_str)
-        except Exception as jsex:
-            self.logger.error(f"Got exception parsing JSon exception: {jsex}")
+        except Exception:
+            self.logger.exception(f"Got exception parsing JSON exception")
             pass
         if resp:
             if resp["code"] < 0:
@@ -283,8 +283,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 else:
                     self.logger.info(f"Image {rbd_image_name} already exists")
             except Exception:
-                self.logger.exception(f"Can't create RBD image {rbd_image_name}")
-                return BdevStatus(status=errno.ENODEV, error_message=f"Failure creating bdev {name}: Can't create RBD image {rbd_image_name}")
+                errmsg = f"Can't create RBD image {rbd_image_name}"
+                self.logger.exception(errmsg)
+                return BdevStatus(status=errno.ENODEV, error_message=f"Failure creating bdev {name}: {errmsg}")
 
         try:
             cluster_name=self._get_cluster()
@@ -300,8 +301,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
             self.bdev_cluster[name] = cluster_name
             self.logger.info(f"bdev_rbd_create: {bdev_name}")
         except Exception as ex:
-            errmsg = f"bdev_rbd_create {name} failed with:\n{ex}"
-            self.logger.error(errmsg)
+            errmsg = f"bdev_rbd_create {name} failed"
+            self.logger.exception(errmsg)
+            errmsg = f"{errmsg} with:\n{ex}"
             resp = self.parse_json_exeption(ex)
             status = errno.ENODEV
             if resp:
@@ -333,8 +335,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 )
                 self.logger.info(f"resize_bdev {bdev_name}: {ret}")
             except Exception as ex:
-                errmsg = f"Failure resizing bdev {bdev_name}:\n{ex}"
-                self.logger.error(errmsg)
+                errmsg = f"Failure resizing bdev {bdev_name}"
+                self.logger.exception(errmsg)
+                errmsg = f"{errmsg}:\n{ex}"
                 resp = self.parse_json_exeption(ex)
                 status = errno.EINVAL
                 if resp:
@@ -360,8 +363,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
             )
             self.logger.info(f"delete_bdev {bdev_name}: {ret}")
         except Exception as ex:
-            errmsg = f"Failure deleting bdev {bdev_name}:\n{ex}"
-            self.logger.error(errmsg)
+            errmsg = f"Failure deleting bdev {bdev_name}"
+            self.logger.exception(errmsg)
+            errmsg = f"{errmsg}:\n{ex}"
             resp = self.parse_json_exeption(ex)
             status = errno.EINVAL
             if resp:
@@ -389,8 +393,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 subnqn = subsys["subsystem_nqn"]
                 if subnqn == nqn:
                     return True
-            except Exception as ex:
-                self.logger.warning(f"Got exception while parsing {val}:\n{ex}")
+            except Exception:
+                self.logger.exception(f"Got exception while parsing {val}, will continue")
                 continue
         return False
 
@@ -405,8 +409,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 subsys = json.loads(val)
                 if serial == subsys["serial_number"]:
                     return subsys["subsystem_nqn"]
-            except Exception as ex:
-                self.logger.warning("Got exception while parsing {val}:\n{ex}")
+            except Exception:
+                self.logger.exception(f"Got exception while parsing {val}")
                 continue
         return None
 
@@ -471,8 +475,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 self.subsys_max_ns[request.subsystem_nqn] = request.max_namespaces  if request.max_namespaces is not None else 32
                 self.logger.info(f"create_subsystem {request.subsystem_nqn}: {ret}")
             except Exception as ex:
+                self.logger.exception(create_subsystem_error_prefix)
                 errmsg = f"{create_subsystem_error_prefix}:\n{ex}"
-                self.logger.error(errmsg)
                 resp = self.parse_json_exeption(ex)
                 status = errno.EINVAL
                 if resp:
@@ -492,8 +496,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
                         request, preserving_proto_field_name=True, including_default_value_fields=True)
                     self.gateway_state.add_subsystem(request.subsystem_nqn, json_req)
                 except Exception as ex:
-                    errmsg = f"Error persisting subsystem {request.subsystem_nqn}:\n{ex}"
-                    self.logger.error(errmsg)
+                    errmsg = f"Error persisting subsystem {request.subsystem_nqn}"
+                    self.logger.exception(errmsg)
+                    errmsg = f"{errmsg}:\n{ex}"
                     return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
 
         return pb2.req_status(status=0, error_message=os.strerror(0))
@@ -512,8 +517,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 if ns["subsystem_nqn"] == nqn:
                     nsid = ns["nsid"]
                     ns_list.append(nsid)
-            except Exception as ex:
-                self.logger.error(f"Got exception trying to get subsystem {nqn} namespaces:\n{ex}")
+            except Exception:
+                self.logger.exception(f"Got exception trying to get subsystem {nqn} namespaces")
                 pass
 
         return ns_list
@@ -527,8 +532,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 lsnr = json.loads(val)
                 if lsnr["nqn"] == nqn:
                     return True
-            except Exception as ex:
-                self.logger.error(f"Got exception trying to get subsystem {nqn} listener:\n{ex}")
+            except Exception:
+                self.logger.exception(f"Got exception trying to get subsystem {nqn} listener")
                 pass
 
         return False
@@ -541,8 +546,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
         try:
             self.gateway_state.remove_subsystem(nqn)
         except Exception as ex:
-            errmsg = f"Error persisting deletion of subsystem {nqn}:\n{ex}"
-            self.logger.error(errmsg)
+            errmsg = f"Error persisting deletion of subsystem {nqn}"
+            self.logger.exception(errmsg)
+            errmsg = f"{errmsg}:\n{ex}"
             return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
         return pb2.req_status(status=0, error_message=os.strerror(0))
 
@@ -562,8 +568,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 self.subsys_max_ns.pop(request.subsystem_nqn)
                 self.logger.info(f"delete_subsystem {request.subsystem_nqn}: {ret}")
             except Exception as ex:
+                self.logger.exception(delete_subsystem_error_prefix)
                 errmsg = f"{delete_subsystem_error_prefix}:\n{ex}"
-                self.logger.error(errmsg)
                 self.remove_subsystem_from_state(request.subsystem_nqn, context)
                 resp = self.parse_json_exeption(ex)
                 status = errno.EINVAL
@@ -632,7 +638,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     errmsg = f"RBD image {ns_pool}/{ns_image} is already used by a namespace in subsystem {nqn}"
                     break
             except Exception:
-                self.logger.exception(f"Got exception while parsing {val}")
+                self.logger.exception(f"Got exception while parsing {val}, will continue")
                 continue
         return errmsg, nqn
 
@@ -676,8 +682,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
             self.subsystem_nsid_anagrp[subsystem_nqn][nsid] = anagrpid
             self.logger.info(f"subsystem_add_ns: {nsid}")
         except Exception as ex:
+            self.logger.exception(add_namespace_error_prefix)
             errmsg = f"{add_namespace_error_prefix}:\n{ex}"
-            self.logger.error(errmsg)
             resp = self.parse_json_exeption(ex)
             status = errno.EINVAL
             if resp:
@@ -752,7 +758,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                         if not ret:
                             raise Exception(f"nvmf_subsystem_listener_set_ana_state({nqn=}, {listener=}, {ana_state=}, {grp_id=}) error")
                     except Exception as ex:
-                        self.logger.exception("nvmf_subsystem_listener_set_ana_state: ")
+                        self.logger.exception("nvmf_subsystem_listener_set_ana_state()")
                         if context:
                             context.set_code(grpc.StatusCode.INTERNAL)
                             context.set_details(f"{ex}")
@@ -796,8 +802,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     try:
                         ret_del = self.delete_bdev(bdev_name)
                         self.logger.info(f"delete_bdev({bdev_name}): {ret_del.status}")
-                    except Exception as ex:
-                        self.logger.warning(f"Got exception while trying to delete bdev {bdev_name}:\n{ex}")
+                    except Exception:
+                        self.logger.exception(f"Got exception while trying to delete bdev {bdev_name}")
                 return pb2.nsid_status(status=ret_bdev.status, error_message=errmsg)
 
             if ret_bdev.bdev_name != bdev_name:
@@ -816,8 +822,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     ret_del = self.delete_bdev(bdev_name)
                     if ret_del.status != 0:
                         self.logger.warning(f"Failure {ret_del.status} deleting bdev {bdev_name}: {ret_del.error_message}")
-                except Exception as ex:
-                    self.logger.warning(f"Got exception while trying to delete bdev {bdev_name}:\n{ex}")
+                except Exception:
+                    self.logger.exception(f"Got exception while trying to delete bdev {bdev_name}")
                 errmsg = f"Failure adding namespace {nsid_msg}to {request.subsystem_nqn}:{ret_ns.error_message}"
                 self.logger.error(errmsg)
                 return pb2.nsid_status(status=ret_ns.status, error_message=errmsg)
@@ -830,8 +836,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
                         request, preserving_proto_field_name=True, including_default_value_fields=True)
                     self.gateway_state.add_namespace(request.subsystem_nqn, ret_ns.nsid, json_req)
                 except Exception as ex:
-                    errmsg = f"Error persisting namespace {nsid_msg}on {request.subsystem_nqn}:\n{ex}"
-                    self.logger.error(errmsg)
+                    errmsg = f"Error persisting namespace {nsid_msg}on {request.subsystem_nqn}"
+                    self.logger.exception(errmsg)
+                    errmsg = f"{errmsg}:\n{ex}"
                     return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
 
         return pb2.nsid_status(status=0, error_message=os.strerror(0), nsid=ret_ns.nsid)
@@ -886,8 +893,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 state_ns = state[ns_key]
                 ns_entry = json.loads(state_ns)
             except Exception as ex:
-                errmsg = f"Failure changing load balancing group for namespace {nsid_msg}in {request.subsystem_nqn}. Can't get namespace entry from local state:\n{ex}"
-                self.logger.error(errmsg)
+                errmsg = f"Failure changing load balancing group for namespace {nsid_msg}in {request.subsystem_nqn}. Can't get namespace entry from local state"
+                self.logger.exception(errmsg)
+                errmsg = f"{errmsg}:\n{ex}"
                 return pb2.req_status(status=errno.ENOENT, error_message=errmsg)
 
             if not ns_entry:
@@ -943,8 +951,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
                             namespace_add_req, preserving_proto_field_name=True, including_default_value_fields=True)
                     self.gateway_state.add_namespace(request.subsystem_nqn, nsid, json_req)
                 except Exception as ex:
-                    errmsg = f"Error persisting change load balancing group for namespace {nsid_msg}in {request.subsystem_nqn}:\n{ex}"
-                    self.logger.error(errmsg)
+                    errmsg = f"Error persisting change load balancing group for namespace {nsid_msg}in {request.subsystem_nqn}"
+                    self.logger.exception(errmsg)
+                    errmsg = f"{errmsg}:\n{ex}"
                     return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
 
         return pb2.req_status(status=0, error_message=os.strerror(0))
@@ -963,14 +972,15 @@ class GatewayService(pb2_grpc.GatewayServicer):
         # Update gateway state
         try:
             self.gateway_state.remove_namespace_qos(nqn, str(nsid))
-        except Exception as ex:
-            self.logger.warning(f"Error removing namespace's QOS limits, they might not have been set")
+        except Exception:
+            self.logger.exception(f"Error removing namespace's QOS limits, they might not have been set")
             pass
         try:
             self.gateway_state.remove_namespace(nqn, str(nsid))
         except Exception as ex:
-            errmsg = f"Error persisting removing of namespace {nsid} from {nqn}:\n{ex}"
-            self.logger.error(errmsg)
+            errmsg = f"Error persisting removing of namespace {nsid} from {nqn}"
+            self.logger.exception(errmsg)
+            errmsg = f"{errmsg}:\n{ex}"
             return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
         return pb2.req_status(status=0, error_message=os.strerror(0))
 
@@ -995,8 +1005,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
             )
             self.logger.info(f"remove_namespace {nsid}: {ret}")
         except Exception as ex:
+            self.logger.exception(namespace_failure_prefix)
             errmsg = f"{namespace_failure_prefix}:\n{ex}"
-            self.logger.error(errmsg)
             resp = self.parse_json_exeption(ex)
             status = errno.EINVAL
             if resp:
@@ -1051,8 +1061,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 ret = rpc_nvmf.nvmf_get_subsystems(self.spdk_rpc_client, nqn=request.subsystem)
                 self.logger.info(f"list_namespaces: {ret}")
             except Exception as ex:
-                errmsg = f"Failure listing namespaces:\n{ex}"
-                self.logger.error(f"{errmsg}")
+                errmsg = f"Failure listing namespaces"
+                self.logger.exception(errmsg)
+                errmsg = f"{errmsg}:\n{ex}"
                 resp = self.parse_json_exeption(ex)
                 status = errno.EINVAL
                 if resp:
@@ -1108,12 +1119,12 @@ class GatewayService(pb2_grpc.GatewayServicer):
                             self.logger.warning(f"Key {err} is not found, will not list bdev's information") 
                             pass
                         except Exception:
-                            self.logger.exception(f"{ns_bdev=} parse error: ") 
+                            self.logger.exception(f"{ns_bdev=} parse error") 
                             pass
                     namespaces.append(one_ns)
                 break
             except Exception:
-                self.logger.exception(f"{s=} parse error: ")
+                self.logger.exception(f"{s=} parse error")
                 pass
 
         return pb2.namespaces_info(status = 0, error_message = os.strerror(0), subsystem_nqn=request.subsystem, namespaces=namespaces)
@@ -1145,8 +1156,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 )
                 self.logger.info(f"get_bdev_iostat {bdev_name}: {ret}")
             except Exception as ex:
-                errmsg = f"Failure getting IO stats for namespace {nsid_msg}on {request.subsystem_nqn}:\n{ex}"
-                self.logger.error(errmsg)
+                errmsg = f"Failure getting IO stats for namespace {nsid_msg}on {request.subsystem_nqn}"
+                self.logger.exception(errmsg)
+                errmsg = f"{errmsg}:\n{ex}"
                 resp = self.parse_json_exeption(ex)
                 status = errno.EINVAL
                 if resp:
@@ -1198,7 +1210,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                io_error=bdev["io_error"])
             return io_stats
         except Exception as ex:
-            self.logger.exception(f"{s=} parse error: ")
+            self.logger.exception(f"{s=} parse error")
             exmsg = str(ex)
             pass
 
@@ -1280,8 +1292,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     **set_qos_limits_args)
                 self.logger.info(f"bdev_set_qos_limit {bdev_name}: {ret}")
             except Exception as ex:
-                errmsg = f"Failure setting QOS limits for namespace {nsid_msg}on {request.subsystem_nqn}:\n{ex}"
-                self.logger.error(errmsg)
+                errmsg = f"Failure setting QOS limits for namespace {nsid_msg}on {request.subsystem_nqn}"
+                self.logger.exception(errmsg)
+                errmsg = f"{errmsg}:\n{ex}"
                 resp = self.parse_json_exeption(ex)
                 status = errno.EINVAL
                 if resp:
@@ -1302,8 +1315,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
                         request, preserving_proto_field_name=True, including_default_value_fields=True)
                     self.gateway_state.add_namespace_qos(request.subsystem_nqn, nsid, json_req)
                 except Exception as ex:
-                    errmsg = f"Error persisting namespace QOS settings {nsid_msg}on {request.subsystem_nqn}:\n{ex}"
-                    self.logger.error(errmsg)
+                    errmsg = f"Error persisting namespace QOS settings {nsid_msg}on {request.subsystem_nqn}"
+                    self.logger.exception(errmsg)
+                    errmsg = f"{errmsg}:\n{ex}"
                     return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
 
         return pb2.req_status(status=0, error_message=os.strerror(0))
@@ -1327,8 +1341,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 ret = rpc_nvmf.nvmf_get_subsystems(self.spdk_rpc_client, nqn=nqn)
                 self.logger.info(f"find_namespace_and_bdev_name: {ret}")
             except Exception as ex:
+                self.logger.exception(err_prefix)
                 errmsg = f"{err_prefix}:\n{ex}"
-                self.logger.error(errmsg)
                 return (None, None)
 
         if not ret:
@@ -1355,7 +1369,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     bdev_name = n["bdev_name"]
                 break
             except Exception:
-                self.logger.exception(f"{s=} parse error: ")
+                self.logger.exception(f"{s=} parse error")
                 pass
 
         return (found_ns, bdev_name)
@@ -1492,10 +1506,11 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     self.logger.info(f"add_host {request.host_nqn}: {ret}")
             except Exception as ex:
                 if request.host_nqn == "*":
+                    self.logger.exception(all_host_failure_prefix)
                     errmsg = f"{all_host_failure_prefix}:\n{ex}"
                 else:
+                    self.logger.exception(host_failure_prefix)
                     errmsg = f"{host_failure_prefix}:\n{ex}"
-                self.logger.error(errmsg)
                 resp = self.parse_json_exeption(ex)
                 status = errno.EINVAL
                 if resp:
@@ -1523,8 +1538,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     self.gateway_state.add_host(request.subsystem_nqn,
                                                 request.host_nqn, json_req)
                 except Exception as ex:
-                    errmsg = f"Error persisting host {request.host_nqn} access addition:\n{ex}"
-                    self.logger.error(errmsg)
+                    errmsg = f"Error persisting host {request.host_nqn} access addition"
+                    self.logger.exception(errmsg)
+                    errmsg = f"{errmsg}:\n{ex}"
                     return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
 
         return pb2.req_status(status=0, error_message=os.strerror(0))
@@ -1542,8 +1558,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
         try:
             self.gateway_state.remove_host(subsystem_nqn, host_nqn)
         except Exception as ex:
-            errmsg = f"Error persisting host {host_nqn} access removal:\n{ex}"
-            self.logger.error(errmsg)
+            errmsg = f"Error persisting host {host_nqn} access removal"
+            self.logger.exception(errmsg)
+            errmsg = f"{errmsg}:\n{ex}"
             return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
         return pb2.req_status(status=0, error_message=os.strerror(0))
 
@@ -1593,8 +1610,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     self.logger.info(f"remove_host {request.host_nqn}: {ret}")
             except Exception as ex:
                 if request.host_nqn == "*":
+                    self.logger.exception(all_host_failure_prefix)
                     errmsg = f"{all_host_failure_prefix}:\n{ex}"
                 else:
+                    self.logger.exception(host_failure_prefix)
                     errmsg = f"{host_failure_prefix}:\n{ex}"
                 self.logger.error(errmsg)
                 self.remove_host_from_state(request.subsystem_nqn, request.host_nqn, context)
@@ -1631,8 +1650,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
             ret = rpc_nvmf.nvmf_get_subsystems(self.spdk_rpc_client, nqn=request.subsystem)
             self.logger.info(f"list_hosts: {ret}")
         except Exception as ex:
-            errmsg = f"Failure listing hosts, can't get subsystems:\n{ex}"
-            self.logger.error(f"{errmsg}")
+            errmsg = f"Failure listing hosts, can't get subsystems"
+            self.logger.exception(errmsg)
+            errmsg = f"{errmsg}:\n{ex}"
             resp = self.parse_json_exeption(ex)
             status = errno.EINVAL
             if resp:
@@ -1658,7 +1678,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     hosts.append(one_host)
                 break
             except Exception:
-                self.logger.exception(f"{s=} parse error: ")
+                self.logger.exception(f"{s=} parse error")
                 pass
 
         return pb2.hosts_info(status = 0, error_message = os.strerror(0), allow_any_host=allow_any_host,
@@ -1675,8 +1695,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
             qpair_ret = rpc_nvmf.nvmf_subsystem_get_qpairs(self.spdk_rpc_client, nqn=request.subsystem)
             self.logger.info(f"list_connections get_qpairs: {qpair_ret}")
         except Exception as ex:
-            errmsg = f"Failure listing connections, can't get qpairs:\n{ex}"
-            self.logger.error(f"{errmsg}")
+            errmsg = f"Failure listing connections, can't get qpairs"
+            self.logger.exception(errmsg)
+            errmsg = f"{errmsg}:\n{ex}"
             resp = self.parse_json_exeption(ex)
             status = errno.EINVAL
             if resp:
@@ -1688,8 +1709,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
             ctrl_ret = rpc_nvmf.nvmf_subsystem_get_controllers(self.spdk_rpc_client, nqn=request.subsystem)
             self.logger.info(f"list_connections get_controllers: {ctrl_ret}")
         except Exception as ex:
-            errmsg = f"Failure listing connections, can't get controllers:\n{ex}"
-            self.logger.error(f"{errmsg}")
+            errmsg = f"Failure listing connections, can't get controllers"
+            self.logger.exception(errmsg)
+            errmsg = f"{errmsg}:\n{ex}"
             resp = self.parse_json_exeption(ex)
             status = errno.EINVAL
             if resp:
@@ -1701,8 +1723,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
             subsys_ret = rpc_nvmf.nvmf_get_subsystems(self.spdk_rpc_client, nqn=request.subsystem)
             self.logger.info(f"list_connections subsystems: {subsys_ret}")
         except Exception as ex:
-            errmsg = f"Failure listing connections, can't get subsystems:\n{ex}"
-            self.logger.error(f"{errmsg}")
+            errmsg = f"Failure listing connections, can't get subsystems"
+            self.logger.exception(errmsg)
+            errmsg = f"{errmsg}:\n{ex}"
             resp = self.parse_json_exeption(ex)
             status = errno.EINVAL
             if resp:
@@ -1729,7 +1752,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                         pass
                 break
             except Exception:
-                self.logger.exception(f"{s=} parse error: ")
+                self.logger.exception(f"{s=} parse error")
                 pass
 
         for conn in ctrl_ret:
@@ -1758,8 +1781,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                         except Exception:
                             pass
                         break
-                    except Exception as ex:
-                        self.logger.warning(f"Got exception while parsing qpair: {qp}:\n{ex}")
+                    except Exception:
+                        self.logger.exception(f"Got exception while parsing qpair: {qp}")
                         pass
                 one_conn = pb2.connection(nqn=hostnqn, connected=True,
                                           traddr=traddr, trsvcid=trsvcid, trtype=trtype, adrfam=adrfam,
@@ -1767,7 +1790,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 connections.append(one_conn)
                 host_nqns.remove(hostnqn)
             except Exception:
-                self.logger.exception(f"{s=} parse error: ")
+                self.logger.exception(f"{s=} parse error")
                 pass
 
         for nqn in host_nqns:
@@ -1858,8 +1881,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                         self.logger.info(f"{errmsg}")
                         return pb2.req_status(status=0, error_message=errmsg)
             except Exception as ex:
+                self.logger.exception(create_listener_error_prefix)
                 errmsg = f"{create_listener_error_prefix}:\n{ex}"
-                self.logger.error(errmsg)
                 resp = self.parse_json_exeption(ex)
                 status = errno.EINVAL
                 if resp:
@@ -1895,8 +1918,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
                           self.logger.info(f"create_listener nvmf_subsystem_listener_set_ana_state response {ret=}")
 
                        except Exception as ex:
-                            errmsg=f"{create_listener_error_prefix}: Error setting ANA state:\n{ex}"
-                            self.logger.error(errmsg)
+                            errmsg=f"{create_listener_error_prefix}: Error setting ANA state"
+                            self.logger.exception(errmsg)
+                            errmsg=f"{errmsg}:\n{ex}"
                             resp = self.parse_json_exeption(ex)
                             status = errno.EINVAL
                             if resp:
@@ -1914,8 +1938,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                                     "TCP", request.traddr,
                                                     request.trsvcid, json_req)
                 except Exception as ex:
-                    errmsg = f"Error persisting listener {traddr}:{request.trsvcid}:\n{ex}"
-                    self.logger.error(errmsg)
+                    errmsg = f"Error persisting listener {traddr}:{request.trsvcid}"
+                    self.logger.exception(errmsg)
+                    errmsg = f"{errmsg}:\n{ex}"
                     return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
 
         return pb2.req_status(status=0, error_message=os.strerror(0))
@@ -1933,8 +1958,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
         try:
             self.gateway_state.remove_listener(nqn, gw_name, "TCP", traddr, port)
         except Exception as ex:
-            errmsg = f"Error persisting deletion of listener {traddr}:{port} from {nqn}:\n{ex}"
-            self.logger.error(errmsg)
+            errmsg = f"Error persisting deletion of listener {traddr}:{port} from {nqn}"
+            self.logger.exception(errmsg)
+            errmsg = f"{errmsg}:\n{ex}"
             return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
         return pb2.req_status(status=0, error_message=os.strerror(0))
 
@@ -1977,8 +2003,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     self.logger.error(f"{errmsg}")
                     return pb2.req_status(status=errno.ENOENT, error_message=errmsg)
             except Exception as ex:
+                self.logger.exception(delete_listener_error_prefix)
                 errmsg = f"{delete_listener_error_prefix}:\n{ex}"
-                self.logger.error(errmsg)
                 self.remove_listener_from_state(request.nqn, request.gateway_name,
                                                 request.traddr, request.trsvcid, context)
                 resp = self.parse_json_exeption(ex)
@@ -2025,8 +2051,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                                      traddr = listener["traddr"],
                                                      trsvcid = listener["trsvcid"])
                     listeners.append(one_listener)
-                except Exception as ex:
-                    self.logger.warning(f"Got exception while parsing {val}:\n{ex}")
+                except Exception:
+                    self.logger.exception(f"Got exception while parsing {val}")
                     continue
 
         return pb2.listeners_info(status = 0, error_message = os.strerror(0), listeners=listeners)
@@ -2053,8 +2079,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 ret = rpc_nvmf.nvmf_get_subsystems(self.spdk_rpc_client)
             self.logger.info(f"list_subsystems: {ret}")
         except Exception as ex:
-            errmsg = f"Failure listing subsystems:\n{ex}"
-            self.logger.error(f"{errmsg}")
+            errmsg = f"Failure listing subsystems"
+            self.logger.exception(errmsg)
+            errmsg = f"{errmsg}:\n{ex}"
             resp = self.parse_json_exeption(ex)
             status = errno.ENODEV
             if resp:
@@ -2078,7 +2105,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 json_format.Parse(json.dumps(s), subsystem, ignore_unknown_fields=True)
                 subsystems.append(subsystem)
             except Exception:
-                self.logger.exception(f"{s=} parse error: ")
+                self.logger.exception(f"{s=} parse error")
                 pass
 
         return pb2.subsystems_info_cli(status = 0, error_message = os.strerror(0), subsystems=subsystems)
@@ -2092,7 +2119,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
             ret = rpc_nvmf.nvmf_get_subsystems(self.spdk_rpc_client)
             self.logger.info(f"get_subsystems: {ret}")
         except Exception as ex:
-            self.logger.error(f"get_subsystems failed with: \n {ex}")
+            self.logger.exception(f"get_subsystems failed")
             context.set_code(grpc.StatusCode.INTERNAL)
             context.set_details(f"{ex}")
             return pb2.subsystems_info()
@@ -2113,7 +2140,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 json_format.Parse(json.dumps(s), subsystem)
                 subsystems.append(subsystem)
             except Exception:
-                self.logger.exception(f"{s=} parse error: ")
+                self.logger.exception(f"{s=} parse error")
                 raise
 
         return pb2.subsystems_info(subsystems=subsystems)
@@ -2142,8 +2169,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                  f"spdk log level: {spdk_log_level}, "
                                  f"spdk log print level: {spdk_log_print_level}")
             except Exception as ex:
-                errmsg = f"Failure getting SPDK log levels and nvmf log flags:\n{ex}"
-                self.logger.error(f"{errmsg}")
+                errmsg = f"Failure getting SPDK log levels and nvmf log flags"
+                self.logger.exception(errmsg)
+                errmsg = f"{errmsg}:\n{ex}"
                 resp = self.parse_json_exeption(ex)
                 status = errno.ENOKEY
                 if resp:
@@ -2199,8 +2227,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
                         self.spdk_rpc_client, level=print_level)
                     self.logger.info(f"Set log print level to {print_level}: {ret_print}")
             except Exception as ex:
-                errmsg="Failure setting SPDK log levels:\n{ex}"
-                self.logger.error(f"{errmsg}")
+                errmsg="Failure setting SPDK log levels"
+                self.logger.exception(errmsg)
+                errmsg="{errmsg}:\n{ex}"
                 for flag in nvmf_log_flags:
                     rpc_log.log_clear_flag(self.spdk_rpc_client, flag=flag)
                 resp = self.parse_json_exeption(ex)
@@ -2239,8 +2268,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
                               rpc_log.log_set_print_level(self.spdk_rpc_client, level='INFO')]
                 ret.extend(logs_level)
             except Exception as ex:
-                self.logger.error(f"disable_spdk_nvmf_logs failed with:\n{ex}")
-                errmsg = f"Failure in disable SPDK nvmf log flags\n{ex}"
+                errmsg = f"Failure in disable SPDK nvmf log flags"
+                self.logger.exception(errmsg)
+                errmsg = f"{errmsg}:\n{ex}"
                 resp = self.parse_json_exeption(ex)
                 status = errno.EINVAL
                 if resp:
@@ -2269,7 +2299,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
             v2 = int(vlist[1])
             v3 = int(vlist[2])
         except Exception:
-            self.logger.error(f"Can't parse version \"{version}\"")
+            self.logger.exception(f"Can't parse version \"{version}\"")
             return None
         return (v1, v2, v3)
 
