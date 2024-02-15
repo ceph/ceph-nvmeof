@@ -16,6 +16,7 @@ import os
 import threading
 import errno
 import contextlib
+import time
 from typing import Callable
 from collections import defaultdict
 
@@ -157,6 +158,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         self.ana_map = defaultdict(dict)
         self.cluster_nonce = {}
         self.bdev_cluster = {}
+        self.bdev_params  = {}
         self.subsystem_nsid_bdev = defaultdict(dict)
         self.subsystem_nsid_anagrp = defaultdict(dict)
         self.gateway_group = self.config.get("gateway", "group")
@@ -263,7 +265,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
             user = self.rados_id,
             core_mask = self.librbd_core_mask,
         )
-        self.logger.info(f"Allocated cluster {name=} {nonce=}")
+        self.logger.info(f"Allocated cluster {name=} {nonce=} {anagrp=}")
         self.cluster_nonce[name] = nonce
         return name
 
@@ -323,7 +325,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 uuid=uuid,
             )
             self.bdev_cluster[name] = cluster_name
-            self.logger.info(f"bdev_rbd_create: {bdev_name}")
+            self.bdev_params[name]  = {'uuid':uuid, 'pool_name':rbd_pool_name, 'image_name':rbd_image_name, 'image_size':rbd_image_size, 'block_size': block_size}
+
+            self.logger.info(f"bdev_rbd_create: {bdev_name}, cluster_name {cluster_name}")
         except Exception as ex:
             errmsg = f"bdev_rbd_create {name} failed"
             self.logger.exception(errmsg)
@@ -376,7 +380,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
             return pb2.req_status(status=0, error_message=os.strerror(0))
 
-    def delete_bdev(self, bdev_name):
+    def delete_bdev(self, bdev_name, recycling_mode=False):
         """Deletes a bdev."""
 
         if not self.rpc_lock.locked():
@@ -389,6 +393,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 self.spdk_rpc_client,
                 bdev_name,
             )
+            if not recycling_mode:
+                del self.bdev_params[bdev_name]
             self._put_cluster(self.bdev_cluster[bdev_name])
             self.logger.info(f"delete_bdev {bdev_name}: {ret}")
         except Exception as ex:
@@ -750,7 +756,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         self.logger.info(f"Received request to set ana states {ana_info.states}")
 
         state = self.gateway_state.local.get_state()
-
+        ana_dict = {}
         # Iterate over nqn_ana_states in ana_info
         for nas in ana_info.states:
             nqn = nas.nqn
@@ -785,6 +791,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                             adrfam=listener['adrfam'],
                             ana_state=ana_state,
                             anagrpid=grp_id)
+                        if ana_state == "inaccessible" :
+                            ana_dict[grp_id] = True;
                         self.logger.info(f"set_ana_state nvmf_subsystem_listener_set_ana_state response {ret=}")
                         if not ret:
                             raise Exception(f"nvmf_subsystem_listener_set_ana_state({nqn=}, {listener=}, {ana_state=}, {grp_id=}) error")
@@ -794,7 +802,12 @@ class GatewayService(pb2_grpc.GatewayServicer):
                             context.set_code(grpc.StatusCode.INTERNAL)
                             context.set_details(f"{ex}")
                         return pb2.req_status()
-
+        for ana_key in ana_dict :
+           ret_recycle = self.namespace_recycle_safe(ana_key);
+           if ret_recycle != 0:
+                errmsg = f"Failure recycle namespaces of ana group {ana_key} "
+                self.logger.error(errmsg)
+                return pb2.req_status(status=ret_recycle , error_message=errmsg)
         return pb2.req_status(status=True)
 
     def namespace_add_safe(self, request, context):
@@ -1441,6 +1454,62 @@ class GatewayService(pb2_grpc.GatewayServicer):
             self.logger.error(errmsg)
 
         return pb2.req_status(status=ret.status, error_message=errmsg)
+
+    def namespace_recycle_safe(self, ana_id) ->int:
+        """Recycle namespaces."""
+        now = time.time()
+        self.logger.info(f"== recycle_safe started == for  anagrp{ana_id} time {now} ")
+
+        self.logger.info(f"Doing loop on {ana_id}  map; subsystem_nsid_anagrp:")
+        list_ns_params = []
+        for subsys, inner_dict in self.subsystem_nsid_anagrp.items():
+            for  ns_key, ana_value in inner_dict.items():
+                self.logger.info(f"nsid: {ns_key} ana_val: {ana_value}")
+                if ana_value == ana_id :
+                    self.logger.info(f"nsid {ns_key} for nqn {subsys} to recycle:")
+                    nsid = ns_key
+                    bdev_name = self.subsystem_nsid_bdev[subsys][nsid]
+                    assert  bdev_name
+                    ns_params = {'nsid':nsid, 'bdev_name':bdev_name, 'subsys':subsys}
+                    list_ns_params.append(ns_params)
+                    self.logger.info(f"nsid :{nsid}, pool_name: {self.bdev_params[bdev_name]['pool_name']}, rbd_name: {self.bdev_params[bdev_name]['image_name']}, block_size: {self.bdev_params[bdev_name]['block_size']}, uuid:{self.bdev_params[bdev_name]['uuid']}, anagrpid:{ana_id}")
+
+                    ret = self.remove_namespace(subsys, nsid, None)
+                    if ret.status != 0:
+                        return -1
+                    if bdev_name:
+                        ret_del = self.delete_bdev(bdev_name, True)
+                        if ret_del.status != 0:
+                            errmsg = f"Failure deleting namespace {nsid} from {subsys}: {ret_del.error_message}"
+                            self.logger.error(errmsg)
+                            return -1
+        # recreate: loop on the list of dict  'list_ns_params'
+        for   ns_params in list_ns_params:
+            bdev_name = ns_params['bdev_name']
+            self.logger.info(f" Recreate nsid: {ns_params['nsid']} ")
+            self.logger.info(f"ns params: {ns_params} ")
+            ret_bdev = self.create_bdev( ana_id, bdev_name, self.bdev_params[bdev_name]['uuid'],  self.bdev_params[bdev_name]['pool_name'],
+                                                            self.bdev_params[bdev_name]['image_name'], self.bdev_params[bdev_name]['block_size'], False,
+                                                            self.bdev_params[bdev_name]['image_size'])
+            self.logger.info(f"bdev_rbd_create: {bdev_name}")
+            if ret_bdev.status != 0:
+                errmsg = f"Failure adding bdev {bdev_name} "
+                self.logger.error(errmsg)
+                return -1
+            # recreate namespace
+            ret_ns = self.create_namespace(ns_params['subsys'], bdev_name, ns_params['nsid'], ana_id, self.bdev_params[bdev_name]['uuid'], None)
+            if ret_ns.status != 0:
+                try:
+                    ret_del = self.delete_bdev(bdev_name)
+                    if ret_del.status != 0:
+                        self.logger.warning(f"Failure {ret_del.status} deleting bdev {bdev_name}: {ret_del.error_message}")
+                except Exception as ex:
+                    self.logger.warning(f"Got exception while trying to delete bdev {bdev_name}:\n{ex}")
+                    errmsg = f"Failure adding namespace {ns_params['nsid']} to {ns_params['subsys']}:{ret_ns.error_message}"
+                    self.logger.error(errmsg)
+                    return -1
+        self.logger.info(f"== recycle_safe completed ==  for  anagrp{ana_id}; latency time {time.time() - now} sec")
+        return 0
 
     def namespace_delete_safe(self, request, context):
         """Delete a namespace."""
