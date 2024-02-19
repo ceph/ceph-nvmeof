@@ -1360,6 +1360,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
         if needs_lock:
             lock_to_use = self.rpc_lock
         else:
+            if not self.rpc_lock.locked():
+                self.logger.error(f"A call to find_namespace_and_bdev_name() with 'needs_lock' set to False and without holding the RPC lock")
+                assert self.rpc_lock.locked()
             lock_to_use = contextlib.suppress()
 
         with lock_to_use:
