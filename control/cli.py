@@ -1030,7 +1030,7 @@ class GatewayClient:
                                       tablefmt=table_format, stralign="center")
                     out_func(f"Hosts allowed to access {args.subsystem}:\n{hosts_out}")
                 else:
-                    out_func("No hosts are allowed to access {args.subsystem}")
+                    out_func(f"No hosts are allowed to access {args.subsystem}")
             else:
                 err_func(f"{hosts_info.error_message}")
         elif args.format == "json" or args.format == "yaml":
