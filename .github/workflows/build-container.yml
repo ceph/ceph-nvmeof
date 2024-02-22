@@ -274,6 +274,8 @@ jobs:
       - name: Run bdevperf
         run: |
           # see https://spdk.io/doc/nvmf_multipath_howto.html
+          shopt -s expand_aliases
+          eval $(make alias)
           . .env
           echo -n "ℹ️  Starting bdevperf container"
           make up  SVC=bdevperf OPTS="--detach"
@@ -286,7 +288,64 @@ jobs:
           echo "ℹ️  bdevperf bdev_nvme_set_options"
           make exec SVC=bdevperf OPTS=-T CMD="$rpc -v -s $BDEVPERF_SOCKET bdev_nvme_set_options -r -1"
           echo "ℹ️  bdevperf tcp connect ip: $NVMEOF_IP_ADDRESS port: $NVMEOF_IO_PORT nqn: $NQN"
-          make exec SVC=bdevperf OPTS=-T CMD="$rpc -v -s $BDEVPERF_SOCKET bdev_nvme_attach_controller -b Nvme0 -t tcp -a $NVMEOF_IP_ADDRESS -s $NVMEOF_IO_PORT -f ipv4 -n $NQN -l -1 -o 10"
+          make exec SVC=bdevperf OPTS=-T CMD="$rpc -v -s $BDEVPERF_SOCKET bdev_nvme_attach_controller -b Nvme0 -t tcp -a $NVMEOF_IP_ADDRESS -s $NVMEOF_IO_PORT -f ipv4 -n $NQN -q ${NQN}host -l -1 -o 10"
+          echo "ℹ️  verify connection list"
+          set +e
+          conns=$(cephnvmf --output stdio --format json connection list --subsystem $NQN)
+          if [ $? -ne 0 ]; then
+              echo "Failed to list connections"
+              exit 1
+          fi
+          echo $conns | grep -q '"status": 0'
+          if [ $? -ne 0 ]; then
+              echo "Failed to list connections, non-zero status in connection list: ${conns}"
+              exit 1
+          fi
+          echo $conns | grep -q "\"nqn\": \"${NQN}host\""
+          if [ $? -ne 0 ]; then
+              echo "Can't find host NQN ${NQN}host in connection list: ${conns}"
+              exit 1
+          fi
+          echo $conns | grep -q "\"trsvcid\": ${NVMEOF_IO_PORT}"
+          if [ $? -ne 0 ]; then
+              echo "Can't find port ${NVMEOF_IO_PORT} in connection list: ${conns}"
+              exit 1
+          fi
+          echo $conns | grep -q "\"traddr\": \"${NVMEOF_IP_ADDRESS}\""
+          if [ $? -ne 0 ]; then
+              echo "Can't find IP address ${NVMEOF_IP_ADDRESS} in connection list: ${conns}"
+              exit 1
+          fi
+          echo $conns | grep -q "\"adrfam\": \"ipv4\""
+          if [ $? -ne 0 ]; then
+              echo "Can't find address family ipv4 in connection list: ${conns}"
+              exit 1
+          fi
+          echo $conns | grep -q "\"trtype\": \"TCP\""
+          if [ $? -ne 0 ]; then
+              echo "Can't find transport type TCP in connection list: ${conns}"
+              exit 1
+          fi
+          con_cnt=$(echo $conns | xargs -n 1 | grep traddr | wc -l)
+          if [ $con_cnt -gt 1 ]; then
+              echo "Found more than one connection in list: ${conns}"
+              exit 1
+          fi
+          if [ $con_cnt -lt 1 ]; then
+              echo "No connections in list: ${conns}"
+              exit 1
+          fi
+          echo $conns | grep -q "\"qpairs_count\": 1"
+          if [ $? -ne 0 ]; then
+              echo "Qpairs count should be 1 in connection list: ${conns}"
+              exit 1
+          fi
+          echo $conns | grep -q "\"connected\": true"
+          if [ $? -ne 0 ]; then
+              echo "${NVMEOF_IP_ADDRESS}:${NVMEOF_IO_PORT} not connected in connection list: ${conns}"
+              exit 1
+          fi
+          set -e
           echo "ℹ️  bdevperf perform_tests"
           eval $(make run SVC=bdevperf OPTS="--entrypoint=env" | grep BDEVPERF_TEST_DURATION | tr -d '\n\r' )
           timeout=$(expr $BDEVPERF_TEST_DURATION \* 2)

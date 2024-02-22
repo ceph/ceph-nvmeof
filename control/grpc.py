@@ -379,6 +379,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
     def delete_bdev(self, bdev_name):
         """Deletes a bdev."""
 
+        if not self.rpc_lock.locked():
+            self.logger.error(f"A call to delete_bdev() without holding the RPC lock")
+            assert self.rpc_lock.locked()
+
         self.logger.info(f"Received request to delete bdev {bdev_name}")
         try:
             ret = rpc_bdev.bdev_rbd_delete(
@@ -828,6 +832,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     try:
                         ret_del = self.delete_bdev(bdev_name)
                         self.logger.info(f"delete_bdev({bdev_name}): {ret_del.status}")
+                    except AssertionError:
+                        self.logger.exception(f"Got an assert while trying to delete bdev {bdev_name}")
+                        raise
                     except Exception:
                         self.logger.exception(f"Got exception while trying to delete bdev {bdev_name}")
                 return pb2.nsid_status(status=ret_bdev.status, error_message=errmsg)
@@ -848,6 +855,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     ret_del = self.delete_bdev(bdev_name)
                     if ret_del.status != 0:
                         self.logger.warning(f"Failure {ret_del.status} deleting bdev {bdev_name}: {ret_del.error_message}")
+                except AssertionError:
+                    self.logger.exception(f"Got an assert while trying to delete bdev {bdev_name}")
+                    raise
                 except Exception:
                     self.logger.exception(f"Got exception while trying to delete bdev {bdev_name}")
                 errmsg = f"Failure adding namespace {nsid_msg}to {request.subsystem_nqn}:{ret_ns.error_message}"
