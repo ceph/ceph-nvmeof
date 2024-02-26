@@ -319,6 +319,7 @@ message subsystem_cli {
 	uint32 max_cntlid = 6;
 	uint32 namespace_count = 7;
 	string subtype = 8;
+	uint32 max_namespaces = 9;
 }
 
 message gateway_info {
