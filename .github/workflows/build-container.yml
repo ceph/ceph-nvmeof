@@ -88,7 +88,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        test: ["cli", "state", "multi_gateway", "server", "grpc", "omap_lock", "old_omap", "log_files", "nsid"]
+        test: ["cli", "state", "multi_gateway", "server", "grpc", "omap_lock", "old_omap", "log_files", "nsid", "namespaces"]
     runs-on: ubuntu-latest
     env:
       HUGEPAGES: 512  # for multi gateway test, approx 256 per gateway instance
@@ -153,12 +153,17 @@ jobs:
 
       - name: Create RBD image
         run: |
+          echo "💁 ceph create pools:"
+          make exec SVC=ceph OPTS="-T" CMD="ceph osd pool create rbd"
+          make exec SVC=ceph OPTS="-T" CMD="ceph osd pool create rbd2"
           echo "💁 ceph list pools:"
           make exec SVC=ceph OPTS="-T" CMD="ceph osd lspools"
           echo "💁 rbd create:"
           make exec SVC=ceph OPTS="-T" CMD="rbd create rbd/mytestdevimage --size 16"
+          make exec SVC=ceph OPTS="-T" CMD="rbd create rbd2/mytestdevimage2 --size 16"
           echo "💁 ls rbd:"
           make exec SVC=ceph OPTS="-T" CMD="rbd ls rbd"
+          make exec SVC=ceph OPTS="-T" CMD="rbd ls rbd2"
 
       - name: Run protoc
         run: |
