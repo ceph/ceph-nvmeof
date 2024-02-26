@@ -155,11 +155,12 @@ class TestCreate:
         cli(["subsystem", "add", "--subsystem", "nqn.2016-06.io.-spdk:cnode1"])
         assert f"reverse domain is not formatted correctly" in caplog.text
         caplog.clear()
-        cli(["subsystem", "add", "--subsystem", subsystem])
+        cli(["subsystem", "add", "--subsystem", subsystem, "--max-namespaces", "2049"])
         assert f"create_subsystem {subsystem}: True" in caplog.text
         cli(["--format", "json", "subsystem", "list"])
         assert f'"serial_number": "{serial}"' not in caplog.text
         assert f'"nqn": "{subsystem}"' in caplog.text
+        assert f'"max_namespaces": 2049' in caplog.text
         caplog.clear()
         cli(["subsystem", "add", "--subsystem", subsystem2, "--serial-number", serial])
         assert f"create_subsystem {subsystem2}: True" in caplog.text

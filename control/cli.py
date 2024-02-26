@@ -653,7 +653,7 @@ class GatewayClient:
                         return errno.ENODEV
                     ctrls_id = f"{s.min_cntlid}-{s.max_cntlid}"
                     ha_str = "enabled" if s.enable_ha else "disabled"
-                    one_subsys = [s.subtype, s.nqn, ha_str, s.serial_number, s.model_number, ctrls_id, s.namespace_count]
+                    one_subsys = [s.subtype, s.nqn, ha_str, s.serial_number, s.model_number, ctrls_id, s.namespace_count, s.max_namespaces]
                     subsys_list.append(one_subsys)
                 if len(subsys_list) > 0:
                     if args.format == "text":
@@ -662,7 +662,7 @@ class GatewayClient:
                         table_format = "plain"
                     subsys_out = tabulate(subsys_list,
                                       headers = ["Subtype", "NQN", "HA State", "Serial Number", "Model Number", "Controller IDs",
-                                                 "Namespace\nCount"],
+                                                 "Namespace\nCount", "Max\nNamespaces"],
                                       tablefmt=table_format)
                     prefix = "Subsystems"
                     if args.subsystem:
