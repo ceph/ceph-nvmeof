@@ -43,9 +43,6 @@ jobs:
       - name: Build container images - nvmeof-cli
         run: make build SVC="nvmeof-cli" SPDK_TARGET_ARCH=x86-64-v2
 
-      - name: Build container images - discovery
-        run: make build SVC="discovery" SPDK_TARGET_ARCH=x86-64-v2
-
       - name: Save container images
         run: |
           . .env
@@ -229,6 +226,28 @@ jobs:
         run: |
           make up OPTS=--detach
 
+      - name: Wait for the ceph cluster container to become healthy
+        timeout-minutes: 3
+        run: |
+          while true; do
+            container_status=$(docker inspect --format='{{.State.Health.Status}}' ceph)
+            if [[ $container_status == "healthy" ]]; then
+              # success
+              exit 0
+            else
+              # Wait for a specific time before checking again
+              sleep ${{ env.WAIT_INTERVAL_SECS }}
+              echo -n .
+            fi
+          done
+
+      - name: Inform the Ceph monitor regarding the new Gateway
+        timeout-minutes: 3
+        run: |
+          set -x
+          GW_NAME=$(docker ps --format '{{.ID}}\t{{.Names}}' | awk '$2 ~ /nvmeof/ {print $1}')
+          docker-compose exec -T ceph ceph nvme-gw create $GW_NAME rbd ''
+
       - name: Wait for the Gateway to be listening
         timeout-minutes: 3
         run: |
@@ -282,6 +301,7 @@ jobs:
           shopt -s expand_aliases
           eval $(make alias)
           . .env
+          set -x
           echo -n "ℹ️  Starting bdevperf container"
           make up  SVC=bdevperf OPTS="--detach"
           sleep 10
@@ -295,62 +315,20 @@ jobs:
           echo "ℹ️  bdevperf tcp connect ip: $NVMEOF_IP_ADDRESS port: $NVMEOF_IO_PORT nqn: $NQN"
           make exec SVC=bdevperf OPTS=-T CMD="$rpc -v -s $BDEVPERF_SOCKET bdev_nvme_attach_controller -b Nvme0 -t tcp -a $NVMEOF_IP_ADDRESS -s $NVMEOF_IO_PORT -f ipv4 -n $NQN -q ${NQN}host -l -1 -o 10"
           echo "ℹ️  verify connection list"
-          set +e
           conns=$(cephnvmf --output stdio --format json connection list --subsystem $NQN)
-          if [ $? -ne 0 ]; then
-              echo "Failed to list connections"
-              exit 1
-          fi
           echo $conns | grep -q '"status": 0'
-          if [ $? -ne 0 ]; then
-              echo "Failed to list connections, non-zero status in connection list: ${conns}"
-              exit 1
-          fi
           echo $conns | grep -q "\"nqn\": \"${NQN}host\""
-          if [ $? -ne 0 ]; then
-              echo "Can't find host NQN ${NQN}host in connection list: ${conns}"
-              exit 1
-          fi
           echo $conns | grep -q "\"trsvcid\": ${NVMEOF_IO_PORT}"
-          if [ $? -ne 0 ]; then
-              echo "Can't find port ${NVMEOF_IO_PORT} in connection list: ${conns}"
-              exit 1
-          fi
           echo $conns | grep -q "\"traddr\": \"${NVMEOF_IP_ADDRESS}\""
-          if [ $? -ne 0 ]; then
-              echo "Can't find IP address ${NVMEOF_IP_ADDRESS} in connection list: ${conns}"
-              exit 1
-          fi
           echo $conns | grep -q "\"adrfam\": \"ipv4\""
-          if [ $? -ne 0 ]; then
-              echo "Can't find address family ipv4 in connection list: ${conns}"
-              exit 1
-          fi
           echo $conns | grep -q "\"trtype\": \"TCP\""
-          if [ $? -ne 0 ]; then
-              echo "Can't find transport type TCP in connection list: ${conns}"
-              exit 1
-          fi
           con_cnt=$(echo $conns | xargs -n 1 | grep traddr | wc -l)
-          if [ $con_cnt -gt 1 ]; then
-              echo "Found more than one connection in list: ${conns}"
-              exit 1
-          fi
-          if [ $con_cnt -lt 1 ]; then
-              echo "No connections in list: ${conns}"
+          if [ $con_cnt -ne 1 ]; then
+              echo "Number of connections ${con_cnt}, expected 1 list: ${conns}"
               exit 1
           fi
           echo $conns | grep -q "\"qpairs_count\": 1"
-          if [ $? -ne 0 ]; then
-              echo "Qpairs count should be 1 in connection list: ${conns}"
-              exit 1
-          fi
           echo $conns | grep -q "\"connected\": true"
-          if [ $? -ne 0 ]; then
-              echo "${NVMEOF_IP_ADDRESS}:${NVMEOF_IO_PORT} not connected in connection list: ${conns}"
-              exit 1
-          fi
-          set -e
           echo "ℹ️  bdevperf perform_tests"
           eval $(make run SVC=bdevperf OPTS="--entrypoint=env" | grep BDEVPERF_TEST_DURATION | tr -d '\n\r' )
           timeout=$(expr $BDEVPERF_TEST_DURATION \* 2)
@@ -440,7 +418,7 @@ jobs:
 
       - name: Start gateway with scale=2
         run: |
-          docker-compose up --detach --scale nvmeof=2 nvmeof
+          ./tests/ha/start_up.sh
 
       - name: Wait for gateways to be listening
         timeout-minutes: 3
@@ -573,7 +551,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        test: ["sanity", "state_transitions", "state_transitions_both_gws", "state_transitions_loop", "state_transitions_rand_loop"]
+        test: ["sanity", "state_transitions", "state_transitions_both_gws", "state_transitions_loop", "state_transitions_rand_loop", "late_registration", "late_registration_loop"]
     runs-on: ubuntu-latest
     env:
       HUGEPAGES: 768  # 3 spdk instances
@@ -599,8 +577,9 @@ jobs:
           docker load < bdevperf.tar
 
       - name: Start HA with two gateways
+        timeout-minutes: 3
         run: |
-          docker-compose up -d --scale nvmeof=2 nvmeof
+          ./tests/ha/start_up.sh
 
       - name: Wait for gateways to be listening
         timeout-minutes: 3
@@ -640,6 +619,17 @@ jobs:
         with:
           name: core_demo
           path: /tmp/coredump/core.*
+
+      - name: Copy ceph logs
+        if: success() || failure()
+        run: docker cp  ceph:/ceph/out /tmp/out
+
+      - name: Upload ceph logs
+        if: success() || failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ceph_out_${{ matrix.test }}
+          path: /tmp/out/*
 
       - name: Display logs
         if: success() || failure()
