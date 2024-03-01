@@ -34,12 +34,14 @@ class TestServer(unittest.TestCase):
 
         with self.assertRaises(SystemExit) as cm:
             with GatewayServer(config_spdk_exception) as gateway:
+                gateway.set_group_id(0)
                 gateway.serve()
         self.validate_exception(cm.exception)
 
     def test_spdk_abort(self):
         """Tests spdk sub process dumps core on during normal shutdown."""
         with GatewayServer(copy.deepcopy(self.config)) as gateway:
+            gateway.set_group_id(0)
             gateway.serve()
             time.sleep(10)
         # exited context, spdk process should be aborted here by __exit__()
@@ -64,7 +66,9 @@ class TestServer(unittest.TestCase):
                 GatewayServer(configA) as gatewayA,
                 GatewayServer(configB) as gatewayB,
              ):
+                gatewayA.set_group_id(0)
                 gatewayA.serve()
+                gatewayB.set_group_id(1)
                 gatewayB.serve()
         self.validate_exception(cm.exception)
 

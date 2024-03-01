@@ -40,10 +40,12 @@ def setup_config(config, gw1_name, gw2_name, gw_group, update_notify ,update_int
     return configA, configB
 
 def start_servers(gatewayA, gatewayB, addr, portA, portB):
+    gatewayA.set_group_id(0)
     gatewayA.serve()
     # Delete existing OMAP state
     gatewayA.gateway_rpc.gateway_state.delete_state()
     # Create new
+    gatewayB.set_group_id(1)
     gatewayB.serve()
     gatewayB.gateway_rpc.gateway_state.delete_state()
 

@@ -30,7 +30,7 @@ def setup_config(config, gw1_name, gw2_name, gw_group, update_notify, update_int
     configB = copy.deepcopy(configA)
     portA = configA.getint("gateway", "port")
     configA.config["gateway"]["port"] = str(portA)
-    portB = portA + 1
+    portB = portA + 2
     configB.config["gateway"]["name"] = gw2_name
     configB.config["gateway"]["port"] = str(portB)
     configB.config["spdk"]["rpc_socket_name"] = sock2_name
@@ -39,10 +39,12 @@ def setup_config(config, gw1_name, gw2_name, gw_group, update_notify, update_int
     return configA, configB
 
 def start_servers(gatewayA, gatewayB, addr, portA, portB):
+    gatewayA.set_group_id(0)
     gatewayA.serve()
     # Delete existing OMAP state
     gatewayA.gateway_rpc.gateway_state.delete_state()
     # Create new
+    gatewayB.set_group_id(1)
     gatewayB.serve()
     gatewayB.gateway_rpc.gateway_state.delete_state()
 
@@ -142,6 +144,7 @@ def test_multi_gateway_namespace_ids(config, image, caplog):
             assert False
         gatewayB.__exit__(None, None, None)
         gatewayB = GatewayServer(configB)
+        gatewayB.set_group_id(1)
         gatewayB.serve()
         channelB = grpc.insecure_channel(f"{addr}:{portB}")
         stubB = pb2_grpc.GatewayStub(channelB)

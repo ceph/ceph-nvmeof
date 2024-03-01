@@ -754,6 +754,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
         # Iterate over nqn_ana_states in ana_info
         for nas in ana_info.states:
             nqn = nas.nqn
+            if not self.get_subsystem_ha_status(nqn):
+                continue
             prefix = f"{self.gateway_state.local.LISTENER_PREFIX}{nqn}{GatewayState.OMAP_KEY_DELIMITER}{self.gateway_name}{GatewayState.OMAP_KEY_DELIMITER}"
             listener_keys = [key for key in state.keys() if key.startswith(prefix)]
             self.logger.info(f"Iterate over {nqn=} {prefix=} {listener_keys=}")

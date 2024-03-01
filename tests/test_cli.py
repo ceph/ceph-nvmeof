@@ -47,6 +47,7 @@ def gateway(config):
     with GatewayServer(config) as gateway:
 
         # Start gateway
+        gateway.set_group_id(0)
         gateway.serve()
 
         # Bind the client and Gateway

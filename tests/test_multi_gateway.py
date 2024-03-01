@@ -19,18 +19,14 @@ def conn(config):
     configA.config["gateway"]["name"] = "GatewayA"
     configA.config["gateway"]["group"] = "Group1"
     configA.config["gateway"]["state_update_notify"] = str(update_notify)
-    configA.config["gateway"]["min_controller_id"] = "1"
-    configA.config["gateway"]["max_controller_id"] = "20000"
     configA.config["gateway"]["enable_spdk_discovery_controller"] = "True"
     configA.config["spdk"]["rpc_socket_name"] = "spdk_GatewayA.sock"
     configB = copy.deepcopy(configA)
     addr = configA.get("gateway", "addr")
     portA = configA.getint("gateway", "port")
-    portB = portA + 1
+    portB = portA + 2
     configB.config["gateway"]["name"] = "GatewayB"
     configB.config["gateway"]["port"] = str(portB)
-    configA.config["gateway"]["min_controller_id"] = "20001"
-    configA.config["gateway"]["max_controller_id"] = "40000"
     configB.config["gateway"]["state_update_interval_sec"] = str(
         update_interval_sec)
     configB.config["spdk"]["rpc_socket_name"] = "spdk_GatewayB.sock"
@@ -41,10 +37,12 @@ def conn(config):
        GatewayServer(configA) as gatewayA,
        GatewayServer(configB) as gatewayB,
     ):
+        gatewayA.set_group_id(0)
         gatewayA.serve()
         # Delete existing OMAP state
         gatewayA.gateway_rpc.gateway_state.delete_state()
         # Create new
+        gatewayB.set_group_id(1)
         gatewayB.serve()
 
         # Bind the client and Gateways A & B
