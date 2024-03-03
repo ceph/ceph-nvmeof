@@ -223,6 +223,12 @@ class GatewayClient:
         # Bind the client and the server
         self._stub = pb2_grpc.GatewayStub(channel)
 
+    def get_actions(act_list):
+        acts = ""
+        for a in act_list:
+            acts += ", '" + a["name"] + "'"
+        return acts[2:]
+
     def format_adrfam(self, adrfam):
         adrfam = adrfam.upper()
         if adrfam == "IPV4":
@@ -390,6 +396,7 @@ class GatewayClient:
     gw_actions = []
     gw_actions.append({"name" : "version", "args" : [], "help" : "Display gateway's version"})
     gw_actions.append({"name" : "info", "args" : [], "help" : "Display gateway's information"})
+    gw_choices = get_actions(gw_actions)
     @cli.cmd(gw_actions)
     def gw(self, args):
         """Gateway commands"""
@@ -399,7 +406,7 @@ class GatewayClient:
         elif args.action == "version":
             return self.gw_version(args)
         if not args.action:
-            self.cli.parser.error("missing action for gw command")
+            self.cli.parser.error(f"missing action for gw command (choose from {GatewayClient.gw_choices})")
 
     def log_level_disable(self, args):
         """Disable SPDK nvmf log flags"""
@@ -539,6 +546,7 @@ class GatewayClient:
     log_actions.append({"name" : "get", "args" : log_get_args, "help" : "Get SPDK log levels and nvmf log flags"})
     log_actions.append({"name" : "set", "args" : log_set_args, "help" : "Set SPDK log levels and nvmf log flags"})
     log_actions.append({"name" : "disable", "args" : log_disable_args, "help" : "Disable SPDK nvmf log flags"})
+    log_choices = get_actions(log_actions)
     @cli.cmd(log_actions)
     def log_level(self, args):
         """SPDK nvmf log level commands"""
@@ -549,7 +557,7 @@ class GatewayClient:
         elif args.action == "disable":
             return self.log_level_disable(args)
         if not args.action:
-            self.cli.parser.error("missing action for log_level command")
+            self.cli.parser.error(f"missing action for log_level command (choose from {GatewayClient.log_choices})")
 
     def subsystem_add(self, args):
         """Create a subsystem"""
@@ -715,6 +723,7 @@ class GatewayClient:
     subsystem_actions.append({"name" : "add", "args" : subsys_add_args, "help" : "Create a subsystem"})
     subsystem_actions.append({"name" : "del", "args" : subsys_del_args, "help" : "Delete a subsystem"})
     subsystem_actions.append({"name" : "list", "args" : subsys_list_args, "help" : "List subsystems"})
+    subsystem_choices = get_actions(subsystem_actions)
     @cli.cmd(subsystem_actions)
     def subsystem(self, args):
         """Subsystem commands"""
@@ -725,7 +734,7 @@ class GatewayClient:
         elif args.action == "list":
             return self.subsystem_list(args)
         if not args.action:
-            self.cli.parser.error("missing action for subsystem command")
+            self.cli.parser.error(f"missing action for subsystem command (choose from {GatewayClient.subsystem_choices})")
 
     def listener_add(self, args):
         """Create a listener"""
@@ -905,6 +914,7 @@ class GatewayClient:
     listener_actions.append({"name" : "add", "args" : listener_add_args, "help" : "Create a listener"})
     listener_actions.append({"name" : "del", "args" : listener_del_args, "help" : "Delete a listener"})
     listener_actions.append({"name" : "list", "args" : listener_list_args, "help" : "List listeners"})
+    listener_choices = get_actions(listener_actions)
     @cli.cmd(listener_actions)
     def listener(self, args):
         """Listener commands"""
@@ -915,7 +925,7 @@ class GatewayClient:
         elif args.action == "list":
             return self.listener_list(args)
         if not args.action:
-            self.cli.parser.error("missing action for listener command")
+            self.cli.parser.error(f"missing action for listener command (choose from {GatewayClient.listener_choices})")
 
     def host_add(self, args):
         """Add a host to a subsystem."""
@@ -1066,6 +1076,7 @@ class GatewayClient:
     host_actions.append({"name" : "add", "args" : host_add_args, "help" : "Add host access to a subsystem"})
     host_actions.append({"name" : "del", "args" : host_del_args, "help" : "Remove host access from a subsystem"})
     host_actions.append({"name" : "list", "args" : host_list_args, "help" : "List subsystem's host access"})
+    host_choices = get_actions(host_actions)
     @cli.cmd(host_actions)
     def host(self, args):
         """Host commands"""
@@ -1076,7 +1087,7 @@ class GatewayClient:
         elif args.action == "list":
             return self.host_list(args)
         if not args.action:
-            self.cli.parser.error("missing action for host command")
+            self.cli.parser.error(f"missing action for host command (choose from {GatewayClient.host_choices})")
 
     def connection_list(self, args):
         """List connections for a subsystem."""
@@ -1134,13 +1145,14 @@ class GatewayClient:
     ]
     connection_actions = []
     connection_actions.append({"name" : "list", "args" : connection_list_args, "help" : "List active connections"})
+    connection_choices = get_actions(connection_actions)
     @cli.cmd(connection_actions)
     def connection(self, args):
         """Connection commands"""
         if args.action == "list":
             return self.connection_list(args)
         if not args.action:
-            self.cli.parser.error("missing action for connection command")
+            self.cli.parser.error(f"missing action for connection command (choose from {GatewayClient.connection_choices})")
 
     def ns_add(self, args):
         """Adds a namespace to a subsystem."""
@@ -1718,6 +1730,7 @@ class GatewayClient:
     ns_actions.append({"name" : "get_io_stats", "args" : ns_get_io_stats_args_list, "help" : "Get I/O stats for a namespace"})
     ns_actions.append({"name" : "change_load_balancing_group", "args" : ns_change_load_balancing_group_args_list, "help" : "Change load balancing group for a namespace"})
     ns_actions.append({"name" : "set_qos", "args" : ns_set_qos_args_list, "help" : "Set QOS limits for a namespace"})
+    ns_choices = get_actions(ns_actions)
     @cli.cmd(ns_actions, ["ns"])
     def namespace(self, args):
         """Namespace commands"""
@@ -1736,7 +1749,7 @@ class GatewayClient:
         elif args.action == "set_qos":
             return self.ns_set_qos(args)
         if not args.action:
-            self.cli.parser.error("missing action for namespace command")
+            self.cli.parser.error(f"missing action for namespace command (choose from {GatewayClient.ns_choices})")
 
     @cli.cmd()
     def get_subsystems(self, args):
