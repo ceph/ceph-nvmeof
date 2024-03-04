@@ -1502,8 +1502,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     ret_del = self.delete_bdev(bdev_name)
                     if ret_del.status != 0:
                         self.logger.warning(f"Failure {ret_del.status} deleting bdev {bdev_name}: {ret_del.error_message}")
-                except Exception as ex:
-                    self.logger.warning(f"Got exception while trying to delete bdev {bdev_name}:\n{ex}")
+                except Exception:
+                    self.logger.exception(f"Got exception while trying to delete bdev {bdev_name}:")
                     errmsg = f"Failure adding namespace {ns_params['nsid']} to {ns_params['subsys']}:{ret_ns.error_message}"
                     self.logger.error(errmsg)
                     return -1
