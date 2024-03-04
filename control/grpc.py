@@ -1477,12 +1477,11 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     ret = self.remove_namespace(subsys, nsid, None)
                     if ret.status != 0:
                         return -1
-                    if bdev_name:
-                        ret_del = self.delete_bdev(bdev_name, True)
-                        if ret_del.status != 0:
-                            errmsg = f"Failure deleting namespace {nsid} from {subsys}: {ret_del.error_message}"
-                            self.logger.error(errmsg)
-                            return -1
+                    ret_del = self.delete_bdev(bdev_name, True)
+                    if ret_del.status != 0:
+                        errmsg = f"Failure deleting namespace {nsid} from {subsys}: {ret_del.error_message}"
+                        self.logger.error(errmsg)
+                        return -1
         # recreate: loop on the list of dict  'list_ns_params'
         for   ns_params in list_ns_params:
             bdev_name = ns_params['bdev_name']
