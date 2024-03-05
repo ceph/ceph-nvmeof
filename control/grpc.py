@@ -40,6 +40,7 @@ from .cephutils import CephUtils
 
 # Assuming max of 32 gateways and protocol min 1 max 65519
 CNTLID_RANGE_SIZE = 2040
+DEFAULT_MODEL_NUMBER = "Ceph bdev Controller"
 
 class BdevStatus:
     def __init__(self, status, error_message, bdev_name = ""):
@@ -508,6 +509,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     self.spdk_rpc_client,
                     nqn=request.subsystem_nqn,
                     serial_number=request.serial_number,
+                    model_number=DEFAULT_MODEL_NUMBER,
                     max_namespaces=request.max_namespaces,
                     min_cntlid=min_cntlid,
                     max_cntlid=max_cntlid,
