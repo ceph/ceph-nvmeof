@@ -176,6 +176,7 @@ class GatewayLogger:
     CEPH_LOG_DIRECTORY = "/var/log/ceph/"
     MAX_LOG_FILE_SIZE_DEFAULT = 10
     MAX_LOG_FILES_COUNT_DEFAULT = 20
+    MAX_LOG_DIRECTORY_BACKUPS_DEFAULT = 10
     NVME_LOG_DIR_PREFIX = "nvmeof-"
     NVME_LOG_FILE_NAME = "nvmeof-log"
     logger = None
@@ -212,6 +213,7 @@ class GatewayLogger:
             log_files_rotation_enabled = config.getboolean_with_default("gateway", "log_files_rotation_enabled", True)
             max_log_file_size = config.getint_with_default("gateway", "max_log_file_size_in_mb", GatewayLogger.MAX_LOG_FILE_SIZE_DEFAULT)
             max_log_files_count = config.getint_with_default("gateway", "max_log_files_count", GatewayLogger.MAX_LOG_FILES_COUNT_DEFAULT)
+            max_log_directory_backups = config.getint_with_default("gateway", "max_log_directory_backups", GatewayLogger.MAX_LOG_DIRECTORY_BACKUPS_DEFAULT)
             log_level = config.get_with_default("gateway", "log_level", "info")
         else:
             verbose = True
@@ -219,12 +221,13 @@ class GatewayLogger:
             log_files_rotation_enabled = False
             max_log_file_size = GatewayLogger.MAX_LOG_FILE_SIZE_DEFAULT
             max_log_files_count = GatewayLogger.MAX_LOG_FILES_COUNT_DEFAULT
+            max_log_directory_backups = GatewayLogger.MAX_LOG_DIRECTORY_BACKUPS_DEFAULT
             log_level = "info"
 
         self.handler = None
         logdir_ok = False
         if log_files_enabled:
-            GatewayLogger.rotate_backup_directories(self.log_directory, 5)
+            GatewayLogger.rotate_backup_directories(self.log_directory, max_log_directory_backups)
             if not log_files_rotation_enabled:
                 max_log_file_size = 0
                 max_log_files_count = 0
