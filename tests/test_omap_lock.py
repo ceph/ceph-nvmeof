@@ -180,7 +180,7 @@ def test_multi_gateway_omap_reread(config, conn_omap_reread, caplog):
     """
     stubA, stubB, gatewayA, gatewayB = conn_omap_reread
     nqn = subsystem_prefix + "X1"
-    serial = "SPDK00000000000001"
+    serial = "Ceph00000000000001"
     nsid = 10
     num_subsystems = 2
 
