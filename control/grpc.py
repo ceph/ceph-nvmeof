@@ -485,7 +485,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         if not request.serial_number:
             random.seed()
             randser = random.randint(2, 99999999999999)
-            request.serial_number = f"SPDK{randser}"
+            request.serial_number = f"Ceph{randser}"
             self.logger.info(f"No serial number specified for {request.subsystem_nqn}, will use {request.serial_number}")
 
         ret = False

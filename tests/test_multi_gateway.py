@@ -66,7 +66,7 @@ def test_multi_gateway_coordination(config, image, conn):
     """
     stubA, stubB = conn
     nqn = "nqn.2016-06.io.spdk:cnode1"
-    serial = "SPDK00000000000001"
+    serial = "Ceph00000000000001"
     nsid = 10
     num_subsystems = 2
 
