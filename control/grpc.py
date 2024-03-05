@@ -153,6 +153,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
         self.gateway_name = self.config.get("gateway", "name")
         if not self.gateway_name:
             self.gateway_name = socket.gethostname()
+        if not GatewayState.is_key_element_valid(self.gateway_name):
+            raise ValueError(f"Gateway name \"{self.gateway_name}\" contains invalid characters")
         self.gateway_group = self.config.get("gateway", "group")
         self.verify_nqns = self.config.getboolean_with_default("gateway", "verify_nqns", True)
         self.ana_map = defaultdict(dict)
@@ -458,6 +460,11 @@ class GatewayService(pb2_grpc.GatewayServicer):
             f"Received request to create subsystem {request.subsystem_nqn}, enable_ha: {request.enable_ha}, context: {context}")
 
         errmsg = ""
+        if not GatewayState.is_key_element_valid(request.subsystem_nqn):
+            errmsg = f"{create_subsystem_error_prefix}: Invalid NQN \"{request.subsystem_nqn}\", contains invalid characters"
+            self.logger.error(f"{errmsg}")
+            return pb2.req_status(status = errno.EINVAL, error_message = errmsg)
+
         if self.verify_nqns:
             rc = GatewayUtils.is_valid_nqn(request.subsystem_nqn)
             if rc[0] != 0:
@@ -762,7 +769,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
             nqn = nas.nqn
             if not self.get_subsystem_ha_status(nqn):
                 continue
-            prefix = f"{self.gateway_state.local.LISTENER_PREFIX}{nqn}{GatewayState.OMAP_KEY_DELIMITER}{self.gateway_name}{GatewayState.OMAP_KEY_DELIMITER}"
+            prefix = GatewayState.build_partial_listener_key(nqn, self.gateway_name) + GatewayState.OMAP_KEY_DELIMITER
             listener_keys = [key for key in state.keys() if key.startswith(prefix)]
             self.logger.info(f"Iterate over {nqn=} {prefix=} {listener_keys=}")
             # fill the static gateway dictionary per nqn and grp_id
@@ -1563,6 +1570,16 @@ class GatewayService(pb2_grpc.GatewayServicer):
         all_host_failure_prefix=f"Failure allowing open host access to {request.subsystem_nqn}"
         host_failure_prefix=f"Failure adding host {request.host_nqn} to {request.subsystem_nqn}"
 
+        if not GatewayState.is_key_element_valid(request.host_nqn):
+            errmsg = f"{host_failure_prefix}: Invalid host NQN \"{request.host_nqn}\", contains invalid characters"
+            self.logger.error(f"{errmsg}")
+            return pb2.req_status(status = errno.EINVAL, error_message = errmsg)
+
+        if not GatewayState.is_key_element_valid(request.subsystem_nqn):
+            errmsg = f"{host_failure_prefix}: Invalid subsystem NQN \"{request.subsystem_nqn}\", contains invalid characters"
+            self.logger.error(f"{errmsg}")
+            return pb2.req_status(status = errno.EINVAL, error_message = errmsg)
+
         if self.verify_nqns:
             rc = GatewayService.is_valid_host_nqn(request.host_nqn)
             if rc.status != 0:
@@ -1929,7 +1946,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         state = self.gateway_state.local.get_state()
         # We want to check for all the listeners for this address and port, regardless of the gateway
         key_prefix = GatewayState.build_partial_listener_key(nqn)
-        key_suffix = GatewayState.build_listener_key_suffix("", "TCP", traddr, trsvcid)
+        key_suffix = GatewayState.build_listener_key_suffix(None, "TCP", traddr, trsvcid)
 
         for key, val in state.items():
             if not key.startswith(key_prefix):

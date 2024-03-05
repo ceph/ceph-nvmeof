@@ -219,7 +219,7 @@ class GatewayLogger:
             log_files_rotation_enabled = False
             max_log_file_size = GatewayLogger.MAX_LOG_FILE_SIZE_DEFAULT
             max_log_files_count = GatewayLogger.MAX_LOG_FILES_COUNT_DEFAULT
-            log_leGatewayLoggervel = "info"
+            log_level = "info"
 
         self.handler = None
         logdir_ok = False

@@ -35,7 +35,7 @@ def gateway(config, request):
     config.config["gateway"]["log_files_enabled"] = "True"
     config.config["gateway"]["max_log_file_size_in_mb"] = "10"
     config.config["gateway"]["log_files_rotation_enabled"] = "True"
-    config.config["gateway"]["name"] = request.node.name
+    config.config["gateway"]["name"] = request.node.name.replace("_", "-")
     if request.node.name == "test_log_files_disabled":
         config.config["gateway"]["log_files_enabled"] = "False"
     elif request.node.name == "test_log_files_rotation":

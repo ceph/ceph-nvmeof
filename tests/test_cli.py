@@ -43,10 +43,12 @@ def gateway(config):
 
     addr = config.get("gateway", "addr")
     port = config.getint("gateway", "port")
+    config.config["gateway"]["log_level"] = "debug"
 
     with GatewayServer(config) as gateway:
 
         # Start gateway
+        gateway.gw_logger_object.set_log_level("debug")
         gateway.set_group_id(0)
         gateway.serve()
 
@@ -155,6 +157,10 @@ class TestCreate:
         caplog.clear()
         cli(["subsystem", "add", "--subsystem", "nqn.2016-06.io.-spdk:cnode1"])
         assert f"reverse domain is not formatted correctly" in caplog.text
+        caplog.clear()
+        cli(["subsystem", "add", "--subsystem", f"{subsystem}_X"])
+        assert f"Invalid NQN" in caplog.text
+        assert f"contains invalid characters" in caplog.text
         caplog.clear()
         cli(["subsystem", "add", "--subsystem", subsystem, "--max-namespaces", "2049"])
         assert f"create_subsystem {subsystem}: True" in caplog.text
@@ -554,6 +560,14 @@ class TestCreate:
         caplog.clear()
         cli(["host", "add", "--subsystem", subsystem, "--host", "nqn.2X16-06.io.spdk:host1"])
         assert f"invalid date code" in caplog.text
+        caplog.clear()
+        cli(["host", "add", "--subsystem", subsystem, "--host", "nqn.2016-06.io.spdk:host1_X"])
+        assert f"Invalid host NQN" in caplog.text
+        assert f"contains invalid characters" in caplog.text
+        caplog.clear()
+        cli(["host", "add", "--subsystem", f"{subsystem}_X", "--host", "nqn.2016-06.io.spdk:host2"])
+        assert f"Invalid subsystem NQN" in caplog.text
+        assert f"contains invalid characters" in caplog.text
 
     @pytest.mark.parametrize("listener", listener_list)
     def test_create_listener(self, caplog, listener, gateway):
@@ -686,9 +700,12 @@ class TestDelete:
         bdev_found = False
         bdev_list = rpc_bdev.bdev_get_bdevs(gw.spdk_rpc_client)
         for b in bdev_list:
-            if bdev_name == b["name"]:
-                bdev_found = True
-                break
+            try:
+                if bdev_name == b["name"]:
+                    bdev_found = True
+                    break
+            except KeyError:
+                print(f"Couldn't find field name in: {b}")
         assert bdev_found
         caplog.clear()
         del_ns_req = pb2.namespace_delete_req(subsystem_nqn=subsystem)
@@ -701,9 +718,12 @@ class TestDelete:
         bdev_found = False
         bdev_list = rpc_bdev.bdev_get_bdevs(gw.spdk_rpc_client)
         for b in bdev_list:
-            if bdev_name == b["name"]:
-                bdev_found = True
-                break
+            try:
+                if bdev_name == b["name"]:
+                    bdev_found = True
+                    break
+            except KeyError:
+                print(f"Couldn't find field name in: {b}")
         assert not bdev_found
         caplog.clear()
         cli(["namespace", "del", "--subsystem", subsystem, "--nsid", "2"])

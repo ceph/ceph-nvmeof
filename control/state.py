@@ -31,16 +31,23 @@ class GatewayState(ABC):
     LISTENER_PREFIX = "listener" + OMAP_KEY_DELIMITER
     NAMESPACE_QOS_PREFIX = "qos" + OMAP_KEY_DELIMITER
 
+    def is_key_element_valid(s: str) -> bool:
+        if type(s) != str:
+            return False
+        if GatewayState.OMAP_KEY_DELIMITER in s:
+            return False
+        return True
+
     def build_namespace_key(subsystem_nqn: str, nsid) -> str:
         key = GatewayState.NAMESPACE_PREFIX + subsystem_nqn
         if nsid is not None:
-            key = key + GatewayState.OMAP_KEY_DELIMITER + str(nsid)
+            key += GatewayState.OMAP_KEY_DELIMITER + str(nsid)
         return key
 
     def build_namespace_qos_key(subsystem_nqn: str, nsid) -> str:
         key = GatewayState.NAMESPACE_QOS_PREFIX + subsystem_nqn
         if nsid is not None:
-            key = key + GatewayState.OMAP_KEY_DELIMITER + str(nsid)
+            key += GatewayState.OMAP_KEY_DELIMITER + str(nsid)
         return key
 
     def build_subsystem_key(subsystem_nqn: str) -> str:
@@ -49,11 +56,14 @@ class GatewayState(ABC):
     def build_host_key(subsystem_nqn: str, host_nqn) -> str:
         key = GatewayState.HOST_PREFIX + subsystem_nqn
         if host_nqn is not None:
-            key = key + GatewayState.OMAP_KEY_DELIMITER + host_nqn
+            key += GatewayState.OMAP_KEY_DELIMITER + host_nqn
         return key
 
-    def build_partial_listener_key(subsystem_nqn: str) -> str:
-        return GatewayState.LISTENER_PREFIX + subsystem_nqn
+    def build_partial_listener_key(subsystem_nqn: str, gateway = None) -> str:
+        key = GatewayState.LISTENER_PREFIX + subsystem_nqn
+        if gateway:
+            key += GatewayState.OMAP_KEY_DELIMITER + gateway
+        return key
 
     def build_listener_key_suffix(gateway: str, trtype: str, traddr: str, trsvcid: int) -> str:
         if gateway:
@@ -63,7 +73,7 @@ class GatewayState(ABC):
         return GatewayState.OMAP_KEY_DELIMITER + traddr + GatewayState.OMAP_KEY_DELIMITER + str(trsvcid)
         
     def build_listener_key(subsystem_nqn: str, gateway: str, trtype: str, traddr: str, trsvcid: int) -> str:
-        return GatewayState.build_partial_listener_key(subsystem_nqn) + GatewayState.build_listener_key_suffix(gateway, trtype, traddr, str(trsvcid))
+        return GatewayState.build_partial_listener_key(subsystem_nqn, gateway) + GatewayState.build_listener_key_suffix(None, trtype, traddr, str(trsvcid))
 
     @abstractmethod
     def get_state(self) -> Dict[str, str]:
