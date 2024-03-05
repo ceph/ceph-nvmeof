@@ -189,7 +189,7 @@ Once the NVMe-oF target is
     $ sudo nvme list
     Node                  Generic               SN                   Model                                    Namespace Usage                      Format           FW Rev
     --------------------- --------------------- -------------------- ---------------------------------------- --------- -------------------------- ---------------- --------
-    /dev/nvme1n1          /dev/ng1n1            SPDK00000000000001   SPDK bdev Controller                     1          10,49  MB /  10,49  MB      4 KiB +  0 B   23.01
+    /dev/nvme1n1          /dev/ng1n1            SPDK00000000000001   Ceph bdev Controller                     1          10,49  MB /  10,49  MB      4 KiB +  0 B   23.01
     ...
     ```
 
