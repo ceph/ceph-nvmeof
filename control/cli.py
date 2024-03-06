@@ -333,6 +333,7 @@ class GatewayClient:
                     out_func(f"Gateway's name: {gw_info.name}")
                 if gw_info.group:
                     out_func(f"Gateway's group: {gw_info.group}")
+                out_func(f"Gateway's load balancing group: {gw_info.load_balancing_group}")
                 out_func(f"Gateway's address: {gw_info.addr}")
                 out_func(f"Gateway's port: {gw_info.port}")
                 if gw_info.spdk_version:
