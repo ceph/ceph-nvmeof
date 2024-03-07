@@ -866,7 +866,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
             if ret_bdev.bdev_name != bdev_name:
                 self.logger.warning(f"Returned bdev name {ret_bdev.bdev_name} differs from requested one {bdev_name}")
 
-            ret_ns = self.create_namespace(request.subsystem_nqn, bdev_name, request.nsid, request.anagrpid, request.uuid, context)
+            ret_ns = self.create_namespace(request.subsystem_nqn, bdev_name, request.nsid, anagrp, request.uuid, context)
 
             if ret_ns.status == 0 and request.nsid and ret_ns.nsid != request.nsid:
                 errmsg = f"Returned NSID {ret_ns.nsid} differs from requested one {request.nsid}"
