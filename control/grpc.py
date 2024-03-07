@@ -2447,6 +2447,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                group = self.gateway_group,
                                addr = addr,
                                port = port,
+                               load_balancing_group = self.group_id + 1,
                                bool_status = True,
                                status = 0,
                                error_message = os.strerror(0))

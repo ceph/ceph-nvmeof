@@ -333,6 +333,7 @@ message gateway_info {
 	int32 status = 8;
 	string error_message = 9;
 	optional string spdk_version = 10;
+        uint32 load_balancing_group = 11;
 }
 
 message cli_version {
