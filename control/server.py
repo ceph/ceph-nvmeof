@@ -177,7 +177,7 @@ class GatewayServer:
         self.server.start()
 
         # Start the prometheus endpoint if enabled by the config
-        if self.config.getboolean_with_default("gateway", "enable_prometheus_exporter", True):
+        if self.config.getboolean_with_default("gateway", "enable_prometheus_exporter", False):
             self.logger.info("Prometheus endpoint is enabled")
             start_exporter(self.spdk_rpc_client, self.config)
         else:
