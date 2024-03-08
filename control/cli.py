@@ -1258,10 +1258,9 @@ class GatewayClient:
             args.block_size = 512
         if args.block_size <= 0:
             self.cli.parser.error("block-size value must be positive")
-        if args.load_balancing_group == None:
-            args.load_balancing_group = 1
-        if args.load_balancing_group <= 0:
-            self.cli.parser.error("load-balancing-group value must be positive")
+
+        if args.load_balancing_group < 0:
+               self.cli.parser.error("load-balancing-group value must be positive")
         if args.nsid != None and args.nsid <= 0:
             self.cli.parser.error("nsid value must be positive")
         if args.rbd_create_image:
@@ -1795,7 +1794,7 @@ class GatewayClient:
         argument("--rbd-image", "-i", help="RBD image name", required=True),
         argument("--rbd-create-image", "-c", help="Create RBD image if needed", action='store_true', required=False),
         argument("--block-size", "-s", help="Block size", type=int),
-        argument("--load-balancing-group", "-l", help="Load balancing group", type=int),
+        argument("--load-balancing-group", "-l", help="Load balancing group", type=int, default=0),
         argument("--size", help="Size in bytes or specified unit (KB, KiB, MB, MiB, GB, GiB, TB, TiB)"),
         argument("--force", help="Create a namespace even its image is already used by another namespace", action='store_true', required=False),
     ]

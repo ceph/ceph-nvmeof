@@ -72,6 +72,7 @@ def create_namespace(stub, rbd_pool, rbd_image, nsid):
                                           rbd_image_name=rbd_image,
                                           nsid=nsid,
                                           block_size=4096,
+                                          anagrpid=1,
                                           force=True)
         ret_namespace = stub.namespace_add(namespace_req)
         if ret_namespace.status != errno.ETIMEDOUT:
