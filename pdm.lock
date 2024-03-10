@@ -67,7 +67,7 @@ summary = ""
 
 [[package]]
 name = "pytest"
-version = "8.0.0"
+version = "8.1.1"
 requires_python = ">=3.8"
 summary = "pytest: simple powerful testing with Python"
 dependencies = [
@@ -75,8 +75,8 @@ dependencies = [
     "exceptiongroup>=1.0.0rc8; python_version < \"3.11\"",
     "iniconfig",
     "packaging",
-    "pluggy<2.0,>=1.3.0",
-    "tomli>=1.0.0; python_version < \"3.11\"",
+    "pluggy<2.0,>=1.4",
+    "tomli>=1; python_version < \"3.11\"",
 ]
 
 [[package]]
@@ -107,7 +107,7 @@ summary = "A lil' TOML parser"
 lock_version = "4.2"
 cross_platform = true
 groups = ["default", "dev", "test"]
-content_hash = "sha256:0183207b4de869e3df30d188f035adffcd94eeb4e71059b0d47a921f3771b1a5"
+content_hash = "sha256:a208e870ff545a083e7580ac5744c6d914a61b1e44eb075473e72f3db6750ca3"
 
 [metadata.files]
 "colorama 0.4.6" = [
@@ -265,8 +265,8 @@ content_hash = "sha256:0183207b4de869e3df30d188f035adffcd94eeb4e71059b0d47a921f3
     {url = "https://files.pythonhosted.org/packages/f4/fd/d8d309382c71c5e83a1920ae9840410396e595e3b36229d96e3ba755687e/protobuf-4.22.3-cp37-abi3-manylinux2014_x86_64.whl", hash = "sha256:13233ee2b9d3bd9a5f216c1fa2c321cd564b93d8f2e4f521a85b585447747997"},
     {url = "https://files.pythonhosted.org/packages/f8/70/6291e75633eeaa24fed46c9f66091bec184644e6159f392ac32eb92b1f65/protobuf-4.22.3-cp39-cp39-win_amd64.whl", hash = "sha256:e0e630d8e6a79f48c557cd1835865b593d0547dce221c66ed1b827de59c66c97"},
 ]
-"pytest 8.0.0" = [
-    {url = "https://files.pythonhosted.org/packages/c7/10/727155d44c5e04bb08e880668e53079547282e4f950535234e5a80690564/pytest-8.0.0-py3-none-any.whl", hash = "sha256:50fb9cbe836c3f20f0dfa99c565201fb75dc54c8d76373cd1bde06b06657bdb6"},
+"pytest 8.1.1" = [
+    {url = "https://files.pythonhosted.org/packages/4d/7e/c79cecfdb6aa85c6c2e3cf63afc56d0f165f24f5c66c03c695c4d9b84756/pytest-8.1.1-py3-none-any.whl", hash = "sha256:2a8386cfc11fa9d2c50ee7b2a57e7d898ef90470a7a34c4b949ff59662bb78b7"},
 ]
 "pyyaml 6.0.1" = [
     {url = "https://files.pythonhosted.org/packages/02/74/b2320ebe006b6a521cf929c78f12a220b9db319b38165023623ed195654b/PyYAML-6.0.1-cp36-cp36m-macosx_10_9_x86_64.whl", hash = "sha256:50550eb667afee136e9a77d6dc71ae76a44df8b3e51e41b77f6de2932bfe0f47"},
