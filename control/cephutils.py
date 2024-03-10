@@ -40,10 +40,10 @@ class CephUtils:
                     self.logger.info(f"nvme-show string: {str} ")
                     rply = cluster.mon_command(str, b'')
                     self.logger.info(f"reply \"{rply}\"")
-
-                    pos = rply[2].find("[")
+                    conv_str = rply[1].decode()
+                    pos = conv_str.find("[")
                     if pos!= -1:
-                        new_str = rply[2][pos+ len("[") :]
+                        new_str = conv_str[pos+ len("[") :]
                         pos     = new_str.find("]")
                         new_str = new_str[: pos].strip()
                         int_str = new_str.split(' ')
