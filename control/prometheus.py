@@ -150,15 +150,18 @@ class NVMeOFCollector:
 
     @timer
     def _get_bdev_info(self):
-        return rpc.bdev.bdev_get_bdevs(self.spdk_rpc_client)
+        with self.gateway_rpc.rpc_lock:
+            return rpc.bdev.bdev_get_bdevs(self.spdk_rpc_client)
 
     @timer
     def _get_bdev_io_stats(self):
-        return rpc.bdev.bdev_get_iostat(self.spdk_rpc_client)
+        with self.gateway_rpc.rpc_lock:
+            return rpc.bdev.bdev_get_iostat(self.spdk_rpc_client)
 
     @timer
     def _get_spdk_thread_stats(self):
-        return rpc.app.thread_get_stats(self.spdk_rpc_client)
+        with self.gateway_rpc.rpc_lock:
+            return rpc.app.thread_get_stats(self.spdk_rpc_client)
 
     @timer
     def _get_subsystems(self):
