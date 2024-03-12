@@ -11,6 +11,7 @@ import uuid
 import errno
 import rbd
 import rados
+import time
 from .utils import GatewayLogger
 
 class CephUtils:
@@ -21,6 +22,41 @@ class CephUtils:
         self.logger = GatewayLogger(config).logger
         self.ceph_conf = config.get_with_default("ceph", "config_file", "/etc/ceph/ceph.conf")
         self.rados_id = config.get_with_default("ceph", "id", "")
+        self.integer_list = []
+        self.last_sent = time.time()
+
+    def get_number_created_gateways(self, pool, group):
+        now = time.time()
+        if (now - self.last_sent) < 10 and self.integer_list :
+             self.logger.info(f" Caching responce of the monitor: {self.integer_list} ")
+             return self.integer_list
+        else :
+            try:
+                self.integer_list = []
+                self.last_sent = now
+                with rados.Rados(conffile=self.ceph_conf, rados_id=self.rados_id) as cluster:
+                    str = '{"prefix":"nvme-gw show", "pool":'
+                    str += '"'+pool+'"' + ', "group":' + '"'+group+'"' + "}"
+                    self.logger.info(f"nvme-show string: {str} ")
+                    rply = cluster.mon_command(str, b'')
+                    self.logger.info(f"reply \"{rply}\"")
+                    conv_str = rply[1].decode()
+                    pos = conv_str.find("[")
+                    if pos!= -1:
+                        new_str = conv_str[pos+ len("[") :]
+                        pos     = new_str.find("]")
+                        new_str = new_str[: pos].strip()
+                        int_str = new_str.split(' ')
+                        self.logger.info(f"new_str : {new_str}")
+                        for x in int_str:
+                            self.integer_list.append(int(x))
+                        self.logger.info(self.integer_list)
+                    else:
+                        self.logger.info("Gws not found")
+                    return self.integer_list
+            except Exception:
+                self.logger.exception(f"Failure get number created gateways:")
+                pass
 
     def fetch_and_display_ceph_version(self):
         try:
@@ -90,4 +126,3 @@ class CephUtils:
             raise rc_ex
 
         return rc
-

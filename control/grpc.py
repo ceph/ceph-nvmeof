@@ -165,6 +165,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         self.subsystem_nsid_bdev = defaultdict(dict)
         self.subsystem_nsid_anagrp = defaultdict(dict)
         self.gateway_group = self.config.get("gateway", "group")
+        self.gateway_pool =  self.config.get("ceph", "pool")
         self._init_cluster_context()
         self.subsys_ha = {}
         self.subsys_max_ns = {}
@@ -819,6 +820,29 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 return pb2.req_status(status=ret_recycle , error_message=errmsg)
         return pb2.req_status(status=True)
 
+    def choose_anagrpid_for_namespace(self, nsid) ->int:
+        grps_list = self.ceph_utils.get_number_created_gateways(self.gateway_pool, self.gateway_group)
+        for ana_grp in grps_list:
+            if not self.clusters[ana_grp]: # still no namespaces in this ana-group - probably the new GW  added
+                self.logger.info(f"New GW created: chosen ana group {ana_grp} for ns {nsid} ")
+                return ana_grp
+        #not found ana_grp .To calulate it.  Find minimum loaded ana_grp cluster
+        ana_load = {}
+        min_load = 2000
+        chosen_ana_group = 0
+        for ana_grp in self.clusters:
+            ana_load[ana_grp] = 0;
+            for name in self.clusters[ana_grp]:
+                ana_load[ana_grp] += self.clusters[ana_grp][name] # accumulate the total load per ana group for all ana_grp clusters
+        for ana_grp in ana_load :
+            self.logger.info(f" ana group {ana_grp} load =  {ana_load[ana_grp]}  ")
+            if ana_load[ana_grp] <=  min_load:
+                min_load = ana_load[ana_grp]
+                chosen_ana_group = ana_grp
+                self.logger.info(f" ana group {ana_grp} load =  {ana_load[ana_grp]} set as min {min_load} ")
+        self.logger.info(f"Found min loaded cluster: chosen ana group {chosen_ana_group} for ns {nsid} ")
+        return chosen_ana_group
+
     def namespace_add_safe(self, request, context):
         """Adds a namespace to a subsystem."""
 
@@ -845,6 +869,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
             if not context:
                 create_image = False
             anagrp = int(request.anagrpid) if request.anagrpid is not None else 0
+            anagrp = self.choose_anagrpid_for_namespace(request.nsid)
+
             ret_bdev = self.create_bdev(anagrp, bdev_name, request.uuid, request.rbd_pool_name,
                                         request.rbd_image_name, request.block_size, create_image, request.size)
             if ret_bdev.status != 0:
