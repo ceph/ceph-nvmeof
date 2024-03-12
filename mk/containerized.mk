@@ -7,12 +7,11 @@ DOCKER_COMPOSE != command -v docker-compose || (DOCKER=$$(command -v docker) && 
 ifndef DOCKER_COMPOSE
 $(error DOCKER_COMPOSE command not found. Please install from: https://docs.docker.com/engine/install/))
 endif
-DOCKER_COMPOSE_COMMANDS = pull build up run exec ps top images logs port \
+DOCKER_COMPOSE_COMMANDS = pull build run exec ps top images logs port \
 	pause unpause stop restart down events
 
 OPTS ?= ## Docker-compose subcommand options
-SCALE ?= 1 ## Number of instances
-CMD ?= ## Command to run with run/exec targets
+CMD ?=  ## Command to run with run/exec targets
 
 .PHONY: $(DOCKER_COMPOSE_COMMANDS) shell
 $(DOCKER_COMPOSE_COMMANDS):

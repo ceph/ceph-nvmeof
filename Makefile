@@ -36,9 +36,9 @@ build: export NVMEOF_GIT_MODIFIED_FILES != git status -s | grep -e "^ *M" | sed 
 build: export CEPH_CLUSTER_CEPH_REPO_BASEURL != curl -s https://shaman.ceph.com/api/repos/ceph/$(CEPH_BRANCH)/$(CEPH_SHA)/centos/9/ | jq -r '.[0].url'
 
 up: ## Launch services
-up: SVC ?= ceph nvmeof ## Services
-up: OPTS ?= --abort-on-container-exit --exit-code-from $(SVC) --remove-orphans
-#up: override OPTS += --scale nvmeof=$(SCALE)
+up: SCALE?= 1 ## Number of gateways
+up:
+	@$(CURDIR)/tests/ha/start_up.sh $(SCALE)
 
 clean: $(CLEAN) setup  ## Clean-up environment
 clean: override HUGEPAGES = 0

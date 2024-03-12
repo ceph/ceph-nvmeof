@@ -362,7 +362,7 @@ Python wheel exported to:
 To avoid having to re-build container on every code change, developer friendly containers are provided:
 
 ```bash
-make up SVC="nvmeof-devel"
+docker-compose up nvmeof-devel
 ```
 
 Devel containers provide the same base layer as the production containers but with the source code mounted at run-time.

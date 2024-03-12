@@ -131,7 +131,7 @@ jobs:
 
       - name: Start ceph cluster
         run: |
-          make up SVC=ceph OPTS="--detach"
+          docker-compose up -d ceph
 
       - name: Wait for the ceph cluster container to become healthy
         timeout-minutes: 3
@@ -223,30 +223,9 @@ jobs:
           docker load < bdevperf.tar
 
       - name: Start containers
-        run: |
-          make up OPTS=--detach
-
-      - name: Wait for the ceph cluster container to become healthy
         timeout-minutes: 3
         run: |
-          while true; do
-            container_status=$(docker inspect --format='{{.State.Health.Status}}' ceph)
-            if [[ $container_status == "healthy" ]]; then
-              # success
-              exit 0
-            else
-              # Wait for a specific time before checking again
-              sleep ${{ env.WAIT_INTERVAL_SECS }}
-              echo -n .
-            fi
-          done
-
-      - name: Inform the Ceph monitor regarding the new Gateway
-        timeout-minutes: 3
-        run: |
-          set -x
-          GW_NAME=$(docker ps --format '{{.ID}}\t{{.Names}}' | awk '$2 ~ /nvmeof/ {print $1}')
-          docker-compose exec -T ceph ceph nvme-gw create $GW_NAME rbd ''
+          make up
 
       - name: Wait for the Gateway to be listening
         timeout-minutes: 3
@@ -303,7 +282,7 @@ jobs:
           . .env
           set -x
           echo -n "ℹ️  Starting bdevperf container"
-          make up  SVC=bdevperf OPTS="--detach"
+          docker-compose up -d bdevperf
           sleep 10
           echo "ℹ️  bdevperf start up logs"
           make logs SVC=bdevperf
@@ -495,7 +474,7 @@ jobs:
           }
 
           echo -n "ℹ️  Starting bdevperf container"
-          make up  SVC=bdevperf OPTS="--detach"
+          docker-compose up -d bdevperf
           sleep 10
           echo "ℹ️  bdevperf start up logs"
           make logs SVC=bdevperf
