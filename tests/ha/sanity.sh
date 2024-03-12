@@ -8,7 +8,7 @@ container_ip() {
 }
 
 echo -n "ℹ️  Starting bdevperf container"
-make up  SVC=bdevperf OPTS="--detach"
+docker-compose up -d bdevperf
 sleep 10
 echo "ℹ️  bdevperf start up logs"
 make logs SVC=bdevperf
