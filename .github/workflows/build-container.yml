@@ -299,7 +299,7 @@ jobs:
           echo $conns | grep -q "\"nqn\": \"${NQN}host\""
           echo $conns | grep -q "\"trsvcid\": ${NVMEOF_IO_PORT}"
           echo $conns | grep -q "\"traddr\": \"${NVMEOF_IP_ADDRESS}\""
-          echo $conns | grep -q "\"adrfam\": \"ipv4\""
+          echo $conns | grep -q "\"adrfam\": \"IPv4\""
           echo $conns | grep -q "\"trtype\": \"TCP\""
           con_cnt=$(echo $conns | xargs -n 1 | grep traddr | wc -l)
           if [ $con_cnt -ne 1 ]; then

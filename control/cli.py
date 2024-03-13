@@ -26,8 +26,6 @@ from .config import GatewayConfig
 from .utils import GatewayUtils
 from .utils import GatewayEnumUtils
 
-BASE_GATEWAY_VERSION="1.1.0"
-
 def errprint(msg):
     print(msg, file = sys.stderr)
 
@@ -229,15 +227,6 @@ class GatewayClient:
             acts += ", '" + a["name"] + "'"
         return acts[2:]
 
-    def format_adrfam(self, adrfam):
-        adrfam = adrfam.upper()
-        if adrfam == "IPV4":
-            adrfam = "IPv4"
-        elif adrfam == "IPV6":
-            adrfam = "IPv6"
-
-        return adrfam
-
     def get_output_functions(self, args):
         if args.output == "log":
             return (self.logger.info, self.logger.error)
@@ -259,24 +248,28 @@ class GatewayClient:
         else:
             rc = 0
             errmsg = os.strerror(0)
+
+        cli_ver = {
+            "status": rc,
+            "error_message": errmsg,
+            "version": ver
+        }
+
         if args.format == "text" or args.format == "plain":
-            if not ver:
+            if rc != 0:
                 err_func(errmsg)
             else:
                 out_func(f"CLI version: {ver}")
         elif args.format == "json" or args.format == "yaml":
-            cli_ver = pb2.cli_version(status=rc, error_message=errmsg, version=ver)
-            out_ver = json_format.MessageToJson(cli_ver,
-                                                indent=4,
-                                                including_default_value_fields=True,
-                                                preserving_proto_field_name=True)
+            # Convert Python object to JSON string
+            out_ver = json.dumps(cli_ver)
             if args.format == "json":
                 out_func(f"{out_ver}")
             elif args.format == "yaml":
                 obj = json.loads(out_ver)
                 out_func(yaml.dump(obj))
         elif args.format == "python":
-            return pb2.cli_version(status=rc, error_message=errmsg, version=ver)
+            return cli_ver
         else:
             assert False
 
@@ -301,17 +294,17 @@ class GatewayClient:
         req = pb2.get_gateway_info_req(cli_version=ver)
         gw_info = self.stub.get_gateway_info(req)
         if gw_info.status == 0:
-            base_ver = self.parse_version_string(BASE_GATEWAY_VERSION)
-            assert base_ver != None
             gw_ver = self.parse_version_string(gw_info.version)
+            cli_ver = self.parse_version_string(ver)
+            assert cli_ver is not None
             if gw_ver == None:
                 gw_info.status = errno.EINVAL
                 gw_info.bool_status = False
                 gw_info.error_message = f"Can't parse gateway version \"{gw_info.version}\"."
-            elif gw_ver < base_ver:
+            elif gw_ver < cli_ver:
                 gw_info.status = errno.EINVAL
                 gw_info.bool_status = False
-                gw_info.error_message = f"Can't work with gateway version older than {BASE_GATEWAY_VERSION}"
+                gw_info.error_message = f"gateway version \"{gw_info.version}\" older than the cli version \"{ver}\""
         return gw_info
 
     def gw_info(self, args):
@@ -371,24 +364,27 @@ class GatewayClient:
         except Exception as ex:
             gw_info = pb2.gateway_info(status = errno.EINVAL, error_message = f"Failure getting gateway's version:\n{ex}")
 
+        gw_ver = {
+            "status" : gw_info.status,
+            "error_message" : gw_info.error_message,
+            "version" : gw_info.version
+        }
+
         if args.format == "text" or args.format == "plain":
             if gw_info.status == 0:
                 out_func(f"Gateway's version: {gw_info.version}")
             else:
                 err_func(f"{gw_info.error_message}")
         elif args.format == "json" or args.format == "yaml":
-            gw_ver = pb2.gw_version(status=gw_info.status, error_message=gw_info.error_message, version=gw_info.version)
-            out_ver = json_format.MessageToJson(gw_ver,
-                                                indent=4,
-                                                including_default_value_fields=True,
-                                                preserving_proto_field_name=True)
+            # Convert Python object to JSON string
+            out_ver = json.dumps(gw_ver)
             if args.format == "json":
                 out_func(f"{out_ver}")
             elif args.format == "yaml":
                 obj = json.loads(out_ver)
                 out_func(yaml.dump(obj))
         elif args.format == "python":
-            return pb2.gw_version(status=gw_info.status, error_message=gw_info.error_message, version=gw_info.version)
+            return gw_ver
         else:
             assert False
 
@@ -860,9 +856,7 @@ class GatewayClient:
             if listeners_info.status == 0:
                 listeners_list = []
                 for l in listeners_info.listeners:
-                    adrfam = GatewayEnumUtils.get_key_from_value(pb2.AddressFamily, l.adrfam)
-                    adrfam = self.format_adrfam(adrfam)
-                    listeners_list.append([l.gateway_name, l.trtype, adrfam, f"{l.traddr}:{l.trsvcid}"])
+                    listeners_list.append([l.gateway_name, l.trtype, l.adrfam, f"{l.traddr}:{l.trsvcid}"])
                 if len(listeners_list) > 0:
                     if args.format == "text":
                         table_format = "fancy_grid"
