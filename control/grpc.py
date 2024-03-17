@@ -765,7 +765,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
         self.logger.info(f"Received request to set ana states {ana_info.states}")
 
         state = self.gateway_state.local.get_state()
-        ana_dict = {}
+        inaccessible_ana_groups = {}
+        optimized_ana_groups = set()
         # Iterate over nqn_ana_states in ana_info
         for nas in ana_info.states:
             nqn = nas.nqn
@@ -790,6 +791,17 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     # see nvmf_subsystem_listener_set_ana_state method https://spdk.io/doc/jsonrpc.html
                     ana_state = "optimized" if gs.state == pb2.ana_state.OPTIMIZED else "inaccessible"
                     try:
+                        # Need to wait for the latest OSD map, for each RADOS
+                        # cluster context before becoming optimized,
+                        # part of bocklist logic
+                        if gs.state == pb2.ana_state.OPTIMIZED:
+                            if grp_id not in optimized_ana_groups:
+                                for cluster in self.clusters[grp_id]:
+                                    if not rpc_bdev.bdev_rbd_wait_for_latest_osdmap(self.spdk_rpc_client, name=cluster):
+                                        raise Exception(f"bdev_rbd_wait_for_latest_osdmap({cluster=}) error")
+                                    self.logger.info(f"set_ana_state bdev_rbd_wait_for_latest_osdmap {cluster=}")
+                                optimized_ana_groups.add(grp_id)
+
                         self.logger.info(f"set_ana_state nvmf_subsystem_listener_set_ana_state {nqn=} {listener=} {ana_state=} {grp_id=}")
                         ret = rpc_nvmf.nvmf_subsystem_listener_set_ana_state(
                             self.spdk_rpc_client,
@@ -801,7 +813,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                             ana_state=ana_state,
                             anagrpid=grp_id)
                         if ana_state == "inaccessible" :
-                            ana_dict[grp_id] = True;
+                            inaccessible_ana_groups[grp_id] = True
                         self.logger.info(f"set_ana_state nvmf_subsystem_listener_set_ana_state response {ret=}")
                         if not ret:
                             raise Exception(f"nvmf_subsystem_listener_set_ana_state({nqn=}, {listener=}, {ana_state=}, {grp_id=}) error")
@@ -811,8 +823,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                             context.set_code(grpc.StatusCode.INTERNAL)
                             context.set_details(f"{ex}")
                         return pb2.req_status()
-        for ana_key in ana_dict :
-           ret_recycle = self.namespace_recycle_safe(ana_key);
+        for ana_key in inaccessible_ana_groups :
+           ret_recycle = self.namespace_recycle_safe(ana_key)
            if ret_recycle != 0:
                 errmsg = f"Failure recycle namespaces of ana group {ana_key} "
                 self.logger.error(errmsg)
