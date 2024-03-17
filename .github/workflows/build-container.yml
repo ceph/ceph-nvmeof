@@ -620,9 +620,45 @@ jobs:
           make down
           make clean
 
+  atom:
+    needs: [build, build-ceph]
+    runs-on: ibmcloud-1
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download container images
+        uses: actions/download-artifact@v4
+        with:
+          pattern: container_images*
+          merge-multiple: true
+
+      - name: Nvmeof Atom cleanup env
+        run: |
+          echo ${{ secrets.APPUSERPWD }} | sudo -S /root/cephadm/atomEnvCleanup.sh
+
+      - name: Load container images
+        run: |
+          docker load < nvmeof.tar
+          docker load < nvmeof-cli.tar
+
+      - name: Nvmeof Atom tests run
+        run: |
+          echo ${{ secrets.APPUSERPWD }} | sudo -S /root/cephadm/atomTestsRun.sh $GITHUB_REPOSITORY ${GITHUB_REF##*/}
+
+      - name: Artifact logs copy
+        run: |
+          echo ${{ secrets.APPUSERPWD }} | sudo -S cp -r /root/.ssh/atom_backup/artifact /tmp/
+          sudo chmod -R +rx /tmp/artifact
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: atom-artifact
+          path: /tmp/artifact/*
+
   push-to-registry:
     if: github.event_name == 'release'
-    needs: [pytest, demo, discovery, ha]
+    needs: [pytest, demo, discovery, ha, atom]
     runs-on: ubuntu-latest
 
     steps:
