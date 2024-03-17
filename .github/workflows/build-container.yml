@@ -634,8 +634,7 @@ jobs:
           merge-multiple: true
 
       - name: Nvmeof Atom cleanup env
-        run: |
-          echo '${{ secrets.APPUSERPWD }}' | sudo -S /root/cephadm/atomEnvCleanup.sh
+        run: sudo /root/cephadm/atomEnvCleanup.sh
 
       - name: Load container images
         run: |
@@ -643,12 +642,11 @@ jobs:
           docker load < nvmeof-cli.tar
 
       - name: Nvmeof Atom tests run
-        run: |
-          echo '${{ secrets.APPUSERPWD }}' | sudo -S /root/cephadm/atomTestsRun.sh $GITHUB_REPOSITORY ${GITHUB_REF##*/}
+        run: sudo /root/cephadm/atomTestsRun.sh $GITHUB_REPOSITORY ${GITHUB_REF##*/}
 
       - name: Artifact logs copy
         run: |
-          echo '${{ secrets.APPUSERPWD }}' | sudo -S cp -r /root/.ssh/atom_backup/artifact /tmp/
+          sudo cp -r /root/.ssh/atom_backup/artifact /tmp/
           sudo chmod -R +rx /tmp/artifact
 
       - uses: actions/upload-artifact@v4
