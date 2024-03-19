@@ -199,7 +199,7 @@ class GatewayServer:
                 "--gateway-address", self._gateway_address(),
                 "--gateway-pool", self.config.get("ceph", "pool"),
                 "--gateway-group", self.config.get_with_default("gateway", "group", ""),
-                "--monitor-address", self._monitor_address(),
+                "--monitor-group-address", self._monitor_address(),
                 '-c', '/etc/ceph/ceph.conf',
                 '-n', rados_id,
                 '-k', '/etc/ceph/keyring']
