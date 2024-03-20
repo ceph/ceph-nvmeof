@@ -59,15 +59,16 @@ services:
       dockerfile: Dockerfile.ceph
       args:
         CEPH_CLUSTER_VERSION:
+        CEPH_CLUSTER_VSTART_VERSION:
         CEPH_CLUSTER_CEPH_REPO_BASEURL:
+        CEPH_BRANCH:
+        CEPH_SHA:
       labels:
         io.ceph.nvmeof:
     environment:
-      TOUCHFILE: /tmp/ceph.touch
+      NVMEOF_GW: ${NVMEOF_IP_ADDRESS}:${NVMEOF_GW_PORT}
     entrypoint: >-
       sh -c './vstart.sh --new $$CEPH_VSTART_ARGS &&
-      ceph osd pool create rbd &&
-      echo ceph dashboard nvmeof-gateway-add -i <(echo nvmeof-devel:5500) nvmeof.1 &&
       sleep infinity'
     healthcheck:
       test: ceph osd pool stats rbd
