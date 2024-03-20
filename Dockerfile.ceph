@@ -4,7 +4,10 @@ FROM quay.io/centos/centos:stream9-minimal AS build
 
 
 ARG CEPH_CLUSTER_VERSION
+ARG CEPH_CLUSTER_VSTART_VERSION
 ARG CEPH_CLUSTER_CEPH_REPO_BASEURL
+ARG CEPH_BRANCH
+ARG CEPH_SHA
 ARG CEPH_CLUSTER_EPEL_REPO_URL="https://copr.fedorainfracloud.org/coprs/ceph/el9/repo/epel-9/ceph-el9-epel-9.repo"
 
 ARG MICRODNF_OPTS="\
@@ -48,6 +51,9 @@ RUN <<EOF
     echo ======================================================================
     echo CEPH_CLUSTER_CEPH_REPO_BASEURL=$CEPH_CLUSTER_CEPH_REPO_BASEURL
     echo CEPH_CLUSTER_VERSION=$CEPH_CLUSTER_VERSION
+    echo CEPH_CLUSTER_VSTART_VERSION=$CEPH_CLUSTER_VSTART_VERSION
+    echo CEPH_BRANCH=$CEPH_BRANCH
+    echo CEPH_SHA=$CEPH_SHA
     echo ======================================================================
 EOF
 
@@ -73,6 +79,8 @@ RUN rpm -vih https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.
 RUN rpm --import 'https://download.ceph.com/keys/release.asc'
 RUN curl -O --output-dir /etc/yum.repos.d/ ${CEPH_CLUSTER_EPEL_REPO_URL:?}
 
+RUN cat /etc/yum.repos.d/ceph.repo
+
 RUN --mount=type=cache,target=/var/cache/microdnf \
     microdnf install -y $MICRODNF_OPTS \
       $CEPH_PACKAGES \
@@ -83,12 +91,12 @@ RUN --mount=type=cache,target=/var/cache/microdnf \
 #------------------------------------------------------------------------------
 FROM build
 
-LABEL maintainer \
+LABEL maintainer="$MAINTAINER" \
       ceph=True \
-      RELEASE \
-      GIT_REPO \
-      GIT_BRANCH \
-      GIT_COMMIT
+      RELEASE="$RELEASE" \
+      GIT_REPO="$GIT_REPO" \
+      GIT_BRANCH="$GIT_BRANCH" \
+      GIT_COMMIT="$GIT_COMMIT"
 
 ENV MON=1 \
     MGR=1 \
@@ -118,7 +126,7 @@ RUN ln -sf $EC_PATH/* $CEPH_LIB && \
 USER ceph
 WORKDIR /ceph
 ADD --chown=ceph:ceph --chmod=755 \
-    https://raw.githubusercontent.com/ceph/ceph/v${CEPH_CLUSTER_VERSION:?}/src/vstart.sh .
+    https://raw.githubusercontent.com/ceph/ceph/${CEPH_CLUSTER_VSTART_VERSION:?}/src/vstart.sh .
 
 COPY <<EOF ./CMakeCache.txt
 ceph_SOURCE_DIR:STATIC=/ceph
