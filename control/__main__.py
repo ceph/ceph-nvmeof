@@ -7,7 +7,6 @@
 #  Authors: anita.shekar@ibm.com, sandy.kaur@ibm.com
 #
 
-import logging
 import argparse
 import signal
 from .server import GatewayServer

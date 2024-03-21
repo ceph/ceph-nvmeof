@@ -14,7 +14,6 @@ import socket
 import subprocess
 import grpc
 import json
-import logging
 import threading
 from concurrent import futures
 from google.protobuf import json_format
@@ -179,7 +178,7 @@ class GatewayServer:
         # Start the prometheus endpoint if enabled by the config
         if self.config.getboolean_with_default("gateway", "enable_prometheus_exporter", True):
             self.logger.info("Prometheus endpoint is enabled")
-            start_exporter(self.spdk_rpc_client, self.config, self.gateway_rpc)
+            start_exporter(self.spdk_rpc_client, self.config, self.gateway_rpc, self.logger)
         else:
             self.logger.info(f"Prometheus endpoint is disabled. To enable, set the config option 'enable_prometheus_exporter = True'")
 
@@ -330,8 +329,8 @@ class GatewayServer:
             raise
 
         # Initialization
-        timeout = self.config.getfloat("spdk", "timeout")
-        log_level = self.config.get("spdk", "log_level")
+        timeout = self.config.getfloat_with_default("spdk", "timeout", 60.0)
+        log_level = self.config.get_with_default("spdk", "log_level", "WARNING")
         # connect timeout: spdk client retries 5 times per sec
         conn_retries = int(timeout * 5)
         self.logger.info(f"SPDK process id: {self.spdk_process.pid}")
@@ -393,7 +392,7 @@ class GatewayServer:
     def _stop_spdk(self):
         """Stops SPDK process."""
         # Terminate spdk process
-        timeout = self.config.getfloat("spdk", "timeout")
+        timeout = self.config.getfloat_with_default("spdk", "timeout", 60.0)
         self._stop_subprocess(self.spdk_process, timeout)
 
         # Clean spdk rpc socket

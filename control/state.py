@@ -10,7 +10,6 @@
 import time
 import threading
 import rados
-import logging
 import errno
 from typing import Dict
 from collections import defaultdict
@@ -650,6 +649,7 @@ class GatewayStateHandler:
                     if not self.compare_state_values(local_state_dict[key], omap_state_dict[key])
                 }
                 grouped_changed = self._group_by_prefix(changed, prefix_list)
+                
                 # Find OMAP removals
                 removed_keys = local_state_keys - omap_state_keys
                 removed = {key: local_state_dict[key] for key in removed_keys}
