@@ -2110,11 +2110,11 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         ret = True
         traddr = GatewayUtils.escape_address_if_ipv6(request.traddr)
-        delete_listener_error_prefix = f"Failure deleting listener {traddr}:{request.trsvcid} from {request.nqn}"
+        delete_listener_error_prefix = f"Listener {traddr}:{request.trsvcid} failed to delete from {request.nqn}"
 
         adrfam = GatewayEnumUtils.get_key_from_value(pb2.AddressFamily, request.adrfam)
         if adrfam == None:
-            errmsg=f"{delete_listener_error_prefix}: Unknown address family {request.adrfam}"
+            errmsg=f"{delete_listener_error_prefix}. Unknown address family {request.adrfam}"
             self.logger.error(errmsg)
             return pb2.req_status(status=errno.ENOKEY, error_message=errmsg)
 
@@ -2123,9 +2123,27 @@ class GatewayService(pb2_grpc.GatewayServicer):
                          f" {traddr}:{request.trsvcid}, context: {context}")
 
         if GatewayUtils.is_discovery_nqn(request.nqn):
-            errmsg=f"{delete_listener_error_prefix}: Can't delete a listener from a discovery subsystem"
+            errmsg=f"{delete_listener_error_prefix}. Can't delete a listener from a discovery subsystem"
             self.logger.error(errmsg)
             return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
+
+        if not request.force:
+            list_conn_req = pb2.list_connections_req(subsystem=request.nqn)
+            list_conn_ret = self.list_connections_safe(list_conn_req, context)
+            if list_conn_ret.status != 0:
+                errmsg=f"{delete_listener_error_prefix}. Can't verify there are no active connections for this address"
+                self.logger.error(errmsg)
+                return pb2.req_status(status=errno.EBUSY, error_message=errmsg)
+            for conn in list_conn_ret.connections:
+                if not conn.connected:
+                    continue
+                if conn.traddr != request.traddr:
+                    continue
+                if conn.trsvcid != request.trsvcid:
+                    continue
+                errmsg=f"{delete_listener_error_prefix} due to active connections for {request.traddr}:{request.trsvcid}. Deleting the listener terminates active connections. You can continue to delete the listener by adding the `--force` parameter."
+                self.logger.error(errmsg)
+                return pb2.req_status(status=errno.EBUSY, error_message=errmsg)
 
         with self.omap_lock(context=context):
             try:
@@ -2140,7 +2158,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     )
                     self.logger.info(f"delete_listener: {ret}")
                 else:
-                    errmsg=f"{delete_listener_error_prefix}: Gateway name must match current gateway ({self.gateway_name})"
+                    errmsg=f"{delete_listener_error_prefix}. Gateway name must match current gateway ({self.gateway_name})"
                     self.logger.error(f"{errmsg}")
                     return pb2.req_status(status=errno.ENOENT, error_message=errmsg)
             except Exception as ex:

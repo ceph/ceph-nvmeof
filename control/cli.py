@@ -902,6 +902,7 @@ class GatewayClient:
             adrfam=adrfam,
             traddr=traddr,
             trsvcid=args.trsvcid,
+            force=args.force,
         )
 
         try:
@@ -995,6 +996,7 @@ class GatewayClient:
         argument("--traddr", "-a", help="NVMe host IP", required=True),
         argument("--trsvcid", "-s", help="Port number", type=int, required=True),
         argument("--adrfam", "-f", help="Address family", default="", choices=get_enum_keys_list(pb2.AddressFamily)),
+        argument("--force", help="Delete the listener even if there are active connections for the address", action='store_true', required=False),
     ]
     listener_list_args = listener_common_args + [
     ]
