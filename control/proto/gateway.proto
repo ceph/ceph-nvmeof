@@ -210,6 +210,7 @@ message delete_listener_req {
 	string traddr = 3;
 	optional AddressFamily adrfam = 5;
 	optional uint32 trsvcid = 6;
+	optional bool force = 7;
 }
 
 message list_listeners_req {

@@ -664,7 +664,7 @@ class TestDelete:
     @pytest.mark.parametrize("listener", listener_list)
     def test_delete_listener(self, caplog, listener, gateway):
         caplog.clear()
-        cli(["listener", "del", "--subsystem", subsystem] + listener)
+        cli(["listener", "del", "--force", "--subsystem", subsystem] + listener)
         assert f"Deleting listener {listener[3]}:{listener[5]} from {subsystem}: Successful" in caplog.text
 
     @pytest.mark.parametrize("listener_ipv6", listener_list_ipv6)
