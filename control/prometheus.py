@@ -9,7 +9,6 @@
 
 import os
 import time
-import logging
 import threading
 import inspect
 import spdk.rpc as rpc
@@ -24,8 +23,7 @@ from .utils import NICS
 COLLECTION_ELAPSED_WARNING = 0.8   # Percentage of the refresh interval before a warning message is issued
 REGISTRY.unregister(GC_COLLECTOR)  # Turn off garbage collector metrics
 
-logger = logging.getLogger(__name__)
-
+logger = None
 
 class RBD(NamedTuple):
     pool: str
@@ -74,9 +72,10 @@ def start_httpd(**kwargs):
     return True
 
 
-def start_exporter(spdk_rpc_client, config, gateway_rpc):
+def start_exporter(spdk_rpc_client, config, gateway_rpc, logger_to_use):
     """Start the prometheus exporter and register the NVMeOF custom collector"""
 
+    logger = logger_to_use
     port = config.getint_with_default("gateway", "prometheus_port", 10008)
     ssl = config.getboolean_with_default("gateway", "prometheus_exporter_ssl", True)
     mode = 'https' if ssl else 'http'

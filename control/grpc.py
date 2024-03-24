@@ -71,7 +71,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
     def __init__(self, config: GatewayConfig, gateway_state: GatewayStateHandler, omap_lock: OmapLock, group_id: int, spdk_rpc_client, ceph_utils: CephUtils) -> None:
         """Constructor"""
-        self.logger = GatewayLogger(config).logger
+        self.gw_logger_object = GatewayLogger(config)
+        self.logger = self.gw_logger_object.logger
         self.ceph_utils = ceph_utils
         ver = os.getenv("NVMEOF_VERSION")
         if ver:
@@ -2491,3 +2492,42 @@ class GatewayService(pb2_grpc.GatewayServicer):
     def get_gateway_info(self, request, context=None):
         """Get gateway's info"""
         return self.execute_grpc_function(self.get_gateway_info_safe, request, context)
+
+    def get_gateway_log_level(self, request, context=None):
+        """Get gateway's log level"""
+        try:
+            log_level = GatewayEnumUtils.get_key_from_value(pb2.GwLogLevel, self.logger.level)
+        except Exception:
+            self.logger.exception(f"Can't get string value for log level {self.logger.level}")
+            return pb2.gateway_log_level_info(status = errno.ENOKEY,
+                                              error_message=f"Invalid gateway log level")
+        self.logger.info(f"Received request to get gateway's log level. Level is {log_level}")
+        return pb2.gateway_log_level_info(status = 0, error_message=os.strerror(0), log_level=log_level)
+
+    def set_gateway_log_level(self, request, context=None):
+        """Set gateway's log level"""
+
+        log_level = GatewayEnumUtils.get_key_from_value(pb2.GwLogLevel, request.log_level)
+        if log_level == None:
+            errmsg=f"Unknown log level {request.log_level}"
+            self.logger.error(f"{errmsg}")
+            return pb2.req_status(status=errno.ENOKEY, error_message=errmsg)
+        log_level = log_level.upper()
+
+        self.logger.info(f"Received request to set gateway's log level to {log_level}")
+        self.gw_logger_object.set_log_level(request.log_level)
+
+        try:
+            os.remove(GatewayLogger.NVME_GATEWAY_LOG_LEVEL_FILE_PATH)
+        except FileNotFoundError:
+            pass
+        except Exception:
+            self.logger.exception(f"Failure removing \"{GatewayLogger.NVME_GATEWAY_LOG_LEVEL_FILE_PATH}\"")
+
+        try:
+            with open(GatewayLogger.NVME_GATEWAY_LOG_LEVEL_FILE_PATH, "w") as f:
+                f.write(str(request.log_level))
+        except Exception:
+            self.logger.exception(f"Failure writing log level to \"{GatewayLogger.NVME_GATEWAY_LOG_LEVEL_FILE_PATH}\"")
+
+        return pb2.req_status(status=0, error_message=os.strerror(0))

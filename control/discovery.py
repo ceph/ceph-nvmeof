@@ -10,7 +10,6 @@
 import argparse
 import grpc
 import json
-import logging
 from .config import GatewayConfig
 from .state import GatewayState, LocalGatewayState, OmapGatewayState, GatewayStateHandler
 from .utils import GatewayLogger
@@ -26,8 +25,10 @@ import enum
 import uuid
 import struct
 import selectors
+import os
 from dataclasses import dataclass, field
 from ctypes import Structure, LittleEndianStructure, c_bool, c_ubyte, c_uint8, c_uint16, c_uint32, c_uint64, c_float
+from google.protobuf import json_format
 
 # NVMe tcp pdu type
 class NVME_TCP_PDU(enum.IntFlag):
@@ -312,7 +313,8 @@ class DiscoveryService:
         self.lock = threading.Lock()
         self.omap_state = OmapGatewayState(self.config)
 
-        self.logger = GatewayLogger(config).logger
+        self.gw_logger_object = GatewayLogger(config)
+        self.logger = self.gw_logger_object.logger
 
         gateway_group = self.config.get_with_default("gateway", "group", "")
         self.omap_name = f"nvmeof.{gateway_group}.state" \
@@ -1017,6 +1019,28 @@ class DiscoveryService:
         self.selector.register(conn, selectors.EVENT_READ, \
                                self.nvmeof_tcp_connection)
 
+    def update_log_level(self):
+        log_level = None
+        try:
+            if not os.access(GatewayLogger.NVME_GATEWAY_LOG_LEVEL_FILE_PATH, os.F_OK):
+                return
+            with open(GatewayLogger.NVME_GATEWAY_LOG_LEVEL_FILE_PATH, "r") as f:
+                log_level = f.read().strip()
+        except Exception:
+            self.logger.exception(f"Error reading log level from \"{GatewayLogger.NVME_GATEWAY_LOG_LEVEL_FILE_PATH}\"")
+        try:
+            os.remove(GatewayLogger.NVME_GATEWAY_LOG_LEVEL_FILE_PATH)
+        except Exception:
+            self.logger.exception(f"Error removing \"{GatewayLogger.NVME_GATEWAY_LOG_LEVEL_FILE_PATH}\"")
+
+        if log_level:
+            try:
+                log_level = int(log_level)
+            except ValueError:
+                pass
+            self.logger.info(f"Received request to set discovery service's log level to {log_level}")
+            self.gw_logger_object.set_log_level(log_level)
+
     def start_service(self):
         """Enable listening on the server side."""
 
@@ -1036,6 +1060,7 @@ class DiscoveryService:
 
         try:
           while True:
+            self.update_log_level()
             events = self.selector.select()
             for key, mask in events:
                 callback = key.data

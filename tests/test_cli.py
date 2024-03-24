@@ -43,7 +43,7 @@ def gateway(config):
 
     addr = config.get("gateway", "addr")
     port = config.getint("gateway", "port")
-    config.config["gateway"]["log_level"] = "debug"
+    config.config["gateway-logs"]["log_level"] = "debug"
 
     with GatewayServer(config) as gateway:
 
@@ -821,46 +821,82 @@ class TestDeleteAna:
         cli(["subsystem", "list"])
         assert "No subsystems" in caplog.text
 
+class TestGwLogLevel:
+    def test_gw_log_level(self, caplog, gateway):
+        caplog.clear()
+        cli(["gw", "get_log_level"])
+        assert 'Gateway log level is "debug"' in caplog.text
+        caplog.clear()
+        cli(["gw", "set_log_level", "--level", "error"])
+        assert f'Set gateway log level to "error": Successful' in caplog.text
+        caplog.clear()
+        cli(["gw", "get_log_level"])
+        assert 'Gateway log level is "error"' in caplog.text
+        caplog.clear()
+        cli(["gw", "set_log_level", "-l", "CRITICAL"])
+        assert f'Set gateway log level to "critical": Successful' in caplog.text
+        caplog.clear()
+        cli(["gw", "get_log_level"])
+        assert 'Gateway log level is "critical"' in caplog.text
+        caplog.clear()
+        rc = 0
+        try:
+            cli(["gw", "set_log_level", "-l", "JUNK"])
+        except SystemExit as sysex:
+            rc = int(str(sysex))
+            pass
+        assert "error: argument --level/-l: invalid choice: 'JUNK'" in caplog.text
+        assert rc == 2
+        caplog.clear()
+        cli(["--format", "json", "gw", "get_log_level"])
+        assert f'"log_level": "critical"' in caplog.text
+        caplog.clear()
+        cli(["--log-level", "critical", "gw", "set_log_level", "--level", "DEBUG"])
+        assert f'Set gateway log level to "debug": Successful' not in caplog.text
+        caplog.clear()
+        cli(["gw", "get_log_level"])
+        assert 'Gateway log level is "debug"' in caplog.text
+
 class TestSPDKLOg:
     def test_log_flags(self, caplog, gateway):
         caplog.clear()
-        cli(["log_level", "get"])
+        cli(["spdk_log_level", "get"])
         assert 'SPDK nvmf log flag "nvmf" is disabled' in caplog.text
         assert 'SPDK nvmf log flag "nvmf_tcp" is disabled' in caplog.text
         assert 'SPDK log level is NOTICE' in caplog.text
         assert 'SPDK log print level is INFO' in caplog.text
         caplog.clear()
-        cli(["log_level", "set"])
+        cli(["spdk_log_level", "set"])
         assert "Set SPDK log levels and nvmf log flags: Successful" in caplog.text
         caplog.clear()
-        cli(["log_level", "get"])
+        cli(["spdk_log_level", "get"])
         assert 'SPDK nvmf log flag "nvmf" is enabled' in caplog.text
         assert 'SPDK nvmf log flag "nvmf_tcp" is enabled' in caplog.text
         assert 'SPDK log level is NOTICE' in caplog.text
         assert 'SPDK log print level is INFO' in caplog.text
         caplog.clear()
-        cli(["log_level", "set", "--level", "DEBUG"])
+        cli(["spdk_log_level", "set", "--level", "DEBUG"])
         assert "Set SPDK log levels and nvmf log flags: Successful" in caplog.text
         caplog.clear()
-        cli(["log_level", "get"])
+        cli(["spdk_log_level", "get"])
         assert 'SPDK nvmf log flag "nvmf" is enabled' in caplog.text
         assert 'SPDK nvmf log flag "nvmf_tcp" is enabled' in caplog.text
         assert 'SPDK log level is DEBUG' in caplog.text
         assert 'SPDK log print level is INFO' in caplog.text
         caplog.clear()
-        cli(["log_level", "set", "--print", "error"])
+        cli(["spdk_log_level", "set", "--print", "error"])
         assert "Set SPDK log levels and nvmf log flags: Successful" in caplog.text
         caplog.clear()
-        cli(["log_level", "get"])
+        cli(["spdk_log_level", "get"])
         assert 'SPDK nvmf log flag "nvmf" is enabled' in caplog.text
         assert 'SPDK nvmf log flag "nvmf_tcp" is enabled' in caplog.text
         assert 'SPDK log level is DEBUG' in caplog.text
         assert 'SPDK log print level is ERROR' in caplog.text
         caplog.clear()
-        cli(["log_level", "disable"])
+        cli(["spdk_log_level", "disable"])
         assert "Disable SPDK nvmf log flags: Successful" in caplog.text
         caplog.clear()
-        cli(["log_level", "get"])
+        cli(["spdk_log_level", "get"])
         assert 'SPDK nvmf log flag "nvmf" is disabled' in caplog.text
         assert 'SPDK nvmf log flag "nvmf_tcp" is disabled' in caplog.text
         assert 'SPDK log level is NOTICE' in caplog.text
@@ -868,7 +904,7 @@ class TestSPDKLOg:
         caplog.clear()
         rc = 0
         try:
-            cli(["log_level", "set", "-l", "JUNK"])
+            cli(["spdk_log_level", "set", "-l", "JUNK"])
         except SystemExit as sysex:
             rc = int(str(sysex))
             pass
