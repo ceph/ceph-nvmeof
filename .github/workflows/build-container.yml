@@ -642,17 +642,18 @@ jobs:
           docker load < nvmeof-cli.tar
 
       - name: Nvmeof Atom tests run
+        if: always() || failure()
         run: /home/cephnvme/atomTestsRun.sh $GITHUB_REPOSITORY ${GITHUB_REF##*/}
 
       - name: Artifact build and cleanup
-        run: /home/cephnvme/cpArtifactAndCleanup.sh
         if: always()
+        run: /home/cephnvme/cpArtifactAndCleanup.sh
 
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: atom-artifact
           path: /tmp/artifact/*
-        if: always()
 
   push-to-registry:
     if: github.event_name == 'release'
