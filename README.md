@@ -98,9 +98,9 @@ docker-compose  run --rm nvmeof-cli --server-address 192.168.13.3 --server-port 
 Adding subsystem nqn.2016-06.io.spdk:cnode1: Successful
 docker-compose  run --rm nvmeof-cli --server-address 192.168.13.3 --server-port 5500 namespace add --subsystem "nqn.2016-06.io.spdk:cnode1" --rbd-pool rbd --rbd-image demo_image
 Adding namespace 1 to nqn.2016-06.io.spdk:cnode1, load balancing group 1: Successful
-docker-compose  run --rm nvmeof-cli --server-address 192.168.13.3 --server-port 5500 listener add --subsystem "nqn.2016-06.io.spdk:cnode1" --gateway-name fbca1a3d3ed8 --traddr 192.168.13.3 --trsvcid 4420
+docker-compose  run --rm nvmeof-cli --server-address 192.168.13.3 --server-port 5500 listener add --subsystem "nqn.2016-06.io.spdk:cnode1" --host-name fbca1a3d3ed8 --traddr 192.168.13.3 --trsvcid 4420
 Adding listener 192.168.13.3:4420 to nqn.2016-06.io.spdk:cnode1: Successful
-docker-compose  run --rm nvmeof-cli --server-address 2001:db8::3 --server-port 5500 listener add --subsystem "nqn.2016-06.io.spdk:cnode1" --gateway-name fbca1a3d3ed8 --traddr 2001:db8::3 --trsvcid 4420 --adrfam IPV6
+docker-compose  run --rm nvmeof-cli --server-address 2001:db8::3 --server-port 5500 listener add --subsystem "nqn.2016-06.io.spdk:cnode1" --host-name fbca1a3d3ed8 --traddr 2001:db8::3 --trsvcid 4420 --adrfam IPV6
 Adding listener [2001:db8::3]:4420 to nqn.2016-06.io.spdk:cnode1: Successful
 docker-compose  run --rm nvmeof-cli --server-address 192.168.13.3 --server-port 5500 host add --subsystem "nqn.2016-06.io.spdk:cnode1" --host "*"
 Allowing any host for nqn.2016-06.io.spdk:cnode1: Successful
@@ -137,7 +137,7 @@ The same configuration can also be manually run:
 1. Create a listener so that NVMe initiators can connect to:
 
     ```bash
-    cephnvmf listener add ---subsystem nqn.2016-06.io.spdk:cnode1 -g gateway_name -a gateway_addr -s 4420
+    cephnvmf listener add ---subsystem nqn.2016-06.io.spdk:cnode1 --host-name host_name -a gateway_addr -s 4420
     ```
 
 1. Define which hosts can connect:

@@ -600,6 +600,20 @@ class TestCreate:
         assert "ipv4" in caplog.text.lower()
         assert f"Adding {subsystem} listener at {listener[3]}:4420: Successful" in caplog.text
 
+    @pytest.mark.parametrize("listener", listener_list)
+    @pytest.mark.parametrize("listener_ipv6", listener_list_ipv6)
+    def test_list_listeners(self, caplog, listener, listener_ipv6, gateway):
+        caplog.clear()
+        cli(["--format", "json", "listener", "list", "--subsystem", subsystem])
+        assert f"No listeners for {subsystem}" not in caplog.text
+        assert f'"host_name": "{listener[1]}"' in caplog.text
+        assert f'"traddr": "{listener[3]}"' in caplog.text
+        assert f'"trsvcid": {listener[5]}' in caplog.text
+        assert f'"adrfam": "ipv4"' in caplog.text
+        assert f'"traddr": "[{listener_ipv6[3]}]"' in caplog.text
+        assert f'"trsvcid": {listener_ipv6[5]}' in caplog.text
+        assert f'"adrfam": "ipv6"' in caplog.text
+
     @pytest.mark.parametrize("listener", listener_list_negative_port)
     def test_create_listener_negative_port(self, caplog, listener, gateway):
         caplog.clear()
