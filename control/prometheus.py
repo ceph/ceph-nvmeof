@@ -75,6 +75,7 @@ def start_httpd(**kwargs):
 def start_exporter(spdk_rpc_client, config, gateway_rpc, logger_to_use):
     """Start the prometheus exporter and register the NVMeOF custom collector"""
 
+    global logger
     logger = logger_to_use
     port = config.getint_with_default("gateway", "prometheus_port", 10008)
     ssl = config.getboolean_with_default("gateway", "prometheus_exporter_ssl", True)
