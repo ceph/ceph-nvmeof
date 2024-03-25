@@ -342,6 +342,8 @@ class GatewayClient:
                     out_func(f"Gateway's name: {gw_info.name}")
                 if gw_info.group:
                     out_func(f"Gateway's group: {gw_info.group}")
+                if gw_info.hostname:
+                    out_func(f"Gateway's host name: {gw_info.hostname}")
                 out_func(f"Gateway's load balancing group: {gw_info.load_balancing_group}")
                 out_func(f"Gateway's address: {gw_info.addr}")
                 out_func(f"Gateway's port: {gw_info.port}")
@@ -845,7 +847,7 @@ class GatewayClient:
 
         req = pb2.create_listener_req(
             nqn=args.subsystem,
-            gateway_name=args.gateway_name,
+            host_name=args.host_name,
             adrfam=adrfam,
             traddr=traddr,
             trsvcid=args.trsvcid,
@@ -898,7 +900,7 @@ class GatewayClient:
 
         req = pb2.delete_listener_req(
             nqn=args.subsystem,
-            gateway_name=args.gateway_name,
+            host_name=args.host_name,
             adrfam=adrfam,
             traddr=traddr,
             trsvcid=args.trsvcid,
@@ -950,14 +952,14 @@ class GatewayClient:
                 for l in listeners_info.listeners:
                     adrfam = GatewayEnumUtils.get_key_from_value(pb2.AddressFamily, l.adrfam)
                     adrfam = self.format_adrfam(adrfam)
-                    listeners_list.append([l.gateway_name, l.trtype, adrfam, f"{l.traddr}:{l.trsvcid}"])
+                    listeners_list.append([l.host_name, l.trtype, adrfam, f"{l.traddr}:{l.trsvcid}"])
                 if len(listeners_list) > 0:
                     if args.format == "text":
                         table_format = "fancy_grid"
                     else:
                         table_format = "plain"
                     listeners_out = tabulate(listeners_list,
-                                      headers = ["Gateway", "Transport", "Address Family", "Address"],
+                                      headers = ["Host", "Transport", "Address Family", "Address"],
                                       tablefmt=table_format)
                     out_func(f"Listeners for {args.subsystem}:\n{listeners_out}")
                 else:
@@ -986,17 +988,17 @@ class GatewayClient:
         argument("--subsystem", "-n", help="Subsystem NQN", required=True),
     ]
     listener_add_args = listener_common_args + [
-        argument("--gateway-name", "-g", help="Gateway name", required=True),
+        argument("--host-name", "-t", help="Host name", required=True),
         argument("--traddr", "-a", help="NVMe host IP", required=True),
         argument("--trsvcid", "-s", help="Port number", type=int, required=False),
         argument("--adrfam", "-f", help="Address family", default="", choices=get_enum_keys_list(pb2.AddressFamily)),
     ]
     listener_del_args = listener_common_args + [
-        argument("--gateway-name", "-g", help="Gateway name", required=True),
+        argument("--host-name", "-t", help="Host name", required=True),
         argument("--traddr", "-a", help="NVMe host IP", required=True),
         argument("--trsvcid", "-s", help="Port number", type=int, required=True),
         argument("--adrfam", "-f", help="Address family", default="", choices=get_enum_keys_list(pb2.AddressFamily)),
-        argument("--force", help="Delete the listener even if there are active connections for the address", action='store_true', required=False),
+        argument("--force", help="Delete listener even if there are active connections for the address, or the host name doesn't match", action='store_true', required=False),
     ]
     listener_list_args = listener_common_args + [
     ]

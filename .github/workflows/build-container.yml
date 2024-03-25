@@ -454,7 +454,7 @@ jobs:
             ip=$(container_ip $gw)
             name=$(container_id $gw) # default hostname - container id
             echo ℹ️ Create listener address $ip gateway $name
-            cli_gw $ip listener add --subsystem $NQN --gateway-name $name --traddr $ip --trsvcid $NVMEOF_IO_PORT
+            cli_gw $ip listener add --subsystem $NQN --host-name $name --traddr $ip --trsvcid $NVMEOF_IO_PORT
           done
           cli_gw $gw1 host add --subsystem $NQN --host "*"
           for gw in $GW1 $GW2; do

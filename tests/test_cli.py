@@ -23,18 +23,18 @@ nsid = "1"
 nsid_ipv6 = "3"
 anagrpid = "2"
 anagrpid2 = "4"
-gateway_name = socket.gethostname()
+host_name = socket.gethostname()
 addr = "127.0.0.1"
 addr_ipv6 = "::1"
 server_addr_ipv6 = "2001:db8::3"
-listener_list = [["-g", gateway_name, "-a", addr, "-s", "5001", "-f", "ipv4"], ["-g", gateway_name, "-a", addr, "-s", "5002"]]
-listener_list_no_port = [["-g", gateway_name, "-a", addr]]
-listener_list_invalid_adrfam = [["-g", gateway_name, "-a", addr, "-s", "5013", "--adrfam", "JUNK"]]
-listener_list_ipv6 = [["-g", gateway_name, "-a", addr_ipv6, "-s", "5003", "--adrfam", "ipv6"], ["-g", gateway_name, "-a", addr_ipv6, "-s", "5004", "--adrfam", "IPV6"]]
-listener_list_discovery = [["-n", discovery_nqn, "-g", gateway_name, "-a", addr, "-s", "5012"]]
-listener_list_negative_port = [["-g", gateway_name, "-a", addr, "-s", "-2000"]]
-listener_list_big_port = [["-g", gateway_name, "-a", addr, "-s", "70000"]]
-listener_list_wrong_gw = [["-g", "WRONG", "-a", addr, "-s", "5015", "-f", "ipv4"]]
+listener_list = [["-t", host_name, "-a", addr, "-s", "5001", "-f", "ipv4"], ["-t", host_name, "-a", addr, "-s", "5002"]]
+listener_list_no_port = [["-t", host_name, "-a", addr]]
+listener_list_invalid_adrfam = [["-t", host_name, "-a", addr, "-s", "5013", "--adrfam", "JUNK"]]
+listener_list_ipv6 = [["-t", host_name, "-a", addr_ipv6, "-s", "5003", "--adrfam", "ipv6"], ["-t", host_name, "-a", addr_ipv6, "-s", "5004", "--adrfam", "IPV6"]]
+listener_list_discovery = [["-n", discovery_nqn, "-t", host_name, "-a", addr, "-s", "5012"]]
+listener_list_negative_port = [["-t", host_name, "-a", addr, "-s", "-2000"]]
+listener_list_big_port = [["-t", host_name, "-a", addr, "-s", "70000"]]
+listener_list_wrong_gw = [["-t", "WRONG", "-a", addr, "-s", "5015", "-f", "ipv4"]]
 config = "ceph-nvmeof.conf"
 
 @pytest.fixture(scope="module")
@@ -98,6 +98,8 @@ class TestGet:
         assert ret.status == 0
         caplog.clear()
         cli_ver = os.getenv("NVMEOF_VERSION")
+        save_port = gw.config.config["gateway"]["port"]
+        save_addr = gw.config.config["gateway"]["addr"]
         gw.config.config["gateway"]["port"] = "6789"
         gw.config.config["gateway"]["addr"] = "10.10.10.10"
         gw_info_req = pb2.get_gateway_info_req(cli_version=cli_ver)
@@ -107,6 +109,9 @@ class TestGet:
         assert 'port: "6789"' in caplog.text
         assert 'addr: "10.10.10.10"' in caplog.text
         assert f'name: "{gw.gateway_name}"' in caplog.text
+        assert f'hostname: "{gw.host_name}"' in caplog.text
+        gw.config.config["gateway"]["port"] = save_port
+        gw.config.config["gateway"]["addr"] = save_addr
         caplog.clear()
         cli(["version"])
         assert f"CLI version: {cli_ver}" in caplog.text
@@ -118,6 +123,7 @@ class TestGet:
         assert gw_info.version == cli_ver
         assert gw_info.spdk_version == spdk_ver
         assert gw_info.name == gw.gateway_name
+        assert gw_info.hostname == gw.host_name
         assert gw_info.status == 0
         assert gw_info.bool_status == True
 
@@ -622,7 +628,7 @@ class TestCreate:
     def test_create_listener_wrong_gateway(self, caplog, listener, gateway):
         caplog.clear()
         cli(["listener", "add", "--subsystem", subsystem] + listener)
-        assert f"Gateway name must match current gateway ({gateway_name})" in caplog.text
+        assert f"Gateway's host name must match current host ({host_name})" in caplog.text
 
     @pytest.mark.parametrize("listener", listener_list_invalid_adrfam)
     def test_create_listener_invalid_adrfam(self, caplog, listener, gateway):

@@ -57,7 +57,7 @@ def conn(config):
         stubA = pb2_grpc.GatewayStub(channelA)
         channelB = grpc.insecure_channel(f"{addr}:{portB}")
         stubB = pb2_grpc.GatewayStub(channelB)
-        yield stubA, stubB
+        yield gatewayA.gateway_rpc, gatewayB.gateway_rpc, stubA, stubB
 
         # Stop gateways
         gatewayA.server.stop(grace=1)
@@ -93,7 +93,7 @@ def create_subsystem(stub, nqn, max_ns):
 
 def create_listener(stub, nqn, name, addr, port):
     listener_req = pb2.create_listener_req(nqn=nqn,
-                                           gateway_name=name,
+                                           host_name=name,
                                            adrfam="ipv4",
                                            traddr=addr,
                                            trsvcid=port)
@@ -115,7 +115,7 @@ def test_create_subsystem_and_namespaces(config, image, conn):
     and checks if GatewayB has the identical state after watch/notify and/or
     periodic polling.
     """
-    stubA, stubB = conn
+    gwA, gwB, stubA, stubB = conn
 
     # Send requests to create a subsystem to GatewayA
     max_ns = namespace_count * run_count + 10
@@ -138,8 +138,8 @@ def test_create_subsystem_and_namespaces(config, image, conn):
 
     wait_for_update()
 
-    create_listener(stubA, subsystem_nqn, "GatewayA", "127.0.0.1", 5101)
-    create_listener(stubB, subsystem_nqn, "GatewayB", "127.0.0.1", 5102)
+    create_listener(stubA, subsystem_nqn, gwA.host_name, "127.0.0.1", 5101)
+    create_listener(stubB, subsystem_nqn, gwB.host_name, "127.0.0.1", 5102)
 
     wait_for_update()
 

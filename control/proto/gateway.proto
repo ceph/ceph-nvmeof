@@ -198,7 +198,7 @@ message list_connections_req {
 
 message create_listener_req {
 	string nqn = 1;
-	string gateway_name = 2;
+	string host_name = 2;
 	string traddr = 3;
 	optional AddressFamily adrfam = 5;
 	optional uint32 trsvcid = 6;
@@ -206,7 +206,7 @@ message create_listener_req {
 
 message delete_listener_req {
 	string nqn = 1;
-	string gateway_name = 2;
+	string host_name = 2;
 	string traddr = 3;
 	optional AddressFamily adrfam = 5;
 	optional uint32 trsvcid = 6;
@@ -357,6 +357,7 @@ message gateway_info {
 	string error_message = 9;
 	optional string spdk_version = 10;
         uint32 load_balancing_group = 11;
+	string hostname = 12;
 }
 
 message cli_version {
