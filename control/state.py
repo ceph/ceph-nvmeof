@@ -58,21 +58,21 @@ class GatewayState(ABC):
             key += GatewayState.OMAP_KEY_DELIMITER + host_nqn
         return key
 
-    def build_partial_listener_key(subsystem_nqn: str, gateway = None) -> str:
+    def build_partial_listener_key(subsystem_nqn: str, host = None) -> str:
         key = GatewayState.LISTENER_PREFIX + subsystem_nqn
-        if gateway:
-            key += GatewayState.OMAP_KEY_DELIMITER + gateway
+        if host:
+            key += GatewayState.OMAP_KEY_DELIMITER + host
         return key
 
-    def build_listener_key_suffix(gateway: str, trtype: str, traddr: str, trsvcid: int) -> str:
-        if gateway:
-            return GatewayState.OMAP_KEY_DELIMITER + gateway + GatewayState.OMAP_KEY_DELIMITER + trtype + GatewayState.OMAP_KEY_DELIMITER + traddr + GatewayState.OMAP_KEY_DELIMITER + str(trsvcid)
+    def build_listener_key_suffix(host: str, trtype: str, traddr: str, trsvcid: int) -> str:
+        if host:
+            return GatewayState.OMAP_KEY_DELIMITER + host + GatewayState.OMAP_KEY_DELIMITER + trtype + GatewayState.OMAP_KEY_DELIMITER + traddr + GatewayState.OMAP_KEY_DELIMITER + str(trsvcid)
         if trtype:
             return GatewayState.OMAP_KEY_DELIMITER + trtype + GatewayState.OMAP_KEY_DELIMITER + traddr + GatewayState.OMAP_KEY_DELIMITER + str(trsvcid)
         return GatewayState.OMAP_KEY_DELIMITER + traddr + GatewayState.OMAP_KEY_DELIMITER + str(trsvcid)
         
-    def build_listener_key(subsystem_nqn: str, gateway: str, trtype: str, traddr: str, trsvcid: int) -> str:
-        return GatewayState.build_partial_listener_key(subsystem_nqn, gateway) + GatewayState.build_listener_key_suffix(None, trtype, traddr, str(trsvcid))
+    def build_listener_key(subsystem_nqn: str, host: str, trtype: str, traddr: str, trsvcid: int) -> str:
+        return GatewayState.build_partial_listener_key(subsystem_nqn, host) + GatewayState.build_listener_key_suffix(None, trtype, traddr, str(trsvcid))
 
     @abstractmethod
     def get_state(self) -> Dict[str, str]:
