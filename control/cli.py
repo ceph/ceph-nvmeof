@@ -893,6 +893,9 @@ class GatewayClient:
         if not args.adrfam:
             args.adrfam = "IPV4"
 
+        if args.host_name == "*" and not args.force:
+            self.cli.parser.error("must use --force when setting host name to *")
+
         traddr = GatewayUtils.escape_address_if_ipv6(args.traddr)
         adrfam = None
         if args.adrfam:
@@ -915,7 +918,8 @@ class GatewayClient:
 
         if args.format == "text" or args.format == "plain":
             if ret.status == 0:
-                out_func(f"Deleting listener {traddr}:{args.trsvcid} from {args.subsystem}: Successful")
+                host_msg = "for all hosts" if args.host_name == "*" else f"for host {args.host_name}"
+                out_func(f"Deleting listener {traddr}:{args.trsvcid} from {args.subsystem} {host_msg}: Successful")
             else:
                 err_func(f"{ret.error_message}")
         elif args.format == "json" or args.format == "yaml":

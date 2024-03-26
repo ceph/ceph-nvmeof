@@ -27,14 +27,14 @@ host_name = socket.gethostname()
 addr = "127.0.0.1"
 addr_ipv6 = "::1"
 server_addr_ipv6 = "2001:db8::3"
-listener_list = [["-t", host_name, "-a", addr, "-s", "5001", "-f", "ipv4"], ["-t", host_name, "-a", addr, "-s", "5002"]]
-listener_list_no_port = [["-t", host_name, "-a", addr]]
-listener_list_invalid_adrfam = [["-t", host_name, "-a", addr, "-s", "5013", "--adrfam", "JUNK"]]
-listener_list_ipv6 = [["-t", host_name, "-a", addr_ipv6, "-s", "5003", "--adrfam", "ipv6"], ["-t", host_name, "-a", addr_ipv6, "-s", "5004", "--adrfam", "IPV6"]]
+listener_list = [["-a", addr, "-s", "5001", "-f", "ipv4"], ["-a", addr, "-s", "5002"]]
+listener_list_no_port = [["-a", addr]]
+listener_list_invalid_adrfam = [["-a", addr, "-s", "5013", "--adrfam", "JUNK"]]
+listener_list_ipv6 = [["-a", addr_ipv6, "-s", "5003", "--adrfam", "ipv6"], ["-a", addr_ipv6, "-s", "5004", "--adrfam", "IPV6"]]
 listener_list_discovery = [["-n", discovery_nqn, "-t", host_name, "-a", addr, "-s", "5012"]]
 listener_list_negative_port = [["-t", host_name, "-a", addr, "-s", "-2000"]]
 listener_list_big_port = [["-t", host_name, "-a", addr, "-s", "70000"]]
-listener_list_wrong_gw = [["-t", "WRONG", "-a", addr, "-s", "5015", "-f", "ipv4"]]
+listener_list_wrong_host = [["-t", "WRONG", "-a", addr, "-s", "5015", "-f", "ipv4"]]
 config = "ceph-nvmeof.conf"
 
 @pytest.fixture(scope="module")
@@ -578,40 +578,39 @@ class TestCreate:
     @pytest.mark.parametrize("listener", listener_list)
     def test_create_listener(self, caplog, listener, gateway):
         caplog.clear()
-        cli(["listener", "add", "--subsystem", subsystem] + listener)
+        cli(["listener", "add", "--subsystem", subsystem, "--host-name", host_name] + listener)
         assert "enable_ha: False" in caplog.text
         assert "ipv4" in caplog.text.lower()
-        assert f"Adding {subsystem} listener at {listener[3]}:{listener[5]}: Successful" in caplog.text
+        assert f"Adding {subsystem} listener at {listener[1]}:{listener[3]}: Successful" in caplog.text
 
 
     @pytest.mark.parametrize("listener_ipv6", listener_list_ipv6)
     def test_create_listener_ipv6(self, caplog, listener_ipv6, gateway):
         caplog.clear()
-        cli(["--server-address", server_addr_ipv6, "listener", "add", "--subsystem", subsystem] + listener_ipv6)
+        cli(["--server-address", server_addr_ipv6, "listener", "add", "--subsystem", subsystem, "--host-name", host_name] + listener_ipv6)
         assert "enable_ha: False" in caplog.text
         assert "ipv6" in caplog.text.lower()
-        assert f"Adding {subsystem} listener at [{listener_ipv6[3]}]:{listener_ipv6[5]}: Successful" in caplog.text
+        assert f"Adding {subsystem} listener at [{listener_ipv6[1]}]:{listener_ipv6[3]}: Successful" in caplog.text
 
     @pytest.mark.parametrize("listener", listener_list_no_port)
     def test_create_listener_no_port(self, caplog, listener, gateway):
         caplog.clear()
-        cli(["listener", "add", "--subsystem", subsystem] + listener)
+        cli(["listener", "add", "--subsystem", subsystem, "--host-name", host_name] + listener)
         assert "enable_ha: False" in caplog.text
         assert "ipv4" in caplog.text.lower()
-        assert f"Adding {subsystem} listener at {listener[3]}:4420: Successful" in caplog.text
+        assert f"Adding {subsystem} listener at {listener[1]}:4420: Successful" in caplog.text
 
     @pytest.mark.parametrize("listener", listener_list)
     @pytest.mark.parametrize("listener_ipv6", listener_list_ipv6)
     def test_list_listeners(self, caplog, listener, listener_ipv6, gateway):
         caplog.clear()
         cli(["--format", "json", "listener", "list", "--subsystem", subsystem])
-        assert f"No listeners for {subsystem}" not in caplog.text
-        assert f'"host_name": "{listener[1]}"' in caplog.text
-        assert f'"traddr": "{listener[3]}"' in caplog.text
-        assert f'"trsvcid": {listener[5]}' in caplog.text
+        assert f'"host_name": "{host_name}"' in caplog.text
+        assert f'"traddr": "{listener[1]}"' in caplog.text
+        assert f'"trsvcid": {listener[3]}' in caplog.text
         assert f'"adrfam": "ipv4"' in caplog.text
-        assert f'"traddr": "[{listener_ipv6[3]}]"' in caplog.text
-        assert f'"trsvcid": {listener_ipv6[5]}' in caplog.text
+        assert f'"traddr": "[{listener_ipv6[1]}]"' in caplog.text
+        assert f'"trsvcid": {listener_ipv6[3]}' in caplog.text
         assert f'"adrfam": "ipv6"' in caplog.text
 
     @pytest.mark.parametrize("listener", listener_list_negative_port)
@@ -619,7 +618,7 @@ class TestCreate:
         caplog.clear()
         rc = 0
         try:
-            cli(["listener", "add", "--subsystem", subsystem] + listener)
+            cli(["listener", "add", "--subsystem", subsystem, "--host-name", host_name] + listener)
         except SystemExit as sysex:
             rc = int(str(sysex))
             pass
@@ -631,15 +630,15 @@ class TestCreate:
         caplog.clear()
         rc = 0
         try:
-            cli(["listener", "add", "--subsystem", subsystem] + listener)
+            cli(["listener", "add", "--subsystem", subsystem, "--host-name", host_name] + listener)
         except SystemExit as sysex:
             rc = int(str(sysex))
             pass
         assert "error: trsvcid value must be smaller than 65536" in caplog.text
         assert rc == 2
 
-    @pytest.mark.parametrize("listener", listener_list_wrong_gw)
-    def test_create_listener_wrong_gateway(self, caplog, listener, gateway):
+    @pytest.mark.parametrize("listener", listener_list_wrong_host)
+    def test_create_listener_wrong_hostname(self, caplog, listener, gateway):
         caplog.clear()
         cli(["listener", "add", "--subsystem", subsystem] + listener)
         assert f"Gateway's host name must match current host ({host_name})" in caplog.text
@@ -649,7 +648,7 @@ class TestCreate:
         caplog.clear()
         rc = 0
         try:
-            cli(["listener", "add", "--subsystem", subsystem] + listener)
+            cli(["listener", "add", "--subsystem", subsystem, "--host-name", host_name] + listener)
         except SystemExit as sysex:
             rc = int(str(sysex))
             pass
@@ -659,7 +658,7 @@ class TestCreate:
     @pytest.mark.parametrize("listener", listener_list_discovery)
     def test_create_listener_on_discovery(self, caplog, listener, gateway):
         caplog.clear()
-        cli(["listener", "add"] + listener)
+        cli(["listener", "add", "--host-name", host_name] + listener)
         assert "Can't create a listener for a discovery subsystem" in caplog.text
 
 class TestDelete:
@@ -682,31 +681,61 @@ class TestDelete:
             assert f"Removing host {host} access from {subsystem}: Successful" in caplog.text
 
     @pytest.mark.parametrize("listener", listener_list)
+    def test_delete_listener_using_wild_hostname_no_force(self, caplog, listener, gateway):
+        caplog.clear()
+        rc = 0
+        try:
+            cli(["listener", "del", "--subsystem", subsystem, "--host-name", "*"] + listener)
+        except SystemExit as sysex:
+            rc = int(str(sysex))
+            pass
+        assert "error: must use --force when setting host name to *" in caplog.text
+        assert rc == 2
+
+    @pytest.mark.parametrize("listener", listener_list)
     def test_delete_listener(self, caplog, listener, gateway):
         caplog.clear()
-        cli(["listener", "del", "--force", "--subsystem", subsystem] + listener)
-        assert f"Deleting listener {listener[3]}:{listener[5]} from {subsystem}: Successful" in caplog.text
+        cli(["listener", "del", "--force", "--subsystem", subsystem, "--host-name", host_name] + listener)
+        assert f"Deleting listener {listener[1]}:{listener[3]} from {subsystem} for host {host_name}: Successful" in caplog.text
 
     @pytest.mark.parametrize("listener_ipv6", listener_list_ipv6)
     def test_delete_listener_ipv6(self, caplog, listener_ipv6, gateway):
         caplog.clear()
-        cli(["--server-address", server_addr_ipv6, "listener", "del", "--subsystem", subsystem] + listener_ipv6)
-        assert f"Deleting listener [{listener_ipv6[3]}]:{listener_ipv6[5]} from {subsystem}: Successful" in caplog.text
+        cli(["--server-address", server_addr_ipv6, "listener", "del", "--subsystem", subsystem, "--host-name", host_name] + listener_ipv6)
+        assert f"Deleting listener [{listener_ipv6[1]}]:{listener_ipv6[3]} from {subsystem} for host {host_name}: Successful" in caplog.text
 
     @pytest.mark.parametrize("listener", listener_list_no_port)
     def test_delete_listener_no_port(self, caplog, listener, gateway):
         caplog.clear()
         rc = 0
         try:
-            cli(["listener", "del", "--subsystem", subsystem] + listener)
+            cli(["listener", "del", "--subsystem", subsystem, "--host-name", host_name] + listener)
         except SystemExit as sysex:
             rc = int(str(sysex))
             pass
         assert "error: the following arguments are required: --trsvcid/-s" in caplog.text
         assert rc == 2
         caplog.clear()
-        cli(["listener", "del", "--trsvcid", "4420", "--subsystem", subsystem] + listener)
-        assert f"Deleting listener {listener[3]}:4420 from {subsystem}: Successful" in caplog.text
+        cli(["listener", "del", "--trsvcid", "4420", "--subsystem", subsystem, "--host-name", host_name] + listener)
+        assert f"Deleting listener {listener[1]}:4420 from {subsystem} for host {host_name}: Successful" in caplog.text
+
+    @pytest.mark.parametrize("listener", listener_list)
+    def test_delete_listener_using_wild_hostname(self, caplog, listener, gateway):
+        caplog.clear()
+        cli(["listener", "add", "--subsystem", subsystem, "--host-name", host_name] + listener)
+        assert "enable_ha: False" in caplog.text
+        assert "ipv4" in caplog.text.lower()
+        assert f"Adding {subsystem} listener at {listener[1]}:{listener[3]}: Successful" in caplog.text
+        cli(["--format", "json", "listener", "list", "--subsystem", subsystem])
+        assert f'"host_name": "{host_name}"' in caplog.text
+        assert f'"traddr": "{listener[1]}"' in caplog.text
+        assert f'"trsvcid": {listener[3]}' in caplog.text
+        caplog.clear()
+        cli(["listener", "del", "--force", "--subsystem", subsystem, "--host-name", "*"] + listener)
+        assert f"Deleting listener {listener[1]}:{listener[3]} from {subsystem} for all hosts: Successful" in caplog.text
+        caplog.clear()
+        cli(["--format", "json", "listener", "list", "--subsystem", subsystem])
+        assert f'"trsvcid": {listener[3]}' not in caplog.text
 
     def test_remove_namespace(self, caplog, gateway):
         gw, stub = gateway
@@ -815,18 +844,18 @@ class TestCreateWithAna:
     @pytest.mark.parametrize("listener", listener_list)
     def test_create_listener_ana(self, caplog, listener, gateway):
         caplog.clear()
-        cli(["listener", "add", "--subsystem", subsystem] + listener)
+        cli(["listener", "add", "--subsystem", subsystem, "--host-name", host_name] + listener)
         assert "enable_ha: True" in caplog.text
         assert "ipv4" in caplog.text.lower()
-        assert f"Adding {subsystem} listener at {listener[3]}:{listener[5]}: Successful" in caplog.text
+        assert f"Adding {subsystem} listener at {listener[1]}:{listener[3]}: Successful" in caplog.text
 
 class TestDeleteAna:
 
     @pytest.mark.parametrize("listener", listener_list)
     def test_delete_listener_ana(self, caplog, listener, gateway):
         caplog.clear()
-        cli(["listener", "del", "--subsystem", subsystem] + listener)
-        assert f"Deleting listener {listener[3]}:{listener[5]} from {subsystem}: Successful" in caplog.text
+        cli(["listener", "del", "--subsystem", subsystem, "--host-name", host_name] + listener)
+        assert f"Deleting listener {listener[1]}:{listener[3]} from {subsystem} for host {host_name}: Successful" in caplog.text
 
     def test_remove_namespace_ana(self, caplog, gateway):
         caplog.clear()
