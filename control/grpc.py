@@ -777,7 +777,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
             nqn = nas.nqn
             if not self.get_subsystem_ha_status(nqn):
                 continue
-            prefix = GatewayState.build_partial_listener_key(nqn, self.gateway_name) + GatewayState.OMAP_KEY_DELIMITER
+            prefix = GatewayState.build_partial_listener_key(nqn, self.host_name) + GatewayState.OMAP_KEY_DELIMITER
             listener_keys = [key for key in state.keys() if key.startswith(prefix)]
             self.logger.info(f"Iterate over {nqn=} {prefix=} {listener_keys=}")
             # fill the static gateway dictionary per nqn and grp_id

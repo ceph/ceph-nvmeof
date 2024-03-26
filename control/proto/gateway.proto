@@ -373,7 +373,7 @@ message gw_version {
 }
 
 message listener_info {
-	string gateway_name = 1;
+	string host_name = 1;
 	string trtype = 2;
 	AddressFamily adrfam = 3;
 	string traddr = 4;
