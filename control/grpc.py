@@ -2098,21 +2098,53 @@ class GatewayService(pb2_grpc.GatewayServicer):
     def create_listener(self, request, context=None):
         return self.execute_grpc_function(self.create_listener_safe, request, context)
 
-    def remove_listener_from_state(self, nqn, gw_name, traddr, port, context):
+    def remove_listener_from_state(self, nqn, host_name, traddr, port, context):
         if not context:
             return pb2.req_status(status=0, error_message=os.strerror(0))
 
         if context:
             assert self.omap_lock.locked()
+
+        host_name = host_name.strip()
+        listener_hosts = []
+        if host_name == "*":
+            state = self.gateway_state.local.get_state()
+            listener_prefix = GatewayState.build_partial_listener_key(nqn)
+            for key, val in state.items():
+                if not key.startswith(listener_prefix):
+                    continue
+                try:
+                    listener = json.loads(val)
+                    listener_nqn = listener["nqn"]
+                    if listener_nqn != nqn:
+                        self.logger.warning(f"Got subsystem {listener_nqn} instead of {nqn}, ignore")
+                        continue
+                    if listener["traddr"] != traddr:
+                        continue
+                    if listener["trsvcid"] != port:
+                        continue
+                    listener_hosts.append(listener["host_name"])
+                except Exception:
+                    self.logger.exception(f"Got exception while parsing {val}")
+                    continue
+        else:
+            listener_hosts.append(host_name)
+
         # Update gateway state
-        try:
-            self.gateway_state.remove_listener(nqn, gw_name, "TCP", traddr, port)
-        except Exception as ex:
-            errmsg = f"Error persisting deletion of listener {traddr}:{port} from {nqn}"
-            self.logger.exception(errmsg)
-            errmsg = f"{errmsg}:\n{ex}"
-            return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
-        return pb2.req_status(status=0, error_message=os.strerror(0))
+        req_status = None
+        for one_host in listener_hosts:
+            try:
+                self.gateway_state.remove_listener(nqn, one_host, "TCP", traddr, port)
+            except Exception as ex:
+                errmsg = f"Error persisting deletion of {one_host} listener {traddr}:{port} from {nqn}"
+                self.logger.exception(errmsg)
+                if not req_status:
+                    errmsg = f"{errmsg}:\n{ex}"
+                    req_status = pb2.req_status(status=errno.EINVAL, error_message=errmsg)
+        if not req_status:
+            req_status = pb2.req_status(status=0, error_message=os.strerror(0))
+
+        return req_status
 
     def delete_listener_safe(self, request, context):
         """Deletes a listener from a subsystem at a given IP/Port."""
@@ -2127,9 +2159,17 @@ class GatewayService(pb2_grpc.GatewayServicer):
             self.logger.error(errmsg)
             return pb2.req_status(status=errno.ENOKEY, error_message=errmsg)
 
-        self.logger.info(f"Received request to delete {request.host_name}"
-                         f" TCP listener for {request.nqn} at"
-                         f" {traddr}:{request.trsvcid}, context: {context}")
+        force_msg = " forcefully" if request.force else ""
+        host_msg = "all hosts" if request.host_name == "*" else f"host {request.host_name}"
+
+        self.logger.info(f"Received request to delete TCP listener of {host_msg}"
+                         f" for subsystem {request.nqn} at"
+                         f" {traddr}:{request.trsvcid}{force_msg}, context: {context}")
+
+        if request.host_name == "*" and not request.force:
+            errmsg=f"{delete_listener_error_prefix}. Must use the \"--force\" parameter when setting the host name to \"*\"."
+            self.logger.error(errmsg)
+            return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
 
         if GatewayUtils.is_discovery_nqn(request.nqn):
             errmsg=f"{delete_listener_error_prefix}. Can't delete a listener from a discovery subsystem"
