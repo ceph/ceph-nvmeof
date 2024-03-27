@@ -264,16 +264,6 @@ jobs:
               cephnvmf host list --subsystem $sub
           done
 
-      - name: Verify no HA
-        run: |
-          shopt -s expand_aliases
-          eval $(make alias)
-          ha_status=$(cephnvmf --output stdio --format json subsystem list | grep "enable_ha" | grep "true" | tr -d '\n\r')
-          if [ -n "$ha_status" ]; then
-              echo "Found a subsystem with HA enabled, failing"
-              exit 1
-          fi
-
       - name: Run bdevperf
         run: |
           # see https://spdk.io/doc/nvmf_multipath_howto.html

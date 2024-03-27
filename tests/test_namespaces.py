@@ -87,7 +87,7 @@ def delete_namespace(stub, nsid):
     assert ret_del_namespace.status == 0
 
 def create_subsystem(stub, nqn, max_ns):
-    subsystem_req = pb2.create_subsystem_req(subsystem_nqn=nqn, max_namespaces=max_ns, enable_ha=False)
+    subsystem_req = pb2.create_subsystem_req(subsystem_nqn=nqn, max_namespaces=max_ns, enable_ha=True)
     ret_subsystem = stub.create_subsystem(subsystem_req)
     assert ret_subsystem.status == 0
 
