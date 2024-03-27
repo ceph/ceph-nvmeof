@@ -294,14 +294,14 @@ class TestCreate:
         assert f"Adding namespace 2 to {subsystem}, load balancing group 1: Successful" in caplog.text
         caplog.clear()
         cli(["--format", "json", "namespace", "list", "--subsystem", subsystem, "--nsid", "1"])
-        assert '"load_balancing_group": 0' in caplog.text
+        assert '"load_balancing_group": 1' in caplog.text
         assert '"block_size": 512' in caplog.text
         assert f'"uuid": "{uuid}"' in caplog.text
         assert '"rw_ios_per_second": "0"' in caplog.text
         assert '"rw_mbytes_per_second": "0"' in caplog.text
         caplog.clear()
         cli(["--format", "json", "namespace", "list", "--subsystem", subsystem, "--nsid", "2"])
-        assert '"load_balancing_group": 0' in caplog.text
+        assert '"load_balancing_group": 1' in caplog.text
         assert '"block_size": 1024' in caplog.text
         assert f'"uuid": "{uuid}"' not in caplog.text
         assert '"rw_ios_per_second": "0"' in caplog.text
@@ -314,7 +314,7 @@ class TestCreate:
         assert f"Changing load balancing group of namespace {nsid} in {subsystem} to {anagrpid2}: Successful" in caplog.text
         caplog.clear()
         cli(["--format", "json", "namespace", "list", "--subsystem", subsystem, "--nsid", nsid])
-        assert '"load_balancing_group": 0' in caplog.text
+        assert f'"load_balancing_group": {anagrpid2}' in caplog.text
         caplog.clear()
         cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool, "--rbd-image", image3, "--size", "4GiB", "--rbd-create-image"])
         assert f"Adding namespace 3 to {subsystem}, load balancing group 1: Successful" in caplog.text
@@ -329,12 +329,12 @@ class TestCreate:
         assert f'will continue as the "force" argument was used' in caplog.text
         caplog.clear()
         cli(["--format", "json", "namespace", "list", "--subsystem", subsystem, "--nsid", "3"])
-        assert '"load_balancing_group": 0' in caplog.text
+        assert '"load_balancing_group": 1' in caplog.text
         cli(["--server-address", server_addr_ipv6, "namespace", "add", "--subsystem", subsystem, "--nsid", "8", "--rbd-pool", pool, "--rbd-image", image, "--force"])
         assert f"Adding namespace 8 to {subsystem}, load balancing group 1: Successful" in caplog.text
         caplog.clear()
         cli(["--format", "json", "namespace", "list", "--subsystem", subsystem, "--nsid", "8"])
-        assert '"load_balancing_group": 0' in caplog.text
+        assert '"load_balancing_group": 1' in caplog.text
 
     def test_add_namespace_same_image(self, caplog, gateway):
         caplog.clear()
@@ -579,7 +579,7 @@ class TestCreate:
     def test_create_listener(self, caplog, listener, gateway):
         caplog.clear()
         cli(["listener", "add", "--subsystem", subsystem, "--host-name", host_name] + listener)
-        assert "enable_ha: False" in caplog.text
+        assert "enable_ha: True" in caplog.text
         assert "ipv4" in caplog.text.lower()
         assert f"Adding {subsystem} listener at {listener[1]}:{listener[3]}: Successful" in caplog.text
 
@@ -588,7 +588,7 @@ class TestCreate:
     def test_create_listener_ipv6(self, caplog, listener_ipv6, gateway):
         caplog.clear()
         cli(["--server-address", server_addr_ipv6, "listener", "add", "--subsystem", subsystem, "--host-name", host_name] + listener_ipv6)
-        assert "enable_ha: False" in caplog.text
+        assert "enable_ha: True" in caplog.text
         assert "ipv6" in caplog.text.lower()
         assert f"Adding {subsystem} listener at [{listener_ipv6[1]}]:{listener_ipv6[3]}: Successful" in caplog.text
 
@@ -596,7 +596,7 @@ class TestCreate:
     def test_create_listener_no_port(self, caplog, listener, gateway):
         caplog.clear()
         cli(["listener", "add", "--subsystem", subsystem, "--host-name", host_name] + listener)
-        assert "enable_ha: False" in caplog.text
+        assert "enable_ha: True" in caplog.text
         assert "ipv4" in caplog.text.lower()
         assert f"Adding {subsystem} listener at {listener[1]}:4420: Successful" in caplog.text
 
@@ -723,7 +723,7 @@ class TestDelete:
     def test_delete_listener_using_wild_hostname(self, caplog, listener, gateway):
         caplog.clear()
         cli(["listener", "add", "--subsystem", subsystem, "--host-name", host_name] + listener)
-        assert "enable_ha: False" in caplog.text
+        assert "enable_ha: True" in caplog.text
         assert "ipv4" in caplog.text.lower()
         assert f"Adding {subsystem} listener at {listener[1]}:{listener[3]}: Successful" in caplog.text
         cli(["--format", "json", "listener", "list", "--subsystem", subsystem])
@@ -813,7 +813,7 @@ class TestCreateWithAna:
         cli(["subsystem", "list"])
         assert "No subsystems" in caplog.text
         caplog.clear()
-        cli(["subsystem", "add", "--subsystem", subsystem, "--enable-ha"])
+        cli(["subsystem", "add", "--subsystem", subsystem])
         assert f"Adding subsystem {subsystem}: Successful" in caplog.text
         caplog.clear()
         cli(["subsystem", "list"])

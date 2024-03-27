@@ -465,6 +465,11 @@ class GatewayService(pb2_grpc.GatewayServicer):
         self.logger.info(
             f"Received request to create subsystem {request.subsystem_nqn}, enable_ha: {request.enable_ha}, context: {context}")
 
+        if not request.enable_ha:
+            errmsg = f"{create_subsystem_error_prefix}: HA must be enabled for subsystems"
+            self.logger.error(f"{errmsg}")
+            return pb2.req_status(status = errno.EINVAL, error_message = errmsg)
+
         errmsg = ""
         if not GatewayState.is_key_element_valid(request.subsystem_nqn):
             errmsg = f"{create_subsystem_error_prefix}: Invalid NQN \"{request.subsystem_nqn}\", contains invalid characters"
