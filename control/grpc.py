@@ -848,7 +848,6 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         nsid_msg = self.get_ns_id_message(request.nsid, request.uuid)
         self.logger.info(f"Received request to add a namespace {nsid_msg}to {request.subsystem_nqn}, context: {context}")
-
         if not request.uuid:
             request.uuid = str(uuid.uuid4())
 
@@ -868,8 +867,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
             create_image = request.create_image
             if not context:
                 create_image = False
-            anagrp = int(request.anagrpid) if request.anagrpid is not None else 0
-            anagrp = self.choose_anagrpid_for_namespace(request.nsid)
+                anagrp = request.anagrpid
+            else: # new namespace
+                anagrp = self.choose_anagrpid_for_namespace(request.nsid)
+                request.anagrpid = anagrp
 
             ret_bdev = self.create_bdev(anagrp, bdev_name, request.uuid, request.rbd_pool_name,
                                         request.rbd_image_name, request.block_size, create_image, request.size)
