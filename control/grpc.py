@@ -1938,7 +1938,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                           traddr=traddr, trsvcid=trsvcid, trtype=trtype, adrfam=adrfam,
                                           qpairs_count=conn["num_io_qpairs"], controller_id=conn["cntlid"])
                 connections.append(one_conn)
-                host_nqns.remove(hostnqn)
+                if hostnqn in host_nqns:
+                    host_nqns.remove(hostnqn)
             except Exception:
                 self.logger.exception(f"{s=} parse error")
                 pass
