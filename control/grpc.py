@@ -2054,35 +2054,48 @@ class GatewayService(pb2_grpc.GatewayServicer):
             enable_ha = self.get_subsystem_ha_status(request.nqn)
 
             if enable_ha:
-                  for x in range (self.subsys_max_ns[request.nqn]):
-                       _ana_state = "inaccessible"
-                       ana_grp = x+1
-                       if self.ana_map[request.nqn]:
-                           _ana_state = "optimized" if ana_grp in self.ana_map[request.nqn] and self.ana_map[request.nqn][ana_grp] == pb2.ana_state.OPTIMIZED else "inaccessible"
-                           self.logger.info(f"using ana_map: set listener on nqn : {request.nqn}  ana state : {_ana_state} for group : {ana_grp}")
-                       try:
-                          self.logger.info(f"create_listener nvmf_subsystem_listener_set_ana_state {request=} {_ana_state=} anagrpid={ana_grp}")
-                          ret = rpc_nvmf.nvmf_subsystem_listener_set_ana_state(
-                            self.spdk_rpc_client,
-                            nqn=request.nqn,
-                            ana_state=_ana_state,
-                            trtype="TCP",
-                            traddr=request.traddr,
-                            trsvcid=str(request.trsvcid),
-                            adrfam=adrfam,
-                            anagrpid=ana_grp )
-                          self.logger.info(f"create_listener nvmf_subsystem_listener_set_ana_state response {ret=}")
+                try:
+                    self.logger.info(f"create_listener nvmf_subsystem_listener_set_ana_state {request=} set inaccessible for all ana groups")
+                    _ana_state = "inaccessible"
+                    ret = rpc_nvmf.nvmf_subsystem_listener_set_ana_state(
+                      self.spdk_rpc_client,
+                      nqn=request.nqn,
+                      ana_state=_ana_state,
+                      trtype="TCP",
+                      traddr=request.traddr,
+                      trsvcid=str(request.trsvcid),
+                      adrfam=adrfam)
+                    self.logger.info(f"create_listener nvmf_subsystem_listener_set_ana_state response {ret=}")
 
-                       except Exception as ex:
-                            errmsg=f"{create_listener_error_prefix}: Error setting ANA state"
-                            self.logger.exception(errmsg)
-                            errmsg=f"{errmsg}:\n{ex}"
-                            resp = self.parse_json_exeption(ex)
-                            status = errno.EINVAL
-                            if resp:
-                                status = resp["code"]
-                                errmsg = f"{create_listener_error_prefix}: Error setting ANA state: {resp['message']}"
-                            return pb2.req_status(status=status, error_message=errmsg)
+                    # have been provided with ana state for this nqn prior to creation
+                    # update optimized ana groups
+                    if self.ana_map[request.nqn]:
+                        for x in range (self.subsys_max_ns[request.nqn]):
+                            ana_grp = x+1
+                            if ana_grp in self.ana_map[request.nqn] and self.ana_map[request.nqn][ana_grp] == pb2.ana_state.OPTIMIZED:
+                                _ana_state = "optimized"
+                                self.logger.info(f"using ana_map: set listener on nqn : {request.nqn}  ana state : {_ana_state} for group : {ana_grp}")
+                                ret = rpc_nvmf.nvmf_subsystem_listener_set_ana_state(
+                                  self.spdk_rpc_client,
+                                  nqn=request.nqn,
+                                  ana_state=_ana_state,
+                                  trtype="TCP",
+                                  traddr=request.traddr,
+                                  trsvcid=str(request.trsvcid),
+                                  adrfam=adrfam,
+                                  anagrpid=ana_grp )
+                                self.logger.info(f"create_listener nvmf_subsystem_listener_set_ana_state response {ret=}")
+
+                except Exception as ex:
+                    errmsg=f"{create_listener_error_prefix}: Error setting ANA state"
+                    self.logger.exception(errmsg)
+                    errmsg=f"{errmsg}:\n{ex}"
+                    resp = self.parse_json_exeption(ex)
+                    status = errno.EINVAL
+                    if resp:
+                        status = resp["code"]
+                        errmsg = f"{create_listener_error_prefix}: Error setting ANA state: {resp['message']}"
+                    return pb2.req_status(status=status, error_message=errmsg)
 
             if context:
                 # Update gateway state
