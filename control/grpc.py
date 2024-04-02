@@ -13,7 +13,6 @@ import json
 import uuid
 import random
 import os
-import threading
 import errno
 import contextlib
 import time
@@ -69,7 +68,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         spdk_rpc_client: Client of SPDK RPC server
     """
 
-    def __init__(self, config: GatewayConfig, gateway_state: GatewayStateHandler, omap_lock: OmapLock, group_id: int, spdk_rpc_client, ceph_utils: CephUtils) -> None:
+    def __init__(self, config: GatewayConfig, gateway_state: GatewayStateHandler, rpc_lock, omap_lock: OmapLock, group_id: int, spdk_rpc_client, ceph_utils: CephUtils) -> None:
         """Constructor"""
         self.gw_logger_object = GatewayLogger(config)
         self.logger = self.gw_logger_object.logger
@@ -147,7 +146,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
             self.logger.warning(f"Can't find huge pages file {hugepages_file}")
         self.config = config
         config.dump_config_file(self.logger)
-        self.rpc_lock = threading.Lock()
+        self.rpc_lock = rpc_lock
         self.gateway_state = gateway_state
         self.omap_lock = omap_lock
         self.group_id = group_id
