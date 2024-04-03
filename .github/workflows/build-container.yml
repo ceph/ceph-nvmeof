@@ -235,11 +235,6 @@ jobs:
             sudo apt install -y docker-compose
           fi
           docker-compose --version
-          if ! docker-compose --version 2>&1 > /dev/null ; then
-            sudo apt update
-            sudo apt install -y docker-compose
-          fi
-          docker-compose --version
           make up
 
       - name: Wait for the Gateway to be listening
