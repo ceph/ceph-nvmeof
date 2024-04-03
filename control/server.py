@@ -268,19 +268,19 @@ class GatewayServer:
         """Adds listener port to server."""
 
         enable_auth = self.config.getboolean("gateway", "enable_auth")
-        gateway_addr = self.config.get("gateway", "addr")
-        gateway_port = self.config.get("gateway", "port")
-        # We need to enclose IPv6 addresses in brackets before concatenating a colon and port number to it
-        gateway_addr = GatewayUtils.escape_address_if_ipv6(gateway_addr)
         if enable_auth:
+            self.logger.info(f"mTLS authenciation has been enabled")
             # Read in key and certificates for authentication
             server_key = self.config.get("mtls", "server_key")
             server_cert = self.config.get("mtls", "server_cert")
             client_cert = self.config.get("mtls", "client_cert")
+            self.logger.debug(f"Trying to open server key file: {server_key}")
             with open(server_key, "rb") as f:
                 private_key = f.read()
+            self.logger.debug(f"Trying to open server cert file: {server_cert}")
             with open(server_cert, "rb") as f:
                 server_crt = f.read()
+            self.logger.debug(f"Trying to open client cert file: {client_cert}")
             with open(client_cert, "rb") as f:
                 client_crt = f.read()
 
