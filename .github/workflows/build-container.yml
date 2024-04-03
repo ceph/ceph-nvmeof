@@ -131,6 +131,11 @@ jobs:
 
       - name: Start ceph cluster
         run: |
+          if ! docker-compose --version 2>&1 > /dev/null ; then
+            sudo apt update
+            sudo apt install -y docker-compose
+          fi
+          docker-compose --version
           docker-compose up -d ceph
 
       - name: Wait for the ceph cluster container to become healthy
@@ -225,6 +230,16 @@ jobs:
       - name: Start containers
         timeout-minutes: 3
         run: |
+          if ! docker-compose --version 2>&1 > /dev/null ; then
+            sudo apt update
+            sudo apt install -y docker-compose
+          fi
+          docker-compose --version
+          if ! docker-compose --version 2>&1 > /dev/null ; then
+            sudo apt update
+            sudo apt install -y docker-compose
+          fi
+          docker-compose --version
           make up
 
       - name: Wait for the Gateway to be listening
@@ -367,6 +382,11 @@ jobs:
       - name: Start discovery controller
         if: matrix.integration == 'container'
         run: |
+          if ! docker-compose --version 2>&1 > /dev/null ; then
+            sudo apt update
+            sudo apt install -y docker-compose
+          fi
+          docker-compose --version
           docker-compose up --detach discovery
 
       - name: Wait for discovery controller to be listening
@@ -548,6 +568,11 @@ jobs:
       - name: Start HA with two gateways
         timeout-minutes: 3
         run: |
+          if ! docker-compose --version 2>&1 > /dev/null ; then
+            sudo apt update
+            sudo apt install -y docker-compose
+          fi
+          docker-compose --version
           ./tests/ha/start_up.sh
 
       - name: Wait for gateways to be listening
