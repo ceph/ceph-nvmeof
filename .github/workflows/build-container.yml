@@ -535,10 +535,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        test: ["sanity", "state_transitions", "state_transitions_both_gws", "state_transitions_loop", "state_transitions_rand_loop", "late_registration", "late_registration_loop"]
+        test: ["sanity", "state_transitions", "state_transitions_both_gws", "state_transitions_loop", "state_transitions_rand_loop", "late_registration", "late_registration_loop", "4gws", "4gws_loop"]
     runs-on: ubuntu-latest
     env:
-      HUGEPAGES: 768  # 3 spdk instances
+      HUGEPAGES: 1024  # 4 spdk instances
 
     steps:
       - name: Checkout code
@@ -568,12 +568,22 @@ jobs:
             sudo apt install -y docker-compose
           fi
           docker-compose --version
-          ./tests/ha/start_up.sh
+          test_specific_start_up="./tests/ha/start_up_${{ matrix.test }}.sh"
+          if [ -x "$test_specific_start_up" ] || [ -L "$test_specific_start_up" ] && [ -x "$(readlink -f "$test_specific_start_up")" ]; then
+            $test_specific_start_up
+          else
+            ./tests/ha/start_up.sh
+          fi
 
       - name: Wait for gateways to be listening
         timeout-minutes: 3
         run: |
-          source tests/ha/wait_gateways.sh
+          test_specific_wait="./tests/ha/wait_gateways_${{ matrix.test }}.sh"
+          if [ -x "$test_specific_wait" ] || [ -L "$test_specific_wait" ] && [ -x "$(readlink -f "$test_specific_wait")" ]; then
+            $test_specific_wait
+          else
+            ./tests/ha/wait_gateways.sh
+          fi
 
       - name: List containers
         if: success() || failure()
@@ -587,7 +597,12 @@ jobs:
 
       - name: Set up target
         run: |
-          source tests/ha/setup.sh
+          test_specific_setup="./tests/ha/setup_${{ matrix.test }}.sh"
+          if [ -x "$test_specific_setup" ] || [ -L "$test_specific_setup" ] && [ -x "$(readlink -f "$test_specific_setup")" ]; then
+            $test_specific_setup
+          else
+            ./tests/ha/setup.sh
+          fi
 
       - name: Run HA ${{ matrix.test }} test
         timeout-minutes: 30
