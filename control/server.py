@@ -163,9 +163,6 @@ class GatewayServer:
         # Start monitor client
         self._start_monitor_client()
 
-        # wait for monitor notification of the group id
-        self._wait_for_group_id()
-
         self.ceph_utils = CephUtils(self.config)
 
         # Start SPDK
@@ -221,6 +218,8 @@ class GatewayServer:
         try:
             # start monitor client process
             self.monitor_client_process = subprocess.Popen(cmd)
+            # wait for monitor notification of the group id
+            self._wait_for_group_id()
         except Exception:
             self.logger.exception(f"Unable to start CEPH monitor client:")
             raise
