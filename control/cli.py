@@ -25,7 +25,7 @@ from .proto import gateway_pb2 as pb2
 from .utils import GatewayUtils
 from .utils import GatewayEnumUtils
 
-BASE_GATEWAY_VERSION="1.2.0"
+BASE_GATEWAY_VERSION="1.1.0"
 
 def errprint(msg):
     print(msg, file = sys.stderr)
