@@ -80,6 +80,7 @@ class GatewayServer:
         self.monitor_client_process = None
         self.ceph_utils = None
         self.rpc_lock = threading.Lock()
+        self.group_id = 0
 
         self.name = self.config.get("gateway", "name")
         if not self.name:
