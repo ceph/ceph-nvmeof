@@ -107,10 +107,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
         if git_spdk_commit:
             self.logger.info(f"SPDK Git commit: {git_spdk_commit}")
         self.ceph_utils.fetch_and_display_ceph_version()
-        hugepages_file = os.getenv("HUGEPAGES_DIR")
-        hugepages_file = hugepages_file.strip()
-        requested_hugepages_val = os.getenv("HUGEPAGES")
-        if requested_hugepages_val == None:
+        requested_hugepages_val = os.getenv("HUGEPAGES", "")
+        if not requested_hugepages_val:
             self.logger.warning("Can't get requested huge pages count")
         else:
             requested_hugepages_val = requested_hugepages_val.strip()
@@ -120,9 +118,12 @@ class GatewayService(pb2_grpc.GatewayServicer):
             except ValueError:
                 self.logger.warning(f"Requested huge pages count value {requested_hugepages_val} is not numeric")
                 requested_hugepages_val = None
-        if hugepages_file == None:
+        hugepages_file = os.getenv("HUGEPAGES_DIR", "")
+        if not hugepages_file:
             hugepages_file = "/sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages"
             self.logger.warning("No huge pages file defined, will use /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages")
+        else:
+            hugepages_file = hugepages_file.strip()
         if os.access(hugepages_file, os.F_OK):
             try:
                 hugepages_val = ""
