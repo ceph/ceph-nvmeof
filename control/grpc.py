@@ -163,14 +163,15 @@ class GatewayService(pb2_grpc.GatewayServicer):
         else:
             self.host_name = socket.gethostname()
         self.verify_nqns = self.config.getboolean_with_default("gateway", "verify_nqns", True)
+        self.gateway_group = self.config.get_with_default("gateway", "group", "")
+        self.gateway_pool =  self.config.get_with_default("ceph", "pool", "")
         self.ana_map = defaultdict(dict)
         self.cluster_nonce = {}
         self.bdev_cluster = {}
         self.bdev_params  = {}
         self.subsystem_nsid_bdev = defaultdict(dict)
         self.subsystem_nsid_anagrp = defaultdict(dict)
-        self.gateway_group = self.config.get_with_default("gateway", "group", "")
-        self.gateway_pool =  self.config.get_with_default("ceph", "pool", "")
+        self.subsystem_listeners = defaultdict(set)
         self._init_cluster_context()
         self.subsys_ha = {}
         self.subsys_max_ns = {}
@@ -816,13 +817,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
             if not self.get_subsystem_ha_status(nqn):
                 continue
 
-            prefix = GatewayState.build_partial_listener_key(nqn, self.host_name) + GatewayState.OMAP_KEY_DELIMITER
-            listener_keys = [key for key in state.keys() if key.startswith(prefix)]
-            self.logger.debug(f"Iterate over {nqn=} {prefix=} {listener_keys=}")
-
-            for listener_key in listener_keys:
-                listener = json.loads(state[listener_key])
-                self.logger.debug(f"{listener_key=} {listener=}")
+            self.logger.debug(f"Iterate over {nqn=} {self.subsystem_listeners[nqn]=}")
+            for listener in self.subsystem_listeners[nqn]:
+                self.logger.debug(f"{listener=}")
 
                 # Iterate over ana_group_state in nqn_ana_states
                 for gs in nas.states:
@@ -844,13 +841,14 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                 optimized_ana_groups.add(grp_id)
 
                         self.logger.debug(f"set_ana_state nvmf_subsystem_listener_set_ana_state {nqn=} {listener=} {ana_state=} {grp_id=}")
+                        (adrfam, traddr, trsvcid) = listener
                         ret = rpc_nvmf.nvmf_subsystem_listener_set_ana_state(
                             self.spdk_rpc_client,
                             nqn=nqn,
                             trtype="TCP",
-                            traddr=listener['traddr'],
-                            trsvcid=str(listener['trsvcid']),
-                            adrfam=listener['adrfam'],
+                            traddr=traddr,
+                            trsvcid=str(trsvcid),
+                            adrfam=adrfam,
                             ana_state=ana_state,
                             anagrpid=grp_id)
                         if ana_state == "inaccessible" :
@@ -2103,6 +2101,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                         adrfam=adrfam,
                     )
                     self.logger.debug(f"create_listener: {ret}")
+                    self.subsystem_listeners[request.nqn].add((adrfam, request.traddr, request.trsvcid))
                 else:
                     if context:
                         errmsg=f"{create_listener_error_prefix}: Gateway's host name must match current host ({self.host_name})"
@@ -2302,6 +2301,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                         adrfam=adrfam,
                     )
                     self.logger.debug(f"delete_listener: {ret}")
+                    self.subsystem_listeners[request.nqn].remove((adrfam, request.traddr, request.trsvcid))
                 else:
                     errmsg=f"{delete_listener_error_prefix}. Gateway's host name must match current host ({self.host_name}). You can continue to delete the listener by adding the `--force` parameter."
                     self.logger.error(f"{errmsg}")
