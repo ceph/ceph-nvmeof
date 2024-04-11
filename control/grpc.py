@@ -1942,7 +1942,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
             if resp:
                 status = resp["code"]
                 errmsg = f"Failure listing connections, can't get controllers: {resp['message']}"
-            return pb2.bconnections_info(status=status, error_message=errmsg, connections=[])
+            return pb2.connections_info(status=status, error_message=errmsg, connections=[])
 
         try:
             subsys_ret = rpc_nvmf.nvmf_get_subsystems(self.spdk_rpc_client, nqn=request.subsystem)
