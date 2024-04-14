@@ -283,9 +283,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
             return func(request, context)
 
     def execute_grpc_function(self, func, request, context):
-        """This functions handles both the RPC and OMAP locks. It first takes the OMAP lock and then calls a
-           help function which takes the RPC lock and call the GRPC function passes as a parameter. So, the GRPC
-           function runs with both the OMAP and RPC locks taken
+        """This functions handles RPC lock by wrapping 'func' with
+           self._grpc_function_with_lock, and assumes (?!) the function 'func'
+           called might take OMAP lock internally, however does NOT ensure
+           taking OMAP lock in any way.
         """
         return self.omap_lock.execute_omap_locking_function(self._grpc_function_with_lock, func, request, context)
 
@@ -865,11 +866,12 @@ class GatewayService(pb2_grpc.GatewayServicer):
                             context.set_details(f"{ex}")
                         return pb2.req_status()
         for ana_key in inaccessible_ana_groups :
-           ret_recycle = self.namespace_recycle_safe(ana_key, peer_msg)
-           if ret_recycle != 0:
-                errmsg = f"Failure recycle namespaces of ana group {ana_key} "
-                self.logger.error(errmsg)
-                return pb2.req_status(status=ret_recycle , error_message=errmsg)
+            with self.omap_lock(context=context):
+                ret_recycle = self.namespace_recycle_safe(ana_key, peer_msg)
+                if ret_recycle != 0:
+                    errmsg = f"Failure recycle namespaces of ana group {ana_key} "
+                    self.logger.error(errmsg)
+                    return pb2.req_status(status=ret_recycle , error_message=errmsg)
         return pb2.req_status(status=True)
 
     def choose_anagrpid_for_namespace(self, nsid) ->int:
