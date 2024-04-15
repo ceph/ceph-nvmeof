@@ -237,7 +237,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
             self.clusters[anagrp][cluster_name] = 1
         else:
             self.clusters[anagrp][cluster_name] += 1
-
+        self.logger.info(f"get_cluster {cluster_name=} number bdevs: {self.clusters[anagrp][cluster_name]}")
         return cluster_name
 
     def _put_cluster(self, name: str) -> None:
@@ -254,7 +254,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     self.logger.info(f"Free cluster {name=} {ret=}")
                     assert ret
                     self.clusters[anagrp].pop(name)
+                else :
+                   self.logger.info(f"put_cluster {name=} number bdevs: {self.clusters[anagrp][name]}")
                 return
+
         assert False # we should find the cluster in our state
 
     def _alloc_cluster_name(self, anagrp: int) -> str:
@@ -340,6 +343,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
             self.logger.debug(f"bdev_rbd_create: {bdev_name}, cluster_name {cluster_name}")
         except Exception as ex:
+            self._put_cluster(cluster_name)
             errmsg = f"bdev_rbd_create {name} failed"
             self.logger.exception(errmsg)
             errmsg = f"{errmsg} with:\n{ex}"
@@ -406,6 +410,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
             )
             if not recycling_mode:
                 del self.bdev_params[bdev_name]
+            self.logger.debug(f"to delete_bdev {bdev_name} cluster {self.bdev_cluster[bdev_name]} ")
             self._put_cluster(self.bdev_cluster[bdev_name])
             self.logger.debug(f"delete_bdev {bdev_name}: {ret}")
         except Exception as ex:
@@ -2429,7 +2434,6 @@ class GatewayService(pb2_grpc.GatewayServicer):
         subsystems = []
         try:
             ret = rpc_nvmf.nvmf_get_subsystems(self.spdk_rpc_client)
-            self.logger.debug(f"get_subsystems: {ret}")
         except Exception as ex:
             self.logger.exception(f"get_subsystems failed")
             context.set_code(grpc.StatusCode.INTERNAL)
