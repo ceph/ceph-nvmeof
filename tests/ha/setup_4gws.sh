@@ -42,8 +42,9 @@ for i in $(seq $NUM_SUBSYSTEMS); do
     for g in $(seq $NUM_GATEWAYS); do
         GW_NAME=$(gw_name $g)
         GW_IP=$(gw_ip $g)
+        ADDR=0.0.0.0
         PORT=4420
-        docker-compose  run --rm nvmeof-cli --server-address $GW_IP --server-port 5500 listener add  --subsystem $NQN --host-name $GW_NAME --traddr $GW_IP --trsvcid $PORT
+        docker-compose  run --rm nvmeof-cli --server-address $GW_IP --server-port 5500 listener add  --subsystem $NQN --host-name $GW_NAME --traddr $ADDR --trsvcid $PORT
     done
 done
 
@@ -53,7 +54,6 @@ for g in $(seq $NUM_GATEWAYS); do
     echo "Verify $i $GW_NAME $GW_IP"
     GW_NAME=$(gw_name $g)
     GW_IP=$(gw_ip $g)
-    PORT=4420
     subs=$(docker-compose  run --rm nvmeof-cli --server-address $GW_IP --server-port 5500 get_subsystems 2>&1 | sed 's/Get subsystems://')
 
     # verify all resources found in get subsystems
