@@ -2044,30 +2044,11 @@ class GatewayService(pb2_grpc.GatewayServicer):
         self.logger.debug(f"Subsystem {nqn} enable_ha: {enable_ha}")
         return enable_ha
 
-    def matching_listener_exists(self, context, nqn, traddr, trsvcid) -> bool:
-        if not context:
-            return False
-
-        state = self.gateway_state.local.get_state()
-        # We want to check for all the listeners for this address and port, regardless of the gateway
-        key_prefix = GatewayState.build_partial_listener_key(nqn)
-        key_suffix = GatewayState.build_listener_key_suffix(None, "TCP", traddr, trsvcid)
-
-        for key, val in state.items():
-            if not key.startswith(key_prefix):
-                continue
-            if not key.endswith(key_suffix):
-                continue
-            return True
-
-        return False
-
     def create_listener_safe(self, request, context):
         """Creates a listener for a subsystem at a given IP/Port."""
 
         ret = True
-        traddr = GatewayUtils.escape_address_if_ipv6(request.traddr)
-        create_listener_error_prefix = f"Failure adding {request.nqn} listener at {traddr}:{request.trsvcid}"
+        create_listener_error_prefix = f"Failure adding {request.nqn} listener at {request.traddr}:{request.trsvcid}"
 
         adrfam = GatewayEnumUtils.get_key_from_value(pb2.AddressFamily, request.adrfam)
         if adrfam == None:
@@ -2078,7 +2059,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         peer_msg = self.get_peer_message(context)
         self.logger.info(f"Received request to create {request.host_name}"
                          f" TCP {adrfam} listener for {request.nqn} at"
-                         f" {traddr}:{request.trsvcid}, context: {context}{peer_msg}")
+                         f" {request.traddr}:{request.trsvcid}, context: {context}{peer_msg}")
 
         if GatewayUtils.is_discovery_nqn(request.nqn):
             errmsg=f"{create_listener_error_prefix}: Can't create a listener for a discovery subsystem"
@@ -2093,10 +2074,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
         with self.omap_lock(context=context):
             try:
                 if request.host_name == self.host_name:
-                    listener_already_exist = self.matching_listener_exists(
-                            context, request.nqn, request.traddr, request.trsvcid)
-                    if listener_already_exist:
-                        self.logger.error(f"{request.nqn} already listens on address {traddr}:{request.trsvcid}")
+                    if (adrfam, request.traddr, request.trsvcid) in self.subsystem_listeners[request.nqn]:
+                        self.logger.error(f"{request.nqn} already listens on address {request.traddr}:{request.trsvcid}")
                         return pb2.req_status(status=errno.EEXIST,
                                   error_message=f"{create_listener_error_prefix}: Subsystem already listens on this address")
                     ret = rpc_nvmf.nvmf_subsystem_add_listener(
@@ -2189,7 +2168,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                                     "TCP", request.traddr,
                                                     request.trsvcid, json_req)
                 except Exception as ex:
-                    errmsg = f"Error persisting listener {traddr}:{request.trsvcid}"
+                    errmsg = f"Error persisting listener {request.traddr}:{request.trsvcid}"
                     self.logger.exception(errmsg)
                     errmsg = f"{errmsg}:\n{ex}"
                     return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
