@@ -182,13 +182,14 @@ class GatewayLogger:
     MAX_LOG_DIRECTORY_BACKUPS_DEFAULT = 10
     NVME_LOG_DIR_PREFIX = "nvmeof-"
     NVME_LOG_FILE_NAME = "nvmeof-log"
+    NVME_GATEWAY_LOG_LEVEL_FILE_PATH = "/tmp/nvmeof-gw-loglevel"
     logger = None
     handler = None
     init_executed = False
 
     def __init__(self, config=None):
         if config:
-            self.log_directory = config.get_with_default("gateway", "log_directory", GatewayLogger.CEPH_LOG_DIRECTORY)
+            self.log_directory = config.get_with_default("gateway-logs", "log_directory", GatewayLogger.CEPH_LOG_DIRECTORY)
             gateway_name = config.get("gateway", "name")
         else:
             self.log_directory = GatewayLogger.CEPH_LOG_DIRECTORY
@@ -211,13 +212,13 @@ class GatewayLogger:
         frmtr = logging.Formatter(fmt=format_string, datefmt=date_fmt_string)
 
         if config:
-            verbose = config.getboolean_with_default("gateway", "verbose_log_messages", True)
-            log_files_enabled = config.getboolean_with_default("gateway", "log_files_enabled", True)
-            log_files_rotation_enabled = config.getboolean_with_default("gateway", "log_files_rotation_enabled", True)
-            max_log_file_size = config.getint_with_default("gateway", "max_log_file_size_in_mb", GatewayLogger.MAX_LOG_FILE_SIZE_DEFAULT)
-            max_log_files_count = config.getint_with_default("gateway", "max_log_files_count", GatewayLogger.MAX_LOG_FILES_COUNT_DEFAULT)
-            max_log_directory_backups = config.getint_with_default("gateway", "max_log_directory_backups", GatewayLogger.MAX_LOG_DIRECTORY_BACKUPS_DEFAULT)
-            log_level = config.get_with_default("gateway", "log_level", "info")
+            verbose = config.getboolean_with_default("gateway-logs", "verbose_log_messages", True)
+            log_files_enabled = config.getboolean_with_default("gateway-logs", "log_files_enabled", True)
+            log_files_rotation_enabled = config.getboolean_with_default("gateway-logs", "log_files_rotation_enabled", True)
+            max_log_file_size = config.getint_with_default("gateway-logs", "max_log_file_size_in_mb", GatewayLogger.MAX_LOG_FILE_SIZE_DEFAULT)
+            max_log_files_count = config.getint_with_default("gateway-logs", "max_log_files_count", GatewayLogger.MAX_LOG_FILES_COUNT_DEFAULT)
+            max_log_directory_backups = config.getint_with_default("gateway-logs", "max_log_directory_backups", GatewayLogger.MAX_LOG_DIRECTORY_BACKUPS_DEFAULT)
+            log_level = config.get_with_default("gateway-logs", "log_level", "INFO").upper()
         else:
             verbose = True
             log_files_enabled = False
@@ -225,7 +226,7 @@ class GatewayLogger:
             max_log_file_size = GatewayLogger.MAX_LOG_FILE_SIZE_DEFAULT
             max_log_files_count = GatewayLogger.MAX_LOG_FILES_COUNT_DEFAULT
             max_log_directory_backups = GatewayLogger.MAX_LOG_DIRECTORY_BACKUPS_DEFAULT
-            log_level = "info"
+            log_level = "INFO"
 
         self.handler = None
         logdir_ok = False
@@ -248,10 +249,12 @@ class GatewayLogger:
 
         if not verbose:
             format_string = None
-        logging.basicConfig(level=GatewayLogger.get_log_level(log_level), format=format_string, datefmt=date_fmt_string)
+        logging.basicConfig(level=log_level, format=format_string, datefmt=date_fmt_string)
         self.logger = logging.getLogger("nvmeof")
         if self.handler:
             self.logger.addHandler(self.handler)
+        self.set_log_level(log_level)
+        self.logger.info(f"Initialize gateway log level to \"{log_level}\"")
         GatewayLogger.logger = self.logger
         GatewayLogger.handler = self.handler
         if not GatewayLogger.init_executed:
@@ -294,28 +297,17 @@ class GatewayLogger:
         except Exception:
             pass
 
-    def get_log_level(log_level):
-        if type(log_level) == int:
-            return log_level
-        assert type(log_level) == str
-        if log_level.upper() == "DEBUG":
-            return logging.DEBUG
-        elif log_level.upper() == "INFO":
-            return logging.INFO
-        elif log_level.upper() == "WARNING":
-            return logging.WARNING
-        elif log_level.upper() == "ERROR":
-            return logging.ERROR
-        elif log_level.upper() == "CRITICAL":
-            return logging.CRITICAL
-        elif log_level.upper() == "NOTSET":
-            return logging.NOTSET
-        else:
-            assert False
-
     def set_log_level(self, log_level):
-        log_level = GatewayLogger.get_log_level(log_level)
+        if type(log_level) == str:
+            log_level = log_level.upper()
         self.logger.setLevel(log_level)
+        logger_parent = self.logger.parent
+        while logger_parent:
+            logger_parent.setLevel(log_level)
+            logger_parent = logger_parent.parent
+        for h in self.logger.handlers:
+            h.setLevel(log_level)
+            h.flush()
 
     def log_file_rotate(src, dest):
         # Files with an extension bigger than 1 are already compressed

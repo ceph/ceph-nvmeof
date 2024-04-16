@@ -131,6 +131,11 @@ jobs:
 
       - name: Start ceph cluster
         run: |
+          if ! docker-compose --version 2>&1 > /dev/null ; then
+            sudo apt update
+            sudo apt install -y docker-compose
+          fi
+          docker-compose --version
           docker-compose up -d ceph
 
       - name: Wait for the ceph cluster container to become healthy
@@ -225,6 +230,11 @@ jobs:
       - name: Start containers
         timeout-minutes: 3
         run: |
+          if ! docker-compose --version 2>&1 > /dev/null ; then
+            sudo apt update
+            sudo apt install -y docker-compose
+          fi
+          docker-compose --version
           make up
 
       - name: Wait for the Gateway to be listening
@@ -263,16 +273,6 @@ jobs:
               cephnvmf listener list --subsystem $sub
               cephnvmf host list --subsystem $sub
           done
-
-      - name: Verify no HA
-        run: |
-          shopt -s expand_aliases
-          eval $(make alias)
-          ha_status=$(cephnvmf --output stdio --format json subsystem list | grep "enable_ha" | grep "true" | tr -d '\n\r')
-          if [ -n "$ha_status" ]; then
-              echo "Found a subsystem with HA enabled, failing"
-              exit 1
-          fi
 
       - name: Run bdevperf
         run: |
@@ -377,6 +377,11 @@ jobs:
       - name: Start discovery controller
         if: matrix.integration == 'container'
         run: |
+          if ! docker-compose --version 2>&1 > /dev/null ; then
+            sudo apt update
+            sudo apt install -y docker-compose
+          fi
+          docker-compose --version
           docker-compose up --detach discovery
 
       - name: Wait for discovery controller to be listening
@@ -454,7 +459,7 @@ jobs:
             ip=$(container_ip $gw)
             name=$(container_id $gw) # default hostname - container id
             echo ℹ️ Create listener address $ip gateway $name
-            cli_gw $ip listener add --subsystem $NQN --gateway-name $name --traddr $ip --trsvcid $NVMEOF_IO_PORT
+            cli_gw $ip listener add --subsystem $NQN --host-name $name --traddr $ip --trsvcid $NVMEOF_IO_PORT
           done
           cli_gw $gw1 host add --subsystem $NQN --host "*"
           for gw in $GW1 $GW2; do
@@ -530,10 +535,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        test: ["sanity", "state_transitions", "state_transitions_both_gws", "state_transitions_loop", "state_transitions_rand_loop", "late_registration", "late_registration_loop"]
+        test: ["sanity", "state_transitions", "state_transitions_both_gws", "state_transitions_loop", "state_transitions_rand_loop", "late_registration", "late_registration_loop", "4gws", "4gws_loop"]
     runs-on: ubuntu-latest
     env:
-      HUGEPAGES: 768  # 3 spdk instances
+      HUGEPAGES: 1024  # 4 spdk instances
 
     steps:
       - name: Checkout code
@@ -558,12 +563,27 @@ jobs:
       - name: Start HA with two gateways
         timeout-minutes: 3
         run: |
-          ./tests/ha/start_up.sh
+          if ! docker-compose --version 2>&1 > /dev/null ; then
+            sudo apt update
+            sudo apt install -y docker-compose
+          fi
+          docker-compose --version
+          test_specific_start_up="./tests/ha/start_up_${{ matrix.test }}.sh"
+          if [ -x "$test_specific_start_up" ] || [ -L "$test_specific_start_up" ] && [ -x "$(readlink -f "$test_specific_start_up")" ]; then
+            $test_specific_start_up
+          else
+            ./tests/ha/start_up.sh
+          fi
 
       - name: Wait for gateways to be listening
         timeout-minutes: 3
         run: |
-          source tests/ha/wait_gateways.sh
+          test_specific_wait="./tests/ha/wait_gateways_${{ matrix.test }}.sh"
+          if [ -x "$test_specific_wait" ] || [ -L "$test_specific_wait" ] && [ -x "$(readlink -f "$test_specific_wait")" ]; then
+            $test_specific_wait
+          else
+            ./tests/ha/wait_gateways.sh
+          fi
 
       - name: List containers
         if: success() || failure()
@@ -577,7 +597,12 @@ jobs:
 
       - name: Set up target
         run: |
-          source tests/ha/setup.sh
+          test_specific_setup="./tests/ha/setup_${{ matrix.test }}.sh"
+          if [ -x "$test_specific_setup" ] || [ -L "$test_specific_setup" ] && [ -x "$(readlink -f "$test_specific_setup")" ]; then
+            $test_specific_setup
+          else
+            ./tests/ha/setup.sh
+          fi
 
       - name: Run HA ${{ matrix.test }} test
         timeout-minutes: 30

@@ -14,8 +14,9 @@ import socket
 import subprocess
 import grpc
 import json
-import logging
 import threading
+import contextlib
+import time
 from concurrent import futures
 from google.protobuf import json_format
 
@@ -78,11 +79,25 @@ class GatewayServer:
         self.monitor_event = threading.Event()
         self.monitor_client_process = None
         self.ceph_utils = None
+        self.rpc_lock = threading.Lock()
+        self.group_id = 0
 
         self.name = self.config.get("gateway", "name")
         if not self.name:
             self.name = socket.gethostname()
         self.logger.info(f"Starting gateway {self.name}")
+
+        self.allowed_consecutive_spdk_ping_failures = self.config.getint_with_default("gateway",
+                                                                                      "allowed_consecutive_spdk_ping_failures", 1)
+        self.spdk_ping_interval_in_seconds = self.config.getfloat_with_default("gateway", "spdk_ping_interval_in_seconds", 2.0)
+        if self.spdk_ping_interval_in_seconds < 0.0:
+            self.logger.warning(f"Invalid SPDK ping interval {self.spdk_ping_interval_in_seconds}, will reset to 0")
+            self.spdk_ping_interval_in_seconds = 0.0
+        self.ping_spdk_under_lock = self.config.getboolean_with_default("gateway", "ping_spdk_under_lock", False)
+        if self.ping_spdk_under_lock:
+            self.ping_lock = self.rpc_lock
+        else:
+            self.ping_lock = contextlib.suppress()
 
     def __enter__(self):
         return self
@@ -149,9 +164,6 @@ class GatewayServer:
         # Start monitor client
         self._start_monitor_client()
 
-        # wait for monitor notification of the group id
-        self._wait_for_group_id()
-
         self.ceph_utils = CephUtils(self.config)
 
         # Start SPDK
@@ -163,7 +175,7 @@ class GatewayServer:
         # Register service implementation with server
         gateway_state = GatewayStateHandler(self.config, local_state, omap_state, self.gateway_rpc_caller)
         omap_lock = OmapLock(omap_state, gateway_state)
-        self.gateway_rpc = GatewayService(self.config, gateway_state, omap_lock, self.group_id, self.spdk_rpc_client, self.ceph_utils)
+        self.gateway_rpc = GatewayService(self.config, gateway_state, self.rpc_lock, omap_lock, self.group_id, self.spdk_rpc_client, self.ceph_utils)
         self.server = grpc.server(futures.ThreadPoolExecutor(max_workers=1))
         pb2_grpc.add_GatewayServicer_to_server(self.gateway_rpc, self.server)
 
@@ -179,7 +191,7 @@ class GatewayServer:
         # Start the prometheus endpoint if enabled by the config
         if self.config.getboolean_with_default("gateway", "enable_prometheus_exporter", True):
             self.logger.info("Prometheus endpoint is enabled")
-            start_exporter(self.spdk_rpc_client, self.config, self.gateway_rpc)
+            start_exporter(self.spdk_rpc_client, self.config, self.gateway_rpc, self.logger)
         else:
             self.logger.info(f"Prometheus endpoint is disabled. To enable, set the config option 'enable_prometheus_exporter = True'")
 
@@ -199,7 +211,7 @@ class GatewayServer:
                 "--gateway-address", self._gateway_address(),
                 "--gateway-pool", self.config.get("ceph", "pool"),
                 "--gateway-group", self.config.get_with_default("gateway", "group", ""),
-                "--monitor-address", self._monitor_address(),
+                "--monitor-group-address", self._monitor_address(),
                 '-c', '/etc/ceph/ceph.conf',
                 '-n', rados_id,
                 '-k', '/etc/ceph/keyring']
@@ -207,6 +219,8 @@ class GatewayServer:
         try:
             # start monitor client process
             self.monitor_client_process = subprocess.Popen(cmd)
+            # wait for monitor notification of the group id
+            self._wait_for_group_id()
         except Exception:
             self.logger.exception(f"Unable to start CEPH monitor client:")
             raise
@@ -254,19 +268,19 @@ class GatewayServer:
         """Adds listener port to server."""
 
         enable_auth = self.config.getboolean("gateway", "enable_auth")
-        gateway_addr = self.config.get("gateway", "addr")
-        gateway_port = self.config.get("gateway", "port")
-        # We need to enclose IPv6 addresses in brackets before concatenating a colon and port number to it
-        gateway_addr = GatewayUtils.escape_address_if_ipv6(gateway_addr)
         if enable_auth:
+            self.logger.info(f"mTLS authenciation has been enabled")
             # Read in key and certificates for authentication
             server_key = self.config.get("mtls", "server_key")
             server_cert = self.config.get("mtls", "server_cert")
             client_cert = self.config.get("mtls", "client_cert")
+            self.logger.debug(f"Trying to open server key file: {server_key}")
             with open(server_key, "rb") as f:
                 private_key = f.read()
+            self.logger.debug(f"Trying to open server cert file: {server_cert}")
             with open(server_cert, "rb") as f:
                 server_crt = f.read()
+            self.logger.debug(f"Trying to open client cert file: {client_cert}")
             with open(client_cert, "rb") as f:
                 client_crt = f.read()
 
@@ -330,8 +344,8 @@ class GatewayServer:
             raise
 
         # Initialization
-        timeout = self.config.getfloat("spdk", "timeout")
-        log_level = self.config.get("spdk", "log_level")
+        timeout = self.config.getfloat_with_default("spdk", "timeout", 60.0)
+        log_level = self.config.get_with_default("spdk", "log_level", "WARNING")
         # connect timeout: spdk client retries 5 times per sec
         conn_retries = int(timeout * 5)
         self.logger.info(f"SPDK process id: {self.spdk_process.pid}")
@@ -393,7 +407,7 @@ class GatewayServer:
     def _stop_spdk(self):
         """Stops SPDK process."""
         # Terminate spdk process
-        timeout = self.config.getfloat("spdk", "timeout")
+        timeout = self.config.getfloat_with_default("spdk", "timeout", 60.0)
         self._stop_subprocess(self.spdk_process, timeout)
 
         # Clean spdk rpc socket
@@ -442,18 +456,34 @@ class GatewayServer:
 
     def keep_alive(self):
         """Continuously confirms communication with SPDK process."""
+
+        consecutive_ping_failures = 0
+        # we spend 1 second waiting for server termination so subtract it from ping interval
+        if self.spdk_ping_interval_in_seconds >= 1.0:
+            self.spdk_ping_interval_in_seconds -= 1.0
+        else:
+            self.spdk_ping_interval_in_seconds = 0.0
+
         while True:
             timedout = self.server.wait_for_termination(timeout=1)
             if not timedout:
                 break
+            if self.spdk_ping_interval_in_seconds > 0.0:
+                time.sleep(self.spdk_ping_interval_in_seconds)
             alive = self._ping()
             if not alive:
-                break
+                consecutive_ping_failures += 1
+                if consecutive_ping_failures >= self.allowed_consecutive_spdk_ping_failures:
+                    self.logger.critical(f"SPDK ping failed {consecutive_ping_failures} times, aborting")
+                    break
+            else:
+                consecutive_ping_failures = 0
 
     def _ping(self):
         """Confirms communication with SPDK process."""
         try:
-            ret = spdk.rpc.spdk_get_version(self.spdk_rpc_ping_client)
+            with self.ping_lock:
+                ret = spdk.rpc.spdk_get_version(self.spdk_rpc_ping_client)
             return True
         except Exception:
             self.logger.exception(f"spdk_get_version failed")

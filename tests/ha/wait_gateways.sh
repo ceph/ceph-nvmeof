@@ -1,4 +1,16 @@
-for i in $(seq 2); do
+SCALE=2
+# Check if argument is provided
+if [ $# -ge 1 ]; then
+    # Check if argument is an integer larger or equal than 1
+    if [ "$1" -eq "$1" ] 2>/dev/null && [ "$1" -ge 1 ]; then
+        # Set variable to the provided argument
+        SCALE="$1"
+    else
+        echo "Error: Argument must be an integer larger than 1." >&2
+        exit 1
+    fi
+fi
+for i in $(seq $SCALE); do
   while true; do
     sleep 1  # Adjust the sleep duration as needed
     GW_NAME=$(docker ps --format '{{.ID}}\t{{.Names}}' | awk '$2 ~ /nvmeof/ && $2 ~ /'$i'/ {print $1}')

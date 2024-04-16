@@ -13,8 +13,8 @@ subsys_list_count = 5
 
 def create_resource_by_index(i):
     subsystem = f"{subsystem_prefix}{i}"
-    cli(["subsystem", "add", "--subsystem", subsystem, "--enable-ha" ])
-    cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool, "--rbd-image", image, "--size", "16MiB", "--rbd-create-image", "--force"])
+    cli(["subsystem", "add", "--subsystem", subsystem])
+    cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool, "--rbd-image", image, "--size", "16MiB", "--rbd-create-image","--load-balancing-group", "1", "--force"])
 
 def check_resource_by_index(i, caplog):
     subsystem = f"{subsystem_prefix}{i}"
@@ -43,8 +43,8 @@ def test_create_get_subsys(caplog, config):
 
         caplog.clear()
         # add a listener
-        cli(["listener", "add", "--subsystem", f"{subsystem_prefix}0", "--gateway-name",
-             gateway.name, "--traddr", "127.0.0.1", "--trsvcid", "5001"])
+        cli(["listener", "add", "--subsystem", f"{subsystem_prefix}0", "--host-name",
+             gateway.gateway_rpc.host_name, "--traddr", "127.0.0.1", "--trsvcid", "5001"])
         assert f"Adding {subsystem_prefix}0 listener at 127.0.0.1:5001: Successful" in caplog.text
 
         # Change ANA group id for the first namesapce

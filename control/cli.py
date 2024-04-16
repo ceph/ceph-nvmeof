@@ -22,7 +22,6 @@ from tabulate import tabulate
 
 from .proto import gateway_pb2_grpc as pb2_grpc
 from .proto import gateway_pb2 as pb2
-from .config import GatewayConfig
 from .utils import GatewayUtils
 from .utils import GatewayEnumUtils
 
@@ -35,11 +34,13 @@ def argument(*name_or_flags, **kwargs):
     """Helper function to format arguments for argparse command decorator."""
     return (list(name_or_flags), kwargs)
 
-def get_enum_keys_list(e_type):
+def get_enum_keys_list(e_type, include_first = True):
     k_list = []
     for k in e_type.keys():
         k_list.append(k.lower())
         k_list.append(k.upper())
+    if not include_first:
+        k_list = k_list[2:]
 
     return k_list
 
@@ -97,6 +98,13 @@ class Parser:
             type=str,
             default="log",
             choices=["log", "stdio"],
+            required=False)
+        self.parser.add_argument(
+            "--log-level",
+            help="CLI log level",
+            type=str,
+            default="info",
+            choices=get_enum_keys_list(pb2.GwLogLevel, False),
             required=False)
         self.parser.add_argument(
             "--server-address",
@@ -180,8 +188,9 @@ class GatewayClient:
 
     def __init__(self):
         self._stub = None
-        logging.basicConfig(format='%(message)s', level=logging.DEBUG)
+        logging.basicConfig(format='%(message)s')
         self.logger = logging.getLogger(__name__)
+        self.logger.setLevel(logging.INFO)
 
     @property
     def stub(self):
@@ -333,6 +342,8 @@ class GatewayClient:
                     out_func(f"Gateway's name: {gw_info.name}")
                 if gw_info.group:
                     out_func(f"Gateway's group: {gw_info.group}")
+                if gw_info.hostname:
+                    out_func(f"Gateway's host name: {gw_info.hostname}")
                 out_func(f"Gateway's load balancing group: {gw_info.load_balancing_group}")
                 out_func(f"Gateway's address: {gw_info.addr}")
                 out_func(f"Gateway's port: {gw_info.port}")
@@ -394,9 +405,88 @@ class GatewayClient:
 
         return gw_info.status
 
+    def gw_get_log_level(self, args):
+        """Get gateway's log level"""
+
+        out_func, err_func = self.get_output_functions(args)
+        req = pb2.get_gateway_log_level_req()
+        try:
+            ret = self.stub.get_gateway_log_level(req)
+        except Exception as ex:
+            ret = pb2.req_status(status = errno.EINVAL, error_message = f"Failure getting gateway log level:\n{ex}")
+
+        if args.format == "text" or args.format == "plain":
+            if ret.status == 0:
+                level = GatewayEnumUtils.get_key_from_value(pb2.GwLogLevel, ret.log_level)
+                out_func(f"Gateway log level is \"{level}\"")
+            else:
+                err_func(f"{ret.error_message}")
+        elif args.format == "json" or args.format == "yaml":
+            out_log_level = json_format.MessageToJson(ret,
+                                                indent=4,
+                                                including_default_value_fields=True,
+                                                preserving_proto_field_name=True)
+            if args.format == "json":
+                out_func(f"{out_log_level}")
+            elif args.format == "yaml":
+                obj = json.loads(out_log_level)
+                out_func(yaml.dump(obj))
+        elif args.format == "python":
+            return ret
+        else:
+            assert False
+
+        return ret.status
+
+    def gw_set_log_level(self, args):
+        """Set gateway's log level"""
+
+        out_func, err_func = self.get_output_functions(args)
+        log_level = None
+
+        if args.level:
+            log_level = args.level.lower()
+
+        try:
+            req = pb2.set_gateway_log_level_req(log_level=log_level)
+        except ValueError as err:
+            self.cli.parser.error(f"invalid log level {log_level}, error {err}")
+
+        try:
+            ret = self.stub.set_gateway_log_level(req)
+        except Exception as ex:
+            ret = pb2.req_status(status = errno.EINVAL, error_message = f"Failure setting gateway log level:\n{ex}")
+
+        if args.format == "text" or args.format == "plain":
+            if ret.status == 0:
+                out_func(f"Set gateway log level to \"{log_level}\": Successful")
+            else:
+                err_func(f"{ret.error_message}")
+        elif args.format == "json" or args.format == "yaml":
+            ret_str = json_format.MessageToJson(
+                        ret,
+                        indent=4,
+                        including_default_value_fields=True,
+                        preserving_proto_field_name=True)
+            if args.format == "json":
+                out_func(f"{ret_str}")
+            elif args.format == "yaml":
+                obj = json.loads(ret_str)
+                out_func(yaml.dump(obj))
+        elif args.format == "python":
+            return ret
+        else:
+            assert False
+
+    gw_set_log_level_args = [
+        argument("--level", "-l", help="Gateway log level", required=True,
+                 type=str, choices=get_enum_keys_list(pb2.GwLogLevel, False)),
+    ]
     gw_actions = []
     gw_actions.append({"name" : "version", "args" : [], "help" : "Display gateway's version"})
     gw_actions.append({"name" : "info", "args" : [], "help" : "Display gateway's information"})
+    gw_actions.append({"name" : "get_log_level", "args" : [], "help" : "Get gateway's log level"})
+    gw_actions.append({"name" : "set_log_level", "args" : gw_set_log_level_args, "help" : "Set gateway's log level"})
     gw_choices = get_actions(gw_actions)
     @cli.cmd(gw_actions)
     def gw(self, args):
@@ -406,10 +496,14 @@ class GatewayClient:
             return self.gw_info(args)
         elif args.action == "version":
             return self.gw_version(args)
+        elif args.action == "get_log_level":
+            return self.gw_get_log_level(args)
+        elif args.action == "set_log_level":
+            return self.gw_set_log_level(args)
         if not args.action:
             self.cli.parser.error(f"missing action for gw command (choose from {GatewayClient.gw_choices})")
 
-    def log_level_disable(self, args):
+    def spdk_log_level_disable(self, args):
         """Disable SPDK nvmf log flags"""
 
         out_func, err_func = self.get_output_functions(args)
@@ -443,7 +537,7 @@ class GatewayClient:
 
         return ret.status
 
-    def log_level_get(self, args):
+    def spdk_log_level_get(self, args):
         """Get SPDK log levels and nvmf log flags"""
 
         out_func, err_func = self.get_output_functions(args)
@@ -482,7 +576,7 @@ class GatewayClient:
 
         return ret.status
 
-    def log_level_set(self, args):
+    def spdk_log_level_set(self, args):
         """Set SPDK log levels and nvmf log flags"""
         rc = 0
         errmsg = ""
@@ -500,12 +594,7 @@ class GatewayClient:
         try:
             req = pb2.set_spdk_nvmf_logs_req(log_level=log_level, print_level=print_level)
         except ValueError as err:
-            errstr = str(err)
-            if errstr.startswith("unknown enum label "):
-                errstr = errstr.removeprefix("unknown enum label ")
-                self.cli.parser.error(f"invalid log level {errstr}")
-            else:
-                self.cli.parser.error(f"{err}")
+            self.cli.parser.error(f"invalid log level {log_level}, error {err}")
 
         try:
             ret = self.stub.set_spdk_nvmf_logs(req)
@@ -535,30 +624,30 @@ class GatewayClient:
 
         return ret.status
 
-    log_get_args = []
-    log_set_args = [
+    spdk_log_get_args = []
+    spdk_log_set_args = [
         argument("--level", "-l", help="SPDK nvmf log level", required=False,
                  type=str, choices=get_enum_keys_list(pb2.LogLevel)),
         argument("--print", "-p", help="SPDK nvmf log print level", required=False,
                  type=str, choices=get_enum_keys_list(pb2.LogLevel)),
     ]
-    log_disable_args = []
-    log_actions = []
-    log_actions.append({"name" : "get", "args" : log_get_args, "help" : "Get SPDK log levels and nvmf log flags"})
-    log_actions.append({"name" : "set", "args" : log_set_args, "help" : "Set SPDK log levels and nvmf log flags"})
-    log_actions.append({"name" : "disable", "args" : log_disable_args, "help" : "Disable SPDK nvmf log flags"})
-    log_choices = get_actions(log_actions)
-    @cli.cmd(log_actions)
-    def log_level(self, args):
+    spdk_log_disable_args = []
+    spdk_log_actions = []
+    spdk_log_actions.append({"name" : "get", "args" : spdk_log_get_args, "help" : "Get SPDK log levels and nvmf log flags"})
+    spdk_log_actions.append({"name" : "set", "args" : spdk_log_set_args, "help" : "Set SPDK log levels and nvmf log flags"})
+    spdk_log_actions.append({"name" : "disable", "args" : spdk_log_disable_args, "help" : "Disable SPDK nvmf log flags"})
+    spdk_log_choices = get_actions(spdk_log_actions)
+    @cli.cmd(spdk_log_actions)
+    def spdk_log_level(self, args):
         """SPDK nvmf log level commands"""
         if args.action == "get":
-            return self.log_level_get(args)
+            return self.spdk_log_level_get(args)
         elif args.action == "set":
-            return self.log_level_set(args)
+            return self.spdk_log_level_set(args)
         elif args.action == "disable":
-            return self.log_level_disable(args)
+            return self.spdk_log_level_disable(args)
         if not args.action:
-            self.cli.parser.error(f"missing action for log_level command (choose from {GatewayClient.log_choices})")
+            self.cli.parser.error(f"missing action for spdk_log_level command (choose from {GatewayClient.spdk_log_choices})")
 
     def subsystem_add(self, args):
         """Create a subsystem"""
@@ -574,7 +663,7 @@ class GatewayClient:
         req = pb2.create_subsystem_req(subsystem_nqn=args.subsystem,
                                         serial_number=args.serial_number,
                                         max_namespaces=args.max_namespaces,
-                                        enable_ha=args.enable_ha)
+                                        enable_ha=True)
         try:
             ret = self.stub.create_subsystem(req)
         except Exception as ex:
@@ -710,7 +799,6 @@ class GatewayClient:
         argument("--subsystem", "-n", help="Subsystem NQN", required=True),
         argument("--serial-number", "-s", help="Serial number", required=False),
         argument("--max-namespaces", "-m", help="Maximum number of namespaces", type=int, required=False),
-        argument("--enable-ha", "-t", help="Enable automatic HA", action='store_true', required=False),
     ]
     subsys_del_args = [
         argument("--subsystem", "-n", help="Subsystem NQN", required=True),
@@ -758,7 +846,7 @@ class GatewayClient:
 
         req = pb2.create_listener_req(
             nqn=args.subsystem,
-            gateway_name=args.gateway_name,
+            host_name=args.host_name,
             adrfam=adrfam,
             traddr=traddr,
             trsvcid=args.trsvcid,
@@ -804,6 +892,9 @@ class GatewayClient:
         if not args.adrfam:
             args.adrfam = "IPV4"
 
+        if args.host_name == "*" and not args.force:
+            self.cli.parser.error("must use --force when setting host name to *")
+
         traddr = GatewayUtils.escape_address_if_ipv6(args.traddr)
         adrfam = None
         if args.adrfam:
@@ -811,10 +902,11 @@ class GatewayClient:
 
         req = pb2.delete_listener_req(
             nqn=args.subsystem,
-            gateway_name=args.gateway_name,
+            host_name=args.host_name,
             adrfam=adrfam,
             traddr=traddr,
             trsvcid=args.trsvcid,
+            force=args.force,
         )
 
         try:
@@ -825,7 +917,8 @@ class GatewayClient:
 
         if args.format == "text" or args.format == "plain":
             if ret.status == 0:
-                out_func(f"Deleting listener {traddr}:{args.trsvcid} from {args.subsystem}: Successful")
+                host_msg = "for all hosts" if args.host_name == "*" else f"for host {args.host_name}"
+                out_func(f"Deleting listener {traddr}:{args.trsvcid} from {args.subsystem} {host_msg}: Successful")
             else:
                 err_func(f"{ret.error_message}")
         elif args.format == "json" or args.format == "yaml":
@@ -862,14 +955,14 @@ class GatewayClient:
                 for l in listeners_info.listeners:
                     adrfam = GatewayEnumUtils.get_key_from_value(pb2.AddressFamily, l.adrfam)
                     adrfam = self.format_adrfam(adrfam)
-                    listeners_list.append([l.gateway_name, l.trtype, adrfam, f"{l.traddr}:{l.trsvcid}"])
+                    listeners_list.append([l.host_name, l.trtype, adrfam, f"{l.traddr}:{l.trsvcid}"])
                 if len(listeners_list) > 0:
                     if args.format == "text":
                         table_format = "fancy_grid"
                     else:
                         table_format = "plain"
                     listeners_out = tabulate(listeners_list,
-                                      headers = ["Gateway", "Transport", "Address Family", "Address"],
+                                      headers = ["Host", "Transport", "Address Family", "Address"],
                                       tablefmt=table_format)
                     out_func(f"Listeners for {args.subsystem}:\n{listeners_out}")
                 else:
@@ -898,16 +991,17 @@ class GatewayClient:
         argument("--subsystem", "-n", help="Subsystem NQN", required=True),
     ]
     listener_add_args = listener_common_args + [
-        argument("--gateway-name", "-g", help="Gateway name", required=True),
+        argument("--host-name", "-t", help="Host name", required=True),
         argument("--traddr", "-a", help="NVMe host IP", required=True),
         argument("--trsvcid", "-s", help="Port number", type=int, required=False),
         argument("--adrfam", "-f", help="Address family", default="", choices=get_enum_keys_list(pb2.AddressFamily)),
     ]
     listener_del_args = listener_common_args + [
-        argument("--gateway-name", "-g", help="Gateway name", required=True),
+        argument("--host-name", "-t", help="Host name", required=True),
         argument("--traddr", "-a", help="NVMe host IP", required=True),
         argument("--trsvcid", "-s", help="Port number", type=int, required=True),
         argument("--adrfam", "-f", help="Address family", default="", choices=get_enum_keys_list(pb2.AddressFamily)),
+        argument("--force", help="Delete listener even if there are active connections for the address, or the host name doesn't match", action='store_true', required=False),
     ]
     listener_list_args = listener_common_args + [
     ]
@@ -1164,10 +1258,9 @@ class GatewayClient:
             args.block_size = 512
         if args.block_size <= 0:
             self.cli.parser.error("block-size value must be positive")
-        if args.load_balancing_group == None:
-            args.load_balancing_group = 1
-        if args.load_balancing_group <= 0:
-            self.cli.parser.error("load-balancing-group value must be positive")
+
+        if args.load_balancing_group < 0:
+               self.cli.parser.error("load-balancing-group value must be positive")
         if args.nsid != None and args.nsid <= 0:
             self.cli.parser.error("nsid value must be positive")
         if args.rbd_create_image:
@@ -1701,7 +1794,7 @@ class GatewayClient:
         argument("--rbd-image", "-i", help="RBD image name", required=True),
         argument("--rbd-create-image", "-c", help="Create RBD image if needed", action='store_true', required=False),
         argument("--block-size", "-s", help="Block size", type=int),
-        argument("--load-balancing-group", "-l", help="Load balancing group", type=int),
+        argument("--load-balancing-group", "-l", help="Load balancing group", type=int, default=0),
         argument("--size", help="Size in bytes or specified unit (KB, KiB, MB, MiB, GB, GiB, TB, TiB)"),
         argument("--force", help="Create a namespace even its image is already used by another namespace", action='store_true', required=False),
     ]
@@ -1762,6 +1855,7 @@ class GatewayClient:
         self.logger.info(f"Get subsystems:\n{subsystems}")
 
 def main_common(client, args):
+    client.logger.setLevel(GatewayEnumUtils.get_value_from_key(pb2.GwLogLevel, args.log_level.lower()))
     server_address = args.server_address
     server_port = args.server_port
     client_key = args.client_key

@@ -57,7 +57,7 @@ def conn(config):
         stubA = pb2_grpc.GatewayStub(channelA)
         channelB = grpc.insecure_channel(f"{addr}:{portB}")
         stubB = pb2_grpc.GatewayStub(channelB)
-        yield stubA, stubB
+        yield gatewayA.gateway_rpc, gatewayB.gateway_rpc, stubA, stubB
 
         # Stop gateways
         gatewayA.server.stop(grace=1)
@@ -72,6 +72,7 @@ def create_namespace(stub, rbd_pool, rbd_image, nsid):
                                           rbd_image_name=rbd_image,
                                           nsid=nsid,
                                           block_size=4096,
+                                          anagrpid=1,
                                           force=True)
         ret_namespace = stub.namespace_add(namespace_req)
         if ret_namespace.status != errno.ETIMEDOUT:
@@ -87,13 +88,13 @@ def delete_namespace(stub, nsid):
     assert ret_del_namespace.status == 0
 
 def create_subsystem(stub, nqn, max_ns):
-    subsystem_req = pb2.create_subsystem_req(subsystem_nqn=nqn, max_namespaces=max_ns, enable_ha=False)
+    subsystem_req = pb2.create_subsystem_req(subsystem_nqn=nqn, max_namespaces=max_ns, enable_ha=True)
     ret_subsystem = stub.create_subsystem(subsystem_req)
     assert ret_subsystem.status == 0
 
 def create_listener(stub, nqn, name, addr, port):
     listener_req = pb2.create_listener_req(nqn=nqn,
-                                           gateway_name=name,
+                                           host_name=name,
                                            adrfam="ipv4",
                                            traddr=addr,
                                            trsvcid=port)
@@ -115,7 +116,7 @@ def test_create_subsystem_and_namespaces(config, image, conn):
     and checks if GatewayB has the identical state after watch/notify and/or
     periodic polling.
     """
-    stubA, stubB = conn
+    gwA, gwB, stubA, stubB = conn
 
     # Send requests to create a subsystem to GatewayA
     max_ns = namespace_count * run_count + 10
@@ -138,8 +139,8 @@ def test_create_subsystem_and_namespaces(config, image, conn):
 
     wait_for_update()
 
-    create_listener(stubA, subsystem_nqn, "GatewayA", "127.0.0.1", 5101)
-    create_listener(stubB, subsystem_nqn, "GatewayB", "127.0.0.1", 5102)
+    create_listener(stubA, subsystem_nqn, gwA.host_name, "127.0.0.1", 5101)
+    create_listener(stubB, subsystem_nqn, gwB.host_name, "127.0.0.1", 5102)
 
     wait_for_update()
 

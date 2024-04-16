@@ -11,6 +11,7 @@ import uuid
 import errno
 import rbd
 import rados
+import time
 from .utils import GatewayLogger
 
 class CephUtils:
@@ -21,14 +22,54 @@ class CephUtils:
         self.logger = GatewayLogger(config).logger
         self.ceph_conf = config.get_with_default("ceph", "config_file", "/etc/ceph/ceph.conf")
         self.rados_id = config.get_with_default("ceph", "id", "")
+        self.anagroup_list = []
+        self.last_sent = time.time()
+
+    def execute_ceph_monitor_command(self, cmd):
+         with rados.Rados(conffile=self.ceph_conf, rados_id=self.rados_id) as cluster:
+            rply = cluster.mon_command(cmd, b'')
+            return rply
+
+    def get_number_created_gateways(self, pool, group):
+        now = time.time()
+        if (now - self.last_sent) < 10 and self.anagroup_list :
+             self.logger.info(f" Caching response of the monitor: {self.anagroup_list} ")
+             return self.anagroup_list
+        else :
+            try:
+                self.anagroup_list = []
+                self.last_sent = now
+                str = '{' + f'"prefix":"nvme-gw show", "pool":"{pool}", "group":"{group}"' + '}'
+                self.logger.info(f"nvme-show string: {str} ")
+                rply = self.execute_ceph_monitor_command(str)
+                self.logger.info(f"reply \"{rply}\"")
+                conv_str = rply[1].decode()
+                pos = conv_str.find("[")
+                if pos!= -1:
+                    new_str = conv_str[pos+ len("[") :]
+                    pos     = new_str.find("]")
+                    new_str = new_str[: pos].strip()
+                    int_str_list = new_str.split(' ')
+                    self.logger.info(f"new_str : {new_str}")
+                    for x in int_str_list:
+                        self.anagroup_list.append(int(x))
+                    self.logger.info(self.anagroup_list)
+                else:
+                    self.logger.info("Gws not found")
+
+            except Exception:
+                self.logger.exception(f"Failure get number created gateways:")
+                self.anagroup_list = []
+                pass
+
+            return self.anagroup_list
 
     def fetch_and_display_ceph_version(self):
         try:
-            with rados.Rados(conffile=self.ceph_conf, rados_id=self.rados_id) as cluster:
-                rply = cluster.mon_command('{"prefix":"mon versions"}', b'')
-                ceph_ver = rply[1].decode().removeprefix("{").strip().split(":")[0].removeprefix('"').removesuffix('"')
-                ceph_ver = ceph_ver.removeprefix("ceph version ")
-                self.logger.info(f"Connected to Ceph with version \"{ceph_ver}\"")
+            rply = self.execute_ceph_monitor_command('{"prefix":"mon versions"}')
+            ceph_ver = rply[1].decode().removeprefix("{").strip().split(":")[0].removeprefix('"').removesuffix('"')
+            ceph_ver = ceph_ver.removeprefix("ceph version ")
+            self.logger.info(f"Connected to Ceph with version \"{ceph_ver}\"")
         except Exception:
             self.logger.exception(f"Failure fetching Ceph version:")
             pass
@@ -90,4 +131,3 @@ class CephUtils:
             raise rc_ex
 
         return rc
-
