@@ -651,6 +651,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 )
                 self.subsys_ha.pop(request.subsystem_nqn)
                 self.subsys_max_ns.pop(request.subsystem_nqn)
+                if request.subsystem_nqn in self.subsystem_listeners:
+                    self.subsystem_listeners.pop(request.subsystem_nqn)
                 self.logger.debug(f"delete_subsystem {request.subsystem_nqn}: {ret}")
             except Exception as ex:
                 self.logger.exception(delete_subsystem_error_prefix)
