@@ -207,6 +207,7 @@ class GatewayLogger:
             if self.handler:
                 return
 
+        logging.raiseExceptions = False
         format_string = "[%(asctime)s] %(levelname)s %(filename)s:%(lineno)d: %(message)s"
         date_fmt_string = "%d-%b-%Y %H:%M:%S"
         frmtr = logging.Formatter(fmt=format_string, datefmt=date_fmt_string)
