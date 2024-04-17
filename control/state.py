@@ -274,8 +274,8 @@ class OmapLock:
                 self.logger.warning(
                        f"The OMAP file is locked, will try again in {self.omap_file_lock_retry_sleep_interval} seconds")
                 time.sleep(self.omap_file_lock_retry_sleep_interval)
-            except Exception as ex:
-                self.logger.error(f"Unable to lock OMAP file, exiting: {ex}")
+            except Exception:
+                self.logger.exception(f"Unable to lock OMAP file, exiting")
                 raise
 
         if not got_lock:
@@ -303,8 +303,8 @@ class OmapLock:
             self.is_locked = False
         except rados.ObjectNotFound as ex:
             self.logger.warning(f"No such lock, the lock duration might have passed")
-        except Exception as ex:
-            self.logger.error(f"Unable to unlock OMAP file: {ex}")
+        except Exception:
+            self.logger.exception(f"Unable to unlock OMAP file")
             pass
 
     def locked(self):
@@ -351,9 +351,9 @@ class OmapGatewayState(GatewayState):
                 self.logger.info(
                     f"First gateway: created object {self.omap_name}")
         except rados.ObjectExists:
-            self.logger.info(f"{self.omap_name} omap object already exists.")
-        except Exception as ex:
-            self.logger.error(f"Unable to create omap: {ex}. Exiting!")
+            self.logger.info(f"{self.omap_name} OMAP object already exists.")
+        except Exception:
+            self.logger.exception(f"Unable to create OMAP, exiting!")
             raise
 
     def __exit__(self, exc_type, exc_value, traceback):
@@ -429,8 +429,8 @@ class OmapGatewayState(GatewayState):
                 self.ioctx.operate_write_op(write_op, self.omap_name)
             self.version = version_update
             self.logger.debug(f"omap_key generated: {key}")
-        except Exception as ex:
-            self.logger.error(f"Unable to add key to omap: {ex}. Exiting!")
+        except Exception:
+            self.logger.exception(f"Unable to add key to OMAP, exiting!")
             raise
 
         # Notify other gateways within the group of change
@@ -453,8 +453,8 @@ class OmapGatewayState(GatewayState):
                 self.ioctx.operate_write_op(write_op, self.omap_name)
             self.version = version_update
             self.logger.debug(f"omap_key removed: {key}")
-        except Exception as ex:
-            self.logger.error(f"Unable to remove key from omap: {ex}. Exiting!")
+        except Exception:
+            self.logger.exception(f"Unable to remove key from OMAP, exiting!")
             raise
 
         # Notify other gateways within the group of change
@@ -473,8 +473,8 @@ class OmapGatewayState(GatewayState):
                                     (str(1),))
                 self.ioctx.operate_write_op(write_op, self.omap_name)
                 self.logger.info(f"Deleted OMAP contents.")
-        except Exception as ex:
-            self.logger.error(f"Error deleting OMAP contents: {ex}. Exiting!")
+        except Exception:
+            self.logger.exception(f"Error deleting OMAP contents, exiting!")
             raise
 
     def register_watch(self, notify_event):
@@ -486,8 +486,8 @@ class OmapGatewayState(GatewayState):
         if self.watch is None:
             try:
                 self.watch = self.ioctx.watch(self.omap_name, _watcher_callback)
-            except Exception as ex:
-                self.logger.error(f"Unable to initiate watch: {ex}")
+            except Exception:
+                self.logger.exception(f"Unable to initiate watch")
         else:
             self.logger.info(f"Watch already exists.")
 
@@ -587,7 +587,7 @@ class GatewayStateHandler:
         """Initiates periodic polling and watch/notify for updates."""
         notify_event = threading.Event()
         if self.use_notify:
-            # Register a watch on omap state
+            # Register a watch on OMAP state
             self.omap.register_watch(notify_event)
 
         # Start polling for state updates
@@ -614,7 +614,7 @@ class GatewayStateHandler:
         return val1_str == val2_str
 
     def update(self) -> bool:
-        """Checks for updated omap state and initiates local update."""
+        """Checks for updated OMAP state and initiates local update."""
 
         if self.update_is_active_lock.locked():
             self.logger.warning(f"An update is already running, ignore")
