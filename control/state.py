@@ -195,11 +195,11 @@ class OmapLock:
         self.omap_state = omap_state
         self.gateway_state = gateway_state
         self.is_locked = False
-        self.omap_file_lock_duration = self.omap_state.config.getint_with_default("gateway", "omap_file_lock_duration", 60)
+        self.omap_file_lock_duration = self.omap_state.config.getint_with_default("gateway", "omap_file_lock_duration", 20)
         self.omap_file_update_reloads = self.omap_state.config.getint_with_default("gateway", "omap_file_update_reloads", 10)
-        self.omap_file_lock_retries = self.omap_state.config.getint_with_default("gateway", "omap_file_lock_retries", 15)
-        self.omap_file_lock_retry_sleep_interval = self.omap_state.config.getint_with_default("gateway",
-                                                                                    "omap_file_lock_retry_sleep_interval", 5)
+        self.omap_file_lock_retries = self.omap_state.config.getint_with_default("gateway", "omap_file_lock_retries", 30)
+        self.omap_file_lock_retry_sleep_interval = self.omap_state.config.getfloat_with_default("gateway",
+                                                                                    "omap_file_lock_retry_sleep_interval", 1.0)
         # This is used for testing purposes only. To allow us testing locking from two gateways at the same time
         self.omap_file_disable_unlock = self.omap_state.config.getboolean_with_default("gateway", "omap_file_disable_unlock", False)
         if self.omap_file_disable_unlock:
@@ -235,7 +235,7 @@ class OmapLock:
     # and in case the Omap is not current, will reload it and try again
     #
     def execute_omap_locking_function(self, grpc_func, omap_locking_func, request, context):
-        for i in range(1, self.omap_file_update_reloads):
+        for i in range(0, self.omap_file_update_reloads + 1):
             need_to_update = False
             try:
                 return grpc_func(omap_locking_func, request, context)
@@ -246,11 +246,12 @@ class OmapLock:
                     raise
 
             assert need_to_update
-            for j in range(10):
-                if self.gateway_state.update():
-                    # update was succesful, we can stop trying
-                    break
-                time.sleep(1)
+            if self.omap_file_update_reloads > 0:
+                for j in range(10):
+                    if self.gateway_state.update():
+                        # update was succesful, we can stop trying
+                        break
+                    time.sleep(1)
 
         if need_to_update:
             raise Exception(f"Unable to lock OMAP file after reloading {self.omap_file_update_reloads} times, exiting")
@@ -258,13 +259,13 @@ class OmapLock:
     def lock_omap(self):
         got_lock = False
 
-        for i in range(1, self.omap_file_lock_retries):
+        for i in range(0, self.omap_file_lock_retries + 1):
             try:
                 self.omap_state.ioctx.lock_exclusive(self.omap_state.omap_name, self.OMAP_FILE_LOCK_NAME,
                                          self.OMAP_FILE_LOCK_COOKIE, "OMAP file changes lock", self.omap_file_lock_duration, 0)
                 got_lock = True
-                if i > 1:
-                    self.logger.info(f"Succeeded to lock OMAP file after {i} tries")
+                if i > 0:
+                    self.logger.info(f"Succeeded to lock OMAP file after {i} retries")
                 break
             except rados.ObjectExists as ex:
                 self.logger.info(f"We already locked the OMAP file")
