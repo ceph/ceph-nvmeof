@@ -1294,7 +1294,7 @@ class GatewayClient:
 
         if args.format == "text" or args.format == "plain":
             if ret.status == 0:
-                out_func(f"Adding namespace {ret.nsid} to {args.subsystem}, load balancing group {args.load_balancing_group}: Successful")
+                out_func(f"Adding namespace {ret.nsid} to {args.subsystem}: Successful")
             else:
                 err_func(f"{ret.error_message}")
         elif args.format == "json" or args.format == "yaml":
