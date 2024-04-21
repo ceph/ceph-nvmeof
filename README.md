@@ -97,7 +97,7 @@ rbd: error opening image demo_image: (2) No such file or directory
 docker-compose  run --rm nvmeof-cli --server-address 192.168.13.3 --server-port 5500 subsystem add --subsystem "nqn.2016-06.io.spdk:cnode1"
 Adding subsystem nqn.2016-06.io.spdk:cnode1: Successful
 docker-compose  run --rm nvmeof-cli --server-address 192.168.13.3 --server-port 5500 namespace add --subsystem "nqn.2016-06.io.spdk:cnode1" --rbd-pool rbd --rbd-image demo_image
-Adding namespace 1 to nqn.2016-06.io.spdk:cnode1, load balancing group 1: Successful
+Adding namespace 1 to nqn.2016-06.io.spdk:cnode1: Successful
 docker-compose  run --rm nvmeof-cli --server-address 192.168.13.3 --server-port 5500 listener add --subsystem "nqn.2016-06.io.spdk:cnode1" --host-name fbca1a3d3ed8 --traddr 192.168.13.3 --trsvcid 4420
 Adding listener 192.168.13.3:4420 to nqn.2016-06.io.spdk:cnode1: Successful
 docker-compose  run --rm nvmeof-cli --server-address 2001:db8::3 --server-port 5500 listener add --subsystem "nqn.2016-06.io.spdk:cnode1" --host-name fbca1a3d3ed8 --traddr 2001:db8::3 --trsvcid 4420 --adrfam IPV6
