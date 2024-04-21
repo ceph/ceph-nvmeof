@@ -2404,7 +2404,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         """Gets subsystems."""
 
         peer_msg = self.get_peer_message(context)
-        self.logger.info(f"Received request to get subsystems, context: {context}{peer_msg}")
+        self.logger.debug(f"Received request to get subsystems, context: {context}{peer_msg}")
         subsystems = []
         try:
             ret = rpc_nvmf.nvmf_get_subsystems(self.spdk_rpc_client)
