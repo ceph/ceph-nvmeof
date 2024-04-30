@@ -840,6 +840,32 @@ class DiscoveryService:
         self.logger.debug("reply keep alive request.")
         return 0
 
+    def reply_not_supported(self, conn, data, cmd_id):
+        """Reply to not supported opcodes."""
+
+        self.logger.warning("handle not supported opcode.")
+        self_conn = self.conn_vals[conn.fileno()]
+
+        pdu_reply = Pdu()
+        pdu_reply.type = NVME_TCP_PDU.RSP
+        pdu_reply.header_length = 24
+        pdu_reply.packet_length = 24
+
+         # Cqe for not supported opcode reply
+        not_supported_reply = CqeNVMe()
+        not_supported_reply.sq_head_ptr = self_conn.sq_head_ptr
+        not_supported_reply.cmd_id = cmd_id
+        not_supported_reply.status = 1 # Invalid Command Opcode: A reserved coded value or an unsupported value in the command opcode field.
+
+        try:
+            conn.sendall(pdu_reply + not_supported_reply)
+        except BrokenPipeError:
+            self.logger.error("client disconnected unexpectedly.")
+            return -1
+        self.logger.warning("reply not supported opcode.")
+        return 0
+
+
     def store_async(self, conn, data, cmd_id):
         """Parse and store async event."""
 
@@ -984,15 +1010,13 @@ class DiscoveryService:
                         NVME_TCP_OPC.KEEP_ALIVE: self.reply_keep_alive,
                         NVME_TCP_OPC.ASYNC_EVE_REQ: self.store_async
                     }
-                    class UnknownNVMEOpcode(BaseException):
-                        def __init__(self, opcode):
-                            super().__init__(f"unsupported opcode: {opcode}")
-                    try:
+                    if opcode in handle_opcode:
                         err = handle_opcode[opcode](conn, data, cmd_id)
-                    except KeyError as e:
-                        raise UnknownNVMEOpcode(opcode) from e
+                    else:
+                        self.logger.error(f"unsupported opcode: {opcode}")
+                        err = self.reply_not_supported(conn, data, cmd_id)
                 else:
-                    self.logger.error("unsupported pduGLOBAL_CNLID type: {pdu_type}")
+                    self.logger.error("unsupported pdu type: {pdu_type}")
 
                 if err == -1 or self_conn.shutdown_now is True:
                     del self.conn_vals[conn.fileno()]
