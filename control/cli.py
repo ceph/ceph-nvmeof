@@ -1409,32 +1409,14 @@ class GatewayClient:
         return ret.status
 
     def format_size(self, sz):
-        if sz < 1024:
-            return str(sz) + " B"
-        if sz < 1024 * 1024:
-            sz = sz / 1024.0
-            if sz == int(sz):
-                sz = int(sz)
-                return f"{sz} KiB"
-            return f"{sz:2.1f} KiB"
-        if sz < 1024 * 1024 * 1024:
-            sz = sz / (1024.0 * 1024.0)
-            if sz == int(sz):
-                sz = int(sz)
-                return f"{sz} MiB"
-            return f"{sz:2.1f} MiB"
-        if sz < 1024 * 1024 * 1024 * 1024:
-            sz = sz / (1024.0 * 1024.0 * 1024.0)
-            if sz == int(sz):
-                sz = int(sz)
-                return f"{sz} GiB"
-            return f"{sz:2.1f} GiB"
-        if sz < 1024 * 1024 * 1024 * 1024 * 1024:
-            sz = sz / (1024.0 * 1024.0 * 1024.0 * 1024.0)
-            if sz == int(sz):
-                sz = int(sz)
-                return f"{sz} TiB"
-        return f"{sz:2.1f} PiB"
+        units = ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB']
+        unit_index = 0
+        while sz >= 1024 and unit_index < len(units) - 1:
+            sz /= 1024.0
+            unit_index += 1
+        if sz == int(sz):
+            return f"{int(sz)} {units[unit_index]}"
+        return f"{sz:2.1f} {units[unit_index]}"
 
     def get_size_in_bytes(self, sz):
         multiply = 1
