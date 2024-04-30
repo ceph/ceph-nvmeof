@@ -303,7 +303,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
             cr_img_msg = "will not create image if doesn't exist"
 
         self.logger.info(f"Received request to create bdev {name} from"
-                         f" {rbd_pool_name}/{rbd_image_name} (size {rbd_image_size} MiB)"
+                         f" {rbd_pool_name}/{rbd_image_name} (size {rbd_image_size} bytes)"
                          f" with block size {block_size}, {cr_img_msg}{peer_msg}")
 
         if block_size == 0:
