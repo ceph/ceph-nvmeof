@@ -90,11 +90,11 @@ RUN \
 RUN make -C ./examples/bdev/bdevperf
 
 #------------------------------------------------------------------------------
-FROM registry.access.redhat.com/ubi9/ubi AS rpm-export
+FROM registry.access.redhat.com/ubi9/ubi@sha256:66233eebd72bb5baa25190d4f55e1dc3fff3a9b77186c1f91a0abdb274452072 AS rpm-export
 COPY --from=build /root/rpmbuild/rpm /rpm
 
 #------------------------------------------------------------------------------
-FROM registry.access.redhat.com/ubi9/ubi as spdk
+FROM registry.access.redhat.com/ubi9/ubi@sha256:66233eebd72bb5baa25190d4f55e1dc3fff3a9b77186c1f91a0abdb274452072 as spdk
 
 ARG SPDK_CEPH_VERSION \
     SPDK_VERSION \
