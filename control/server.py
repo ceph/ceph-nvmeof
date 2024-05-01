@@ -81,6 +81,7 @@ class GatewayServer:
         self.ceph_utils = None
         self.rpc_lock = threading.Lock()
         self.group_id = 0
+        self.monitor_client = '/usr/bin/ceph-nvmeof-monitor-client'
 
         self.name = self.config.get("gateway", "name")
         if not self.name:
@@ -152,7 +153,7 @@ class GatewayServer:
 
     def serve(self):
         """Starts gateway server."""
-        self.logger.debug("Starting serve")
+        self.logger.info(f"Starting serve, monitor client version: {self._monitor_client_version()}")
 
         omap_state = OmapGatewayState(self.config)
         local_state = LocalGatewayState()
@@ -195,18 +196,34 @@ class GatewayServer:
         else:
             self.logger.info(f"Prometheus endpoint is disabled. To enable, set the config option 'enable_prometheus_exporter = True'")
 
+    def _monitor_client_version(self) -> str:
+        """Return monitor client version string."""
+        # Get the current SIGCHLD handler
+        original_sigchld_handler = signal.getsignal(signal.SIGCHLD)
+
+        try:
+            # Execute the command and capture its output
+            signal.signal(signal.SIGCHLD, signal.SIG_IGN)
+            completed_process = subprocess.run([self.monitor_client, "--version"], capture_output=True, text=True)
+        finally:
+            # Restore the original SIGCHLD handler
+            signal.signal(signal.SIGCHLD, original_sigchld_handler)
+
+        # Get the output
+        output = completed_process.stdout.strip()
+        return output
+
     def _start_monitor_client(self):
         """Runs CEPH NVMEOF Monitor Client."""
         enable_monitor_client = self.config.getboolean_with_default("gateway", "enable_monitor_client", True)
         if not enable_monitor_client:
             self.logger.info("CEPH monitor client is disabled")
             return
-        monitor_client = '/usr/bin/ceph-nvmeof-monitor-client'
         client_prefix = "client."
         rados_id = self.config.get_with_default("ceph", "id", "client.admin")
         if not rados_id.startswith(client_prefix):
             rados_id = client_prefix + rados_id
-        cmd = [ monitor_client,
+        cmd = [ self.monitor_client,
                 "--gateway-name", self.name,
                 "--gateway-address", self._gateway_address(),
                 "--gateway-pool", self.config.get("ceph", "pool"),
