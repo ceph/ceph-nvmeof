@@ -184,6 +184,7 @@ class GatewayClient:
         logger: Logger instance to track client events
     """
 
+    SIZE_UNITS = ["K", "M", "G", "T", "P"]
     cli = Parser()
 
     def __init__(self):
@@ -1409,65 +1410,33 @@ class GatewayClient:
         return ret.status
 
     def format_size(self, sz):
-        units = ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB']
-        unit_index = 0
-        while sz >= 1024 and unit_index < len(units) - 1:
+        units = ["Bytes"] + GatewayClient.SIZE_UNITS
+        for unit_index in range(len(units)):
+            if sz < 1024:
+                break
             sz /= 1024.0
-            unit_index += 1
+        unit = f"{units[unit_index]}iB" if unit_index > 0 else f"{units[unit_index]}"
         if sz == int(sz):
-            return f"{int(sz)} {units[unit_index]}"
-        return f"{sz:2.1f} {units[unit_index]}"
+            return f"{int(sz)} {unit}"
+        return f"{sz:2.1f} {unit}"
 
     def get_size_in_bytes(self, sz):
         multiply = 1
         sz = sz.strip()
-        if sz.endswith("K"):
-            sz = sz[:-1]
-            multiply = 1024
-        elif sz.endswith("KB"):
-            sz = sz[:-2]
-            multiply = 1000
-        elif sz.endswith("KiB"):
-            sz = sz[:-3]
-            multiply = 1024
-        elif sz.endswith("M"):
-            sz = sz[:-1]
-            multiply = 1024 * 1024
-        elif sz.endswith("MB"):
-            sz = sz[:-2]
-            multiply = 1000 * 1000
-        elif sz.endswith("MiB"):
-            sz = sz[:-3]
-            multiply = 1024 * 1024
-        elif sz.endswith("G"):
-            sz = sz[:-1]
-            multiply = 1024 * 1024 * 1024
-        elif sz.endswith("GB"):
-            sz = sz[:-2]
-            multiply = 1000 * 1000 * 1000
-        elif sz.endswith("GiB"):
-            sz = sz[:-3]
-            multiply = 1024 * 1024 * 1024
-        elif sz.endswith("T"):
-            sz = sz[:-1]
-            multiply = 1024 * 1024 * 1024 * 1024
-        elif sz.endswith("TB"):
-            sz = sz[:-2]
-            multiply = 1000 * 1000 * 1000 * 1000
-        elif sz.endswith("TiB"):
-            sz = sz[:-3]
-            multiply = 1024 * 1024 * 1024 * 1024
-        elif sz.endswith("P"):
-            sz = sz[:-1]
-            multiply = 1024 * 1024 * 1024 * 1024 * 1024
-        elif sz.endswith("PB"):
-            sz = sz[:-2]
-            multiply = 1000 * 1000 * 1000 * 1000 * 1000
-        elif sz.endswith("PiB"):
-            sz = sz[:-3]
-            multiply = 1024 * 1024 * 1024 * 1024 * 1024
+        for unit_index in range(len(GatewayClient.SIZE_UNITS)):
+            found = False
+            if sz.endswith(GatewayClient.SIZE_UNITS[unit_index]):
+                sz = sz[:-1]
+                found = True
+            elif sz.endswith(GatewayClient.SIZE_UNITS[unit_index] + "B"):
+                sz = sz[:-2]
+                found = True
+            if found:
+                multiply = 1024 ** (unit_index + 1)
+                break
 
         try:
+            sz = sz.strip()
             int_size = int(sz)
         except:
             self.cli.parser.error(f"Size {sz} must be numeric")
@@ -1777,13 +1746,13 @@ class GatewayClient:
         argument("--rbd-create-image", "-c", help="Create RBD image if needed", action='store_true', required=False),
         argument("--block-size", "-s", help="Block size", type=int),
         argument("--load-balancing-group", "-l", help="Load balancing group", type=int, default=0),
-        argument("--size", help="Size in bytes or specified unit (KB, KiB, MB, MiB, GB, GiB, TB, TiB)"),
+        argument("--size", help="Size in bytes or specified unit (K, KB, M, MB, G, GB, T, TB, P, PB)"),
         argument("--force", help="Create a namespace even its image is already used by another namespace", action='store_true', required=False),
     ]
     ns_del_args_list = ns_common_args + [
     ]
     ns_resize_args_list = ns_common_args + [
-        argument("--size", help="Size in bytes or specified unit (KB, KiB, MB, MiB, GB, GiB, TB, TiB)", required=True),
+        argument("--size", help="Size in bytes or specified unit (K, KB, M, MB, G, GB, T, TB, P, PB)", required=True),
     ]
     ns_list_args_list = ns_common_args + [
     ]

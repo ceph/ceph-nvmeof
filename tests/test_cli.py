@@ -243,10 +243,10 @@ class TestCreate:
 
     def test_add_namespace(self, caplog, gateway):
         caplog.clear()
-        cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", "junk", "--rbd-image", image2, "--uuid", uuid, "--size", "16MiB", "--rbd-create-image", "--load-balancing-group", "1"])
+        cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", "junk", "--rbd-image", image2, "--uuid", uuid, "--size", "16MB", "--rbd-create-image", "--load-balancing-group", "1"])
         assert f"RBD pool junk doesn't exist" in caplog.text
         caplog.clear()
-        cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool, "--rbd-image", image2, "--uuid", uuid, "--size", "16MiB", "--rbd-create-image", "--load-balancing-group", "1", "--force"])
+        cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool, "--rbd-image", image2, "--uuid", uuid, "--size", "16MB", "--rbd-create-image", "--load-balancing-group", "1", "--force"])
         assert f"Adding namespace 1 to {subsystem}: Successful" in caplog.text
         assert "Allocated cluster name='cluster_context_1_0'" in caplog.text
         caplog.clear()
@@ -256,7 +256,7 @@ class TestCreate:
         caplog.clear()
         rc = 0
         try:
-            cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool, "--rbd-image", image2, "--block-size", "1024", "--size", "16MiB", "--load-balancing-group", "1"])
+            cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool, "--rbd-image", image2, "--block-size", "1024", "--size", "16MB", "--load-balancing-group", "1"])
         except SystemExit as sysex:
             rc = int(str(sysex))
             pass
@@ -265,7 +265,7 @@ class TestCreate:
         caplog.clear()
         rc = 0
         try:
-            cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool, "--rbd-image", image2, "--block-size", "1024", "--size=-16MiB", "--rbd-create-image", "--load-balancing-group", "1"])
+            cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool, "--rbd-image", image2, "--block-size", "1024", "--size=-16MB", "--rbd-create-image", "--load-balancing-group", "1"])
         except SystemExit as sysex:
             rc = int(str(sysex))
             pass
@@ -274,7 +274,16 @@ class TestCreate:
         caplog.clear()
         rc = 0
         try:
-            cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool, "--rbd-image", image2, "--block-size", "1024", "--size", "1x6MiB", "--load-balancing-group", "1", "--rbd-create-image"])
+            cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool, "--rbd-image", image2, "--block-size", "1024", "--size", "1x6MB", "--load-balancing-group", "1", "--rbd-create-image"])
+        except SystemExit as sysex:
+            rc = int(str(sysex))
+            pass
+        assert "must be numeric" in caplog.text
+        assert rc == 2
+        caplog.clear()
+        rc = 0
+        try:
+            cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool, "--rbd-image", image2, "--block-size", "1024", "--size", "16MiB", "--load-balancing-group", "1", "--rbd-create-image"])
         except SystemExit as sysex:
             rc = int(str(sysex))
             pass
@@ -316,7 +325,7 @@ class TestCreate:
         cli(["--format", "json", "namespace", "list", "--subsystem", subsystem, "--nsid", nsid])
         assert f'"load_balancing_group": {anagrpid2}' in caplog.text
         caplog.clear()
-        cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool, "--rbd-image", image3, "--size", "4GiB", "--rbd-create-image", "--load-balancing-group", "1"])
+        cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool, "--rbd-image", image3, "--size", "4GB", "--rbd-create-image", "--load-balancing-group", "1"])
         assert f"Adding namespace 3 to {subsystem}: Successful" in caplog.text
         caplog.clear()
         cli(["--format", "json", "namespace", "list", "--subsystem", subsystem, "--nsid", "3"])
@@ -339,10 +348,10 @@ class TestCreate:
     def test_add_namespace_same_image(self, caplog, gateway):
         caplog.clear()
         img_name = f"{image}_test"
-        cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool, "--rbd-image", img_name, "--size", "16MiB", "--load-balancing-group", "1", "--rbd-create-image", "--load-balancing-group", "1"])
+        cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool, "--rbd-image", img_name, "--size", "16MB", "--load-balancing-group", "1", "--rbd-create-image", "--load-balancing-group", "1"])
         assert f"Adding namespace 5 to {subsystem}: Successful" in caplog.text
         caplog.clear()
-        cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool, "--rbd-image", img_name, "--size", "16MiB", "--load-balancing-group", "1", "--rbd-create-image", "--load-balancing-group", "1"])
+        cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool, "--rbd-image", img_name, "--size", "16MB", "--load-balancing-group", "1", "--rbd-create-image", "--load-balancing-group", "1"])
         assert f"RBD image {pool}/{img_name} is already used by a namespace" in caplog.text
         assert f"you can find the offending namespace by using" in caplog.text
         caplog.clear()
@@ -364,7 +373,7 @@ class TestCreate:
         assert '"rbd_image_size": "16777216"' in caplog.text
         assert f'"uuid": "{uuid}"' in caplog.text
         caplog.clear()
-        cli(["namespace", "resize", "--subsystem", subsystem, "--nsid", nsid, "--size", "32MiB"])
+        cli(["namespace", "resize", "--subsystem", subsystem, "--nsid", nsid, "--size", "32MB"])
         assert f"Resizing namespace {nsid} in {subsystem} to 32 MiB: Successful" in caplog.text
         caplog.clear()
         rc = 0
@@ -378,7 +387,7 @@ class TestCreate:
         caplog.clear()
         rc = 0
         try:
-            cli(["namespace", "resize", "--subsystem", subsystem, "--nsid", nsid, "--size=-32MiB"])
+            cli(["namespace", "resize", "--subsystem", subsystem, "--nsid", nsid, "--size=-32MB"])
         except SystemExit as sysex:
             rc = int(str(sysex))
             pass
@@ -387,7 +396,7 @@ class TestCreate:
         caplog.clear()
         rc = 0
         try:
-            cli(["namespace", "resize", "--subsystem", subsystem, "--nsid", nsid, "--size", "3x2GiB"])
+            cli(["namespace", "resize", "--subsystem", subsystem, "--nsid", nsid, "--size", "3x2GB"])
         except SystemExit as sysex:
             rc = int(str(sysex))
             pass
@@ -404,7 +413,7 @@ class TestCreate:
         assert '"nsid": 4' not in caplog.text
         assert '"nsid": 8' not in caplog.text
         caplog.clear()
-        cli(["namespace", "resize", "--subsystem", subsystem, "--uuid", uuid, "--size", "64MiB"])
+        cli(["namespace", "resize", "--subsystem", subsystem, "--uuid", uuid, "--size", "64MB"])
         assert f"Resizing namespace with UUID {uuid} in {subsystem} to 64 MiB: Successful" in caplog.text
         caplog.clear()
         cli(["--format", "json", "namespace", "list", "--subsystem", subsystem, "--uuid", uuid])
@@ -417,10 +426,10 @@ class TestCreate:
         assert '"nsid": 4' not in caplog.text
         assert '"nsid": 8' not in caplog.text
         caplog.clear()
-        cli(["namespace", "resize", "--subsystem", subsystem, "--nsid", "12", "--uuid", uuid, "--size", "128MiB"])
+        cli(["namespace", "resize", "--subsystem", subsystem, "--nsid", "12", "--uuid", uuid, "--size", "128MB"])
         assert f"Failure resizing namespace using NSID 12 and UUID {uuid} on {subsystem}: Can't find namespace" in caplog.text
         caplog.clear()
-        cli(["namespace", "resize", "--subsystem", subsystem, "--nsid", nsid, "--size", "32MiB"])
+        cli(["namespace", "resize", "--subsystem", subsystem, "--nsid", nsid, "--size", "32MB"])
         assert f"Failure resizing namespace: Failure resizing bdev" in caplog.text
         assert f"Invalid argument" in caplog.text
         ns = cli_test(["namespace", "list", "--subsystem", subsystem, "--nsid", nsid])
@@ -431,13 +440,13 @@ class TestCreate:
         rc = rpc_bdev.bdev_rbd_delete(gw.spdk_rpc_client, name=ns.namespaces[0].bdev_name)
         assert rc
         caplog.clear()
-        cli(["namespace", "resize", "--subsystem", subsystem, "--nsid", nsid, "--size", "128MiB"])
+        cli(["namespace", "resize", "--subsystem", subsystem, "--nsid", nsid, "--size", "128MB"])
         assert f"Failure resizing namespace using NSID {nsid} on {subsystem}: Can't find namespace" in caplog.text
         caplog.clear()
         cli(["namespace", "add", "--subsystem", subsystem, "--nsid", nsid, "--rbd-pool", pool, "--rbd-image", image, "--uuid", uuid, "--force",  "--load-balancing-group", "1"])
         assert f"Adding namespace 1 to {subsystem}: Successful" in caplog.text
         caplog.clear()
-        cli(["namespace", "resize", "--subsystem", subsystem, "--nsid", "3", "--size", "6GiB"])
+        cli(["namespace", "resize", "--subsystem", subsystem, "--nsid", "3", "--size", "6GB"])
         assert f"Resizing namespace 3 in {subsystem} to 6144 MiB: Successful" in caplog.text
 
     def test_set_namespace_qos_limits(self, caplog, gateway):
