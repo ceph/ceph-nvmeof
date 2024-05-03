@@ -252,7 +252,7 @@ class TestCreate:
         caplog.clear()
         cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool, "--rbd-image", image2, "--size", "36M", "--rbd-create-image", "--load-balancing-group", "1", "--force"])
         assert f"Image {pool}/{image2} already exists with a size of 16777216 bytes which differs from the requested size of 37748736 bytes" in caplog.text
-        assert f"Can't create RBD image {image}" in caplog.text
+        assert f"Can't create RBD image {pool}/{image2}" in caplog.text
         caplog.clear()
         rc = 0
         try:
@@ -373,6 +373,9 @@ class TestCreate:
         assert '"rbd_image_size": "16777216"' in caplog.text
         assert f'"uuid": "{uuid}"' in caplog.text
         caplog.clear()
+        cli(["namespace", "resize", "--subsystem", subsystem, "--nsid", nsid, "--size", "2MB"])
+        assert f"new size 2097152 bytes is smaller than current size 16777216 bytes" in caplog.text
+        caplog.clear()
         cli(["namespace", "resize", "--subsystem", subsystem, "--nsid", nsid, "--size", "32MB"])
         assert f"Resizing namespace {nsid} in {subsystem} to 32 MiB: Successful" in caplog.text
         caplog.clear()
@@ -430,8 +433,7 @@ class TestCreate:
         assert f"Failure resizing namespace using NSID 12 and UUID {uuid} on {subsystem}: Can't find namespace" in caplog.text
         caplog.clear()
         cli(["namespace", "resize", "--subsystem", subsystem, "--nsid", nsid, "--size", "32MB"])
-        assert f"Failure resizing namespace: Failure resizing bdev" in caplog.text
-        assert f"Invalid argument" in caplog.text
+        assert f"Failure resizing namespace using NSID {nsid} on {subsystem}: new size 33554432 bytes is smaller than current size 67108864 bytes" in caplog.text
         ns = cli_test(["namespace", "list", "--subsystem", subsystem, "--nsid", nsid])
         assert ns != None
         assert ns.status == 0

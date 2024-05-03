@@ -96,8 +96,41 @@ class CephUtils:
         return False
 
     def create_image(self, pool_name, image_name, size) -> bool:
-        rc_ex = None
-        rc = False
+        # Check for pool existence in advance as we don't create it if it's not there
+        if not self.pool_exists(pool_name):
+            raise rbd.ImageNotFound(f"Pool {pool_name} doesn't exist", errno = errno.ENODEV)
+
+        image_exists = False
+        try:
+            image_size = self.get_image_size(pool_name, image_name)
+            image_exists = True
+        except rbd.ImageNotFound:
+            self.logger.debug(f"Image {pool_name}/{image_name} doesn't exist, will create it using size {size}")
+            pass
+
+        if image_exists:
+            if image_size != size:
+                raise rbd.ImageExists(f"Image {pool_name}/{image_name} already exists with a size of {image_size} bytes which differs from the requested size of {size} bytes",
+                                      errno = errno.EEXIST)
+            return False    # Image exists with an idetical size, there is nothing to do here
+
+        with rados.Rados(conffile=self.ceph_conf, rados_id=self.rados_id) as cluster:
+            with cluster.open_ioctx(pool_name) as ioctx:
+                rbd_inst = rbd.RBD()
+                try:
+                    rbd_inst.create(ioctx, image_name, size)
+                except rbd.ImageExists as ex:
+                    self.logger.exception(f"Image {pool_name}/{image_name} was created just now")
+                    raise rbd.ImageExists(f"Image {pool_name}/{image_name} was just created by someone else, please retry",
+                                          errno = errno.EAGAIN)
+                except Exception as ex:
+                    self.logger.exception(f"Can't create image {pool_name}/{image_name}")
+                    raise ex
+
+        return True
+
+    def get_image_size(self, pool_name, image_name) -> int:
+        image_size = 0
         if not self.pool_exists(pool_name):
             raise rbd.ImageNotFound(f"Pool {pool_name} doesn't exist", errno = errno.ENODEV)
 
@@ -105,7 +138,6 @@ class CephUtils:
             with cluster.open_ioctx(pool_name) as ioctx:
                 rbd_inst = rbd.RBD()
                 try:
-                    image_size = 0
                     images = rbd_inst.list(ioctx)
                     if image_name in images:
                         try:
@@ -113,21 +145,24 @@ class CephUtils:
                                 img_stat = img.stat()
                                 image_size = img_stat["size"]
                         except Exception as ex:
-                            self.logger.exception(f"Can't get image object for {image_name}")
-                            rc_ex = ex
-                        if image_size != size:
-                            rc_ex = rbd.ImageExists(f"Image {pool_name}/{image_name} already exists with a size of {image_size} bytes which differs from the requested size of {size} bytes",
-                                                  errno = errno.EEXIST)
+                            self.logger.exception(f"Can't get image object for {pool_name}/{image_name}")
+                            raise ex
                     else:
-                        rbd_inst.create(ioctx, image_name, size)
-                        rc = True
-                except rbd.ImageExists:
-                    return False
+                        raise rbd.ImageNotFound(f"Image {pool_name}/{image_name} doesn't exist", errno = errno.ENODEV)
                 except Exception as ex:
-                    self.logger.exception(f"Can't create image {image_name} in pool {pool_name}")
-                    rc_ex = ex
+                    self.logger.exception(f"Error while trying to get the size of image {pool_name}/{image_name}")
+                    raise ex
 
-        if rc_ex != None:
-            raise rc_ex
+        return image_size
 
-        return rc
+    def get_rbd_exception_details(self, ex):
+        ex_details = (None, None)
+        if rbd.OSError in type(ex).__bases__:
+            msg = str(ex).strip()
+            # remove the [errno] part
+            if msg.startswith("["):
+                pos = msg.find("]")
+                if pos >= 0:
+                    msg = msg[pos + 1 :].strip()
+            ex_details = (ex.errno, msg)
+        return ex_details
