@@ -319,13 +319,23 @@ class GatewayService(pb2_grpc.GatewayServicer):
             try:
                 rc = self.ceph_utils.create_image(rbd_pool_name, rbd_image_name, rbd_image_size)
                 if rc:
-                    self.logger.info(f"Image {rbd_image_name} created")
+                    self.logger.info(f"Image {rbd_pool_name}/{rbd_image_name} created, size is {rbd_image_size} bytes")
                 else:
-                    self.logger.info(f"Image {rbd_image_name} already exists")
-            except Exception:
-                errmsg = f"Can't create RBD image {rbd_image_name}"
+                    self.logger.info(f"Image {rbd_pool_name}/{rbd_image_name} already exists with size {rbd_image_size} bytes")
+            except Exception as ex:
+                errcode = 0
+                msg = ""
+                ex_details = self.ceph_utils.get_rbd_exception_details(ex)
+                if ex_details is not None:
+                    errcode = ex_details[0]
+                    msg = ex_details[1]
+                if not errcode:
+                    errcode = errno.ENODEV
+                if not msg:
+                    msg = str(ex)
+                errmsg = f"Can't create RBD image {rbd_pool_name}/{rbd_image_name}: {msg}"
                 self.logger.exception(errmsg)
-                return BdevStatus(status=errno.ENODEV, error_message=f"Failure creating bdev {name}: {errmsg}")
+                return BdevStatus(status=errcode, error_message=f"Failure creating bdev {name}: {errmsg}")
 
         try:
             cluster_name=self._get_cluster(anagrp)
@@ -369,6 +379,31 @@ class GatewayService(pb2_grpc.GatewayServicer):
         """Resizes a bdev."""
 
         self.logger.info(f"Received request to resize bdev {bdev_name} to {new_size} MiB{peer_msg}")
+        rbd_pool_name = None
+        rbd_image_name = None
+        bdev_info = self.get_bdev_info(bdev_name, True)
+        if bdev_info is not None:
+            try:
+                drv_specific_info = bdev_info["driver_specific"]
+                rbd_info = drv_specific_info["rbd"]
+                rbd_pool_name = rbd_info["pool_name"]
+                rbd_image_name = rbd_info["rbd_name"]
+            except KeyError as err:
+                self.logger.warning(f"Key {err} is not found, will not check size for shrinkage")
+                pass
+        else:
+            self.logger.warning(f"Can't get information for associated block device {bdev_name}, won't check size for shrinkage")
+
+        if rbd_pool_name and rbd_image_name:
+            try:
+                current_size = self.ceph_utils.get_image_size(rbd_pool_name, rbd_image_name)
+                if current_size > (new_size * 1024 * 1024):
+                    return pb2.req_status(status=errno.EINVAL,
+                                          error_message=f"new size {new_size * 1024 * 1024} bytes is smaller than current size {current_size} bytes")
+            except Exception as ex:
+                self.logger.warning(f"Error trying to get the size of image {rbd_pool_name}/{rbd_image_name}, won't check size for shrinkage:\n{ex}")
+                pass
+
         with self.rpc_lock:
             try:
                 ret = rpc_bdev.bdev_rbd_resize(
@@ -1551,7 +1586,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         if ret.status == 0:
             errmsg = os.strerror(0)
         else:
-            errmsg = f"Failure resizing namespace: {ret.error_message}"
+            errmsg = f"Failure resizing namespace {nsid_msg}on {request.subsystem_nqn}: {ret.error_message}"
             self.logger.error(errmsg)
 
         return pb2.req_status(status=ret.status, error_message=errmsg)
