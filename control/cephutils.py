@@ -26,8 +26,10 @@ class CephUtils:
         self.last_sent = time.time()
 
     def execute_ceph_monitor_command(self, cmd):
+         self.logger.debug(f"Execute monitor command: {cmd}")
          with rados.Rados(conffile=self.ceph_conf, rados_id=self.rados_id) as cluster:
             rply = cluster.mon_command(cmd, b'')
+            self.logger.debug(f"Monitor reply: {rply}")
             return rply
 
     def get_number_created_gateways(self, pool, group):

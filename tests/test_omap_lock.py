@@ -5,6 +5,7 @@ import json
 import time
 from google.protobuf import json_format
 from control.server import GatewayServer
+from control.cephutils import CephUtils
 from control.proto import gateway_pb2 as pb2
 from control.proto import gateway_pb2_grpc as pb2_grpc
 import spdk.rpc.bdev as rpc_bdev
@@ -41,13 +42,13 @@ def setup_config(config, gw1_name, gw2_name, gw_group, update_notify ,update_int
 
     return configA, configB
 
-def start_servers(gatewayA, gatewayB, addr, portA, portB):
-    gatewayA.set_group_id(0)
+def start_servers(gatewayA, gatewayB, gw_group, addr, portA, portB, ceph_utils):
+    ceph_utils.execute_ceph_monitor_command("{" + f'"prefix":"nvme-gw create", "id": "{gatewayA.name}", "pool": "{pool}", "group": "{gw_group}"' + "}")
     gatewayA.serve()
     # Delete existing OMAP state
     gatewayA.gateway_rpc.gateway_state.delete_state()
     # Create new
-    gatewayB.set_group_id(1)
+    ceph_utils.execute_ceph_monitor_command("{" + f'"prefix":"nvme-gw create", "id": "{gatewayB.name}", "pool": "{pool}", "group": "{gw_group}"' + "}")
     gatewayB.serve()
     gatewayB.gateway_rpc.gateway_state.delete_state()
 
@@ -76,12 +77,13 @@ def conn_omap_reread(config, request):
     addr = configA.get("gateway", "addr")
     portA = configA.getint("gateway", "port")
     portB = configB.getint("gateway", "port")
+    ceph_utils = CephUtils(config)
     # Start servers
     with (
        GatewayServer(configA) as gatewayA,
        GatewayServer(configB) as gatewayB,
     ):
-        stubA, stubB = start_servers(gatewayA, gatewayB, addr, portA, portB)
+        stubA, stubB = start_servers(gatewayA, gatewayB, "Group1", addr, portA, portB, ceph_utils)
         yield stubA, stubB, gatewayA.gateway_rpc, gatewayB.gateway_rpc
         stop_servers(gatewayA, gatewayB)
 
@@ -95,12 +97,13 @@ def conn_lock_twice(config, request):
     addr = configA.get("gateway", "addr")
     portA = configA.getint("gateway", "port")
     portB = configB.getint("gateway", "port")
+    ceph_utils = CephUtils(config)
     # Start servers
     with (
        GatewayServer(configA) as gatewayA,
        GatewayServer(configB) as gatewayB,
     ):
-        stubA, stubB = start_servers(gatewayA, gatewayB, addr, portA, portB)
+        stubA, stubB = start_servers(gatewayA, gatewayB, "Group2", addr, portA, portB, ceph_utils)
         yield stubA, stubB
         stop_servers(gatewayA, gatewayB)
 
@@ -111,6 +114,7 @@ def conn_concurrent(config, request):
     update_interval_sec = 5
     disable_unlock = False
     lock_duration = 60
+    ceph_utils = CephUtils(config)
 
     # Setup GatewayA and GatewayB configs
     configA, configB = setup_config(config, "GatewayAAA", "GatewayBBB", "Group3", True, 5, False, 60,
@@ -124,7 +128,7 @@ def conn_concurrent(config, request):
        GatewayServer(configA) as gatewayA,
        GatewayServer(configB) as gatewayB,
     ):
-        stubA, stubB = start_servers(gatewayA, gatewayB, addr, portA, portB)
+        stubA, stubB = start_servers(gatewayA, gatewayB, "Group3", addr, portA, portB, ceph_utils)
         yield gatewayA.gateway_rpc, gatewayB.gateway_rpc, stubA, stubB
         stop_servers(gatewayA, gatewayB)
 
@@ -135,7 +139,7 @@ def build_host_nqn(i):
 
 def create_resource_by_index(stub, i, caplog):
     subsystem = f"{subsystem_prefix}{i}"
-    subsystem_req = pb2.create_subsystem_req(subsystem_nqn=subsystem, enable_ha=True)
+    subsystem_req = pb2.create_subsystem_req(subsystem_nqn=subsystem, max_namespaces=256, enable_ha=True)
     ret_subsystem = stub.create_subsystem(subsystem_req)
     assert ret_subsystem.status == 0
     if caplog != None:
@@ -187,7 +191,7 @@ def test_multi_gateway_omap_reread(config, conn_omap_reread, caplog):
     num_subsystems = 2
 
     # Send requests to create a subsystem with one namespace to GatewayA
-    subsystem_req = pb2.create_subsystem_req(subsystem_nqn=nqn, serial_number=serial, enable_ha=True)
+    subsystem_req = pb2.create_subsystem_req(subsystem_nqn=nqn, serial_number=serial, max_namespaces=256, enable_ha=True)
     namespace_req = pb2.namespace_add_req(subsystem_nqn=nqn, nsid=nsid,
                                           rbd_pool_name=pool, rbd_image_name=image, block_size=4096,
                                           create_image=True, size=16*1024*1024, force=True)
@@ -315,7 +319,7 @@ def test_multi_gateway_listener_update(config, image, conn_concurrent, caplog):
 
     caplog.clear()
     subsystem = f"{subsystem_prefix}QQQ"
-    subsystem_add_req = pb2.create_subsystem_req(subsystem_nqn=subsystem, enable_ha=True)
+    subsystem_add_req = pb2.create_subsystem_req(subsystem_nqn=subsystem, max_namespaces=256, enable_ha=True)
     ret_subsystem = stubA.create_subsystem(subsystem_add_req)
     assert ret_subsystem.status == 0
     assert f"create_subsystem {subsystem}: True" in caplog.text

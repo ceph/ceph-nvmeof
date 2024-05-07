@@ -6,6 +6,7 @@ import time
 import errno
 from google.protobuf import json_format
 from control.server import GatewayServer
+from control.cephutils import CephUtils
 from control.proto import gateway_pb2 as pb2
 from control.proto import gateway_pb2_grpc as pb2_grpc
 
@@ -38,18 +39,19 @@ def conn(config):
         update_interval_sec)
     configB.config["spdk"]["rpc_socket_name"] = "spdk_GatewayB.sock"
     configB.config["spdk"]["tgt_cmd_extra_args"] = "-m 0x02"
+    ceph_utils = CephUtils(config)
 
     # Start servers
     with (
        GatewayServer(configA) as gatewayA,
        GatewayServer(configB) as gatewayB,
     ):
-        gatewayA.set_group_id(0)
+        ceph_utils.execute_ceph_monitor_command("{" + f'"prefix":"nvme-gw create", "id": "{gatewayA.name}", "pool": "{pool}", "group": "Group1"' + "}")
+        ceph_utils.execute_ceph_monitor_command("{" + f'"prefix":"nvme-gw create", "id": "{gatewayB.name}", "pool": "{pool}", "group": "Group1"' + "}")
         gatewayA.serve()
         # Delete existing OMAP state
         gatewayA.gateway_rpc.gateway_state.delete_state()
         # Create new
-        gatewayB.set_group_id(1)
         gatewayB.serve()
 
         # Bind the client and Gateways A & B
