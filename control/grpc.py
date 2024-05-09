@@ -244,7 +244,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         nonce = rpc_bdev.bdev_rbd_register_cluster(
             self.spdk_rpc_client,
             name = name,
-            user = self.rados_id,
+            user_id = self.rados_id,
             core_mask = self.librbd_core_mask,
         )
         self.logger.info(f"Allocated cluster {name=} {nonce=} {anagrp=}")
