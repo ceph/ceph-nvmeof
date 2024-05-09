@@ -529,7 +529,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         peer_msg = self.get_peer_message(context)
 
         self.logger.info(
-            f"Received request to create subsystem {request.subsystem_nqn}, enable_ha: {request.enable_ha}, context: {context}{peer_msg}")
+            f"Received request to create subsystem {request.subsystem_nqn}, enable_ha: {request.enable_ha}, max_namespaces: {request.max_namespaces}, context: {context}{peer_msg}")
 
         if not request.enable_ha:
             errmsg = f"{create_subsystem_error_prefix}: HA must be enabled for subsystems"
@@ -592,7 +592,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     ana_reporting = enable_ha,
                 )
                 self.subsys_ha[request.subsystem_nqn] = enable_ha
-                self.subsys_max_ns[request.subsystem_nqn] = request.max_namespaces  if request.max_namespaces is not None else 32
+                self.subsys_max_ns[request.subsystem_nqn] = request.max_namespaces if request.max_namespaces else 32
                 self.logger.debug(f"create_subsystem {request.subsystem_nqn}: {ret}")
             except Exception as ex:
                 self.logger.exception(create_subsystem_error_prefix)
@@ -957,8 +957,17 @@ class GatewayService(pb2_grpc.GatewayServicer):
             if not context:
                 create_image = False
             else: # new namespace
-                if request.anagrpid == 0:
+                # If an explicit load balancing group was passed, make sure it exists
+                if request.anagrpid != 0:
+                    grps_list = self.ceph_utils.get_number_created_gateways(self.gateway_pool, self.gateway_group)
+                    if request.anagrpid not in grps_list:
+                        self.logger.debug(f"ANA groups: {grps_list}")
+                        errmsg = f"Failure adding namespace {nsid_msg}to {request.subsystem_nqn}: Load balancing group {request.anagrpid} doesn't exist"
+                        self.logger.error(errmsg)
+                        return pb2.req_status(status=errno.ENODEV, error_message=errmsg)
+                else:
                    anagrp = self.choose_anagrpid_for_namespace(request.nsid)
+                   assert anagrp != 0
                 #   if anagrp == 0:
                 #        errmsg = f"Failure adding namespace with automatic ana group load balancing  {nsid_msg} to {request.subsystem_nqn}"
                 #        self.logger.error(errmsg)
@@ -1036,6 +1045,12 @@ class GatewayService(pb2_grpc.GatewayServicer):
         self.logger.info(f"Received request to change load balancing group for namespace {nsid_msg}in {request.subsystem_nqn} to {request.anagrpid}, context: {context}{peer_msg}")
 
         with self.omap_lock(context=context):
+            grps_list = self.ceph_utils.get_number_created_gateways(self.gateway_pool, self.gateway_group)
+            if request.anagrpid not in grps_list:
+                self.logger.debug(f"ANA groups: {grps_list}")
+                errmsg = f"Failure changing load balancing group for namespace {nsid_msg}in {request.subsystem_nqn}: Load balancing group {request.anagrpid} doesn't exist"
+                self.logger.error(errmsg)
+                return pb2.req_status(status=errno.ENODEV, error_message=errmsg)
             find_ret = self.find_namespace_and_bdev_name(request.subsystem_nqn, request.nsid, request.uuid, False,
                             f"Failure changing load balancing group for namespace {nsid_msg}in {request.subsystem_nqn}")
             if not find_ret[0]:

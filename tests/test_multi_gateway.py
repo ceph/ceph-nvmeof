@@ -5,6 +5,7 @@ import json
 import time
 from google.protobuf import json_format
 from control.server import GatewayServer
+from control.cephutils import CephUtils
 from control.proto import gateway_pb2 as pb2
 from control.proto import gateway_pb2_grpc as pb2_grpc
 
@@ -15,6 +16,7 @@ update_interval_sec = 5
 def conn(config):
     """Sets up and tears down Gateways A and B."""
     # Setup GatewayA and GatewayB configs
+    pool = config.get("ceph", "pool")
     configA = copy.deepcopy(config)
     configA.config["gateway"]["name"] = "GatewayA"
     configA.config["gateway"]["group"] = "Group1"
@@ -27,22 +29,22 @@ def conn(config):
     portB = portA + 2
     configB.config["gateway"]["name"] = "GatewayB"
     configB.config["gateway"]["port"] = str(portB)
-    configB.config["gateway"]["state_update_interval_sec"] = str(
-        update_interval_sec)
+    configB.config["gateway"]["state_update_interval_sec"] = str(update_interval_sec)
     configB.config["spdk"]["rpc_socket_name"] = "spdk_GatewayB.sock"
     configB.config["spdk"]["tgt_cmd_extra_args"] = "-m 0x02"
+    ceph_utils = CephUtils(config)
 
     # Start servers
     with (
        GatewayServer(configA) as gatewayA,
        GatewayServer(configB) as gatewayB,
     ):
-        gatewayA.set_group_id(0)
+        ceph_utils.execute_ceph_monitor_command("{" + f'"prefix":"nvme-gw create", "id": "{gatewayA.name}", "pool": "{pool}", "group": "Group1"' + "}")
+        ceph_utils.execute_ceph_monitor_command("{" + f'"prefix":"nvme-gw create", "id": "{gatewayB.name}", "pool": "{pool}", "group": "Group1"' + "}")
         gatewayA.serve()
         # Delete existing OMAP state
         gatewayA.gateway_rpc.gateway_state.delete_state()
         # Create new
-        gatewayB.set_group_id(1)
         gatewayB.serve()
 
         # Bind the client and Gateways A & B
@@ -73,7 +75,7 @@ def test_multi_gateway_coordination(config, image, conn):
     pool = config.get("ceph", "pool")
 
     # Send requests to create a subsystem with one namespace to GatewayA
-    subsystem_req = pb2.create_subsystem_req(subsystem_nqn=nqn,
+    subsystem_req = pb2.create_subsystem_req(subsystem_nqn=nqn, max_namespaces=256,
                                              serial_number=serial, enable_ha=True)
     namespace_req = pb2.namespace_add_req(subsystem_nqn=nqn,
                                           rbd_pool_name=pool,

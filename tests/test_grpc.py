@@ -2,6 +2,7 @@ import pytest
 import time
 from control.server import GatewayServer
 from control.cli import main as cli
+from control.cephutils import CephUtils
 import logging
 import warnings
 
@@ -30,8 +31,9 @@ def check_resource_by_index(i, caplog):
 # for pytest. In order for the test to fail in such a case we need to ask pytest to regard this as an error
 @pytest.mark.filterwarnings("error::pytest.PytestUnhandledThreadExceptionWarning")
 def test_create_get_subsys(caplog, config):
+    ceph_utils = CephUtils(config)
     with GatewayServer(config) as gateway:
-        gateway.set_group_id(0)
+        ceph_utils.execute_ceph_monitor_command("{" + f'"prefix":"nvme-gw create", "id": "{gateway.name}", "pool": "{pool}", "group": ""' + "}")
         gateway.serve()
 
         for i in range(created_resource_count):
@@ -46,11 +48,6 @@ def test_create_get_subsys(caplog, config):
         cli(["listener", "add", "--subsystem", f"{subsystem_prefix}0", "--host-name",
              gateway.gateway_rpc.host_name, "--traddr", "127.0.0.1", "--trsvcid", "5001"])
         assert f"Adding {subsystem_prefix}0 listener at 127.0.0.1:5001: Successful" in caplog.text
-
-        # Change ANA group id for the first namesapce
-        cli(["namespace", "change_load_balancing_group", "--subsystem", f"{subsystem_prefix}0", "--nsid", "1",
-             "--load-balancing-group", "4"])
-        assert f"Changing load balancing group of namespace 1 in {subsystem_prefix}0 to 4: Successful" in caplog.text
 
         # Set QOS for the first namespace
         cli(["namespace", "set_qos", "--subsystem", f"{subsystem_prefix}0", "--nsid", "1",
@@ -67,7 +64,7 @@ def test_create_get_subsys(caplog, config):
 
     # restart the gateway here
     with GatewayServer(config) as gateway:
-        gateway.set_group_id(0)
+        ceph_utils.execute_ceph_monitor_command("{" + f'"prefix":"nvme-gw create", "id": "{gateway.name}", "pool": "{pool}", "group": ""' + "}")
         gateway.serve()
 
         for i in range(subsys_list_count):
@@ -77,7 +74,7 @@ def test_create_get_subsys(caplog, config):
             time.sleep(0.1)
 
         time.sleep(20)     # Make sure update() is over
-        assert f"{subsystem_prefix}0 with ANA group id 4" in caplog.text
+        assert f"{subsystem_prefix}0 with ANA group id 1" in caplog.text
         assert f"Received request to set QOS limits for namespace using NSID 1 on {subsystem_prefix}0, R/W IOs per second: 2000 Read megabytes per second: 5" in caplog.text
         caplog.clear()
         cli(["--format", "plain", "subsystem", "list"])
