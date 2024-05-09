@@ -18,6 +18,7 @@ import contextlib
 import time
 from typing import Callable
 from collections import defaultdict
+import logging
 
 import spdk.rpc.bdev as rpc_bdev
 import spdk.rpc.nvmf as rpc_nvmf
@@ -1965,7 +1966,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
         """List connections."""
 
         peer_msg = self.get_peer_message(context)
-        self.logger.info(f"Received request to list connections for {request.subsystem}, context: {context}{peer_msg}")
+        log_level = logging.INFO if context else logging.DEBUG
+        self.logger.log(log_level, f"Received request to list connections for {request.subsystem}, context: {context}{peer_msg}")
         try:
             qpair_ret = rpc_nvmf.nvmf_subsystem_get_qpairs(self.spdk_rpc_client, nqn=request.subsystem)
             self.logger.debug(f"list_connections get_qpairs: {qpair_ret}")
