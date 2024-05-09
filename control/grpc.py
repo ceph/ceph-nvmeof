@@ -1170,7 +1170,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         try:
             self.gateway_state.remove_namespace_qos(nqn, str(nsid))
         except Exception:
-            self.logger.exception(f"Error removing namespace's QOS limits, they might not have been set")
+            self.logger.warning(f"Error removing namespace's QOS limits, they might not have been set")
             pass
         try:
             self.gateway_state.remove_namespace(nqn, str(nsid))
