@@ -131,6 +131,10 @@ class Parser:
             type=argparse.FileType("rb"),
             help="Path to the server certificate file"
         )
+        self.parser.add_argument(
+            "--verbose",
+            help="Run CLI in verbose mode",
+            action='store_true')
 
         self.subparsers = self.parser.add_subparsers(title="Commands", dest="subcommand")
 
@@ -1573,6 +1577,36 @@ class GatewayClient:
                 ns_io_stats.status = errno.ENODEV
                 ns_io_stats.error_message = f"Failure getting namespace's IO stats: Returned namespace UUID {ns_io_stats.uuid} differs from requested one {args.uuid}"
 
+        # only show IO errors in verbose mode
+        if not args.verbose:
+            io_stats = pb2.namespace_io_stats_info(status = ns_io_stats.status,
+                                                   error_message = ns_io_stats.error_message,
+                                                   subsystem_nqn = ns_io_stats.subsystem_nqn,
+                                                   nsid = ns_io_stats.nsid,
+                                                   uuid = ns_io_stats.uuid,
+                                                   bdev_name = ns_io_stats.bdev_name,
+                                                   tick_rate = ns_io_stats.tick_rate,
+                                                   ticks = ns_io_stats.ticks,
+                                                   bytes_read = ns_io_stats.bytes_read,
+                                                   num_read_ops = ns_io_stats.num_read_ops,
+                                                   bytes_written = ns_io_stats.bytes_written,
+                                                   num_write_ops = ns_io_stats.num_write_ops,
+                                                   bytes_unmapped = ns_io_stats.bytes_unmapped,
+                                                   num_unmap_ops = ns_io_stats.num_unmap_ops,
+                                                   read_latency_ticks = ns_io_stats.read_latency_ticks,
+                                                   max_read_latency_ticks = ns_io_stats.max_read_latency_ticks,
+                                                   min_read_latency_ticks = ns_io_stats.min_read_latency_ticks,
+                                                   write_latency_ticks = ns_io_stats.write_latency_ticks,
+                                                   max_write_latency_ticks = ns_io_stats.max_write_latency_ticks,
+                                                   min_write_latency_ticks = ns_io_stats.min_write_latency_ticks,
+                                                   unmap_latency_ticks = ns_io_stats.unmap_latency_ticks,
+                                                   max_unmap_latency_ticks = ns_io_stats.max_unmap_latency_ticks,
+                                                   min_unmap_latency_ticks = ns_io_stats.min_unmap_latency_ticks,
+                                                   copy_latency_ticks = ns_io_stats.copy_latency_ticks,
+                                                   max_copy_latency_ticks = ns_io_stats.max_copy_latency_ticks,
+                                                   min_copy_latency_ticks = ns_io_stats.min_copy_latency_ticks)
+            ns_io_stats = io_stats
+
         if args.format == "text" or args.format == "plain":
             if ns_io_stats.status == 0:
                 stats_list = []
@@ -1596,7 +1630,9 @@ class GatewayClient:
                 stats_list.append(["Copy Latency Ticks", ns_io_stats.copy_latency_ticks])
                 stats_list.append(["Max Copy Latency Ticks", ns_io_stats.max_copy_latency_ticks])
                 stats_list.append(["Min Copy Latency Ticks", ns_io_stats.min_copy_latency_ticks])
-                stats_list.append(["IO Error", str(ns_io_stats.io_error)])
+                for e in ns_io_stats.io_error:
+                    if e.value:
+                        stats_list.append([f"IO Error - {e.name}", e.value])
 
                 if args.format == "text":
                     table_format = "fancy_grid"

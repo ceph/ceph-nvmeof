@@ -1389,6 +1389,14 @@ class GatewayService(pb2_grpc.GatewayServicer):
             if len(bdevs) > 1:
                 self.logger.warning(f"More than one associated block device found for namespace, will use the first one")
             bdev = bdevs[0]
+            io_errs = []
+            try:
+                io_error=bdev["io_error"]
+                for err_name in io_error.keys():
+                    one_error = pb2.namespace_io_error(name=err_name, value=io_error[err_name])
+                    io_errs.append(one_error)
+            except Exception:
+                self.logger.exception(f"failure getting io errors")
             io_stats = pb2.namespace_io_stats_info(status=0,
                                error_message=os.strerror(0),
                                subsystem_nqn=request.subsystem_nqn,
@@ -1415,10 +1423,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                copy_latency_ticks=bdev["copy_latency_ticks"],
                                max_copy_latency_ticks=bdev["max_copy_latency_ticks"],
                                min_copy_latency_ticks=bdev["min_copy_latency_ticks"],
-                               io_error=bdev["io_error"])
+                               io_error=io_errs)
             return io_stats
         except Exception as ex:
-            self.logger.exception(f"{s=} parse error")
+            self.logger.exception(f"parse error")
             exmsg = str(ex)
             pass
 
@@ -2083,7 +2091,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 if hostnqn in host_nqns:
                     host_nqns.remove(hostnqn)
             except Exception:
-                self.logger.exception(f"{s=} parse error")
+                self.logger.exception(f"{con=} parse error")
                 pass
 
         for nqn in host_nqns:
