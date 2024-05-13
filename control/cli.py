@@ -1270,6 +1270,9 @@ class GatewayClient:
             img_size = self.get_size_in_bytes(args.size)
             if img_size <= 0:
                 self.cli.parser.error("size value must be positive")
+            mib = 1024 * 1024
+            if img_size % mib:
+                self.cli.parser.error("size value must be aligned to MiBs")
         else:
             if args.size != None:
                 self.cli.parser.error("--size argument is not allowed for add command when RBD image creation is disabled")
@@ -1372,7 +1375,8 @@ class GatewayClient:
         if ns_size <= 0:
             self.cli.parser.error("size value must be positive")
         mib = 1024 * 1024
-        ns_size = int((ns_size + mib - 1) / mib)    # Convert to MiB
+        if ns_size % mib:
+            self.cli.parser.error("size value must be aligned to MiBs")
 
         try:
             ret = self.stub.namespace_resize(pb2.namespace_resize_req(subsystem_nqn=args.subsystem, nsid=args.nsid,
@@ -1388,7 +1392,8 @@ class GatewayClient:
                     ns_id_str = f"with UUID {args.uuid}"
                 else:
                     assert False
-                out_func(f"Resizing namespace {ns_id_str} in {args.subsystem} to {ns_size} MiB: Successful")
+                sz_str = self.format_size(ns_size)
+                out_func(f"Resizing namespace {ns_id_str} in {args.subsystem} to {sz_str}: Successful")
             else:
                 err_func(f"{ret.error_message}")
         elif args.format == "json" or args.format == "yaml":
@@ -1423,8 +1428,14 @@ class GatewayClient:
     def get_size_in_bytes(self, sz):
         multiply = 1
         sz = sz.strip()
+        try:
+            int_size = int(sz)
+            sz += "MB"      # If no unit is specified assume MB
+        except Exception:
+            pass
+
+        found = False
         for unit_index in range(len(GatewayClient.SIZE_UNITS)):
-            found = False
             if sz.endswith(GatewayClient.SIZE_UNITS[unit_index]):
                 sz = sz[:-1]
                 found = True
@@ -1434,6 +1445,9 @@ class GatewayClient:
             if found:
                 multiply = 1024 ** (unit_index + 1)
                 break
+
+        if not found and sz.endswith("B"):
+            sz = sz[:-1]
 
         try:
             sz = sz.strip()

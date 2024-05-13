@@ -241,6 +241,36 @@ class TestCreate:
         assert f"Failure adding namespace to {subsystem}:" in caplog.text
         assert f"Load balancing group 100 doesn't exist" in caplog.text
 
+    def test_add_namespace_wrong_size(self, caplog, gateway):
+        caplog.clear()
+        rc = 0
+        try:
+            cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool, "--rbd-image", "junkimage", "--size", "0", "--rbd-create-image"])
+        except SystemExit as sysex:
+            rc = int(str(sysex))
+            pass
+        assert "size value must be positive" in caplog.text
+        assert rc == 2
+        caplog.clear()
+        rc = 0
+        try:
+            cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool, "--rbd-image", "junkimage", "--size", "1026KB", "--rbd-create-image"])
+        except SystemExit as sysex:
+            rc = int(str(sysex))
+            pass
+        assert "size value must be aligned to MiBs" in caplog.text
+        assert rc == 2
+
+    def test_add_namespace_wrong_size_grpc(self, caplog, gateway):
+        gw, stub = gateway
+        caplog.clear()
+        add_namespace_req = pb2.namespace_add_req(subsystem_nqn=subsystem, rbd_pool_name=pool, rbd_image_name="junkimage",
+                                                  block_size=512, create_image=True, size=16*1024*1024+20)
+        ret = stub.namespace_add(add_namespace_req)
+        assert ret.status != 0
+        assert f"Failure adding namespace" in caplog.text
+        assert f"image size must be aligned to MiBs" in caplog.text
+
     def test_add_namespace_wrong_block_size(self, caplog, gateway):
         gw, stub = gateway
         caplog.clear()
@@ -261,7 +291,7 @@ class TestCreate:
         assert f"Allocated cluster name='cluster_context_{anagrpid}_0'" in caplog.text
         assert f"get_cluster cluster_name='cluster_context_{anagrpid}_0'" in caplog.text
         caplog.clear()
-        cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool, "--rbd-image", image2, "--size", "36M", "--rbd-create-image", "--load-balancing-group", anagrpid, "--force"])
+        cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool, "--rbd-image", image2, "--size", "36", "--rbd-create-image", "--load-balancing-group", anagrpid, "--force"])
         assert f"Image {pool}/{image2} already exists with a size of 16777216 bytes which differs from the requested size of 37748736 bytes" in caplog.text
         assert f"Can't create RBD image {pool}/{image2}" in caplog.text
         caplog.clear()
@@ -382,6 +412,12 @@ class TestCreate:
         cli(["namespace", "resize", "--subsystem", subsystem, "--nsid", "6", "--size", "2MB"])
         assert f"new size 2097152 bytes is smaller than current size 16777216 bytes" in caplog.text
         caplog.clear()
+        cli(["namespace", "resize", "--subsystem", subsystem, "--nsid", "6", "--size", "2"])
+        assert f"new size 2097152 bytes is smaller than current size 16777216 bytes" in caplog.text
+        caplog.clear()
+        cli(["namespace", "resize", "--subsystem", subsystem, "--nsid", "6", "--size", "3145728B"])
+        assert f"new size 3145728 bytes is smaller than current size 16777216 bytes" in caplog.text
+        caplog.clear()
         cli(["namespace", "resize", "--subsystem", subsystem, "--nsid", "6", "--size", "32MB"])
         assert f"Resizing namespace 6 in {subsystem} to 32 MiB: Successful" in caplog.text
         caplog.clear()
@@ -457,7 +493,10 @@ class TestCreate:
         assert f"Adding namespace 6 to {subsystem}: Successful" in caplog.text
         caplog.clear()
         cli(["namespace", "resize", "--subsystem", subsystem, "--nsid", "4", "--size", "6GB"])
-        assert f"Resizing namespace 4 in {subsystem} to 6144 MiB: Successful" in caplog.text
+        assert f"Resizing namespace 4 in {subsystem} to 6 GiB: Successful" in caplog.text
+        caplog.clear()
+        cli(["namespace", "resize", "--subsystem", subsystem, "--nsid", "4", "--size", "8192"])
+        assert f"Resizing namespace 4 in {subsystem} to 8 GiB: Successful" in caplog.text
 
     def test_set_namespace_qos_limits(self, caplog, gateway):
         caplog.clear()
