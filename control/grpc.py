@@ -2428,13 +2428,14 @@ class GatewayService(pb2_grpc.GatewayServicer):
         """List subsystems."""
 
         peer_msg = self.get_peer_message(context)
-        ser_msg = ""
-        if request.serial_number:
-            ser_msg = f" with serial number {request.serial_number}"
+        log_level = logging.INFO if context else logging.DEBUG
         if request.subsystem_nqn:
-            self.logger.info(f"Received request to list subsystem {request.subsystem_nqn}, context: {context}{peer_msg}")
+            self.logger.log(log_level, f"Received request to list subsystem {request.subsystem_nqn}, context: {context}{peer_msg}")
         else:
-            self.logger.info(f"Received request to list the subsystem{ser_msg}, context: {context}{peer_msg}")
+            if request.serial_number:
+                self.logger.log(log_level, f"Received request to list the subsystem with serial number {request.serial_number}, context: {context}{peer_msg}")
+            else:
+                self.logger.log(log_level, f"Received request to list all subsystems, context: {context}{peer_msg}")
 
         subsystems = []
         try:
