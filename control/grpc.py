@@ -73,40 +73,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
         """Constructor"""
         self.gw_logger_object = GatewayLogger(config)
         self.logger = self.gw_logger_object.logger
+        config.display_environment_info(self.logger)
         self.ceph_utils = ceph_utils
-        ver = os.getenv("NVMEOF_VERSION")
-        if ver:
-            self.logger.info(f"Using NVMeoF gateway version {ver}")
-        spdk_ver = os.getenv("NVMEOF_SPDK_VERSION")
-        if spdk_ver:
-            self.logger.info(f"Using SPDK version {spdk_ver}")
-        ceph_ver = os.getenv("NVMEOF_CEPH_VERSION")
-        if ceph_ver:
-            self.logger.info(f"Using vstart cluster version based on {ceph_ver}")
-        build_date = os.getenv("BUILD_DATE")
-        if build_date:
-            self.logger.info(f"NVMeoF gateway built on: {build_date}")
-        git_rep = os.getenv("NVMEOF_GIT_REPO")
-        if git_rep:
-            self.logger.info(f"NVMeoF gateway Git repository: {git_rep}")
-        git_branch = os.getenv("NVMEOF_GIT_BRANCH")
-        if git_branch:
-            self.logger.info(f"NVMeoF gateway Git branch: {git_branch}")
-        git_commit = os.getenv("NVMEOF_GIT_COMMIT")
-        if git_commit:
-            self.logger.info(f"NVMeoF gateway Git commit: {git_commit}")
-        git_modified = os.getenv("NVMEOF_GIT_MODIFIED_FILES")
-        if git_modified:
-            self.logger.info(f"NVMeoF gateway uncommitted modified files: {git_modified}")
-        git_spdk_rep = os.getenv("SPDK_GIT_REPO")
-        if git_spdk_rep:
-            self.logger.info(f"SPDK Git repository: {git_spdk_rep}")
-        git_spdk_branch = os.getenv("SPDK_GIT_BRANCH")
-        if git_spdk_branch:
-            self.logger.info(f"SPDK Git branch: {git_spdk_branch}")
-        git_spdk_commit = os.getenv("SPDK_GIT_COMMIT")
-        if git_spdk_commit:
-            self.logger.info(f"SPDK Git commit: {git_spdk_commit}")
         self.ceph_utils.fetch_and_display_ceph_version()
         requested_hugepages_val = os.getenv("HUGEPAGES", "")
         if not requested_hugepages_val:
