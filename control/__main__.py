@@ -37,6 +37,7 @@ if __name__ == '__main__':
 
     config = GatewayConfig(args.config)
     gw_logger = GatewayLogger(config)
+    config.display_environment_info(gw_logger.logger)
     config.dump_config_file(gw_logger.logger)
     with GatewayServer(config) as gateway:
         gw_name = gateway.name
