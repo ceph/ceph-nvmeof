@@ -37,12 +37,13 @@ from .cephutils import CephUtils
 from .prometheus import start_exporter
 
 def sigchld_handler(signum, frame):
-    """Handle SIGCHLD, runs when a spdk process terminates."""
+    """Handle SIGCHLD, runs when a child process, like the spdk, terminates."""
     logger = GatewayLogger().logger
     logger.error(f"GatewayServer: SIGCHLD received {signum=}")
 
     try:
         pid, wait_status = os.waitpid(-1, os.WNOHANG)
+        logger.error(f"PID of terminated child process is {pid}")
     except OSError:
         logger.exception(f"waitpid error")
         # eat the exception, in signal handler context
