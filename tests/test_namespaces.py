@@ -23,20 +23,19 @@ namespace_del_range=range(101,201)
 def conn(config):
     """Sets up and tears down Gateways A and B."""
     # Setup GatewayA and GatewayB configs
+    config.config["gateway"]["group"] = "Group1"
+    config.config["gateway"]["enable_spdk_discovery_controller"] = "True"
+    config.config["gateway"]["state_update_notify"] = str(update_notify)
+    config.config["gateway"]["state_update_interval_sec"] = str(
+        update_interval_sec)
     configA = copy.deepcopy(config)
     configA.config["gateway"]["name"] = "GatewayA"
-    configA.config["gateway"]["group"] = "Group1"
-    configA.config["gateway"]["state_update_notify"] = str(update_notify)
-    configA.config["gateway"]["enable_spdk_discovery_controller"] = "True"
     configA.config["spdk"]["rpc_socket_name"] = "spdk_GatewayA.sock"
     configB = copy.deepcopy(configA)
-    addr = configA.get("gateway", "addr")
     portA = configA.getint("gateway", "port")
     portB = portA + 2
     configB.config["gateway"]["name"] = "GatewayB"
     configB.config["gateway"]["port"] = str(portB)
-    configB.config["gateway"]["state_update_interval_sec"] = str(
-        update_interval_sec)
     configB.config["spdk"]["rpc_socket_name"] = "spdk_GatewayB.sock"
     configB.config["spdk"]["tgt_cmd_extra_args"] = "-m 0x02"
     ceph_utils = CephUtils(config)
@@ -55,6 +54,7 @@ def conn(config):
         gatewayB.serve()
 
         # Bind the client and Gateways A & B
+        addr = configA.get("gateway", "addr")
         channelA = grpc.insecure_channel(f"{addr}:{portA}")
         stubA = pb2_grpc.GatewayStub(channelA)
         channelB = grpc.insecure_channel(f"{addr}:{portB}")
