@@ -237,6 +237,7 @@ class GatewayServer:
         try:
             # start monitor client process
             self.monitor_client_process = subprocess.Popen(cmd)
+            self.logger.info(f"monitor client process id: {self.monitor_client_process.pid}")
             # wait for monitor notification of the group id
             self._wait_for_group_id()
         except Exception:
