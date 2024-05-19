@@ -2028,6 +2028,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 traddr = ""
                 trsvcid = 0
                 adrfam = ""
+                trtype = "TCP"
                 hostnqn = conn["hostnqn"]
                 connected = False
 
