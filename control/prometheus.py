@@ -391,7 +391,11 @@ class NVMeOFCollector:
                     str(ns.anagrpid)
                 ], 1)
 
-            conn_info = self.connections[nqn]
+            try:
+                conn_info = self.connections[nqn]
+            except KeyError:
+                logger.debug(f"couldn't find {nqn} in connection list, skipping")
+                continue
             for conn in conn_info.connections:
                 host_connection_state.add_metric([
                     self.gw_metadata.name,
@@ -426,7 +430,10 @@ class NVMeOFCollector:
             if not device_name:
                 # listener defined to an unbound address!
                 continue
-            nic = nics.adapters[device_name]
+            try:
+                nic = nics.adapters[device_name]
+            except KeyError:
+                continue
             subsystem_listener_iface_info.add_metric([
                 device_name,
                 nic.operstate,
