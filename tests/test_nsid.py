@@ -151,6 +151,7 @@ def test_multi_gateway_namespace_ids(config, image, caplog):
         else:
             assert False
         gatewayB.__exit__(None, None, None)
+        time.sleep(15)    # let the monitor client time to settle after stopping the gateway and before starting a new one
         gatewayB = GatewayServer(configB)
         ceph_utils.execute_ceph_monitor_command("{" + f'"prefix":"nvme-gw create", "id": "{gatewayB.name}", "pool": "{pool}", "group": "Group1"' + "}")
         gatewayB.serve()
