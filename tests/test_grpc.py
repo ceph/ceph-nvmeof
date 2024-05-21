@@ -60,6 +60,7 @@ def test_create_get_subsys(caplog, config):
         assert f"Setting QOS limits of namespace 1 in {subsystem_prefix}0: Successful" in caplog.text
         assert f"No previous QOS limits found, this is the first time the limits are set for namespace using NSID 1 on {subsystem_prefix}0" not in caplog.text
 
+    time.sleep(15)    # let the monitor client time to settle after stopping the gateway and before starting a new one
     caplog.clear()
 
     # restart the gateway here
