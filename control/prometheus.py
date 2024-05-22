@@ -150,18 +150,30 @@ class NVMeOFCollector:
 
     @timer
     def _get_bdev_info(self):
-        with self.gateway_rpc.rpc_lock:
-            return rpc.bdev.bdev_get_bdevs(self.spdk_rpc_client)
+        try:
+            with self.gateway_rpc.rpc_lock:
+                return rpc.bdev.bdev_get_bdevs(self.spdk_rpc_client)
+        except Exception:
+            logger.exception("Error trying to call bdev_get_bdevs()")
+            return []
 
     @timer
     def _get_bdev_io_stats(self):
-        with self.gateway_rpc.rpc_lock:
-            return rpc.bdev.bdev_get_iostat(self.spdk_rpc_client)
+        try:
+            with self.gateway_rpc.rpc_lock:
+                return rpc.bdev.bdev_get_iostat(self.spdk_rpc_client)
+        except Exception:
+            logger.exception("Error trying to call bdev_get_iostat()")
+            return {}
 
     @timer
     def _get_spdk_thread_stats(self):
-        with self.gateway_rpc.rpc_lock:
-            return rpc.app.thread_get_stats(self.spdk_rpc_client)
+        try:
+            with self.gateway_rpc.rpc_lock:
+                return rpc.app.thread_get_stats(self.spdk_rpc_client)
+        except Exception:
+            logger.exception("Error trying to call thread_get_stats()")
+            return {}
 
     @timer
     def _get_subsystems(self):
@@ -309,8 +321,9 @@ class NVMeOFCollector:
             bdev_read_bytes.add_metric([bdev_name], bdev.get("bytes_read"))
             bdev_write_bytes.add_metric([bdev_name], bdev.get("bytes_written"))
 
-            bdev_read_seconds.add_metric([bdev_name], (bdev.get("read_latency_ticks") / tick_rate))
-            bdev_write_seconds.add_metric([bdev_name], (bdev.get("write_latency_ticks") / tick_rate))
+            if tick_rate:
+                bdev_read_seconds.add_metric([bdev_name], (bdev.get("read_latency_ticks") / tick_rate))
+                bdev_write_seconds.add_metric([bdev_name], (bdev.get("write_latency_ticks") / tick_rate))
 
         yield bdev_read_ops
         yield bdev_write_ops
@@ -327,8 +340,9 @@ class NVMeOFCollector:
         for spdk_thread in self.spdk_thread_stats.get("threads", []):
             if "poll" not in spdk_thread["name"]:
                 continue
-            reactor_utilization.add_metric([spdk_thread.get("name"), "busy"], (spdk_thread.get("busy") / tick_rate))
-            reactor_utilization.add_metric([spdk_thread.get("name"), "idle"], (spdk_thread.get("idle") / tick_rate))
+            if tick_rate:
+                reactor_utilization.add_metric([spdk_thread.get("name"), "busy"], (spdk_thread.get("busy") / tick_rate))
+                reactor_utilization.add_metric([spdk_thread.get("name"), "idle"], (spdk_thread.get("idle") / tick_rate))
 
         yield reactor_utilization
 
