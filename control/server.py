@@ -401,6 +401,18 @@ class GatewayServer:
         for trtype in spdk_transports.split():
             self._create_transport(trtype.lower())
 
+        with self.ping_lock:
+            try:
+                return_version = spdk.rpc.spdk_get_version(self.spdk_rpc_ping_client)
+                try:
+                    version_string = return_version["version"]
+                    self.logger.info(f"Started SPDK with version \"{version_string}\"")
+                except KeyError:
+                    self.logger.error(f"Can't find SPDK version string in {return_version}")
+            except Exception:
+                self.logger.exception(f"Can't read SPDK version")
+                pass
+
     def _stop_subprocess(self, proc, timeout):
         """Stops SPDK process."""
         assert proc is not None # should be verified by the caller
