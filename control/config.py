@@ -78,7 +78,7 @@ class GatewayConfig:
             logger.info(f"Using NVMeoF gateway version {ver}")
         spdk_ver = os.getenv("NVMEOF_SPDK_VERSION")
         if spdk_ver:
-            logger.info(f"Using SPDK version {spdk_ver}")
+            logger.info(f"Configured SPDK version {spdk_ver}")
         ceph_ver = os.getenv("NVMEOF_CEPH_VERSION")
         if ceph_ver:
             logger.info(f"Using vstart cluster version based on {ceph_ver}")
