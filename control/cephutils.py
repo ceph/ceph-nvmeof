@@ -140,17 +140,10 @@ class CephUtils:
             with cluster.open_ioctx(pool_name) as ioctx:
                 rbd_inst = rbd.RBD()
                 try:
-                    images = rbd_inst.list(ioctx)
-                    if image_name in images:
-                        try:
-                            with rbd.Image(ioctx, image_name) as img:
-                                img_stat = img.stat()
-                                image_size = img_stat["size"]
-                        except Exception as ex:
-                            self.logger.exception(f"Can't get image object for {pool_name}/{image_name}")
-                            raise ex
-                    else:
-                        raise rbd.ImageNotFound(f"Image {pool_name}/{image_name} doesn't exist", errno = errno.ENODEV)
+                    with rbd.Image(ioctx, image_name) as img:
+                        image_size = img.size()
+                except rbd.ImageNotFound:
+                    raise rbd.ImageNotFound(f"Image {pool_name}/{image_name} doesn't exist", errno = errno.ENODEV)
                 except Exception as ex:
                     self.logger.exception(f"Error while trying to get the size of image {pool_name}/{image_name}")
                     raise ex
