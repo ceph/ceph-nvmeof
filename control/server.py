@@ -139,11 +139,7 @@ class GatewayServer:
 
     def _wait_for_group_id(self):
         """Waits for the monitor notification of this gatway's group id"""
-        #  Python 3.8: Default value of max_workers is  min(32, os.cpu_count() + 4).
-        #  This default value preserves at least 5 workers for I/O bound tasks. It utilizes at
-        #  most 32 CPU cores for CPU bound tasks which release the GIL. And it avoids using
-        #  very large resources implicitly on many-core machines.
-        self.monitor_server = grpc.server(futures.ThreadPoolExecutor())
+        self.monitor_server = grpc.server(futures.ThreadPoolExecutor(max_workers=1))
         monitor_pb2_grpc.add_MonitorGroupServicer_to_server(MonitorGroupService(self.set_group_id), self.monitor_server)
         self.monitor_server.add_insecure_port(self._monitor_address())
         self.monitor_server.start()
@@ -180,7 +176,7 @@ class GatewayServer:
 
         # Register service implementation with server
         gateway_state = GatewayStateHandler(self.config, local_state, omap_state, self.gateway_rpc_caller)
-        omap_lock = OmapLock(omap_state, gateway_state, self.rpc_lock)
+        omap_lock = OmapLock(omap_state, gateway_state)
         self.gateway_rpc = GatewayService(self.config, gateway_state, self.rpc_lock, omap_lock, self.group_id, self.spdk_rpc_client, self.ceph_utils)
         self.server = grpc.server(futures.ThreadPoolExecutor(max_workers=1))
         pb2_grpc.add_GatewayServicer_to_server(self.gateway_rpc, self.server)
