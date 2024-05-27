@@ -646,8 +646,9 @@ class GatewayStateHandler:
             # Get version and state from OMAP
             omap_state_dict = self.omap.get_state()
             omap_version = int(omap_state_dict[self.omap.OMAP_VERSION_KEY])
+            local_version = self.omap.get_local_version()
 
-            if self.omap.get_local_version() < omap_version:
+            if local_version < omap_version:
                 local_state_dict = self.local.get_state()
                 local_state_keys = local_state_dict.keys()
                 omap_state_keys = omap_state_dict.keys()
@@ -682,7 +683,7 @@ class GatewayStateHandler:
                 # Update local state and version
                 self.local.reset(omap_state_dict)
                 self.omap.set_local_version(omap_version)
-                self.logger.debug("Update complete.")
+                self.logger.debug(f"Update complete ({local_version} -> {omap_version}).")
 
         return True
 
