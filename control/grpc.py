@@ -134,6 +134,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         self.verify_nqns = self.config.getboolean_with_default("gateway", "verify_nqns", True)
         self.gateway_group = self.config.get_with_default("gateway", "group", "")
         self.gateway_pool =  self.config.get_with_default("ceph", "pool", "")
+        self.disable_list_connections = self.config.getboolean_with_default("gateway", "disable_list_connections", True)
         self.ana_map = defaultdict(dict)
         self.cluster_nonce = {}
         self.bdev_cluster = {}
@@ -1959,6 +1960,11 @@ class GatewayService(pb2_grpc.GatewayServicer):
         peer_msg = self.get_peer_message(context)
         log_level = logging.INFO if context else logging.DEBUG
         self.logger.log(log_level, f"Received request to list connections for {request.subsystem}, context: {context}{peer_msg}")
+        if self.disable_list_connections:
+            errmsg = f"List connections is disabled, returning an empty list"
+            self.logger.log(log_level, errmsg)
+            return pb2.connections_info(status = errno.EADDRNOTAVAIL, error_message = errmsg,
+                              subsystem_nqn=request.subsystem, connections=[])
         try:
             qpair_ret = rpc_nvmf.nvmf_subsystem_get_qpairs(self.spdk_rpc_client, nqn=request.subsystem)
             self.logger.debug(f"list_connections get_qpairs: {qpair_ret}")
@@ -2296,7 +2302,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
             self.logger.error(errmsg)
             return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
 
-        if not request.force:
+        if not request.force and not self.disable_list_connections:
             list_conn_req = pb2.list_connections_req(subsystem=request.nqn)
             list_conn_ret = self.list_connections_safe(list_conn_req, context)
             if list_conn_ret.status != 0:
