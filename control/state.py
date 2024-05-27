@@ -185,27 +185,15 @@ class LocalGatewayState(GatewayState):
         """Resets dictionary with OMAP state."""
         self.state = omap_state
 
-class ReleasedLock:
-    def __init__(self, lock: threading.Lock):
-        self.lock = lock
-        assert self.lock.locked(), "Lock must be locked when creating ReleasedLock instance"
-
-    def __enter__(self):
-        self.lock.release()
-        return self
-
-    def __exit__(self, exc_type, exc_value, traceback):
-        self.lock.acquire()
 
 class OmapLock:
     OMAP_FILE_LOCK_NAME = "omap_file_lock"
     OMAP_FILE_LOCK_COOKIE = "omap_file_cookie"
 
-    def __init__(self, omap_state, gateway_state, rpc_lock: threading.Lock) -> None:
+    def __init__(self, omap_state, gateway_state) -> None:
         self.logger = omap_state.logger
         self.omap_state = omap_state
         self.gateway_state = gateway_state
-        self.rpc_lock = rpc_lock
         self.is_locked = False
         self.omap_file_lock_duration = self.omap_state.config.getint_with_default("gateway", "omap_file_lock_duration", 20)
         self.omap_file_update_reloads = self.omap_state.config.getint_with_default("gateway", "omap_file_update_reloads", 10)
@@ -270,7 +258,6 @@ class OmapLock:
 
     def lock_omap(self):
         got_lock = False
-        assert self.rpc_lock.locked(), "The RPC lock is not locked."
 
         for i in range(0, self.omap_file_lock_retries + 1):
             try:
@@ -287,8 +274,7 @@ class OmapLock:
             except rados.ObjectBusy as ex:
                 self.logger.warning(
                        f"The OMAP file is locked, will try again in {self.omap_file_lock_retry_sleep_interval} seconds")
-                with ReleasedLock(self.rpc_lock):
-                    time.sleep(self.omap_file_lock_retry_sleep_interval)
+                time.sleep(self.omap_file_lock_retry_sleep_interval)
             except Exception:
                 self.logger.exception(f"Unable to lock OMAP file, exiting")
                 raise
