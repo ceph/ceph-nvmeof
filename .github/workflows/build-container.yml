@@ -293,22 +293,21 @@ jobs:
           make exec SVC=bdevperf OPTS=-T CMD="$rpc -v -s $BDEVPERF_SOCKET bdev_nvme_set_options -r -1"
           echo "ℹ️  bdevperf tcp connect ip: $NVMEOF_IP_ADDRESS port: $NVMEOF_IO_PORT nqn: $NQN"
           make exec SVC=bdevperf OPTS=-T CMD="$rpc -v -s $BDEVPERF_SOCKET bdev_nvme_attach_controller -b Nvme0 -t tcp -a $NVMEOF_IP_ADDRESS -s $NVMEOF_IO_PORT -f ipv4 -n $NQN -q ${NQN}host -l -1 -o 10"
-          #Disable connections list verification until we re-enable it in the code
-          #echo "ℹ️  verify connection list"
-          #conns=$(cephnvmf --output stdio --format json connection list --subsystem $NQN)
-          #echo $conns | grep -q '"status": 0'
-          #echo $conns | grep -q "\"nqn\": \"${NQN}host\""
-          #echo $conns | grep -q "\"trsvcid\": ${NVMEOF_IO_PORT}"
-          #echo $conns | grep -q "\"traddr\": \"${NVMEOF_IP_ADDRESS}\""
-          #echo $conns | grep -q "\"adrfam\": \"ipv4\""
-          #echo $conns | grep -q "\"trtype\": \"TCP\""
-          #con_cnt=$(echo $conns | xargs -n 1 | grep traddr | wc -l)
-          #if [ $con_cnt -ne 1 ]; then
-          #    echo "Number of connections ${con_cnt}, expected 1 list: ${conns}"
-          #    exit 1
-          #fi
-          #echo $conns | grep -q "\"qpairs_count\": 1"
-          #echo $conns | grep -q "\"connected\": true"
+          echo "ℹ️  verify connection list"
+          conns=$(cephnvmf --output stdio --format json connection list --subsystem $NQN)
+          echo $conns | grep -q '"status": 0'
+          echo $conns | grep -q "\"nqn\": \"${NQN}host\""
+          echo $conns | grep -q "\"trsvcid\": ${NVMEOF_IO_PORT}"
+          echo $conns | grep -q "\"traddr\": \"${NVMEOF_IP_ADDRESS}\""
+          echo $conns | grep -q "\"adrfam\": \"ipv4\""
+          echo $conns | grep -q "\"trtype\": \"TCP\""
+          con_cnt=$(echo $conns | xargs -n 1 | grep traddr | wc -l)
+          if [ $con_cnt -ne 1 ]; then
+              echo "Number of connections ${con_cnt}, expected 1 list: ${conns}"
+              exit 1
+          fi
+          echo $conns | grep -q "\"qpairs_count\": 1"
+          echo $conns | grep -q "\"connected\": true"
           echo "ℹ️  bdevperf perform_tests"
           eval $(make run SVC=bdevperf OPTS="--entrypoint=env" | grep BDEVPERF_TEST_DURATION | tr -d '\n\r' )
           timeout=$(expr $BDEVPERF_TEST_DURATION \* 2)
