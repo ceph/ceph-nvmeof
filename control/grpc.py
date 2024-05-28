@@ -353,7 +353,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
     def resize_bdev(self, bdev_name, new_size, peer_msg = ""):
         """Resizes a bdev."""
 
-        self.logger.info(f"Received request to resize bdev {bdev_name} to {new_size} bytes{peer_msg}")
+        self.logger.info(f"Received request to resize bdev {bdev_name} to {new_size} MiB{peer_msg}")
         rbd_pool_name = None
         rbd_image_name = None
         bdev_info = self.get_bdev_info(bdev_name, True)
@@ -372,16 +372,15 @@ class GatewayService(pb2_grpc.GatewayServicer):
         if rbd_pool_name and rbd_image_name:
             try:
                 current_size = self.ceph_utils.get_image_size(rbd_pool_name, rbd_image_name)
-                if current_size > new_size:
+                if current_size > new_size * 1024 * 1024:
                     return pb2.req_status(status=errno.EINVAL,
-                                          error_message=f"new size {new_size} bytes is smaller than current size {current_size} bytes")
+                                          error_message=f"new size {new_size * 1024 * 1024} bytes is smaller than current size {current_size} bytes")
             except Exception as ex:
                 self.logger.warning(f"Error trying to get the size of image {rbd_pool_name}/{rbd_image_name}, won't check size for shrinkage:\n{ex}")
                 pass
 
         with self.rpc_lock:
             try:
-                new_size //= (1024 * 1024)       # spdk wants the size in MiBs
                 ret = rpc_bdev.bdev_rbd_resize(
                     self.spdk_rpc_client,
                     name=bdev_name,
@@ -1572,10 +1571,6 @@ class GatewayService(pb2_grpc.GatewayServicer):
         if request.new_size <= 0:
             return pb2.req_status(status=errno.EINVAL,
                                   error_message=f"Failure resizing namespace {nsid_msg}on {request.subsystem_nqn}: New size must be positive")
-
-        if request.new_size % (1024 * 1024):
-            return pb2.req_status(status=errno.EINVAL,
-                                  error_message=f"Failure resizing namespace {nsid_msg}on {request.subsystem_nqn}: new size must be aligned to MiBs")
 
         find_ret = self.find_namespace_and_bdev_name(request.subsystem_nqn, request.nsid, request.uuid, True, "Failure resizing namespace")
         if not find_ret[0]:

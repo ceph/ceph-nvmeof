@@ -1381,6 +1381,7 @@ class GatewayClient:
         mib = 1024 * 1024
         if ns_size % mib:
             self.cli.parser.error("size value must be aligned to MiBs")
+        ns_size //= mib
 
         try:
             ret = self.stub.namespace_resize(pb2.namespace_resize_req(subsystem_nqn=args.subsystem, nsid=args.nsid,
@@ -1396,7 +1397,7 @@ class GatewayClient:
                     ns_id_str = f"with UUID {args.uuid}"
                 else:
                     assert False
-                sz_str = self.format_size(ns_size)
+                sz_str = self.format_size(ns_size * mib)
                 out_func(f"Resizing namespace {ns_id_str} in {args.subsystem} to {sz_str}: Successful")
             else:
                 err_func(f"{ret.error_message}")
