@@ -23,8 +23,17 @@ build:  ## Build SVC images
 build: DOCKER_COMPOSE_ENV = DOCKER_BUILDKIT=1 COMPOSE_DOCKER_CLI_BUILD=1
 
 push: ## Push nvmeof and nvmeof-cli containers images to quay.io registries
-	docker push $(QUAY_NVMEOF):$(VERSION)
-	docker push $(QUAY_NVMEOFCLI):$(VERSION)
+	SHORT_VERSION=$(shell echo $(VERSION) | cut -d. -f1-2); \
+	docker push $(QUAY_NVMEOF):$(VERSION); \
+	docker push $(QUAY_NVMEOFCLI):$(VERSION); \
+	docker tag $(QUAY_NVMEOF):$(VERSION) $(QUAY_NVMEOF):$$SHORT_VERSION; \
+	docker tag $(QUAY_NVMEOFCLI):$(VERSION) $(QUAY_NVMEOFCLI):$$SHORT_VERSION; \
+	docker tag $(QUAY_NVMEOF):$(VERSION) $(QUAY_NVMEOF):latest; \
+	docker tag $(QUAY_NVMEOFCLI):$(VERSION) $(QUAY_NVMEOFCLI):latest; \
+	docker push $(QUAY_NVMEOF):$$SHORT_VERSION; \
+	docker push $(QUAY_NVMEOFCLI):$$SHORT_VERSION; \
+	docker push $(QUAY_NVMEOF):latest; \
+	docker push $(QUAY_NVMEOFCLI):latest
 
 run: ## Run command CMD inside SVC containers
 run: override OPTS += --rm
