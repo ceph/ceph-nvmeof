@@ -11,6 +11,7 @@ import time
 import threading
 import rados
 import errno
+import contextlib
 from typing import Dict
 from collections import defaultdict
 from abc import ABC, abstractmethod
@@ -216,12 +217,6 @@ class OmapLock:
         self.omap_file_disable_unlock = self.omap_state.config.getboolean_with_default("gateway", "omap_file_disable_unlock", False)
         if self.omap_file_disable_unlock:
             self.logger.warning(f"Will not unlock OMAP file for testing purposes")
-        self.enter_args = {}
-
-    def __call__(self, **kwargs):
-        self.enter_args.clear()
-        self.enter_args.update(kwargs)
-        return self
 
     #
     # We pass the context from the different functions here. It should point to a real object in case we come from a real
@@ -231,16 +226,18 @@ class OmapLock:
     # are done in such a case.
     #
     def __enter__(self):
-        context = self.enter_args.get("context")
-        if context and self.omap_file_lock_duration > 0:
+        if self.omap_file_lock_duration > 0:
             self.lock_omap()
         return self
 
     def __exit__(self, typ, value, traceback):
-        context = self.enter_args.get("context")
-        self.enter_args.clear()
-        if context and self.omap_file_lock_duration > 0:
+        if self.omap_file_lock_duration > 0:
             self.unlock_omap()
+
+    def get_omap_lock_to_use(self, context):
+        if context:
+            return self
+        return contextlib.suppress()
 
     #
     # This function accepts a function in which there is Omap locking. It will execute this function
@@ -318,6 +315,7 @@ class OmapLock:
             self.is_locked = False
         except rados.ObjectNotFound as ex:
             self.logger.warning(f"No such lock, the lock duration might have passed")
+            self.is_locked = False
         except Exception:
             self.logger.exception(f"Unable to unlock OMAP file")
             pass
@@ -649,6 +647,7 @@ class GatewayStateHandler:
             local_version = self.omap.get_local_version()
 
             if local_version < omap_version:
+                self.logger.debug(f"Start update from {local_version} to {omap_version}.")
                 local_state_dict = self.local.get_state()
                 local_state_keys = local_state_dict.keys()
                 omap_state_keys = omap_state_dict.keys()
