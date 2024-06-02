@@ -2054,10 +2054,14 @@ class GatewayService(pb2_grpc.GatewayServicer):
                             trtype = addr["trtype"].upper()
                         except Exception:
                             pass
+                        if not trtype:
+                            trtype = "TCP"
                         try:
                             adrfam = addr["adrfam"].lower()
                         except Exception:
                             pass
+                        if not adrfam:
+                            adrfam = "ipv4"
                         break
                     except Exception:
                         self.logger.exception(f"Got exception while parsing qpair: {qp}")
@@ -2069,7 +2073,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 if hostnqn in host_nqns:
                     host_nqns.remove(hostnqn)
             except Exception:
-                self.logger.exception(f"{con=} parse error")
+                self.logger.exception(f"{conn=} parse error")
                 pass
 
         for nqn in host_nqns:
