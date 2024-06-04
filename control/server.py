@@ -144,13 +144,8 @@ class GatewayServer:
 
     def _wait_for_group_id(self):
         """Waits for the monitor notification of this gatway's group id"""
-        #  Python 3.8: Default value of max_workers is  min(32, os.cpu_count() + 4).
-        #  This default value preserves at least 5 workers for I/O bound tasks. It utilizes at
-        #  most 32 CPU cores for CPU bound tasks which release the GIL. And it avoids using
-        #  very large resources implicitly on many-core machines.
-        self.monitor_server = grpc.server(futures.ThreadPoolExecutor())
+        self.monitor_server = self._grpc_server(self._monitor_address())
         monitor_pb2_grpc.add_MonitorGroupServicer_to_server(MonitorGroupService(self.set_group_id), self.monitor_server)
-        self.monitor_server.add_insecure_port(self._monitor_address())
         self.monitor_server.start()
         self.logger.info(f"MonitorGroup server is listening on {self._monitor_address()} for group id")
         self.monitor_event.wait()
@@ -188,11 +183,8 @@ class GatewayServer:
         gateway_state = GatewayStateHandler(self.config, local_state, omap_state, self.gateway_rpc_caller, f"gateway-{self.name}")
         omap_lock = OmapLock(omap_state, gateway_state, self.rpc_lock)
         self.gateway_rpc = GatewayService(self.config, gateway_state, self.rpc_lock, omap_lock, self.group_id, self.spdk_rpc_client, self.ceph_utils)
-        self.server = grpc.server(futures.ThreadPoolExecutor(max_workers=1))
+        self.server = self._grpc_server(self._gateway_address())
         pb2_grpc.add_GatewayServicer_to_server(self.gateway_rpc, self.server)
-
-        # Add listener port
-        self._add_server_listener()
 
         # Check for existing NVMeoF target state
         gateway_state.start_update()
@@ -243,6 +235,11 @@ class GatewayServer:
                 '-c', '/etc/ceph/ceph.conf',
                 '-n', rados_id,
                 '-k', '/etc/ceph/keyring']
+        if self.config.getboolean("gateway", "enable_auth"):
+            cmd += [
+                "--server-cert", self.config.get("mtls", "server_cert"),
+                "--client-key", self.config.get("mtls", "client_key"),
+                "--client-cert", self.config.get("mtls", "client_cert") ]
         self.logger.info(f"Starting {' '.join(cmd)}")
         try:
             # start monitor client process
@@ -293,8 +290,14 @@ class GatewayServer:
         monitor_addr = GatewayUtils.escape_address_if_ipv6(monitor_addr)
         return "{}:{}".format(monitor_addr, monitor_port)
 
-    def _add_server_listener(self):
-        """Adds listener port to server."""
+    def _grpc_server(self, address):
+        """Construct grpc server"""
+
+        #  Python 3.8: Default value of max_workers is  min(32, os.cpu_count() + 4).
+        #  This default value preserves at least 5 workers for I/O bound tasks. It utilizes at
+        #  most 32 CPU cores for CPU bound tasks which release the GIL. And it avoids using
+        #  very large resources implicitly on many-core machines.
+        server = grpc.server(futures.ThreadPoolExecutor())
 
         enable_auth = self.config.getboolean("gateway", "enable_auth")
         if enable_auth:
@@ -321,11 +324,13 @@ class GatewayServer:
             )
 
             # Add secure port using credentials
-            self.server.add_secure_port(
-                self._gateway_address(), server_credentials)
+            server.add_secure_port(
+                address, server_credentials)
         else:
             # Authentication is not enabled
-            self.server.add_insecure_port(self._gateway_address())
+            server.add_insecure_port(address)
+
+        return server
 
     def _get_spdk_rpc_socket_path(self, omap_state) -> str:
         # For backward compatibility, try first to get the old attribute

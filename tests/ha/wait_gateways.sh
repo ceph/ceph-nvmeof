@@ -1,4 +1,5 @@
 SCALE=2
+echo CLI_TLS_ARGS $CLI_TLS_ARGS
 # Check if argument is provided
 if [ $# -ge 1 ]; then
     # Check if argument is an integer larger or equal than 1
@@ -22,12 +23,12 @@ for i in $(seq $SCALE); do
       continue
     fi
     GW_IP="$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$GW_NAME")"
-    if docker-compose run --rm nvmeof-cli --server-address $GW_IP --server-port 5500 get_subsystems 2>&1 | grep -i failed; then
+    if docker-compose run --rm nvmeof-cli $CLI_TLS_ARGS --server-address $GW_IP --server-port 5500 get_subsystems 2>&1 | grep -i failed; then
       echo "Container $i $GW_NAME $GW_IP no subsystems. Waiting..."
       continue
     fi
     echo "Container $i $GW_NAME $GW_IP subsystems:"
-    docker-compose run --rm nvmeof-cli --server-address $GW_IP --server-port 5500 get_subsystems
+    docker-compose run --rm nvmeof-cli $CLI_TLS_ARGS --server-address $GW_IP --server-port 5500 get_subsystems
     break;
   done
 done
