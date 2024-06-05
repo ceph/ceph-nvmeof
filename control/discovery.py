@@ -785,7 +785,7 @@ class DiscoveryService:
         if nvme_data_len <= 1024 and nvme_logpage_offset == 0:
             nvme_get_log_page_reply = NVMeGetLogPage()
             nvme_get_log_page_reply.genctr = self_conn.gen_cnt
-            nvme_get_log_page_reply.numrec = len(listeners)
+            nvme_get_log_page_reply.numrec = len(allow_listeners)
 
             reply = pdu_reply + nvme_tcp_data_pdu + bytes(nvme_get_log_page_reply)[:nvme_data_len]
         elif nvme_data_len % 1024 == 0:
