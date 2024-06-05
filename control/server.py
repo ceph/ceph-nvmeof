@@ -529,7 +529,7 @@ class GatewayServer:
         for key, val in requests.items():
             if key.startswith(GatewayState.SUBSYSTEM_PREFIX):
                 if is_add_req:
-                    req = json_format.Parse(val, pb2.create_subsystem_req())
+                    req = json_format.Parse(val, pb2.create_subsystem_req(), ignore_unknown_fields=True)
                     self.gateway_rpc.create_subsystem(req)
                 else:
                     req = json_format.Parse(val,
@@ -538,7 +538,7 @@ class GatewayServer:
                     self.gateway_rpc.delete_subsystem(req)
             elif key.startswith(GatewayState.NAMESPACE_PREFIX):
                 if is_add_req:
-                    req = json_format.Parse(val, pb2.namespace_add_req())
+                    req = json_format.Parse(val, pb2.namespace_add_req(), ignore_unknown_fields=True)
                     self.gateway_rpc.namespace_add(req)
                 else:
                     req = json_format.Parse(val,
@@ -547,21 +547,21 @@ class GatewayServer:
                     self.gateway_rpc.namespace_delete(req)
             elif key.startswith(GatewayState.NAMESPACE_QOS_PREFIX):
                 if is_add_req:
-                    req = json_format.Parse(val, pb2.namespace_set_qos_req())
+                    req = json_format.Parse(val, pb2.namespace_set_qos_req(), ignore_unknown_fields=True)
                     self.gateway_rpc.namespace_set_qos_limits(req)
                 else:
                     # Do nothing, this is covered by the delete namespace code
                     pass
             elif key.startswith(GatewayState.HOST_PREFIX):
                 if is_add_req:
-                    req = json_format.Parse(val, pb2.add_host_req())
+                    req = json_format.Parse(val, pb2.add_host_req(), ignore_unknown_fields=True)
                     self.gateway_rpc.add_host(req)
                 else:
                     req = json_format.Parse(val, pb2.remove_host_req(), ignore_unknown_fields=True)
                     self.gateway_rpc.remove_host(req)
             elif key.startswith(GatewayState.LISTENER_PREFIX):
                 if is_add_req:
-                    req = json_format.Parse(val, pb2.create_listener_req())
+                    req = json_format.Parse(val, pb2.create_listener_req(), ignore_unknown_fields=True)
                     self.gateway_rpc.create_listener(req)
                 else:
                     req = json_format.Parse(val, pb2.delete_listener_req(), ignore_unknown_fields=True)
