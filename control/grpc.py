@@ -1985,32 +1985,42 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 trtype = "TCP"
                 hostnqn = conn["hostnqn"]
                 connected = False
+                found = False
 
                 for qp in qpair_ret:
                     try:
                         if qp["cntlid"] != conn["cntlid"]:
                             continue
                         if qp["state"] != "active":
+                            self.logger.debug(f"Qpair {qp} is not active")
                             continue
                         addr = qp["listen_address"]
+                        if not addr:
+                            continue
                         traddr = addr["traddr"]
+                        if not traddr:
+                            continue
                         trsvcid = int(addr["trsvcid"])
                         try:
                             trtype = addr["trtype"].upper()
                         except Exception:
                             pass
-                        if not trtype:
-                            trtype = "TCP"
                         try:
                             adrfam = addr["adrfam"].lower()
                         except Exception:
                             pass
-                        if not adrfam:
-                            adrfam = "ipv4"
+                        found = True
                         break
                     except Exception:
                         self.logger.exception(f"Got exception while parsing qpair: {qp}")
                         pass
+                if not found:
+                    self.logger.debug(f"Can't find active qpair for connection {conn}")
+                    continue
+                if not trtype:
+                    trtype = "TCP"
+                if not adrfam:
+                    adrfam = "ipv4"
                 one_conn = pb2.connection(nqn=hostnqn, connected=True,
                                           traddr=traddr, trsvcid=trsvcid, trtype=trtype, adrfam=adrfam,
                                           qpairs_count=conn["num_io_qpairs"], controller_id=conn["cntlid"])
