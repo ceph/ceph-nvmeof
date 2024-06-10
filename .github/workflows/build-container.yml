@@ -646,7 +646,7 @@ jobs:
           make clean
 
   push-images-to-private-registry:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/devel'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/devel' && github.repository == 'ceph/ceph-nvmeof'
     needs: [pytest, demo, discovery, ha]
     runs-on: ubuntu-latest
 
