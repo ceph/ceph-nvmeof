@@ -898,9 +898,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
         min_load = 2000
         chosen_ana_group = 0
         for ana_grp in self.clusters:
-            ana_load[ana_grp] = 0;
-            for name in self.clusters[ana_grp]:
-                ana_load[ana_grp] += self.clusters[ana_grp][name] # accumulate the total load per ana group for all ana_grp clusters
+            if ana_grp in grps_list: #to take into consideration only valid groups
+                ana_load[ana_grp] = 0;
+                for name in self.clusters[ana_grp]:
+                    ana_load[ana_grp] += self.clusters[ana_grp][name] # accumulate the total load per ana group for all valid ana_grp clusters
         for ana_grp in ana_load :
             self.logger.info(f" ana group {ana_grp} load =  {ana_load[ana_grp]}  ")
             if ana_load[ana_grp] <=  min_load:
