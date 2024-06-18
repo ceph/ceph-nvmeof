@@ -439,6 +439,18 @@ Targets:
 
 Targets may accept options: `make run SVC=nvme OPTS=--entrypoint=bash`.
 
+## Monitoring and Observability
+Each gateway daemon implements a prometheus exporter endpoint, which can expose performance and relevant metadata over port 10008/tcp. The endpoint is enabled by default, but if you don't see port 10008 listening, check the `ceph-nvmeof.conf` file.
+```
+enable_prometheus_exporter = True
+```
+
+The image below shows a sample Grafana dashboard that provides a good starting point for monitoring the performance and configuration of an NVMe-oF gateway group.
+![dashboard](monitoring/Ceph-NVMe-oF-Gateways-Dashboard.png)
+
+The JSON for the dashboard can be found [here](monitoring/Ceph-NVMe-oF-Gateways-Dashboard.json), and can simply be imported into your Grafana instance. *Note: Although Grafana v11 was used to develop the dashboard, it should work in v10.x as well.*
+  
+
 ## Troubleshooting
 
 ## Contributing and Support
