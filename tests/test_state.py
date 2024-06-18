@@ -21,7 +21,7 @@ def local_state():
 @pytest.fixture
 def omap_state(config):
     """Sets up and tears down OMAP state object."""
-    omap = OmapGatewayState(config)
+    omap = OmapGatewayState(config, "test")
     omap.delete_state()
     yield omap
     omap.delete_state()
@@ -75,7 +75,7 @@ def test_state_polling_update(config, ioctx, local_state, omap_state):
     version = 1
     update_interval_sec = 1
     state = GatewayStateHandler(config, local_state, omap_state,
-                                _state_polling_update)
+                                _state_polling_update, "test")
     state.update_interval = update_interval_sec
     state.use_notify = False
     key = "namespace_test"
@@ -136,7 +136,7 @@ def test_state_notify_update(config, ioctx, local_state, omap_state):
     version = 1
     update_interval_sec = 10
     state = GatewayStateHandler(config, local_state, omap_state,
-                                _state_notify_update)
+                                _state_notify_update, "test")
     key = "namespace_test"
     state.update_interval = update_interval_sec
     state.use_notify = True
