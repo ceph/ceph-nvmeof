@@ -1702,6 +1702,7 @@
         "type": "prometheus",
         "uid": "${datasource}"
       },
+      "description": "Shows the busiest rbd images (namespaces) within a given subsystem",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1776,9 +1777,10 @@
         "tooltip": {
           "maxHeight": 600,
           "mode": "multi",
-          "sort": "none"
+          "sort": "desc"
         }
       },
+      "pluginVersion": "11.0.0",
       "targets": [
         {
           "datasource": {
@@ -1786,28 +1788,15 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "sum by(pool_name,rbd_name) ((rate(ceph_nvmeof_bdev_reads_completed_total[1m]) * on(instance,bdev_name) group_right ceph_nvmeof_bdev_metadata) + (rate(ceph_nvmeof_bdev_writes_completed_total[1m]) * on(instance,bdev_name) group_right ceph_nvmeof_bdev_metadata))",
+          "expr": "topk(5, (sum by(pool_name, rbd_name) (((rate(ceph_nvmeof_bdev_reads_completed_total[1m]) + rate(ceph_nvmeof_bdev_writes_completed_total[1m])) * on(instance,bdev_name) group_right ceph_nvmeof_bdev_metadata) * on(instance, bdev_name) group_left(nqn) ceph_nvmeof_subsystem_namespace_metadata{nqn=\"$subsystem\"})))",
           "hide": false,
           "instant": false,
           "legendFormat": "{{pool_name}}/{{rbd_name}}",
           "range": true,
-          "refId": "A"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
-          },
-          "editorMode": "code",
-          "expr": "sum by(pool_name,rbd_name) ((rate(ceph_nvmeof_bdev_read_bytes_total[1m]) * on(instance,bdev_name) group_right ceph_nvmeof_bdev_metadata) + (rate(ceph_nvmeof_bdev_written_bytes_total[1m]) * on(instance,bdev_name) group_right ceph_nvmeof_bdev_metadata))",
-          "hide": true,
-          "instant": false,
-          "legendFormat": "{{pool_name}}/{{rbd_name}}",
-          "range": true,
-          "refId": "B"
+          "refId": "C"
         }
       ],
-      "title": "IOPS by RBD device",
+      "title": "TOP 5 - IOPS by device for '$subsystem'",
       "type": "timeseries"
     },
     {
@@ -2062,6 +2051,7 @@
         "type": "prometheus",
         "uid": "${datasource}"
       },
+      "description": "Shows the rbd images (namespaces) with the highest throughput in a given subsystem",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -2099,7 +2089,9 @@
               "mode": "off"
             }
           },
+          "decimals": 0,
           "mappings": [],
+          "min": 0,
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -2123,7 +2115,7 @@
         "x": 16,
         "y": 33
       },
-      "id": 18,
+      "id": 28,
       "interval": "10s",
       "options": {
         "legend": {
@@ -2135,9 +2127,10 @@
         "tooltip": {
           "maxHeight": 600,
           "mode": "multi",
-          "sort": "none"
+          "sort": "desc"
         }
       },
+      "pluginVersion": "11.0.0",
       "targets": [
         {
           "datasource": {
@@ -2145,28 +2138,15 @@
             "uid": "PBFA97CFB590B2093"
           },
           "editorMode": "code",
-          "expr": "sum by(pool_name,rbd_name) ((rate(ceph_nvmeof_bdev_reads_completed_total[1m]) * on(instance,bdev_name) group_right ceph_nvmeof_bdev_metadata) + (rate(ceph_nvmeof_bdev_writes_completed_total[1m]) * on(instance,bdev_name) group_right ceph_nvmeof_bdev_metadata))",
-          "hide": true,
-          "instant": false,
-          "legendFormat": "{{pool_name}}/{{rbd_name}}",
-          "range": true,
-          "refId": "A"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "PBFA97CFB590B2093"
-          },
-          "editorMode": "code",
-          "expr": "sum by(pool_name,rbd_name) ((rate(ceph_nvmeof_bdev_read_bytes_total[1m]) * on(instance,bdev_name) group_right ceph_nvmeof_bdev_metadata) + (rate(ceph_nvmeof_bdev_written_bytes_total[1m]) * on(instance,bdev_name) group_right ceph_nvmeof_bdev_metadata))",
+          "expr": "topk(5, (sum by(pool_name, rbd_name) (((rate(ceph_nvmeof_bdev_read_bytes_total[1m]) + rate(ceph_nvmeof_bdev_written_bytes_total[1m])) * on(instance,bdev_name) group_right ceph_nvmeof_bdev_metadata) * on(instance, bdev_name) group_left(nqn) ceph_nvmeof_subsystem_namespace_metadata{nqn=\"$subsystem\"})))",
           "hide": false,
           "instant": false,
           "legendFormat": "{{pool_name}}/{{rbd_name}}",
           "range": true,
-          "refId": "B"
+          "refId": "C"
         }
       ],
-      "title": "Throughput by RBD Device",
+      "title": "TOP 5 - Throughput by device for '$subsystem'",
       "type": "timeseries"
     }
   ],
@@ -2197,8 +2177,8 @@
       {
         "current": {
           "selected": false,
-          "text": "ceph-2.home.lab",
-          "value": "ceph-2.home.lab"
+          "text": "ceph-3.home.lab",
+          "value": "ceph-3.home.lab"
         },
         "datasource": {
           "type": "prometheus",
@@ -2214,6 +2194,34 @@
         "query": {
           "qryType": 1,
           "query": "label_values(ceph_nvmeof_gateway_info,hostname)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 0,
+        "type": "query"
+      },
+      {
+        "current": {
+          "selected": true,
+          "text": "nqn.2016-01.lab.home:esx",
+          "value": "nqn.2016-01.lab.home:esx"
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${datasource}"
+        },
+        "definition": "label_values(ceph_nvmeof_subsystem_metadata,nqn)",
+        "hide": 0,
+        "includeAll": false,
+        "label": "Subsystem NQN",
+        "multi": false,
+        "name": "subsystem",
+        "options": [],
+        "query": {
+          "qryType": 1,
+          "query": "label_values(ceph_nvmeof_subsystem_metadata,nqn)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 1,
@@ -2247,6 +2255,6 @@
   "timezone": "",
   "title": "Ceph NVMe-oF Gateways",
   "uid": "c4eff735-53a9-4f7d-88ec-fc2d45e2e7d6",
-  "version": 12,
+  "version": 13,
   "weekStart": ""
 }
