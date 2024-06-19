@@ -311,7 +311,7 @@ class DiscoveryService:
         self.version = 1
         self.config = config
         self.lock = threading.Lock()
-        self.omap_state = OmapGatewayState(self.config)
+        self.omap_state = OmapGatewayState(self.config, "discovery")
 
         self.gw_logger_object = GatewayLogger(config)
         self.logger = self.gw_logger_object.logger
@@ -1079,7 +1079,7 @@ class DiscoveryService:
 
         local_state = LocalGatewayState()
         gateway_state = GatewayStateHandler(self.config, local_state,
-                                            self.omap_state, self._state_notify_update)
+                                            self.omap_state, self._state_notify_update, "discovery")
         gateway_state.start_update()
 
         try:

@@ -160,7 +160,7 @@ class GatewayServer:
         """Starts gateway server."""
         self.logger.info(f"Starting serve, monitor client version: {self._monitor_client_version()}")
 
-        omap_state = OmapGatewayState(self.config)
+        omap_state = OmapGatewayState(self.config, f"gateway-{self.name}")
         local_state = LocalGatewayState()
         omap_state.check_for_old_format_omap_files()
 
@@ -179,7 +179,7 @@ class GatewayServer:
         self._start_discovery_service()
 
         # Register service implementation with server
-        gateway_state = GatewayStateHandler(self.config, local_state, omap_state, self.gateway_rpc_caller)
+        gateway_state = GatewayStateHandler(self.config, local_state, omap_state, self.gateway_rpc_caller, f"gateway-{self.name}")
         omap_lock = OmapLock(omap_state, gateway_state, self.rpc_lock)
         self.gateway_rpc = GatewayService(self.config, gateway_state, self.rpc_lock, omap_lock, self.group_id, self.spdk_rpc_client, self.ceph_utils)
         self.server = grpc.server(futures.ThreadPoolExecutor(max_workers=1))

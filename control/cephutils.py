@@ -35,34 +35,33 @@ class CephUtils:
     def get_number_created_gateways(self, pool, group):
         now = time.time()
         if (now - self.last_sent) < 10 and self.anagroup_list :
-             self.logger.info(f" Caching response of the monitor: {self.anagroup_list} ")
+             self.logger.info(f"Caching response of the monitor: {self.anagroup_list}")
              return self.anagroup_list
         else :
             try:
                 self.anagroup_list = []
                 self.last_sent = now
                 str = '{' + f'"prefix":"nvme-gw show", "pool":"{pool}", "group":"{group}"' + '}'
-                self.logger.info(f"nvme-show string: {str} ")
+                self.logger.debug(f"nvme-show string: {str}")
                 rply = self.execute_ceph_monitor_command(str)
-                self.logger.info(f"reply \"{rply}\"")
+                self.logger.debug(f"reply \"{rply}\"")
                 conv_str = rply[1].decode()
                 pos = conv_str.find("[")
-                if pos!= -1:
-                    new_str = conv_str[pos+ len("[") :]
+                if pos != -1:
+                    new_str = conv_str[pos + len("[") :]
                     pos     = new_str.find("]")
                     new_str = new_str[: pos].strip()
                     int_str_list = new_str.split(' ')
-                    self.logger.info(f"new_str : {new_str}")
+                    self.logger.debug(f"new_str : {new_str}")
                     for x in int_str_list:
                         self.anagroup_list.append(int(x))
-                    self.logger.info(self.anagroup_list)
+                    self.logger.info(f"ANA group list: {self.anagroup_list}")
                 else:
-                    self.logger.info("Gws not found")
+                    self.logger.warning("GWs not found")
 
             except Exception:
                 self.logger.exception(f"Failure get number created gateways:")
                 self.anagroup_list = []
-                pass
 
             return self.anagroup_list
 

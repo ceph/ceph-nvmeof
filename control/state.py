@@ -343,7 +343,7 @@ class OmapGatewayState(GatewayState):
 
     OMAP_VERSION_KEY = "omap_version"
 
-    def __init__(self, config):
+    def __init__(self, config, id_text=""):
         self.config = config
         self.version = 1
         self.logger = GatewayLogger(self.config).logger
@@ -351,6 +351,7 @@ class OmapGatewayState(GatewayState):
         gateway_group = self.config.get("gateway", "group")
         self.omap_name = f"nvmeof.{gateway_group}.state" if gateway_group else "nvmeof.state"
         self.conn = None
+        self.id_text = id_text
 
         try:
             self.ioctx = self.open_rados_connection(self.config)
@@ -519,7 +520,7 @@ class GatewayStateHandler:
         use_notify: Flag to indicate use of OMAP watch/notify
     """
 
-    def __init__(self, config, local, omap, gateway_rpc_caller):
+    def __init__(self, config, local, omap, gateway_rpc_caller, id_text=""):
         self.config = config
         self.local = local
         self.omap = omap
@@ -534,6 +535,7 @@ class GatewayStateHandler:
         self.use_notify = self.config.getboolean("gateway",
                                                  "state_update_notify")
         self.update_is_active_lock = threading.Lock()
+        self.id_text = id_text
 
     def add_namespace(self, subsystem_nqn: str, nsid: str, val: str):
         """Adds a namespace to the state data store."""
@@ -647,7 +649,7 @@ class GatewayStateHandler:
             local_version = self.omap.get_local_version()
 
             if local_version < omap_version:
-                self.logger.debug(f"Start update from {local_version} to {omap_version}.")
+                self.logger.debug(f"Start update from {local_version} to {omap_version} ({self.id_text}).")
                 local_state_dict = self.local.get_state()
                 local_state_keys = local_state_dict.keys()
                 omap_state_keys = omap_state_dict.keys()
@@ -664,7 +666,7 @@ class GatewayStateHandler:
                     if not self.compare_state_values(local_state_dict[key], omap_state_dict[key])
                 }
                 grouped_changed = self._group_by_prefix(changed, prefix_list)
-                
+
                 # Find OMAP removals
                 removed_keys = local_state_keys - omap_state_keys
                 removed = {key: local_state_dict[key] for key in removed_keys}
@@ -682,7 +684,7 @@ class GatewayStateHandler:
                 # Update local state and version
                 self.local.reset(omap_state_dict)
                 self.omap.set_local_version(omap_version)
-                self.logger.debug(f"Update complete ({local_version} -> {omap_version}).")
+                self.logger.debug(f"Update complete ({local_version} -> {omap_version}) ({self.id_text}).")
 
         return True
 
