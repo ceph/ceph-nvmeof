@@ -16,6 +16,7 @@ from typing import Dict
 from collections import defaultdict
 from abc import ABC, abstractmethod
 from .utils import GatewayLogger
+import atexit
 
 class GatewayState(ABC):
     """Persists gateway NVMeoF target state.
@@ -269,6 +270,10 @@ class OmapLock:
         got_lock = False
         assert self.rpc_lock.locked(), "The RPC lock is not locked."
 
+        if not self.omap_state.ioctx:
+            self.logger.warning(f"Not locking OMAP as Rados connection is closed")
+            raise Exception("An attempt to lock OMAP file after Rados connection was closed")
+
         for i in range(0, self.omap_file_lock_retries + 1):
             try:
                 self.omap_state.ioctx.lock_exclusive(self.omap_state.omap_name, self.OMAP_FILE_LOCK_NAME,
@@ -310,6 +315,9 @@ class OmapLock:
             self.logger.warning(f"OMAP file unlock was disabled, will not unlock file")
             return
 
+        if not self.omap_state.ioctx:
+            return
+
         try:
             self.omap_state.ioctx.unlock(self.omap_state.omap_name, self.OMAP_FILE_LOCK_NAME, self.OMAP_FILE_LOCK_COOKIE)
             self.is_locked = False
@@ -347,6 +355,7 @@ class OmapGatewayState(GatewayState):
         self.config = config
         self.version = 1
         self.logger = GatewayLogger(self.config).logger
+        self.ioctx = None
         self.watch = None
         gateway_group = self.config.get("gateway", "group")
         self.omap_name = f"nvmeof.{gateway_group}.state" if gateway_group else "nvmeof.state"
@@ -369,11 +378,10 @@ class OmapGatewayState(GatewayState):
         except Exception:
             self.logger.exception(f"Unable to create OMAP, exiting!")
             raise
+        atexit.register(self.cleanup_omap)
 
     def __exit__(self, exc_type, exc_value, traceback):
-        if self.watch is not None:
-            self.watch.close()
-        self.ioctx.close()
+        self.cleanup_omap()
 
     def check_for_old_format_omap_files(self):
         omap_dict = self.get_state()
@@ -401,6 +409,10 @@ class OmapGatewayState(GatewayState):
 
     def get_omap_version(self) -> int:
         """Returns OMAP version."""
+        if not self.ioctx:
+            self.logger.warning(f"Trying to get OMAP version when Rados connection is closed")
+            return -1
+
         with rados.ReadOpCtx() as read_op:
             i, _ = self.ioctx.get_omap_vals_by_keys(read_op,
                                                     (self.OMAP_VERSION_KEY,))
@@ -419,6 +431,9 @@ class OmapGatewayState(GatewayState):
         """Returns dict of all OMAP keys and values."""
         omap_list = [("", 0)]   # Dummy, non empty, list value. Just so we would enter the while
         omap_dict = {}
+        if not self.ioctx:
+            self.logger.warning(f"Trying to get OMAP state when Rados connection is closed")
+            return omap_dict
         # The number of items returned is limited by Ceph, so we need to read in a loop until no more items are returned
         while len(omap_list) > 0:
             last_key_read = omap_list[-1][0]
@@ -431,6 +446,9 @@ class OmapGatewayState(GatewayState):
 
     def _add_key(self, key: str, val: str):
         """Adds key and value to the OMAP."""
+        if not self.ioctx:
+            raise
+
         try:
             version_update = self.version + 1
             with rados.WriteOpCtx() as write_op:
@@ -455,6 +473,9 @@ class OmapGatewayState(GatewayState):
 
     def _remove_key(self, key: str):
         """Removes key from the OMAP."""
+        if not self.ioctx:
+            raise
+
         try:
             version_update = self.version + 1
             with rados.WriteOpCtx() as write_op:
@@ -479,6 +500,9 @@ class OmapGatewayState(GatewayState):
 
     def delete_state(self):
         """Deletes OMAP object contents."""
+        if not self.ioctx:
+            raise
+
         try:
             with rados.WriteOpCtx() as write_op:
                 self.ioctx.clear_omap(write_op)
@@ -497,6 +521,9 @@ class OmapGatewayState(GatewayState):
         def _watcher_callback(notify_id, notifier_id, watch_id, data):
             notify_event.set()
 
+        if not self.ioctx:
+            return
+
         if self.watch is None:
             try:
                 self.watch = self.ioctx.watch(self.omap_name, _watcher_callback)
@@ -505,6 +532,16 @@ class OmapGatewayState(GatewayState):
         else:
             self.logger.info(f"Watch already exists.")
 
+    def cleanup_omap(self):
+        self.logger.info(f"Cleanup OMAP on exit ({self.id_text})")
+        if self.watch:
+            self.logger.debug("Unregistering watch")
+            self.watch.close()
+            self.watch = None
+        if self.ioctx:
+            self.logger.debug("Closing Rados connection")
+            self.ioctx.close()
+            self.ioctx = None
 
 class GatewayStateHandler:
     """Maintains consistency in NVMeoF target state store instances.
@@ -633,6 +670,10 @@ class GatewayStateHandler:
 
         if self.update_is_active_lock.locked():
             self.logger.warning(f"An update is already running, ignore")
+            return False
+
+        if not self.omap.ioctx:
+            self.logger.warning(f"Can't update when Rados connection is closed")
             return False
 
         with self.update_is_active_lock:

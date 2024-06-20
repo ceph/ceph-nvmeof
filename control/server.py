@@ -83,6 +83,7 @@ class GatewayServer:
         self.rpc_lock = threading.Lock()
         self.group_id = 0
         self.monitor_client = '/usr/bin/ceph-nvmeof-monitor-client'
+        self.omap_state = None
 
         self.name = self.config.get("gateway", "name")
         if not self.name:
@@ -127,6 +128,10 @@ class GatewayServer:
         if self.discovery_pid:
             self._stop_discovery()
 
+        if self.omap_state:
+            self.omap_state.cleanup_omap()
+            self.omap_state = None
+
         if logger:
             logger.info("Exiting the gateway process.")
         gw_logger.compress_final_log_file(gw_name)
@@ -161,6 +166,7 @@ class GatewayServer:
         self.logger.info(f"Starting serve, monitor client version: {self._monitor_client_version()}")
 
         omap_state = OmapGatewayState(self.config, f"gateway-{self.name}")
+        self.omap_state = omap_state
         local_state = LocalGatewayState()
         omap_state.check_for_old_format_omap_files()
 
