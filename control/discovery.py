@@ -302,7 +302,6 @@ class DiscoveryService:
         config: Basic gateway parameters
         logger: Logger instance to track discovery controller events
         omap_name: OMAP object name
-        ioctx: I/O context which allows OMAP access
         discovery_addr: Discovery controller addr which allows initiator send command
         discovery_port: Discovery controller's listening port
     """
@@ -321,7 +320,6 @@ class DiscoveryService:
             if gateway_group else "nvmeof.state"
         self.logger.info(f"log pages info from omap: {self.omap_name}")
 
-        self.ioctx = self.omap_state.open_rados_connection(config)
         self.discovery_addr = self.config.get_with_default("discovery", "addr", "0.0.0.0")
         self.discovery_port = self.config.get_with_default("discovery", "port", "8009")
         if not self.discovery_addr or not self.discovery_port:

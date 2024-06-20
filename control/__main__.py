@@ -13,10 +13,13 @@ from .server import GatewayServer
 from .config import GatewayConfig
 from .utils import GatewayLogger
 
+gw = None
 gw_logger = None
 gw_name = None
 
 def sigterm_handler(signum, frame):
+    if gw and gw.omap_state:
+        gw.omap_state.cleanup_omap()
     if gw_logger and gw_name:
         gw_logger.compress_final_log_file(gw_name)
 
@@ -40,6 +43,7 @@ if __name__ == '__main__':
     config.display_environment_info(gw_logger.logger)
     config.dump_config_file(gw_logger.logger)
     with GatewayServer(config) as gateway:
+        gw = gateway
         gw_name = gateway.name
         gateway.serve()
         gateway.keep_alive()
