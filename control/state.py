@@ -444,6 +444,13 @@ class OmapGatewayState(GatewayState):
                 omap_dict.update(dict(omap_list))
         return omap_dict
 
+    def notify_callback(self, _, r, ack_list, timeout_list):
+            if ack_list is not None:
+                for notifier_id, _, notifier_data in ack_list:
+                      self.logger.info(f"Notified OID: {notifier_id} ")
+            else :
+                self.logger.info(f"do not iterate - Bad Notifier_id")
+
     def _add_key(self, key: str, val: str):
         """Adds key and value to the OMAP."""
         if not self.ioctx:
@@ -467,7 +474,7 @@ class OmapGatewayState(GatewayState):
 
         # Notify other gateways within the group of change
         try:
-            self.ioctx.notify(self.omap_name)
+            self.ioctx.aio_notify(self.omap_name, self.notify_callback)
         except Exception as ex:
             self.logger.info(f"Failed to notify.")
 
@@ -494,7 +501,7 @@ class OmapGatewayState(GatewayState):
 
         # Notify other gateways within the group of change
         try:
-            self.ioctx.notify(self.omap_name)
+            self.ioctx.aio_notify(self.omap_name, self.notify_callback)
         except Exception as ex:
             self.logger.info(f"Failed to notify.")
 
