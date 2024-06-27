@@ -68,13 +68,14 @@ def test_create_get_subsys(caplog, config):
         ceph_utils.execute_ceph_monitor_command("{" + f'"prefix":"nvme-gw create", "id": "{gateway.name}", "pool": "{pool}", "group": ""' + "}")
         gateway.serve()
 
+        time.sleep(20)     # Make sure update() is over
+
         for i in range(subsys_list_count):
             cli(["--format", "plain", "subsystem", "list"])
             assert "Exception" not in caplog.text
             assert "No subsystems" not in caplog.text
             time.sleep(0.1)
 
-        time.sleep(20)     # Make sure update() is over
         assert f"{subsystem_prefix}0 with ANA group id 1" in caplog.text
         assert f"Received request to set QOS limits for namespace using NSID 1 on {subsystem_prefix}0, R/W IOs per second: 2000 Read megabytes per second: 5" in caplog.text
         caplog.clear()
