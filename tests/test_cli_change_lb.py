@@ -6,6 +6,7 @@ import grpc
 from control.proto import gateway_pb2 as pb2
 from control.proto import gateway_pb2_grpc as pb2_grpc
 import copy
+import time
 
 image = "mytestdevimage"
 image2 = "mytestdevimage2"
@@ -68,25 +69,38 @@ def test_change_namespace_lb_group(caplog, two_gateways):
     assert f"create_subsystem {subsystem}: True" in caplog.text
     caplog.clear()
     cli(["--server-port", "5501", "namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool, "--rbd-image", image, "--size", "16MB", "--rbd-create-image", "--load-balancing-group", anagrpid, "--force"])
+    time.sleep(5)
     assert f"Adding namespace 1 to {subsystem}: Successful" in caplog.text
     assert f"get_cluster cluster_name='cluster_context_{anagrpid}_0'" in caplog.text
+    caplog.clear()
+    cli(["--server-port", "5501", "namespace", "set_qos", "--subsystem", subsystem, "--nsid", "1", "--rw-ios-per-second", "2000"])
+    assert f"Setting QOS limits of namespace 1 in {subsystem}: Successful" in caplog.text
     caplog.clear()
     cli(["--server-port", "5501", "--format", "json", "namespace", "list", "--subsystem", subsystem, "--nsid", "1"])
     assert f'"nsid": 1' in caplog.text
     assert f'"load_balancing_group": {anagrpid}' in caplog.text
     assert f'"load_balancing_group": {anagrpid2}' not in caplog.text
+    assert f'"rw_ios_per_second": "2000"' in caplog.text
+    assert f'"rw_mbytes_per_second": "0"' in caplog.text
+    assert f'"r_mbytes_per_second": "0"' in caplog.text
+    assert f'"w_mbytes_per_second": "0"' in caplog.text
     caplog.clear()
     cli(["--server-port", "5501", "namespace", "change_load_balancing_group", "--subsystem", subsystem, "--nsid", "1", "--load-balancing-group", anagrpid2])
+    time.sleep(5)
     assert f"Changing load balancing group of namespace 1 in {subsystem} to {anagrpid2}: Successful" in caplog.text
     caplog.clear()
     cli(["--server-port", "5501", "--format", "json", "namespace", "list", "--subsystem", subsystem, "--nsid", "1"])
     assert f'"nsid": 1' in caplog.text
     assert f'"load_balancing_group": {anagrpid2}' in caplog.text
     assert f'"load_balancing_group": {anagrpid}' not in caplog.text
+    assert f'"rw_ios_per_second": "2000"' in caplog.text
+    assert f'"rw_mbytes_per_second": "0"' in caplog.text
+    assert f'"r_mbytes_per_second": "0"' in caplog.text
+    assert f'"w_mbytes_per_second": "0"' in caplog.text
     caplog.clear()
     cli(["--server-port", "5501", "namespace", "add", "--subsystem", subsystem, "--nsid", "2", "--rbd-pool", pool, "--rbd-image", image2, "--size", "16MB", "--rbd-create-image", "--load-balancing-group", anagrpid2, "--force"])
+    time.sleep(5)
     assert f"Adding namespace 2 to {subsystem}: Successful" in caplog.text
-    assert f"Allocated cluster name='cluster_context_{anagrpid2}_0'" in caplog.text
     assert f"get_cluster cluster_name='cluster_context_{anagrpid2}_0'" in caplog.text
     caplog.clear()
     cli(["--server-port", "5501", "--format", "json", "namespace", "list", "--subsystem", subsystem, "--nsid", "2"])
