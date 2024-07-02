@@ -1037,107 +1037,149 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 errmsg = f"Failure changing load balancing group for namespace {nsid_msg}in {request.subsystem_nqn}: Load balancing group {request.anagrpid} doesn't exist"
                 self.logger.error(errmsg)
                 return pb2.req_status(status=errno.ENODEV, error_message=errmsg)
-            find_ret = self.find_namespace_and_bdev_name(request.subsystem_nqn, request.nsid, request.uuid, False,
-                            f"Failure changing load balancing group for namespace {nsid_msg}in {request.subsystem_nqn}")
-            if not find_ret[0]:
-                errmsg = f"Failure changing load balancing group for namespace {nsid_msg}in {request.subsystem_nqn}: Can't find namespace"
-                self.logger.error(errmsg)
-                return pb2.req_status(status=errno.ENODEV, error_message=errmsg)
-            try:
-                uuid = find_ret[0]["uuid"]
-            except KeyError:
-                uuid = None
-                self.logger.warning(f"Can't get UUID value for namespace {nsid_msg}in {request.subsystem_nqn}:\n{find_ret[0]}")
-            try:
-                nsid = find_ret[0]["nsid"]
-            except KeyError:
-                nsid = 0
-                self.logger.warning(f"Can't get NSID value for namespace {nsid_msg}in {request.subsystem_nqn}:\n{find_ret[0]}")
-
-            if request.nsid and request.nsid != nsid:
-                errmsg = f"Failure changing load balancing group for namespace {nsid_msg}in {request.subsystem_nqn}: Returned NSID {nsid} differs from requested one {request.nsid}"
-                self.logger.error(errmsg)
-                return pb2.req_status(status=errno.ENODEV, error_message=errmsg)
-
-            if request.uuid and request.uuid != uuid:
-                errmsg = f"Failure changing load balancing group for namespace {nsid_msg}in {request.subsystem_nqn}: Returned UUID {uuid} differs from requested one {request.uuid}"
-                self.logger.error(errmsg)
-                return pb2.req_status(status=errno.ENODEV, error_message=errmsg)
-
-            bdev_name = find_ret[1]
-            if not bdev_name:
-                bdev_name = self.find_unique_bdev_name(uuid)
-                self.logger.warning(f"Failure finding namespace's associated block device name, will use {bdev_name} instead")
 
             ns_entry = None
             state = self.gateway_state.local.get_state()
-            ns_key = GatewayState.build_namespace_key(request.subsystem_nqn, nsid)
-            try:
-                state_ns = state[ns_key]
-                ns_entry = json.loads(state_ns)
-            except Exception as ex:
-                errmsg = f"Failure changing load balancing group for namespace {nsid_msg}in {request.subsystem_nqn}. Can't get namespace entry from local state"
-                self.logger.exception(errmsg)
-                errmsg = f"{errmsg}:\n{ex}"
-                return pb2.req_status(status=errno.ENOENT, error_message=errmsg)
+            if request.nsid:
+                ns_key = GatewayState.build_namespace_key(request.subsystem_nqn, request.nsid)
+                try:
+                    state_ns = state[ns_key]
+                    ns_entry = json.loads(state_ns)
+                    assert request.nsid == ns_entry["nsid"], f'Got a namespace with NSID {ns_entry["nsid"]} which is different than the requested one {request.nsid}'
+                    assert request.subsystem_nqn == ns_entry["subsystem_nqn"], f'Got a namespace from subsystem {ns_entry["subsystem_nqn"]} which is different than the requested one {request.subsystem_nqn}'
+                except Exception as ex:
+                    errmsg = f"Failure changing load balancing group for namespace {nsid_msg}in {request.subsystem_nqn}. Can't get namespace entry from local state"
+                    self.logger.error(errmsg)
+                    errmsg = f"{errmsg}:\n{ex}"
+                    return pb2.req_status(status=errno.ENOENT, error_message=errmsg)
+            elif request.uuid:
+                for key, val in state.items():
+                    if not key.startswith(self.gateway_state.local.NAMESPACE_PREFIX):
+                        continue
+                    try:
+                        ns = json.loads(val)
+                        if ns["uuid"] == request.uuid:
+                            ns_entry = ns
+                            break
+                    except Exception:
+                        self.logger.exception(f"Got exception trying to get subsystem {nqn} namespaces")
+                        pass
+            else:
+                errmsg = f"Failure changing load balancing group for namespace {nsid_msg}in {request.subsystem_nqn}. At least one of NSID or UUID should be specified"
+                self.logger.error(errmsg)
+                return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
 
             if not ns_entry:
                 errmsg = f"Failure changing load balancing group for namespace {nsid_msg}in {request.subsystem_nqn}. Can't get namespace entry from local state"
                 self.logger.error(errmsg)
                 return pb2.req_status(status=errno.ENOENT, error_message=errmsg)
 
-            ret_del = self.remove_namespace(request.subsystem_nqn, nsid, context)
+            if not request.nsid:
+                try:
+                    request.nsid = ns_entry["nsid"]
+                except Exception:
+                    errmsg = f"Failure changing load balancing group for namespace {nsid_msg}in {request.subsystem_nqn}. Can't get namespace NSID"
+                    self.logger.error(errmsg)
+                    return pb2.req_status(status=errno.ENOENT, error_message=errmsg)
+
+            create_image = False
+            ns_size = None
+            force = False
+            try:
+                create_image = ns_entry["create_image"]
+                ns_size = ns_entry["size"]
+                force = ns_entry["force"]
+            except Exception:
+                self.logger.warning(f"Can't get all the attributes for namespace {nsid_msg}in {request.subsystem_nqn}.")
+
+            ns_qos_entry = None
+            ns_qos_key = GatewayState.build_namespace_qos_key(request.subsystem_nqn, request.nsid)
+            try:
+                state_ns_qos = state[ns_qos_key]
+                ns_qos_entry = json.loads(state_ns_qos)
+            except Exception:
+                self.logger.debug(f"No QOS limits found for namespace {nsid_msg}in {request.subsystem_nqn}")
+            if ns_qos_entry:
+                try:
+                    if ns_qos_entry["subsystem_nqn"] != request.subsystem_nqn:
+                        errmsg = f'Got subsystem {ns_qos_entry["subsystem_nqn"]} for QOS limits instead of {request.subsystem_nqn}, will not set QOS'
+                        self.logger.error(errmsg)
+                        ns_qos_entry = None
+                    if ns_qos_entry["nsid"] != request.nsid:
+                        errmsg = f'Got NSID {ns_qos_entry["nsid"]} for QOS limits instead of {request.nsid}, will not set QOS'
+                        self.logger.error(errmsg)
+                        ns_qos_entry = None
+                except Exception:
+                    self.logger.error(f"Error processing QOS limits, will not set QOS")
+                    ns_qos_entry = None
+
+            set_qos_req = None
+            if ns_qos_entry:
+                set_qos_req = pb2.namespace_set_qos_req()
+                set_qos_req.subsystem_nqn = request.subsystem_nqn
+                set_qos_req.nsid = request.nsid
+                if request.uuid:
+                    set_qos_req.uuid = request.uuid
+                try:
+                    set_qos_req.rw_ios_per_second = int(ns_qos_entry["rw_ios_per_second"])
+                except Exception:
+                    self.logger.warning(f"Couldn't get QOS attribute rw_ios_per_second")
+                try:
+                    set_qos_req.rw_mbytes_per_second = int(ns_qos_entry["rw_mbytes_per_second"])
+                except Exception:
+                    self.logger.warning(f"Couldn't get QOS attribute rw_mbytes_per_second")
+                try:
+                    set_qos_req.r_mbytes_per_second = int(ns_qos_entry["r_mbytes_per_second"])
+                except Exception:
+                    self.logger.warning(f"Couldn't get QOS attribute r_mbytes_per_second")
+                try:
+                    set_qos_req.w_mbytes_per_second = int(ns_qos_entry["w_mbytes_per_second"])
+                except Exception:
+                    self.logger.warning(f"Couldn't get QOS attribute w_mbytes_per_second")
+
+            namespace_add_req = pb2.namespace_add_req()
+            namespace_add_req.subsystem_nqn = request.subsystem_nqn
+            namespace_add_req.nsid = request.nsid
+            if request.uuid:
+                namespace_add_req.uuid = request.uuid
+            namespace_add_req.anagrpid = request.anagrpid
+            namespace_add_req.create_image = create_image
+            if ns_size:
+                namespace_add_req.size = int(ns_size)
+            namespace_add_req.force = force
+            errmsg = None
+            try:
+                namespace_add_req.rbd_pool_name=ns_entry["rbd_pool_name"]
+            except KeyError:
+                errmsg = f"Failure changing load balancing group for namespace {nsid_msg}in {request.subsystem_nqn}: Can't find RBD pool name"
+            try:
+                namespace_add_req.rbd_image_name=ns_entry["rbd_image_name"]
+            except KeyError:
+                errmsg = f"Failure changing load balancing group for namespace {nsid_msg}in {request.subsystem_nqn}: Can't find RBD image name"
+            try:
+                namespace_add_req.block_size=ns_entry["block_size"]
+            except KeyError:
+                errmsg = f"Failure changing load balancing group for namespace {nsid_msg}in {request.subsystem_nqn}: Can't find associated block device block size"
+
+            if errmsg:
+                self.logger.error(errmsg)
+                return pb2.req_status(status=errno.ENODEV, error_message=errmsg)
+
+            del_req = pb2.namespace_delete_req(subsystem_nqn=request.subsystem_nqn, nsid=request.nsid, uuid=request.uuid)
+            ret_del = self.namespace_delete_safe(del_req, context)
             if ret_del.status != 0:
                 errmsg = f"Failure changing load balancing group for namespace {nsid_msg}in {request.subsystem_nqn}. Can't delete namespace: {ret_del.error_message}"
                 self.logger.error(errmsg)
                 return pb2.req_status(status=ret_del.status, error_message=errmsg)
 
-            if nsid:
-                self.remove_namespace_from_state(request.subsystem_nqn, nsid, context)
-
-            ret_ns = self.create_namespace(request.subsystem_nqn, bdev_name, nsid, request.anagrpid, uuid, context)
+            ret_ns = self.namespace_add_safe(namespace_add_req, context)
             if ret_ns.status != 0:
                 errmsg = f"Failure changing load balancing group for namespace {nsid_msg}in {request.subsystem_nqn}:{ret_ns.error_message}"
                 self.logger.error(errmsg)
                 return pb2.req_status(status=ret_ns.status, error_message=errmsg)
 
-            if context:
-                # Update gateway state
-                try:
-                    namespace_add_req = pb2.namespace_add_req()
-                    try:
-                        namespace_add_req.rbd_pool_name=ns_entry["rbd_pool_name"]
-                    except KeyError:
-                        pass
-                    try:
-                        namespace_add_req.rbd_image_name=ns_entry["rbd_image_name"]
-                    except KeyError:
-                        pass
-                    try:
-                        namespace_add_req.subsystem_nqn=ns_entry["subsystem_nqn"]
-                    except KeyError:
-                        pass
-                    try:
-                        namespace_add_req.nsid=ns_entry["nsid"]
-                    except KeyError:
-                        pass
-                    try:
-                        namespace_add_req.block_size=ns_entry["block_size"]
-                    except KeyError:
-                        pass
-                    try:
-                        namespace_add_req.uuid=ns_entry["uuid"]
-                    except KeyError:
-                        pass
-                    namespace_add_req.anagrpid=request.anagrpid
-                    json_req = json_format.MessageToJson(
-                            namespace_add_req, preserving_proto_field_name=True, including_default_value_fields=True)
-                    self.gateway_state.add_namespace(request.subsystem_nqn, nsid, json_req)
-                except Exception as ex:
-                    errmsg = f"Error persisting change load balancing group for namespace {nsid_msg}in {request.subsystem_nqn}"
-                    self.logger.exception(errmsg)
-                    errmsg = f"{errmsg}:\n{ex}"
-                    return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
+            if set_qos_req:
+                ret_qos = self.namespace_set_qos_limits_safe(set_qos_req, context)
 
         return pb2.req_status(status=0, error_message=os.strerror(0))
 
