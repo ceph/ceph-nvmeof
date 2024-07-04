@@ -310,7 +310,7 @@ class DiscoveryService:
         self.version = 1
         self.config = config
         self.lock = threading.Lock()
-        self.omap_state = OmapGatewayState(self.config, "discovery")
+        self.omap_state = OmapGatewayState(self.config, f"discovery-{socket.gethostname()}")
 
         self.gw_logger_object = GatewayLogger(config)
         self.logger = self.gw_logger_object.logger
@@ -330,6 +330,14 @@ class DiscoveryService:
         self.conn_vals = {}
         self.connection_counter = 1
         self.selector = selectors.DefaultSelector()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        if self.omap_state:
+            self.omap_state.cleanup_omap()
+            self.omap_state = None
 
     def _read_all(self) -> Dict[str, str]:
         """Reads OMAP and returns dict of all keys and values."""
@@ -1077,7 +1085,7 @@ class DiscoveryService:
 
         local_state = LocalGatewayState()
         gateway_state = GatewayStateHandler(self.config, local_state,
-                                            self.omap_state, self._state_notify_update, "discovery")
+                                            self.omap_state, self._state_notify_update, f"discovery-{socket.gethostname()}")
         gateway_state.start_update()
 
         try:
@@ -1106,8 +1114,8 @@ def main(args=None):
     args = parser.parse_args()
 
     config = GatewayConfig(args.config)
-    discovery_service = DiscoveryService(config)
-    discovery_service.start_service()
+    with DiscoveryService(config) as discovery_service:
+        discovery_service.start_service()
 
 if __name__ == "__main__":
     main()

@@ -359,6 +359,7 @@ class OmapGatewayState(GatewayState):
         self.watch = None
         gateway_group = self.config.get("gateway", "group")
         self.omap_name = f"nvmeof.{gateway_group}.state" if gateway_group else "nvmeof.state"
+        self.notify_timeout = self.config.getint_with_default("gateway", "state_update_timeout_in_msec", 2000)
         self.conn = None
         self.id_text = id_text
 
@@ -378,7 +379,6 @@ class OmapGatewayState(GatewayState):
         except Exception:
             self.logger.exception(f"Unable to create OMAP, exiting!")
             raise
-        atexit.register(self.cleanup_omap)
 
     def __exit__(self, exc_type, exc_value, traceback):
         self.cleanup_omap()
@@ -467,9 +467,9 @@ class OmapGatewayState(GatewayState):
 
         # Notify other gateways within the group of change
         try:
-            self.ioctx.notify(self.omap_name)
+            self.ioctx.notify(self.omap_name, timeout_ms = self.notify_timeout)
         except Exception as ex:
-            self.logger.info(f"Failed to notify.")
+            self.logger.warning(f"Failed to notify.")
 
     def _remove_key(self, key: str):
         """Removes key from the OMAP."""
@@ -494,9 +494,9 @@ class OmapGatewayState(GatewayState):
 
         # Notify other gateways within the group of change
         try:
-            self.ioctx.notify(self.omap_name)
+            self.ioctx.notify(self.omap_name, timeout_ms = self.notify_timeout)
         except Exception as ex:
-            self.logger.info(f"Failed to notify.")
+            self.logger.warning(f"Failed to notify.")
 
     def delete_state(self):
         """Deletes OMAP object contents."""
@@ -535,13 +535,19 @@ class OmapGatewayState(GatewayState):
     def cleanup_omap(self):
         self.logger.info(f"Cleanup OMAP on exit ({self.id_text})")
         if self.watch:
-            self.logger.debug("Unregistering watch")
-            self.watch.close()
-            self.watch = None
+            try:
+                self.watch.close()
+                self.logger.debug("Unregistered watch")
+                self.watch = None
+            except Exception:
+                pass
         if self.ioctx:
-            self.logger.debug("Closing Rados connection")
-            self.ioctx.close()
-            self.ioctx = None
+            try:
+                self.ioctx.close()
+                self.logger.debug("Closed Rados connection")
+                self.ioctx = None
+            except Exception:
+                pass
 
 class GatewayStateHandler:
     """Maintains consistency in NVMeoF target state store instances.
