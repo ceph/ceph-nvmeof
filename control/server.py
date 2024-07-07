@@ -114,16 +114,17 @@ class GatewayServer:
         gw_logger = self.gw_logger_object
         logger = gw_logger.logger
         signal.signal(signal.SIGCHLD, signal.SIG_IGN)
-        if self.monitor_client_process is not None:
+        if self.monitor_client_process:
             self._stop_monitor_client()
 
-        if self.spdk_process is not None:
+        if self.spdk_process:
             self._stop_spdk()
 
-        if self.server is not None:
+        if self.server:
             if logger:
                 logger.info("Stopping the server...")
             self.server.stop(None)
+            self.server = None
 
         if self.discovery_pid:
             self._stop_discovery()
@@ -269,7 +270,8 @@ class GatewayServer:
         self.discovery_pid = os.fork()
         if self.discovery_pid == 0:
             self.logger.info("Starting ceph nvmeof discovery service")
-            DiscoveryService(self.config).start_service()
+            with DiscoveryService(self.config) as discovery:
+                discovery.start_service()
             os._exit(0)
         else:
             self.logger.info(f"Discovery service process id: {self.discovery_pid}")
@@ -449,12 +451,14 @@ class GatewayServer:
         """Stops Monitor client."""
         timeout = self.config.getfloat_with_default("monitor", "timeout", 1.0)
         self._stop_subprocess(self.monitor_client_process, timeout)
+        self.monitor_client_process = None
 
     def _stop_spdk(self):
         """Stops SPDK process."""
         # Terminate spdk process
         timeout = self.config.getfloat_with_default("spdk", "timeout", 60.0)
         self._stop_subprocess(self.spdk_process, timeout)
+        self.spdk_process = None
 
         # Clean spdk rpc socket
         if self.spdk_rpc_socket_path and os.path.exists(self.spdk_rpc_socket_path):
