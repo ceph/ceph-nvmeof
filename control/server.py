@@ -476,7 +476,7 @@ class GatewayServer:
         try:
             os.kill(self.discovery_pid, signal.SIGINT)
             os.waitpid(self.discovery_pid, 0)
-        except ChildProcessError:
+        except (ChildProcessError, ProcessLookupError):
             pass # ignore
         self.logger.info("Discovery service terminated")
 

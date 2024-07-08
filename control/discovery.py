@@ -295,7 +295,7 @@ class DiscoveryLogEntry(AutoSerializableStructure):
 class DiscoveryService:
     """Implements discovery controller.
 
-    Response discover request from initiator.
+    Response discover request from initiator, this must be called from within a "with" block.
 
     Instance attributes:
         version: Discovery controller version
@@ -327,6 +327,7 @@ class DiscoveryService:
             assert 0
         self.logger.info(f"discovery addr: {self.discovery_addr} port: {self.discovery_port}")
 
+        self.sock = None
         self.conn_vals = {}
         self.connection_counter = 1
         self.selector = selectors.DefaultSelector()
@@ -338,6 +339,36 @@ class DiscoveryService:
         if self.omap_state:
             self.omap_state.cleanup_omap()
             self.omap_state = None
+
+        if self.selector:
+            with self.lock:
+                for key in self.conn_vals:
+                    try:
+                        self.selector.unregister(self.conn_vals[key].connection)
+                    except Except as ex:
+                        pass
+                    try:
+                        self.conn_vals[key].connection.close()
+                    except Except as ex:
+                        pass
+                self.conn_vals = {}
+
+                if self.sock:
+                    try:
+                        self.selector.unregister(self.sock)
+                    except Exception as ex:
+                        pass
+                    try:
+                        self.sock.close()
+                    except Exception as ex:
+                        pass
+                    self.sock = None
+
+                try:
+                    self.selector.close()
+                except Exception as ex:
+                    pass
+                self.selector = None
 
     def _read_all(self) -> Dict[str, str]:
         """Reads OMAP and returns dict of all keys and values."""
@@ -1074,11 +1105,11 @@ class DiscoveryService:
     def start_service(self):
         """Enable listening on the server side."""
 
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.bind((self.discovery_addr, int(self.discovery_port)))
-        sock.listen(MAX_CONNECTION)
-        sock.setblocking(False)
-        self.selector.register(sock, selectors.EVENT_READ, self.nvmeof_accept)
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.sock.bind((self.discovery_addr, int(self.discovery_port)))
+        self.sock.listen(MAX_CONNECTION)
+        self.sock.setblocking(False)
+        self.selector.register(self.sock, selectors.EVENT_READ, self.nvmeof_accept)
         self.logger.debug("waiting for connection...")
         t = threading.Thread(target=self.handle_timeout)
         t.start()
@@ -1096,10 +1127,7 @@ class DiscoveryService:
                 callback = key.data
                 callback(key.fileobj, mask)
         except KeyboardInterrupt:
-          for key in self.conn_vals:
-            self.conn_vals[key].connection.close()
-          self.selector.close()
-          self.logger.debug("received a ctrl+C interrupt. exiting...")
+            self.logger.debug("received a ctrl+C interrupt. exiting...")
 
 def main(args=None):
     parser = argparse.ArgumentParser(prog="python3 -m control",
