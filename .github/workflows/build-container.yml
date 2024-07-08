@@ -53,7 +53,7 @@ jobs:
       - name: Upload container images
         uses: actions/upload-artifact@v4
         with:
-          name: container_images-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}
+          name: container_images
           path: |
             nvmeof.tar
             nvmeof-cli.tar
@@ -76,7 +76,7 @@ jobs:
       - name: Upload container images
         uses: actions/upload-artifact@v4
         with:
-          name: container_images_ceph-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}
+          name: container_images_ceph
           path: |
             ceph.tar
 
@@ -188,7 +188,7 @@ jobs:
         if: steps.check_coredumps.outputs.files_exists == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: core_pytest_${{ matrix.test }}-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}
+          name: core_pytest_${{ matrix.test }}
           path: /tmp/coredump/core.*
 
       - name: Display logs
@@ -325,7 +325,7 @@ jobs:
         if: steps.check_coredumps.outputs.files_exists == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: core_demo-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}
+          name: core_demo
           path: /tmp/coredump/core.*
 
       # For debugging purposes (provides an SSH connection to the runner)
@@ -517,7 +517,7 @@ jobs:
         if: steps.check_coredumps.outputs.files_exists == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: core_demo-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}
+          name: core_demo_discovery
           path: /tmp/coredump/core.*
 
       - name: Display logs
@@ -621,7 +621,7 @@ jobs:
         if: steps.check_coredumps.outputs.files_exists == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: core_demo-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}
+          name: core_demo_ha-${{ matrix.test }}
           path: /tmp/coredump/core.*
 
       - name: Copy ceph logs
@@ -632,7 +632,7 @@ jobs:
         if: success() || failure()
         uses: actions/upload-artifact@v4
         with:
-          name: ceph_out_${{ matrix.test }}-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}
+          name: ceph_out_${{ matrix.test }}
           path: /tmp/out/*
 
       - name: Display logs
