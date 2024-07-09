@@ -7,7 +7,20 @@ expect_optimized() {
   EXPECTED_OPTIMIZED=$2
   NQN=$3
 
-  socket=$(docker exec "$GW_NAME" find /var/run/ceph -name spdk.sock)
+  socket_retries=0
+  socket=""
+  while [ $socket_retries -lt 10 ] ; do
+      socket=$(docker exec "$GW_NAME" find /var/run/ceph -name spdk.sock)
+      if [ -n "$socket" ]; then
+          break
+      fi
+      socket_retries=$(expr $socket_retries + 1)
+      sleep 1
+  done
+  if [ -z "$socket" ]; then
+      exit 1 # failed
+  fi
+
   # Verify expected number of "optimized"
   for i in $(seq 50); do
     response=$(docker exec "$GW_NAME" "$rpc" "-s" "$socket" "$cmd" "$NQN")
