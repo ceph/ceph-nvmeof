@@ -537,14 +537,14 @@ class OmapGatewayState(GatewayState):
         if self.watch:
             try:
                 self.watch.close()
-                self.logger.debug("Unregistered watch")
+                self.logger.debug(f"Unregistered watch ({self.id_text})")
                 self.watch = None
             except Exception:
                 pass
         if self.ioctx:
             try:
                 self.ioctx.close()
-                self.logger.debug("Closed Rados connection")
+                self.logger.debug(f"Closed Rados connection ({self.id_text})")
                 self.ioctx = None
             except Exception:
                 pass
