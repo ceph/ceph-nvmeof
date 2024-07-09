@@ -505,6 +505,22 @@ class OmapGatewayState(GatewayState):
         else:
             self.logger.info(f"Watch already exists.")
 
+    def cleanup_omap(self):
+        self.logger.info(f"Cleanup OMAP on exit ({self.id_text})")
+        if self.watch:
+            try:
+                self.watch.close()
+                self.logger.debug(f"Unregistered watch ({self.id_text})")
+                self.watch = None
+            except Exception:
+                pass
+        if self.ioctx:
+            try:
+                self.ioctx.close()
+                self.logger.debug(f"Closed Rados connection ({self.id_text})")
+                self.ioctx = None
+            except Exception:
+                pass
 
 class GatewayStateHandler:
     """Maintains consistency in NVMeoF target state store instances.
