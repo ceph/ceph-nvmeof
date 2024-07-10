@@ -359,7 +359,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         self.logger.info(f"Received request to resize bdev {bdev_name} to {new_size} MiB{peer_msg}")
         rbd_pool_name = None
         rbd_image_name = None
-        bdev_info = self.get_bdev_info(bdev_name, True)
+        bdev_info = self.get_bdev_info(bdev_name)
         if bdev_info is not None:
             try:
                 drv_specific_info = bdev_info["driver_specific"]
@@ -964,7 +964,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 errmsg = f"Failure adding namespace {nsid_msg}to {request.subsystem_nqn}: {ret_bdev.error_message}"
                 self.logger.error(errmsg)
                 # Delete the bdev just to be on the safe side
-                ns_bdev = self.get_bdev_info(bdev_name, False)
+                ns_bdev = self.get_bdev_info(bdev_name)
                 if ns_bdev != None:
                     try:
                         ret_del = self.delete_bdev(bdev_name, peer_msg = peer_msg)
@@ -1246,23 +1246,17 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         return pb2.req_status(status=0, error_message=os.strerror(0))
 
-    def get_bdev_info(self, bdev_name, need_to_lock):
+    def get_bdev_info(self, bdev_name):
         """Get bdev info"""
 
         ret_bdev = None
-        if need_to_lock:
-            lock_to_use = self.rpc_lock
-        else:
-            lock_to_use = contextlib.suppress()
-
-        with lock_to_use:
-            try:
-                bdevs = rpc_bdev.bdev_get_bdevs(self.spdk_rpc_client, name=bdev_name)
-                if (len(bdevs) > 1):
-                    self.logger.warning(f"Got {len(bdevs)} bdevs for bdev name {bdev_name}, will use the first one")
-                ret_bdev = bdevs[0]
-            except Exception:
-                self.logger.exception(f"Got exception while getting bdev {bdev_name} info")
+        try:
+            bdevs = rpc_bdev.bdev_get_bdevs(self.spdk_rpc_client, name=bdev_name)
+            if (len(bdevs) > 1):
+                self.logger.warning(f"Got {len(bdevs)} bdevs for bdev name {bdev_name}, will use the first one")
+            ret_bdev = bdevs[0]
+        except Exception:
+            self.logger.exception(f"Got exception while getting bdev {bdev_name} info")
 
         return ret_bdev
 
@@ -1297,63 +1291,63 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     errmsg = f"Failure listing namespaces: {resp['message']}"
                 return pb2.namespaces_info(status=status, error_message=errmsg, subsystem_nqn=request.subsystem, namespaces=[])
 
-        namespaces = []
-        for s in ret:
-            try:
-                if s["nqn"] != request.subsystem:
-                    self.logger.warning(f'Got subsystem {s["nqn"]} instead of {request.subsystem}, ignore')
-                    continue
+            namespaces = []
+            for s in ret:
                 try:
-                    ns_list = s["namespaces"]
-                except Exception:
-                    ns_list = []
-                    pass
-                for n in ns_list:
-                    if request.nsid and request.nsid != n["nsid"]:
-                        self.logger.debug(f'Filter out namespace {n["nsid"]} which is different than requested nsid {request.nsid}')
+                    if s["nqn"] != request.subsystem:
+                        self.logger.warning(f'Got subsystem {s["nqn"]} instead of {request.subsystem}, ignore')
                         continue
-                    if request.uuid and request.uuid != n["uuid"]:
-                        self.logger.debug(f'Filter out namespace with UUID {n["uuid"]} which is different than requested UUID {request.uuid}')
-                        continue
-                    bdev_name = n["bdev_name"]
-                    ns_bdev = self.get_bdev_info(bdev_name, True)
-                    lb_group = 0
                     try:
-                        lb_group = n["anagrpid"]
-                    except KeyError:
+                        ns_list = s["namespaces"]
+                    except Exception:
+                        ns_list = []
                         pass
-                    one_ns = pb2.namespace_cli(nsid = n["nsid"],
-                                           bdev_name = bdev_name,
-                                           uuid = n["uuid"],
-                                           load_balancing_group = lb_group)
-                    if ns_bdev == None:
-                        self.logger.warning(f"Can't find namespace's bdev {bdev_name}, will not list bdev's information")
-                    else:
+                    for n in ns_list:
+                        if request.nsid and request.nsid != n["nsid"]:
+                            self.logger.debug(f'Filter out namespace {n["nsid"]} which is different than requested nsid {request.nsid}')
+                            continue
+                        if request.uuid and request.uuid != n["uuid"]:
+                            self.logger.debug(f'Filter out namespace with UUID {n["uuid"]} which is different than requested UUID {request.uuid}')
+                            continue
+                        bdev_name = n["bdev_name"]
+                        ns_bdev = self.get_bdev_info(bdev_name)
+                        lb_group = 0
                         try:
-                            drv_specific_info = ns_bdev["driver_specific"]
-                            rbd_info = drv_specific_info["rbd"]
-                            one_ns.rbd_image_name = rbd_info["rbd_name"]
-                            one_ns.rbd_pool_name = rbd_info["pool_name"]
-                            one_ns.block_size = ns_bdev["block_size"]
-                            one_ns.rbd_image_size = ns_bdev["block_size"] * ns_bdev["num_blocks"]
-                            assigned_limits = ns_bdev["assigned_rate_limits"]
-                            one_ns.rw_ios_per_second=assigned_limits["rw_ios_per_sec"]
-                            one_ns.rw_mbytes_per_second=assigned_limits["rw_mbytes_per_sec"]
-                            one_ns.r_mbytes_per_second=assigned_limits["r_mbytes_per_sec"]
-                            one_ns.w_mbytes_per_second=assigned_limits["w_mbytes_per_sec"]
-                        except KeyError as err:
-                            self.logger.warning(f"Key {err} is not found, will not list bdev's information") 
+                            lb_group = n["anagrpid"]
+                        except KeyError:
                             pass
-                        except Exception:
-                            self.logger.exception(f"{ns_bdev=} parse error") 
-                            pass
-                    namespaces.append(one_ns)
-                break
-            except Exception:
-                self.logger.exception(f"{s=} parse error")
-                pass
+                        one_ns = pb2.namespace_cli(nsid = n["nsid"],
+                                               bdev_name = bdev_name,
+                                               uuid = n["uuid"],
+                                               load_balancing_group = lb_group)
+                        if ns_bdev == None:
+                            self.logger.warning(f"Can't find namespace's bdev {bdev_name}, will not list bdev's information")
+                        else:
+                            try:
+                                drv_specific_info = ns_bdev["driver_specific"]
+                                rbd_info = drv_specific_info["rbd"]
+                                one_ns.rbd_image_name = rbd_info["rbd_name"]
+                                one_ns.rbd_pool_name = rbd_info["pool_name"]
+                                one_ns.block_size = ns_bdev["block_size"]
+                                one_ns.rbd_image_size = ns_bdev["block_size"] * ns_bdev["num_blocks"]
+                                assigned_limits = ns_bdev["assigned_rate_limits"]
+                                one_ns.rw_ios_per_second=assigned_limits["rw_ios_per_sec"]
+                                one_ns.rw_mbytes_per_second=assigned_limits["rw_mbytes_per_sec"]
+                                one_ns.r_mbytes_per_second=assigned_limits["r_mbytes_per_sec"]
+                                one_ns.w_mbytes_per_second=assigned_limits["w_mbytes_per_sec"]
+                            except KeyError as err:
+                                self.logger.warning(f"Key {err} is not found, will not list bdev's information") 
+                                pass
+                            except Exception:
+                                self.logger.exception(f"{ns_bdev=} parse error") 
+                                pass
+                        namespaces.append(one_ns)
+                    break
+                except Exception:
+                    self.logger.exception(f"{s=} parse error")
+                    pass
 
-        return pb2.namespaces_info(status = 0, error_message = os.strerror(0), subsystem_nqn=request.subsystem, namespaces=namespaces)
+            return pb2.namespaces_info(status = 0, error_message = os.strerror(0), subsystem_nqn=request.subsystem, namespaces=namespaces)
 
     def namespace_get_io_stats(self, request, context=None):
         """Get namespace's IO stats."""
