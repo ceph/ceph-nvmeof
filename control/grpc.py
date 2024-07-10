@@ -382,31 +382,30 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 self.logger.warning(f"Error trying to get the size of image {rbd_pool_name}/{rbd_image_name}, won't check size for shrinkage:\n{ex}")
                 pass
 
-        with self.rpc_lock:
-            try:
-                ret = rpc_bdev.bdev_rbd_resize(
-                    self.spdk_rpc_client,
-                    name=bdev_name,
-                    new_size=new_size,
-                )
-                self.logger.debug(f"resize_bdev {bdev_name}: {ret}")
-            except Exception as ex:
-                errmsg = f"Failure resizing bdev {bdev_name}"
-                self.logger.exception(errmsg)
-                errmsg = f"{errmsg}:\n{ex}"
-                resp = self.parse_json_exeption(ex)
-                status = errno.EINVAL
-                if resp:
-                    status = resp["code"]
-                    errmsg = f"Failure resizing bdev {bdev_name}: {resp['message']}"
-                return pb2.req_status(status=status, error_message=errmsg)
+        try:
+            ret = rpc_bdev.bdev_rbd_resize(
+                self.spdk_rpc_client,
+                name=bdev_name,
+                new_size=new_size,
+            )
+            self.logger.debug(f"resize_bdev {bdev_name}: {ret}")
+        except Exception as ex:
+            errmsg = f"Failure resizing bdev {bdev_name}"
+            self.logger.exception(errmsg)
+            errmsg = f"{errmsg}:\n{ex}"
+            resp = self.parse_json_exeption(ex)
+            status = errno.EINVAL
+            if resp:
+                status = resp["code"]
+                errmsg = f"Failure resizing bdev {bdev_name}: {resp['message']}"
+            return pb2.req_status(status=status, error_message=errmsg)
 
-            if not ret:
-                errmsg = f"Failure resizing bdev {bdev_name}"
-                self.logger.error(errmsg)
-                return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
+        if not ret:
+            errmsg = f"Failure resizing bdev {bdev_name}"
+            self.logger.error(errmsg)
+            return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
 
-            return pb2.req_status(status=0, error_message=os.strerror(0))
+        return pb2.req_status(status=0, error_message=os.strerror(0))
 
     def delete_bdev(self, bdev_name, recycling_mode=False, peer_msg=""):
         """Deletes a bdev."""
@@ -1617,7 +1616,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
     def namespace_resize(self, request, context=None):
         """Resize a namespace."""
+        return self.execute_grpc_function(self.namespace_resize_safe, request, context)
 
+    def namespace_resize_safe(self, request, context=None):
         peer_msg = self.get_peer_message(context)
         nsid_msg = self.get_ns_id_message(request.nsid, request.uuid)
         self.logger.info(f"Received request to resize namespace {nsid_msg}on {request.subsystem_nqn} to {request.new_size} MiB, context: {context}{peer_msg}")
