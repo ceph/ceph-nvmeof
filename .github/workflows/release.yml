@@ -1,0 +1,86 @@
+# Publishes official python package at https://pypi.org/project/ceph-nvmeof/
+# This is official release, and will be pushed to pypi when a new tag is pushed in repo.
+# Usage: pip install ceph-nvmeof==1.2.15
+
+# Also publishes dev python package at https://test.pypi.org/p/ceph-nvmeof
+# This is for dev releases, and will be pushed to test pypi on all merges to "devel" branch.
+# Usage: `pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple ceph-nvmeof==1.2.15`
+
+name: Publish release to PyPI
+on:
+  push:
+    tags:
+      - '*'
+    branches:
+      - 'devel'
+  release:
+    types:
+      - published 
+  workflow_dispatch:
+    inputs:
+      python_version:
+        description: 'Python Version'
+        required: false
+        type: string
+      pdm_version:
+        description: 'PDM Version'
+        required: false
+        type: string
+      pypi_env:
+        description: 'Push to test.pypi (dev) or pypi (prod). And `dev-debug-version` pushes to test.pypi with a test package version.'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev 
+          - prod
+          - dev-debug-version
+      ref:
+        description: 'Build using this branch, tag or SHA'
+        required: false
+        type: string
+
+env:
+  DEFAULT_PYTHON: ${{ inputs.python_version || '3.9' }}
+  DEFAULT_PDM: ${{ inputs.pdm_version || '2.7.4' }}
+  REF: ${{ inputs.ref || 'devel' }} 
+
+jobs:
+  pypi-publish:
+    name: Upload release to PyPI
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          ref: ${{env.REF}} 
+      - uses: pdm-project/setup-pdm@v3
+        with:
+          python-version: ${{env.DEFAULT_PYTHON}}
+          version: ${{env.DEFAULT_PDM}}
+      
+      - name: Sync Dependencies 
+        run: pdm sync -v --no-isolation --no-self --no-editable
+      - name: Compile Protocol Buffers
+        run: pdm run protoc
+      
+      - name: Set current date as env variable
+        run: echo "NOW=$(date +'%Y%m%d%H%M%S')" >> $GITHUB_ENV
+      - name: (DEBUG) Set dev version number
+        # For debug-release, set version "<current_release>dev<timestamp>" (eg 1.2.15.dev20240710183756)
+        # (to avoid messing current releases versions like 1.2.15).
+        run: |
+          NEW_VERSION="$(pdm show --version).dev$NOW"
+          sed -i "s/^version = \".*\"/version = \"${NEW_VERSION}\"/" pyproject.toml
+        if: (inputs.pypi_env && inputs.pypi_env == 'dev-debug-version')
+      - name: Build package
+        run: pdm build --config-setting="--build-number=$NOW" --no-sdist
+
+      - name: Publish package distributions to PyPI
+        run: pdm publish --no-build
+        if: ( github.event_name == 'release' && github.event.action == 'published' ) || (github.event_name == 'workflow_dispatch' && inputs.pypi_env == 'prod') 
+
+      - name: Publish package distributions to Test PyPI
+        run: pdm publish --no-build -r testpypi
+        if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.pypi_env == 'dev' || inputs.pypi_env == 'dev-debug-version'))
