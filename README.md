@@ -357,6 +357,15 @@ Python wheel exported to:
 /tmp/ceph_nvmeof-0.0.1-py3-none-any.whl
 ```
 
+To install nvmeof-cli as a CLI tool from the above Python wheel package, (or alternatively only build the cli package):
+```
+make export-python
+pip install /tmp/ceph_nvmeof-0.0.1-py3-none-any.whl
+ceph-nvmeof // use nvmeof-cli tool!
+```
+
+This can also be installed from https://pypi.org/project/ceph-nvmeof/, by running `pip3 install ceph-nvmeof`.
+
 ### Development containers
 
 To avoid having to re-build container on every code change, developer friendly containers are provided:
