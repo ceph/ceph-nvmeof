@@ -146,6 +146,16 @@ The same configuration can also be manually run:
     cephnvmf host add --subsystem nqn.2016-06.io.spdk:cnode1 --host "*"
     ```
 
+These can also be run by setting environment variables `CEPH_NVMEOF_SERVER_ADDRESS` and `CEPH_NVMEOF_SERVER_PORT` before running nvmeof-cli commands, example:
+```
+export CEPH_NVMEOF_SERVER_ADDRESS=x.x.x.x 
+export CEPH_NVMEOF_SERVER_PORT=5500
+
+// using containers
+docker-compose run --it <container_image> subsystem add --subsystem nqn.2016-06.io.spdk:cnode1 
+// using pypi package
+ceph-nvmeof subsystem add --subsystem nqn.2016-06.io.spdk:cnode1 
+```
 
 ### Mounting the NVMe-oF volume
 
@@ -356,6 +366,15 @@ RPMs exported to:
 Python wheel exported to:
 /tmp/ceph_nvmeof-0.0.1-py3-none-any.whl
 ```
+
+To install nvmeof-cli as a CLI tool from the above Python wheel package, (or alternatively only build the cli package):
+```
+make export-python
+pip install /tmp/ceph_nvmeof-0.0.1-py3-none-any.whl
+ceph-nvmeof // use nvmeof-cli tool!
+```
+
+This can also be installed from https://pypi.org/project/ceph-nvmeof/, by running `pip3 install ceph-nvmeof`.
 
 ### Development containers
 

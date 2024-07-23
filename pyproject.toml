@@ -51,3 +51,6 @@ test = [
 # documentation = ""
 repository = "https://github.com/ceph/ceph-nvmeof.git"
 # changelog = ""
+
+[project.scripts]
+ceph-nvmeof = "control.cli:main"

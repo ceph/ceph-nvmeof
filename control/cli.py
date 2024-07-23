@@ -108,13 +108,13 @@ class Parser:
             required=False)
         self.parser.add_argument(
             "--server-address",
-            default="localhost",
+            default=(os.getenv('CEPH_NVMEOF_SERVER_ADDRESS') or "localhost"),
             type=str,
             help="Server address",
         )
         self.parser.add_argument(
             "--server-port",
-            default=5500,
+            default=int(os.getenv('CEPH_NVMEOF_SERVER_PORT') or "5500"),
             type=int,
             help="Server port",
         )
