@@ -638,7 +638,6 @@ class TestCreate:
     def test_create_listener(self, caplog, listener, gateway):
         caplog.clear()
         cli(["listener", "add", "--subsystem", subsystem, "--host-name", host_name] + listener)
-        assert "enable_ha: True" in caplog.text
         assert "ipv4" in caplog.text.lower()
         assert f"Adding {subsystem} listener at {listener[1]}:{listener[3]}: Successful" in caplog.text
 
@@ -647,7 +646,6 @@ class TestCreate:
     def test_create_listener_ipv6(self, caplog, listener_ipv6, gateway):
         caplog.clear()
         cli(["--server-address", server_addr_ipv6, "listener", "add", "--subsystem", subsystem, "--host-name", host_name] + listener_ipv6)
-        assert "enable_ha: True" in caplog.text
         assert "ipv6" in caplog.text.lower()
         assert f"Adding {subsystem} listener at [{listener_ipv6[1]}]:{listener_ipv6[3]}: Successful" in caplog.text
 
@@ -655,7 +653,6 @@ class TestCreate:
     def test_create_listener_no_port(self, caplog, listener, gateway):
         caplog.clear()
         cli(["listener", "add", "--subsystem", subsystem, "--host-name", host_name] + listener)
-        assert "enable_ha: True" in caplog.text
         assert "ipv4" in caplog.text.lower()
         assert f"Adding {subsystem} listener at {listener[1]}:4420: Successful" in caplog.text
 
@@ -782,7 +779,6 @@ class TestDelete:
     def test_delete_listener_using_wild_hostname(self, caplog, listener, gateway):
         caplog.clear()
         cli(["listener", "add", "--subsystem", subsystem, "--host-name", host_name] + listener)
-        assert "enable_ha: True" in caplog.text
         assert "ipv4" in caplog.text.lower()
         assert f"Adding {subsystem} listener at {listener[1]}:{listener[3]}: Successful" in caplog.text
         cli(["--format", "json", "listener", "list", "--subsystem", subsystem])
@@ -890,7 +886,6 @@ class TestCreateWithAna:
     def test_create_listener_ana(self, caplog, listener, gateway):
         caplog.clear()
         cli(["listener", "add", "--subsystem", subsystem, "--host-name", host_name] + listener)
-        assert "enable_ha: True" in caplog.text
         assert "ipv4" in caplog.text.lower()
         assert f"Adding {subsystem} listener at {listener[1]}:{listener[3]}: Successful" in caplog.text
 

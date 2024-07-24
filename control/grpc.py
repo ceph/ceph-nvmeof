@@ -139,10 +139,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
         self.bdev_cluster = {}
         self.bdev_params  = {}
         self.subsystem_nsid_bdev = defaultdict(dict)
-        self.subsystem_nsid_anagrp = defaultdict(dict)
         self.subsystem_listeners = defaultdict(set)
         self._init_cluster_context()
-        self.subsys_ha = {}
         self.subsys_max_ns = {}
 
     def is_valid_host_nqn(nqn):
@@ -559,7 +557,6 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     errmsg = f"{create_subsystem_error_prefix}: {errmsg}"
                     self.logger.error(f"{errmsg}")
                     return pb2.req_status(status=errno.EEXIST, error_message=errmsg)
-                enable_ha = (request.enable_ha == True)
                 ret = rpc_nvmf.nvmf_create_subsystem(
                     self.spdk_rpc_client,
                     nqn=request.subsystem_nqn,
@@ -568,9 +565,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     max_namespaces=request.max_namespaces,
                     min_cntlid=min_cntlid,
                     max_cntlid=max_cntlid,
-                    ana_reporting = enable_ha,
+                    ana_reporting = True,
                 )
-                self.subsys_ha[request.subsystem_nqn] = enable_ha
                 self.subsys_max_ns[request.subsystem_nqn] = request.max_namespaces if request.max_namespaces else 32
                 self.logger.debug(f"create_subsystem {request.subsystem_nqn}: {ret}")
             except Exception as ex:
@@ -664,7 +660,6 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     self.spdk_rpc_client,
                     nqn=request.subsystem_nqn,
                 )
-                self.subsys_ha.pop(request.subsystem_nqn)
                 self.subsys_max_ns.pop(request.subsystem_nqn)
                 if request.subsystem_nqn in self.subsystem_listeners:
                     self.subsystem_listeners.pop(request.subsystem_nqn)
@@ -783,7 +778,6 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 uuid=uuid,
             )
             self.subsystem_nsid_bdev[subsystem_nqn][nsid] = bdev_name
-            self.subsystem_nsid_anagrp[subsystem_nqn][nsid] = anagrpid
             self.logger.debug(f"subsystem_add_ns: {nsid}")
         except Exception as ex:
             self.logger.exception(add_namespace_error_prefix)
@@ -836,8 +830,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
             for gs in nas.states:
                 self.ana_map[nqn][gs.grp_id]  = gs.state
 
-            # could mean also that the subsystem is not created yet
-            if not self.get_subsystem_ha_status(nqn):
+            # If this is not set the subsystem was not created yet
+            if not nqn in self.subsys_max_ns:
                 continue
 
             self.logger.debug(f"Iterate over {nqn=} {self.subsystem_listeners[nqn]=}")
@@ -1064,7 +1058,6 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     nsid=request.nsid,
                     anagrpid=request.anagrpid
                 )
-                self.subsystem_nsid_anagrp[request.subsystem_nqn][request.nsid] = request.anagrpid
                 self.logger.debug(f"nvmf_subsystem_set_ns_anagrpid: {ret}")
             except Exception as ex:
                 errmsg = f"{change_lb_group_failure_prefix}:\n{ex}"
@@ -2010,15 +2003,6 @@ class GatewayService(pb2_grpc.GatewayServicer):
     def list_connections(self, request, context=None):
         return self.execute_grpc_function(self.list_connections_safe, request, context)
 
-    def get_subsystem_ha_status(self, nqn) -> bool:
-        if nqn not in self.subsys_ha:
-            self.logger.warning(f"Subsystem {nqn} not found")
-            return False
-
-        enable_ha = self.subsys_ha[nqn]
-        self.logger.debug(f"Subsystem {nqn} enable_ha: {enable_ha}")
-        return enable_ha
-
     def create_listener_safe(self, request, context):
         """Creates a listener for a subsystem at a given IP/Port."""
 
@@ -2088,51 +2072,48 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 self.logger.error(create_listener_error_prefix)
                 return pb2.req_status(status=errno.EINVAL, error_message=create_listener_error_prefix)
 
-            enable_ha = self.get_subsystem_ha_status(request.nqn)
+            try:
+                self.logger.debug(f"create_listener nvmf_subsystem_listener_set_ana_state {request=} set inaccessible for all ana groups")
+                _ana_state = "inaccessible"
+                ret = rpc_nvmf.nvmf_subsystem_listener_set_ana_state(
+                  self.spdk_rpc_client,
+                  nqn=request.nqn,
+                  ana_state=_ana_state,
+                  trtype="TCP",
+                  traddr=request.traddr,
+                  trsvcid=str(request.trsvcid),
+                  adrfam=adrfam)
+                self.logger.debug(f"create_listener nvmf_subsystem_listener_set_ana_state response {ret=}")
 
-            if enable_ha:
-                try:
-                    self.logger.debug(f"create_listener nvmf_subsystem_listener_set_ana_state {request=} set inaccessible for all ana groups")
-                    _ana_state = "inaccessible"
-                    ret = rpc_nvmf.nvmf_subsystem_listener_set_ana_state(
-                      self.spdk_rpc_client,
-                      nqn=request.nqn,
-                      ana_state=_ana_state,
-                      trtype="TCP",
-                      traddr=request.traddr,
-                      trsvcid=str(request.trsvcid),
-                      adrfam=adrfam)
-                    self.logger.debug(f"create_listener nvmf_subsystem_listener_set_ana_state response {ret=}")
+                # have been provided with ana state for this nqn prior to creation
+                # update optimized ana groups
+                if self.ana_map[request.nqn]:
+                    for x in range (self.subsys_max_ns[request.nqn]):
+                        ana_grp = x+1
+                        if ana_grp in self.ana_map[request.nqn] and self.ana_map[request.nqn][ana_grp] == pb2.ana_state.OPTIMIZED:
+                            _ana_state = "optimized"
+                            self.logger.debug(f"using ana_map: set listener on nqn : {request.nqn}  ana state : {_ana_state} for group : {ana_grp}")
+                            ret = rpc_nvmf.nvmf_subsystem_listener_set_ana_state(
+                              self.spdk_rpc_client,
+                              nqn=request.nqn,
+                              ana_state=_ana_state,
+                              trtype="TCP",
+                              traddr=request.traddr,
+                              trsvcid=str(request.trsvcid),
+                              adrfam=adrfam,
+                              anagrpid=ana_grp )
+                            self.logger.debug(f"create_listener nvmf_subsystem_listener_set_ana_state response {ret=}")
 
-                    # have been provided with ana state for this nqn prior to creation
-                    # update optimized ana groups
-                    if self.ana_map[request.nqn]:
-                        for x in range (self.subsys_max_ns[request.nqn]):
-                            ana_grp = x+1
-                            if ana_grp in self.ana_map[request.nqn] and self.ana_map[request.nqn][ana_grp] == pb2.ana_state.OPTIMIZED:
-                                _ana_state = "optimized"
-                                self.logger.debug(f"using ana_map: set listener on nqn : {request.nqn}  ana state : {_ana_state} for group : {ana_grp}")
-                                ret = rpc_nvmf.nvmf_subsystem_listener_set_ana_state(
-                                  self.spdk_rpc_client,
-                                  nqn=request.nqn,
-                                  ana_state=_ana_state,
-                                  trtype="TCP",
-                                  traddr=request.traddr,
-                                  trsvcid=str(request.trsvcid),
-                                  adrfam=adrfam,
-                                  anagrpid=ana_grp )
-                                self.logger.debug(f"create_listener nvmf_subsystem_listener_set_ana_state response {ret=}")
-
-                except Exception as ex:
-                    errmsg=f"{create_listener_error_prefix}: Error setting ANA state"
-                    self.logger.exception(errmsg)
-                    errmsg=f"{errmsg}:\n{ex}"
-                    resp = self.parse_json_exeption(ex)
-                    status = errno.EINVAL
-                    if resp:
-                        status = resp["code"]
-                        errmsg = f"{create_listener_error_prefix}: Error setting ANA state: {resp['message']}"
-                    return pb2.req_status(status=status, error_message=errmsg)
+            except Exception as ex:
+                errmsg=f"{create_listener_error_prefix}: Error setting ANA state"
+                self.logger.exception(errmsg)
+                errmsg=f"{errmsg}:\n{ex}"
+                resp = self.parse_json_exeption(ex)
+                status = errno.EINVAL
+                if resp:
+                    status = resp["code"]
+                    errmsg = f"{create_listener_error_prefix}: Error setting ANA state: {resp['message']}"
+                return pb2.req_status(status=status, error_message=errmsg)
 
             if context:
                 # Update gateway state
@@ -2370,7 +2351,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                         continue
                 if s["subtype"] == "NVMe":
                     s["namespace_count"] = len(s["namespaces"])
-                    s["enable_ha"] = self.get_subsystem_ha_status(s["nqn"])
+                    s["enable_ha"] = True
                 else:
                     s["namespace_count"] = 0
                     s["enable_ha"] = False
@@ -2405,7 +2386,6 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     for n in s[ns_key]:
                         nqn = s["nqn"]
                         nsid = n["nsid"]
-                        n["anagrpid"] = self.subsystem_nsid_anagrp[nqn][nsid]
                         bdev = self.subsystem_nsid_bdev[nqn][nsid]
                         nonce = self.cluster_nonce[self.bdev_cluster[bdev]]
                         n["nonce"] = nonce
