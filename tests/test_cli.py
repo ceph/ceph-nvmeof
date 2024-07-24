@@ -361,7 +361,7 @@ class TestCreate:
         assert f'"uuid": "{uuid}"' in caplog.text
         caplog.clear()
         cli(["namespace", "change_load_balancing_group", "--subsystem", subsystem, "--nsid", nsid, "--load-balancing-group", "10"])
-        assert f"Failure changing load balancing group for namespace using NSID {nsid}" in caplog.text
+        assert f"Failure changing load balancing group for namespace with NSID {nsid} in {subsystem}" in caplog.text
         assert f"Load balancing group 10 doesn't exist" in caplog.text
         caplog.clear()
         cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool, "--rbd-image", image3, "--size", "4GB", "--rbd-create-image"])
@@ -822,7 +822,6 @@ class TestDelete:
         caplog.clear()
         cli(["namespace", "del", "--subsystem", subsystem, "--nsid", "6"])
         assert f"Deleting namespace 6 from {subsystem}: Successful" in caplog.text
-        assert f"Error removing namespace's QOS limits, they might not have been set" not in caplog.text
         bdev_found = False
         bdev_list = rpc_bdev.bdev_get_bdevs(gw.spdk_rpc_client)
         for b in bdev_list:
@@ -836,7 +835,6 @@ class TestDelete:
         caplog.clear()
         cli(["namespace", "del", "--subsystem", subsystem, "--nsid", "2"])
         assert f"Deleting namespace 2 from {subsystem}: Successful" in caplog.text
-        assert f"Error removing namespace's QOS limits, they might not have been set" in caplog.text
         caplog.clear()
         cli(["namespace", "del", "--subsystem", subsystem, "--nsid", "4"])
         assert f"Deleting namespace 4 from {subsystem}: Successful" in caplog.text

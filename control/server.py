@@ -581,3 +581,7 @@ class GatewayServer:
                 else:
                     req = json_format.Parse(val, pb2.delete_listener_req(), ignore_unknown_fields=True)
                     self.gateway_rpc.delete_listener(req)
+            elif key.startswith(GatewayState.NAMESPACE_LB_GROUP_PREFIX):
+                if is_add_req:
+                    req = json_format.Parse(val, pb2.namespace_change_load_balancing_group_req(), ignore_unknown_fields=True)
+                    self.gateway_rpc.namespace_change_load_balancing_group(req)

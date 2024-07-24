@@ -1671,9 +1671,9 @@ class GatewayClient:
         """Change namespace load balancing group."""
 
         out_func, err_func = self.get_output_functions(args)
-        if args.nsid == None and args.uuid == None:
-            self.cli.parser.error("At least one of --nsid or --uuid arguments is mandatory for change_load_balancing_group command")
-        if args.nsid != None and args.nsid <= 0:
+        if args.nsid == None:
+            self.cli.parser.error("--nsid argument is mandatory for change_load_balancing_group command")
+        if args.nsid <= 0:
             self.cli.parser.error("nsid value must be positive")
         if args.load_balancing_group <= 0:
             self.cli.parser.error("load-balancing-group value must be positive")
@@ -1850,11 +1850,14 @@ class GatewayClient:
     @cli.cmd()
     def get_subsystems(self, args):
         """Get subsystems"""
-        subsystems = json_format.MessageToJson(
-                        self.stub.get_subsystems(pb2.get_subsystems_req()),
+        subsystems = self.stub.get_subsystems(pb2.get_subsystems_req())
+        if args.format == "python":
+            return subsystems
+        subsystems_out = json_format.MessageToJson(
+                        subsystems,
                         indent=4, including_default_value_fields=True,
                         preserving_proto_field_name=True)
-        self.logger.info(f"Get subsystems:\n{subsystems}")
+        self.logger.info(f"Get subsystems:\n{subsystems_out}")
 
 def main_common(client, args):
     client.logger.setLevel(GatewayEnumUtils.get_value_from_key(pb2.GwLogLevel, args.log_level.lower()))

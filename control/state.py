@@ -16,7 +16,9 @@ from typing import Dict
 from collections import defaultdict
 from abc import ABC, abstractmethod
 from .utils import GatewayLogger
-import atexit
+from .utils import GatewayUtils
+from google.protobuf import json_format
+from .proto import gateway_pb2 as pb2
 
 class GatewayState(ABC):
     """Persists gateway NVMeoF target state.
@@ -31,6 +33,7 @@ class GatewayState(ABC):
     HOST_PREFIX = "host" + OMAP_KEY_DELIMITER
     LISTENER_PREFIX = "listener" + OMAP_KEY_DELIMITER
     NAMESPACE_QOS_PREFIX = "qos" + OMAP_KEY_DELIMITER
+    NAMESPACE_LB_GROUP_PREFIX = "lbgroup" + OMAP_KEY_DELIMITER
 
     def is_key_element_valid(s: str) -> bool:
         if type(s) != str:
@@ -41,6 +44,12 @@ class GatewayState(ABC):
 
     def build_namespace_key(subsystem_nqn: str, nsid) -> str:
         key = GatewayState.NAMESPACE_PREFIX + subsystem_nqn
+        if nsid is not None:
+            key += GatewayState.OMAP_KEY_DELIMITER + str(nsid)
+        return key
+
+    def build_namespace_lbgroup_key(subsystem_nqn: str, nsid) -> str:
+        key = GatewayState.NAMESPACE_LB_GROUP_PREFIX + subsystem_nqn
         if nsid is not None:
             key += GatewayState.OMAP_KEY_DELIMITER + str(nsid)
         return key
@@ -72,7 +81,7 @@ class GatewayState(ABC):
         if trtype:
             return GatewayState.OMAP_KEY_DELIMITER + trtype + GatewayState.OMAP_KEY_DELIMITER + traddr + GatewayState.OMAP_KEY_DELIMITER + str(trsvcid)
         return GatewayState.OMAP_KEY_DELIMITER + traddr + GatewayState.OMAP_KEY_DELIMITER + str(trsvcid)
-        
+
     def build_listener_key(subsystem_nqn: str, host: str, trtype: str, traddr: str, trsvcid: int) -> str:
         return GatewayState.build_partial_listener_key(subsystem_nqn, host) + GatewayState.build_listener_key_suffix(None, trtype, traddr, str(trsvcid))
 
@@ -447,7 +456,7 @@ class OmapGatewayState(GatewayState):
     def _add_key(self, key: str, val: str):
         """Adds key and value to the OMAP."""
         if not self.ioctx:
-            raise
+            raise RuntimeError("Can't add key when Rados is closed")
 
         try:
             version_update = self.version + 1
@@ -474,7 +483,7 @@ class OmapGatewayState(GatewayState):
     def _remove_key(self, key: str):
         """Removes key from the OMAP."""
         if not self.ioctx:
-            raise
+            raise RuntimeError("Can't remove key when Rados is closed")
 
         try:
             version_update = self.version + 1
@@ -501,7 +510,7 @@ class OmapGatewayState(GatewayState):
     def delete_state(self):
         """Deletes OMAP object contents."""
         if not self.ioctx:
-            raise
+            raise RuntimeError("Can't delete state when Rados is closed")
 
         try:
             with rados.WriteOpCtx() as write_op:
@@ -665,10 +674,58 @@ class GatewayStateHandler:
             notify_event.wait(max(update_time - time.time(), 0))
             notify_event.clear()
 
-    def compare_state_values(self, val1, val2) -> bool:
+    def namespace_only_lb_group_id_changed(self, old_val, new_val):
+        old_req = None
+        new_req = None
+        try:
+            old_req = json_format.Parse(old_val, pb2.namespace_add_req(), ignore_unknown_fields=True)
+        except Exception as ex:
+            self.logger.exception(f"Got exception parsing {old_val}")
+            return (False, None)
+        try:
+            new_req = json_format.Parse(new_val, pb2.namespace_add_req(), ignore_unknown_fields=True)
+        except Exception as ex:
+            self.logger.exeption(f"Got exception parsing {new_val}")
+            return (False, None)
+        if not old_req or not new_req:
+            self.logger.debug(f"Failed to parse requests, old: {old_val} -> {old_req}, new: {new_val} -> {new_req}")
+            return (False, None)
+        assert old_req != new_req, f"Something was wrong we shouldn't get identical old and new values ({old_req})"
+        old_req.anagrpid = new_req.anagrpid
+        if old_req != new_req:
+            # Something besides the group id is different
+            return (False, None)
+        return (True, new_req.anagrpid)
+
+    def break_namespace_key(self, ns_key: str):
+        if not ns_key.startswith(GatewayState.NAMESPACE_PREFIX):
+            self.logger.warning(f"Invalid namespace key \"{ns_key}\", can't find key parts")
+            return (None, None)
+        key_end = ns_key[len(GatewayState.NAMESPACE_PREFIX) : ]
+        key_parts = key_end.split(GatewayState.OMAP_KEY_DELIMITER)
+        if len(key_parts) != 2:
+            self.logger.warning(f"Invalid namespace key \"{ns_key}\", can't find key parts")
+            return (None, None)
+        if not GatewayUtils.is_valid_nqn(key_parts[0]):
+            self.logger.warning(f"Invalid NQN \"{key_parts[0]}\" found for namespace key \"{ns_key}\", can't find key parts")
+            return (None, None)
+        nqn = key_parts[0]
+        try:
+            nsid = int(key_parts[1])
+        except Exception as ex:
+            self.logger.warning(f"Invalid NSID \"{key_parts[1]}\" found for namespace key \"{ns_key}\", can't find key parts")
+            return (None, None)
+
+        return (nqn, nsid)
+
+    def get_str_from_bytes(val):
+        val_str = val.decode() if type(val) == type(b'') else val
+        return val_str
+
+    def compare_state_values(val1, val2) -> bool:
         # We sometimes get one value as type bytes and the other as type str, so convert them both to str for the comparison
-        val1_str = val1.decode() if type(val1) == type(b'') else val1
-        val2_str = val2.decode() if type(val2) == type(b'') else val2
+        val1_str = GatewayStateHandler.get_str_from_bytes(val1)
+        val2_str = GatewayStateHandler.get_str_from_bytes(val2)
         return val1_str == val2_str
 
     def update(self) -> bool:
@@ -710,9 +767,48 @@ class GatewayStateHandler:
                 changed = {
                     key: omap_state_dict[key]
                     for key in same_keys
-                    if not self.compare_state_values(local_state_dict[key], omap_state_dict[key])
+                    if not GatewayStateHandler.compare_state_values(local_state_dict[key], omap_state_dict[key])
                 }
                 grouped_changed = self._group_by_prefix(changed, prefix_list)
+
+                # Handle namespace changes in which only the load balancing group id was changed
+                only_lb_group_changed = []
+                for key in changed.keys():
+                    if not key.startswith(GatewayState.NAMESPACE_PREFIX):
+                        continue
+                    try:
+                        (should_process, new_lb_grp_id) = self.namespace_only_lb_group_id_changed(local_state_dict[key],
+                                                                                                  omap_state_dict[key])
+                        if should_process:
+                            assert new_lb_grp_id, "Shouldn't get here with en empty lb group id"
+                            self.logger.debug(f"Found {key} where only the load balancing group id has changed. The new group id is {new_lb_grp_id}")
+                            only_lb_group_changed.insert(0, (key, new_lb_grp_id))
+                    except Exception as ex:
+                        self.logger.warning("Got exception checking namespace for load balancing group id change")
+
+                for ns_key, new_lb_grp in only_lb_group_changed:
+                    ns_nqn = None
+                    ns_nsid = None
+                    try:
+                        changed.pop(ns_key)
+                        (ns_nqn, ns_nsid) = self.break_namespace_key(ns_key)
+                    except Exception as ex:
+                        self.logger.error(f"Exception removing {ns_key} from {changed}:\n{ex}")
+                    if ns_nqn and ns_nsid:
+                        try:
+                            lbgroup_key = GatewayState.build_namespace_lbgroup_key(ns_nqn, ns_nsid)
+                            req = pb2.namespace_change_load_balancing_group_req(subsystem_nqn=ns_nqn, nsid=ns_nsid,
+                                                                                anagrpid=new_lb_grp)
+                            json_req = json_format.MessageToJson(req, preserving_proto_field_name=True,
+                                                                 including_default_value_fields=True)
+                            added[lbgroup_key] = json_req
+                        except Exception as ex:
+                            self.logger.error(f"Exception formatting change namespace load balancing group request:\n{ex}")
+
+                if len(only_lb_group_changed) > 0:
+                    grouped_changed = self._group_by_prefix(changed, prefix_list)
+                    prefix_list += [GatewayState.NAMESPACE_LB_GROUP_PREFIX]
+                    grouped_added = self._group_by_prefix(added, prefix_list)
 
                 # Find OMAP removals
                 removed_keys = local_state_keys - omap_state_keys
