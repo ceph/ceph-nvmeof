@@ -12,6 +12,14 @@ subsystem_prefix = "nqn.2016-06.io.spdk:cnode"
 created_resource_count = 20
 subsys_list_count = 5
 
+def wait_for_string(caplog, str, timeout):
+    for i in range(timeout):
+        if str in caplog.text:
+            return
+        time.sleep(1)
+
+    assert False, f"Couldn't find string \"{str}\" in {timeout} seconds"
+
 def create_resource_by_index(i):
     subsystem = f"{subsystem_prefix}{i}"
     cli(["subsystem", "add", "--subsystem", subsystem])
@@ -68,7 +76,8 @@ def test_create_get_subsys(caplog, config):
         ceph_utils.execute_ceph_monitor_command("{" + f'"prefix":"nvme-gw create", "id": "{gateway.name}", "pool": "{pool}", "group": ""' + "}")
         gateway.serve()
 
-        time.sleep(20)     # Make sure update() is over
+        # wait until we see at least one subsystem created
+        wait_for_string(caplog, f"Received request to create subsystem {subsystem_prefix}", 60)
 
         for i in range(subsys_list_count):
             cli(["--format", "plain", "subsystem", "list"])
@@ -76,6 +85,7 @@ def test_create_get_subsys(caplog, config):
             assert "No subsystems" not in caplog.text
             time.sleep(0.1)
 
+        time.sleep(20)     # Make sure update() is over
         assert f"{subsystem_prefix}0 with ANA group id 1" in caplog.text
         assert f"Received request to set QOS limits for namespace using NSID 1 on {subsystem_prefix}0, R/W IOs per second: 2000 Read megabytes per second: 5" in caplog.text
         caplog.clear()
