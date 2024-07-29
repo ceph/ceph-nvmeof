@@ -53,11 +53,16 @@ jobs:
       - name: Upload container images
         uses: actions/upload-artifact@v4
         with:
-          name: container_images
+          name: container_images_bdevperf
+          path: bdevperf.tar
+
+      - name: Upload container images
+        uses: actions/upload-artifact@v4
+        with:
+          name: container_images_nvmeof
           path: |
             nvmeof.tar
             nvmeof-cli.tar
-            bdevperf.tar
 
   build-ceph:
     runs-on: ubuntu-latest
@@ -645,6 +650,41 @@ jobs:
           make down
           make clean
 
+  atom:
+    needs: [build, build-ceph]
+    runs-on: ibmcloud-1
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Nvmeof Atom cleanup env
+        run: /home/cephnvme/atomEnvCleanup.sh
+
+      - name: Download container images
+        uses: actions/download-artifact@v4
+        with:
+          pattern: container_images_nvmeof
+          merge-multiple: true
+
+      - name: Load container images
+        run: |
+          docker load < nvmeof.tar
+          docker load < nvmeof-cli.tar
+
+      - name: Nvmeof Atom tests run
+        if: always() || failure()
+        run: /home/cephnvme/atomTestsRun.sh $GITHUB_REPOSITORY ${GITHUB_REF##*/}
+
+      - name: Artifact build and cleanup
+        if: always()
+        run: /home/cephnvme/cpArtifactAndCleanup.sh
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: atom-artifact
+          path: /tmp/artifact/*
+
   push-images-to-private-registry:
     if: github.event_name == 'push' && github.ref == 'refs/heads/devel' && github.repository == 'ceph/ceph-nvmeof'
     needs: [pytest, demo, discovery, ha]
@@ -657,7 +697,7 @@ jobs:
       - name: Download container images
         uses: actions/download-artifact@v4
         with:
-          name: container_images
+          name: container_images_nvmeof
 
       - name: Load container images
         run: |
@@ -687,7 +727,7 @@ jobs:
       - name: Download container images
         uses: actions/download-artifact@v4
         with:
-          name: container_images
+          name: container_images_nvmeof
 
       - name: Load container images
         run: |
