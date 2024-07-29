@@ -48,6 +48,7 @@ env:
 jobs:
   pypi-publish:
     name: Upload release to PyPI
+    if: github.repository == 'ceph/ceph-nvmeof'
     runs-on: ubuntu-latest
     permissions:
       id-token: write

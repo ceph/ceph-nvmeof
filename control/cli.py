@@ -110,13 +110,13 @@ class Parser:
             "--server-address",
             default=(os.getenv('CEPH_NVMEOF_SERVER_ADDRESS') or "localhost"),
             type=str,
-            help="Server address",
+            help="Server address (default: CEPH_NVMEOF_SERVER_ADDRESS env variable or 'localhost')",
         )
         self.parser.add_argument(
             "--server-port",
             default=int(os.getenv('CEPH_NVMEOF_SERVER_PORT') or "5500"),
             type=int,
-            help="Server port",
+            help="Server port (default: CEPH_NVMEOF_SERVER_PORT env variable or '5500')",
         )
         self.parser.add_argument(
             "--client-key",

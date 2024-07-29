@@ -148,12 +148,16 @@ The same configuration can also be manually run:
 
 These can also be run by setting environment variables `CEPH_NVMEOF_SERVER_ADDRESS` and `CEPH_NVMEOF_SERVER_PORT` before running nvmeof-cli commands, example:
 ```
-export CEPH_NVMEOF_SERVER_ADDRESS=x.x.x.x 
-export CEPH_NVMEOF_SERVER_PORT=5500
+cat <<EOF > /etc/ceph/nvmeof-cli.env
+CEPH_NVMEOF_SERVER_ADDRESS=x.x.x.x 
+CEPH_NVMEOF_SERVER_PORT=5500
+EOF
+
 
 // using containers
-docker-compose run --it <container_image> subsystem add --subsystem nqn.2016-06.io.spdk:cnode1 
+docker-compose run --env-file /etc/ceph/nvmeof-cli.env -it <container_image> subsystem add --subsystem nqn.2016-06.io.spdk:cnode1 
 // using pypi package
+source /etc/ceph/nvmeof-cli.env
 ceph-nvmeof subsystem add --subsystem nqn.2016-06.io.spdk:cnode1 
 ```
 
