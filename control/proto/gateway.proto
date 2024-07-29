@@ -126,21 +126,21 @@ message namespace_add_req {
 
 message namespace_resize_req {
 	string subsystem_nqn = 1;
-	optional uint32 nsid = 2;
-	optional string uuid = 3;
+	uint32 nsid = 2;
+	//optional string uuid = 3;
 	uint64 new_size = 4;
 }
 
 message namespace_get_io_stats_req {
 	string subsystem_nqn = 1;
-	optional uint32 nsid = 2;
-	optional string uuid = 3;
+	uint32 nsid = 2;
+	//optional string uuid = 3;
 }
 
 message namespace_set_qos_req {
 	string subsystem_nqn = 1;
-	optional uint32 nsid = 2;
-	optional string uuid = 3;
+	uint32 nsid = 2;
+	//optional string uuid = 3;
 	optional uint64 rw_ios_per_second = 4;
 	optional uint64 rw_mbytes_per_second = 5;
 	optional uint64 r_mbytes_per_second = 6;
@@ -149,15 +149,15 @@ message namespace_set_qos_req {
 
 message namespace_change_load_balancing_group_req {
 	string subsystem_nqn = 1;
-	optional uint32 nsid = 2;
-	optional string uuid = 3;
+	uint32 nsid = 2;
+	//optional string uuid = 3;
 	int32 anagrpid = 4;
 }
 
 message namespace_delete_req {
 	string subsystem_nqn = 1;
-	optional uint32 nsid = 2;
-	optional string uuid = 3;
+	uint32 nsid = 2;
+	//optional string uuid = 3;
 }
 
 message create_subsystem_req {
@@ -448,7 +448,7 @@ message namespace_io_stats_info {
 	string error_message = 2;
 	string subsystem_nqn = 3;
 	uint32 nsid = 4;
-	string uuid = 5;
+	optional string uuid = 5;
 	string bdev_name = 6;
 	uint64 tick_rate = 7;
 	uint64 ticks = 8;
