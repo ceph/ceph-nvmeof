@@ -634,7 +634,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ceph_out_${{ matrix.test }}
-          path: /tmp/out/*
+          path: /tmp/out/*.log
 
       - name: Display logs
         if: success() || failure()
