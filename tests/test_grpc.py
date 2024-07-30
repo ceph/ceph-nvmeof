@@ -61,12 +61,12 @@ def test_create_get_subsys(caplog, config):
         cli(["namespace", "set_qos", "--subsystem", f"{subsystem_prefix}0", "--nsid", "1",
              "--rw-ios-per-second", "2000"])
         assert f"Setting QOS limits of namespace 1 in {subsystem_prefix}0: Successful" in caplog.text
-        assert f"No previous QOS limits found, this is the first time the limits are set for namespace using NSID 1 on {subsystem_prefix}0" in caplog.text
+        assert f"No previous QOS limits found, this is the first time the limits are set for namespace 1 on {subsystem_prefix}0" in caplog.text
         caplog.clear()
         cli(["namespace", "set_qos", "--subsystem", f"{subsystem_prefix}0", "--nsid", "1",
              "--r-megabytes-per-second", "5"])
         assert f"Setting QOS limits of namespace 1 in {subsystem_prefix}0: Successful" in caplog.text
-        assert f"No previous QOS limits found, this is the first time the limits are set for namespace using NSID 1 on {subsystem_prefix}0" not in caplog.text
+        assert f"No previous QOS limits found, this is the first time the limits are set for namespace 1 on {subsystem_prefix}0" not in caplog.text
 
     time.sleep(15)    # let the monitor client time to settle after stopping the gateway and before starting a new one
     caplog.clear()
@@ -87,7 +87,7 @@ def test_create_get_subsys(caplog, config):
 
         time.sleep(20)     # Make sure update() is over
         assert f"{subsystem_prefix}0 with ANA group id 1" in caplog.text
-        assert f"Received request to set QOS limits for namespace using NSID 1 on {subsystem_prefix}0, R/W IOs per second: 2000 Read megabytes per second: 5" in caplog.text
+        assert f"Received request to set QOS limits for namespace 1 on {subsystem_prefix}0, R/W IOs per second: 2000 Read megabytes per second: 5" in caplog.text
         caplog.clear()
         cli(["--format", "plain", "subsystem", "list"])
         assert "Exception" not in caplog.text

@@ -133,8 +133,8 @@ def test_change_namespace_lb_group(caplog, two_gateways):
     time.sleep(10)
     assert f"Adding namespace 1 to {subsystem}: Successful" in caplog.text
     assert f"get_cluster cluster_name='cluster_context_{anagrpid}_0'" in caplog.text
-    assert f"Received request to add a namespace using UUID {uuid} to {subsystem}, ana group {anagrpid}, context: <grpc._server" in caplog.text
-    assert f"Received request to add a namespace using NSID 1 and UUID {uuid} to {subsystem}, ana group {anagrpid}, context: None" in caplog.text
+    assert f"Received request to add namespace to {subsystem}, ana group {anagrpid}, context: <grpc._server" in caplog.text
+    assert f"Received request to add namespace 1 to {subsystem}, ana group {anagrpid}, context: None" in caplog.text
     caplog.clear()
     cli(["--server-port", "5501", "namespace", "set_qos", "--subsystem", subsystem, "--nsid", "1", "--rw-ios-per-second", "2000"])
     assert f"Setting QOS limits of namespace 1 in {subsystem}: Successful" in caplog.text
@@ -184,8 +184,8 @@ def test_change_namespace_lb_group(caplog, two_gateways):
     time.sleep(10)
     assert f"Adding namespace 2 to {subsystem}: Successful" in caplog.text
     assert f"get_cluster cluster_name='cluster_context_{anagrpid2}_0'" in caplog.text
-    assert f"Received request to add a namespace using UUID {uuid2} to {subsystem}, ana group {anagrpid2}, context: <grpc._server" in caplog.text
-    assert f"Received request to add a namespace using NSID 2 and UUID {uuid2} to {subsystem}, ana group {anagrpid2}, context: None" in caplog.text
+    assert f"Received request to add namespace to {subsystem}, ana group {anagrpid2}, context: <grpc._server" in caplog.text
+    assert f"Received request to add namespace 2 to {subsystem}, ana group {anagrpid2}, context: None" in caplog.text
     caplog.clear()
     cli(["--server-port", "5501", "--format", "json", "namespace", "list", "--subsystem", subsystem, "--nsid", "2"])
     assert f'"nsid": 2,' in caplog.text

@@ -1327,25 +1327,17 @@ class GatewayClient:
         """Deletes a namespace from a subsystem."""
 
         out_func, err_func = self.get_output_functions(args)
-        if args.nsid == None and args.uuid == None:
-            self.cli.parser.error("At least one of --nsid or --uuid arguments is mandatory for del command")
-        if args.nsid != None and args.nsid <= 0:
+        if args.nsid <= 0:
             self.cli.parser.error("nsid value must be positive")
 
         try:
-            ret = self.stub.namespace_delete(pb2.namespace_delete_req(subsystem_nqn=args.subsystem, nsid=args.nsid, uuid=args.uuid))
+            ret = self.stub.namespace_delete(pb2.namespace_delete_req(subsystem_nqn=args.subsystem, nsid=args.nsid))
         except Exception as ex:
             ret = pb2.req_status(status = errno.EINVAL, error_message = f"Failure deleting namespace:\n{ex}")
 
         if args.format == "text" or args.format == "plain":
             if ret.status == 0:
-                if args.nsid:
-                    ns_id_str = f"{args.nsid}"
-                elif args.uuid:
-                    ns_id_str = f"with UUID {args.uuid}"
-                else:
-                    assert False
-                out_func(f"Deleting namespace {ns_id_str} from {args.subsystem}: Successful")
+                out_func(f"Deleting namespace {args.nsid} from {args.subsystem}: Successful")
             else:
                 err_func(f"{ret.error_message}")
         elif args.format == "json" or args.format == "yaml":
@@ -1371,9 +1363,7 @@ class GatewayClient:
 
         ns_size = 0
         out_func, err_func = self.get_output_functions(args)
-        if args.nsid == None and args.uuid == None:
-            self.cli.parser.error("At least one of --nsid or --uuid arguments is mandatory for resize command")
-        if args.nsid != None and args.nsid <= 0:
+        if args.nsid <= 0:
             self.cli.parser.error("nsid value must be positive")
         ns_size = self.get_size_in_bytes(args.size)
         if ns_size <= 0:
@@ -1384,21 +1374,14 @@ class GatewayClient:
         ns_size //= mib
 
         try:
-            ret = self.stub.namespace_resize(pb2.namespace_resize_req(subsystem_nqn=args.subsystem, nsid=args.nsid,
-                                             uuid=args.uuid, new_size=ns_size))
+            ret = self.stub.namespace_resize(pb2.namespace_resize_req(subsystem_nqn=args.subsystem, nsid=args.nsid, new_size=ns_size))
         except Exception as ex:
             ret = pb2.req_status(status = errno.EINVAL, error_message = f"Failure resizing namespace:\n{ex}")
 
         if args.format == "text" or args.format == "plain":
             if ret.status == 0:
-                if args.nsid:
-                    ns_id_str = f"{args.nsid}"
-                elif args.uuid:
-                    ns_id_str = f"with UUID {args.uuid}"
-                else:
-                    assert False
                 sz_str = self.format_size(ns_size * mib)
-                out_func(f"Resizing namespace {ns_id_str} in {args.subsystem} to {sz_str}: Successful")
+                out_func(f"Resizing namespace {args.nsid} in {args.subsystem} to {sz_str}: Successful")
             else:
                 err_func(f"{ret.error_message}")
         elif args.format == "json" or args.format == "yaml":
@@ -1556,13 +1539,11 @@ class GatewayClient:
         """Get namespace IO statistics."""
 
         out_func, err_func = self.get_output_functions(args)
-        if args.nsid == None and args.uuid == None:
-            self.cli.parser.error("At least one of --nsid or --uuid arguments is mandatory for get_io_stats command")
-        if args.nsid != None and args.nsid <= 0:
+        if args.nsid <= 0:
             self.cli.parser.error("nsid value must be positive")
 
         try:
-            get_stats_req = pb2.namespace_get_io_stats_req(subsystem_nqn=args.subsystem, nsid=args.nsid, uuid=args.uuid)
+            get_stats_req = pb2.namespace_get_io_stats_req(subsystem_nqn=args.subsystem, nsid=args.nsid)
             ns_io_stats = self.stub.namespace_get_io_stats(get_stats_req)
         except Exception as ex:
             ns_io_stats = pb2.namespace_io_stats_info(status = errno.EINVAL, error_message = f"Failure getting namespace's IO stats:\n{ex}")
@@ -1574,9 +1555,6 @@ class GatewayClient:
             elif args.nsid and args.nsid != ns_io_stats.nsid:
                 ns_io_stats.status = errno.ENODEV
                 ns_io_stats.error_message = f"Failure getting namespace's IO stats: Returned namespace NSID {ns_io_stats.nsid} differs from requested one {args.nsid}"
-            elif args.uuid and args.uuid != ns_io_stats.uuid:
-                ns_io_stats.status = errno.ENODEV
-                ns_io_stats.error_message = f"Failure getting namespace's IO stats: Returned namespace UUID {ns_io_stats.uuid} differs from requested one {args.uuid}"
 
         # only show IO errors in verbose mode
         if not args.verbose:
@@ -1640,13 +1618,7 @@ class GatewayClient:
                 else:
                     table_format = "plain"
                 stats_out = tabulate(stats_list, headers = ["Stat", "Value"], tablefmt=table_format)
-                if args.nsid:
-                    ns_id_str = f"{args.nsid}"
-                elif args.uuid:
-                    ns_id_str = f"with UUID {args.uuid}"
-                else:
-                    assert False
-                out_func(f"IO statistics for namespace {ns_id_str} in {args.subsystem}, bdev {ns_io_stats.bdev_name}:\n{stats_out}")
+                out_func(f"IO statistics for namespace {args.nsid} in {args.subsystem}, bdev {ns_io_stats.bdev_name}:\n{stats_out}")
             else:
                 err_func(f"{ns_io_stats.error_message}")
         elif args.format == "json" or args.format == "yaml":
@@ -1671,8 +1643,6 @@ class GatewayClient:
         """Change namespace load balancing group."""
 
         out_func, err_func = self.get_output_functions(args)
-        if args.nsid == None:
-            self.cli.parser.error("--nsid argument is mandatory for change_load_balancing_group command")
         if args.nsid <= 0:
             self.cli.parser.error("nsid value must be positive")
         if args.load_balancing_group <= 0:
@@ -1680,21 +1650,14 @@ class GatewayClient:
 
         try:
             change_lb_group_req = pb2.namespace_change_load_balancing_group_req(subsystem_nqn=args.subsystem,
-                                                                                nsid=args.nsid, uuid=args.uuid,
-                                                                                anagrpid=args.load_balancing_group)
+                                                                                nsid=args.nsid, anagrpid=args.load_balancing_group)
             ret = self.stub.namespace_change_load_balancing_group(change_lb_group_req)
         except Exception as ex:
             ret = pb2.req_status(status = errno.EINVAL, error_message = f"Failure changing namespace load balancing group:\n{ex}")
 
         if args.format == "text" or args.format == "plain":
             if ret.status == 0:
-                if args.nsid:
-                    ns_id_str = f"{args.nsid}"
-                elif args.uuid:
-                    ns_id_str = f"with UUID {args.uuid}"
-                else:
-                    assert False
-                out_func(f"Changing load balancing group of namespace {ns_id_str} in {args.subsystem} to {args.load_balancing_group}: Successful")
+                out_func(f"Changing load balancing group of namespace {args.nsid} in {args.subsystem} to {args.load_balancing_group}: Successful")
             else:
                 err_func(f"{ret.error_message}")
         elif args.format == "json" or args.format == "yaml":
@@ -1725,9 +1688,7 @@ class GatewayClient:
         """Set namespace QOS limits."""
 
         out_func, err_func = self.get_output_functions(args)
-        if args.nsid == None and args.uuid == None:
-            self.cli.parser.error("At least one of --nsid or --uuid arguments is mandatory for set_qos command")
-        if args.nsid != None and args.nsid <= 0:
+        if args.nsid <= 0:
             self.cli.parser.error("nsid value must be positive")
         if args.rw_ios_per_second == None and args.rw_megabytes_per_second == None and args.r_megabytes_per_second == None and args.w_megabytes_per_second == None:
             self.cli.parser.error("At least one QOS limit should be set")
@@ -1741,8 +1702,6 @@ class GatewayClient:
         qos_args["subsystem_nqn"] = args.subsystem
         if args.nsid:
             qos_args["nsid"] = args.nsid
-        if args.uuid:
-            qos_args["uuid"] = args.uuid
         if args.rw_ios_per_second != None:
             qos_args["rw_ios_per_second"] = args.rw_ios_per_second
         if args.rw_megabytes_per_second != None:
@@ -1759,13 +1718,7 @@ class GatewayClient:
 
         if args.format == "text" or args.format == "plain":
             if ret.status == 0:
-                if args.nsid:
-                    ns_id_str = f"{args.nsid}"
-                elif args.uuid:
-                    ns_id_str = f"with UUID {args.uuid}"
-                else:
-                    assert False
-                out_func(f"Setting QOS limits of namespace {ns_id_str} in {args.subsystem}: Successful")
+                out_func(f"Setting QOS limits of namespace {args.nsid} in {args.subsystem}: Successful")
             else:
                 err_func(f"{ret.error_message}")
         elif args.format == "json" or args.format == "yaml":
@@ -1788,10 +1741,10 @@ class GatewayClient:
 
     ns_common_args = [
         argument("--subsystem", "-n", help="Subsystem NQN", required=True),
-        argument("--uuid", "-u", help="UUID"),
-        argument("--nsid", help="Namespace ID", type=int),
     ]
     ns_add_args_list = ns_common_args + [
+        argument("--nsid", help="Namespace ID", type=int),
+        argument("--uuid", "-u", help="UUID"),
         argument("--rbd-pool", "-p", help="RBD pool name", required=True),
         argument("--rbd-image", "-i", help="RBD image name", required=True),
         argument("--rbd-create-image", "-c", help="Create RBD image if needed", action='store_true', required=False),
@@ -1801,18 +1754,25 @@ class GatewayClient:
         argument("--force", help="Create a namespace even its image is already used by another namespace", action='store_true', required=False),
     ]
     ns_del_args_list = ns_common_args + [
+        argument("--nsid", help="Namespace ID", type=int, required=True),
     ]
     ns_resize_args_list = ns_common_args + [
+        argument("--nsid", help="Namespace ID", type=int, required=True),
         argument("--size", help="Size in bytes or specified unit (K, KB, M, MB, G, GB, T, TB, P, PB)", required=True),
     ]
     ns_list_args_list = ns_common_args + [
+        argument("--nsid", help="Namespace ID", type=int),
+        argument("--uuid", "-u", help="UUID"),
     ]
     ns_get_io_stats_args_list = ns_common_args + [
+        argument("--nsid", help="Namespace ID", type=int, required=True),
     ]
     ns_change_load_balancing_group_args_list = ns_common_args + [
+        argument("--nsid", help="Namespace ID", type=int, required=True),
         argument("--load-balancing-group", "-l", help="Load balancing group", type=int, required=True),
     ]
     ns_set_qos_args_list = ns_common_args + [
+        argument("--nsid", help="Namespace ID", type=int, required=True),
         argument("--rw-ios-per-second", help="R/W IOs per second limit, 0 means unlimited", type=int),
         argument("--rw-megabytes-per-second", help="R/W megabytes per second limit, 0 means unlimited", type=int),
         argument("--r-megabytes-per-second", help="Read megabytes per second limit, 0 means unlimited", type=int),

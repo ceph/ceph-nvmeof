@@ -459,8 +459,26 @@ class TestCreate:
         assert '"nsid": 4' not in caplog.text
         assert '"nsid": 5' not in caplog.text
         caplog.clear()
-        cli(["namespace", "resize", "--subsystem", subsystem, "--uuid", uuid2, "--size", "64MB"])
-        assert f"Resizing namespace with UUID {uuid2} in {subsystem} to 64 MiB: Successful" in caplog.text
+        rc = 0
+        try:
+            cli(["namespace", "resize", "--subsystem", subsystem, "--uuid", uuid2, "--size", "64MB"])
+        except SystemExit as sysex:
+            rc = int(str(sysex))
+            pass
+        assert "error: the following arguments are required: --nsid" in caplog.text
+        assert rc == 2
+        caplog.clear()
+        rc = 0
+        try:
+            cli(["namespace", "resize", "--subsystem", subsystem, "--nsid", "6", "--uuid", uuid2, "--size", "64MB"])
+        except SystemExit as sysex:
+            rc = int(str(sysex))
+            pass
+        assert "error: unrecognized arguments: --uuid" in caplog.text
+        assert rc == 2
+        caplog.clear()
+        cli(["namespace", "resize", "--subsystem", subsystem, "--nsid", "6", "--size", "64MB"])
+        assert f"Resizing namespace 6 in {subsystem} to 64 MiB: Successful" in caplog.text
         caplog.clear()
         cli(["--format", "json", "namespace", "list", "--subsystem", subsystem, "--uuid", uuid2])
         assert f'"nsid": 6' in caplog.text
@@ -473,11 +491,11 @@ class TestCreate:
         assert '"nsid": 4' not in caplog.text
         assert '"nsid": 5' not in caplog.text
         caplog.clear()
-        cli(["namespace", "resize", "--subsystem", subsystem, "--nsid", "12", "--uuid", uuid, "--size", "128MB"])
-        assert f"Failure resizing namespace using NSID 12 and UUID {uuid} on {subsystem}: Can't find namespace" in caplog.text
+        cli(["namespace", "resize", "--subsystem", subsystem, "--nsid", "12", "--size", "128MB"])
+        assert f"Failure resizing namespace 12 on {subsystem}: Can't find namespace" in caplog.text
         caplog.clear()
         cli(["namespace", "resize", "--subsystem", subsystem, "--nsid", "6", "--size", "32MB"])
-        assert f"Failure resizing namespace using NSID 6 on {subsystem}: new size 33554432 bytes is smaller than current size 67108864 bytes" in caplog.text
+        assert f"Failure resizing namespace 6 on {subsystem}: new size 33554432 bytes is smaller than current size 67108864 bytes" in caplog.text
         ns = cli_test(["namespace", "list", "--subsystem", subsystem, "--nsid", "6"])
         assert ns != None
         assert ns.status == 0
@@ -487,7 +505,7 @@ class TestCreate:
         assert rc
         caplog.clear()
         cli(["namespace", "resize", "--subsystem", subsystem, "--nsid", "6", "--size", "128MB"])
-        assert f"Failure resizing namespace using NSID 6 on {subsystem}: Can't find namespace" in caplog.text
+        assert f"Failure resizing namespace 6 on {subsystem}: Can't find namespace" in caplog.text
         caplog.clear()
         cli(["namespace", "add", "--subsystem", subsystem, "--nsid", "6", "--rbd-pool", pool, "--rbd-image", image, "--uuid", uuid2, "--force",  "--load-balancing-group", anagrpid, "--force"])
         assert f"Adding namespace 6 to {subsystem}: Successful" in caplog.text
@@ -509,7 +527,7 @@ class TestCreate:
         caplog.clear()
         cli(["namespace", "set_qos", "--subsystem", subsystem, "--nsid", "6", "--rw-ios-per-second", "2000"])
         assert f"Setting QOS limits of namespace 6 in {subsystem}: Successful" in caplog.text
-        assert f"No previous QOS limits found, this is the first time the limits are set for namespace using NSID 6 on {subsystem}" in caplog.text
+        assert f"No previous QOS limits found, this is the first time the limits are set for namespace 6 on {subsystem}" in caplog.text
         caplog.clear()
         cli(["--format", "json", "namespace", "list", "--subsystem", subsystem, "--nsid", "6"])
         assert f'"nsid": 6' in caplog.text
@@ -519,9 +537,9 @@ class TestCreate:
         assert '"r_mbytes_per_second": "0"' in caplog.text
         assert '"w_mbytes_per_second": "0"' in caplog.text
         caplog.clear()
-        cli(["namespace", "set_qos", "--subsystem", subsystem, "--uuid", uuid2, "--rw-megabytes-per-second", "30"])
-        assert f"Setting QOS limits of namespace with UUID {uuid2} in {subsystem}: Successful" in caplog.text
-        assert f"No previous QOS limits found, this is the first time the limits are set for namespace using NSID 6 on {subsystem}" not in caplog.text
+        cli(["namespace", "set_qos", "--subsystem", subsystem, "--nsid", "6", "--rw-megabytes-per-second", "30"])
+        assert f"Setting QOS limits of namespace 6 in {subsystem}: Successful" in caplog.text
+        assert f"No previous QOS limits found, this is the first time the limits are set for namespace 6 on {subsystem}" not in caplog.text
         caplog.clear()
         cli(["--format", "json", "namespace", "list", "--subsystem", subsystem, "--uuid", uuid2])
         assert f'"uuid": "{uuid2}"' in caplog.text
@@ -534,7 +552,7 @@ class TestCreate:
         cli(["namespace", "set_qos", "--subsystem", subsystem, "--nsid", "6",
              "--r-megabytes-per-second", "15", "--w-megabytes-per-second", "25"])
         assert f"Setting QOS limits of namespace 6 in {subsystem}: Successful" in caplog.text
-        assert f"No previous QOS limits found, this is the first time the limits are set for namespace using NSID 6 on {subsystem}" not in caplog.text
+        assert f"No previous QOS limits found, this is the first time the limits are set for namespace 6 on {subsystem}" not in caplog.text
         caplog.clear()
         cli(["--format", "json", "namespace", "list", "--subsystem", subsystem, "--nsid", "6"])
         assert f'"nsid": 6' in caplog.text
@@ -577,19 +595,14 @@ class TestCreate:
         assert f'"max_write_latency_ticks":' in caplog.text
         assert f'"io_error":' in caplog.text
         caplog.clear()
-        cli(["namespace", "get_io_stats", "--subsystem", subsystem, "--uuid", uuid2])
-        assert f'IO statistics for namespace with UUID {uuid2} in {subsystem}' in caplog.text
-        caplog.clear()
-        cli(["--format", "json", "namespace", "get_io_stats", "--subsystem", subsystem, "--uuid", uuid2])
-        assert f'"status": 0' in caplog.text
-        assert f'"subsystem_nqn": "{subsystem}"' in caplog.text
-        assert f'"nsid": 6' in caplog.text
-        assert f'"uuid": "{uuid2}"' in caplog.text
-        assert f'"ticks":' in caplog.text
-        assert f'"bytes_written":' in caplog.text
-        assert f'"bytes_read":' in caplog.text
-        assert f'"max_write_latency_ticks":' in caplog.text
-        assert f'"io_error":' in caplog.text
+        rc = 0
+        try:
+            cli(["namespace", "get_io_stats", "--subsystem", subsystem, "--uuid", uuid2, "--nsid", "1"])
+        except SystemExit as sysex:
+            rc = int(str(sysex))
+            pass
+        assert "error: unrecognized arguments: --uuid" in caplog.text
+        assert rc == 2
         caplog.clear()
         rc = 0
         try:
@@ -597,7 +610,7 @@ class TestCreate:
         except SystemExit as sysex:
             rc = int(str(sysex))
             pass
-        assert "error: At least one of --nsid or --uuid arguments is mandatory for get_io_stats command" in caplog.text
+        assert "error: the following arguments are required: --nsid" in caplog.text
         assert rc == 2
 
     @pytest.mark.parametrize("host", host_list)
@@ -814,7 +827,11 @@ class TestDelete:
         caplog.clear()
         del_ns_req = pb2.namespace_delete_req(subsystem_nqn=subsystem)
         ret = stub.namespace_delete(del_ns_req)
-        assert "At least one of NSID or UUID should be specified for finding a namesapce" in caplog.text
+        assert "Failure deleting namespace, missing NSID" in caplog.text
+        caplog.clear()
+        del_ns_req = pb2.namespace_delete_req(nsid=1)
+        ret = stub.namespace_delete(del_ns_req)
+        assert "Failure deleting namespace 1, missing subsystem NQN" in caplog.text
         caplog.clear()
         cli(["namespace", "del", "--subsystem", subsystem, "--nsid", "6"])
         assert f"Deleting namespace 6 from {subsystem}: Successful" in caplog.text
