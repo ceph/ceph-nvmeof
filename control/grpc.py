@@ -2479,29 +2479,27 @@ class GatewayService(pb2_grpc.GatewayServicer):
         peer_msg = self.get_peer_message(context)
         self.logger.info(f"Received request to get SPDK nvmf log flags and level{peer_msg}")
         log_flags = []
-        omap_lock = self.omap_lock.get_omap_lock_to_use(context)
-        with omap_lock:
-            try:
-                nvmf_log_flags = {key: value for key, value in rpc_log.log_get_flags(
-                    self.spdk_rpc_client).items() if key.startswith('nvmf')}
-                for flag, flagvalue in nvmf_log_flags.items():
-                    pb2_log_flag = pb2.spdk_log_flag_info(name = flag, enabled = flagvalue)
-                    log_flags.append(pb2_log_flag)
-                spdk_log_level = rpc_log.log_get_level(self.spdk_rpc_client)
-                spdk_log_print_level = rpc_log.log_get_print_level(self.spdk_rpc_client)
-                self.logger.debug(f"spdk log flags: {nvmf_log_flags}, " 
-                                 f"spdk log level: {spdk_log_level}, "
-                                 f"spdk log print level: {spdk_log_print_level}")
-            except Exception as ex:
-                errmsg = f"Failure getting SPDK log levels and nvmf log flags"
-                self.logger.exception(errmsg)
-                errmsg = f"{errmsg}:\n{ex}"
-                resp = self.parse_json_exeption(ex)
-                status = errno.ENOKEY
-                if resp:
-                    status = resp["code"]
-                    errmsg = f"Failure getting SPDK log levels and nvmf log flags: {resp['message']}"
-                return pb2.spdk_nvmf_log_flags_and_level_info(status = status, error_message = errmsg)
+        try:
+            nvmf_log_flags = {key: value for key, value in rpc_log.log_get_flags(
+                self.spdk_rpc_client).items() if key.startswith('nvmf')}
+            for flag, flagvalue in nvmf_log_flags.items():
+                pb2_log_flag = pb2.spdk_log_flag_info(name = flag, enabled = flagvalue)
+                log_flags.append(pb2_log_flag)
+            spdk_log_level = rpc_log.log_get_level(self.spdk_rpc_client)
+            spdk_log_print_level = rpc_log.log_get_print_level(self.spdk_rpc_client)
+            self.logger.debug(f"spdk log flags: {nvmf_log_flags}, " 
+                             f"spdk log level: {spdk_log_level}, "
+                             f"spdk log print level: {spdk_log_print_level}")
+        except Exception as ex:
+            errmsg = f"Failure getting SPDK log levels and nvmf log flags"
+            self.logger.exception(errmsg)
+            errmsg = f"{errmsg}:\n{ex}"
+            resp = self.parse_json_exeption(ex)
+            status = errno.ENOKEY
+            if resp:
+                status = resp["code"]
+                errmsg = f"Failure getting SPDK log levels and nvmf log flags: {resp['message']}"
+            return pb2.spdk_nvmf_log_flags_and_level_info(status = status, error_message = errmsg)
 
         return pb2.spdk_nvmf_log_flags_and_level_info(
             nvmf_log_flags=log_flags,
@@ -2537,33 +2535,30 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         self.logger.info(f"Received request to set SPDK nvmf logs: log_level: {log_level}, print_level: {print_level}{peer_msg}")
 
-        omap_lock = self.omap_lock.get_omap_lock_to_use(context)
-        with omap_lock:
-            try:
-                nvmf_log_flags = [key for key in rpc_log.log_get_flags(self.spdk_rpc_client).keys() \
-                                  if key.startswith('nvmf')]
-                ret = [rpc_log.log_set_flag(
-                    self.spdk_rpc_client, flag=flag) for flag in nvmf_log_flags]
-                self.logger.debug(f"Set SPDK nvmf log flags {nvmf_log_flags} to TRUE: {ret}")
-                if log_level != None:
-                    ret_log = rpc_log.log_set_level(self.spdk_rpc_client, level=log_level)
-                    self.logger.debug(f"Set log level to {log_level}: {ret_log}")
-                if print_level != None:
-                    ret_print = rpc_log.log_set_print_level(
-                        self.spdk_rpc_client, level=print_level)
-                    self.logger.debug(f"Set log print level to {print_level}: {ret_print}")
-            except Exception as ex:
-                errmsg="Failure setting SPDK log levels"
-                self.logger.exception(errmsg)
-                errmsg="{errmsg}:\n{ex}"
-                for flag in nvmf_log_flags:
-                    rpc_log.log_clear_flag(self.spdk_rpc_client, flag=flag)
-                resp = self.parse_json_exeption(ex)
-                status = errno.EINVAL
-                if resp:
-                    status = resp["code"]
-                    errmsg = f"Failure setting SPDK log levels: {resp['message']}"
-                return pb2.req_status(status=status, error_message=errmsg)
+        try:
+            nvmf_log_flags = [key for key in rpc_log.log_get_flags(self.spdk_rpc_client).keys() if key.startswith('nvmf')]
+            ret = [rpc_log.log_set_flag(
+                self.spdk_rpc_client, flag=flag) for flag in nvmf_log_flags]
+            self.logger.debug(f"Set SPDK nvmf log flags {nvmf_log_flags} to TRUE: {ret}")
+            if log_level != None:
+                ret_log = rpc_log.log_set_level(self.spdk_rpc_client, level=log_level)
+                self.logger.debug(f"Set log level to {log_level}: {ret_log}")
+            if print_level != None:
+                ret_print = rpc_log.log_set_print_level(
+                    self.spdk_rpc_client, level=print_level)
+                self.logger.debug(f"Set log print level to {print_level}: {ret_print}")
+        except Exception as ex:
+            errmsg="Failure setting SPDK log levels"
+            self.logger.exception(errmsg)
+            errmsg="{errmsg}:\n{ex}"
+            for flag in nvmf_log_flags:
+                rpc_log.log_clear_flag(self.spdk_rpc_client, flag=flag)
+            resp = self.parse_json_exeption(ex)
+            status = errno.EINVAL
+            if resp:
+                status = resp["code"]
+                errmsg = f"Failure setting SPDK log levels: {resp['message']}"
+            return pb2.req_status(status=status, error_message=errmsg)
 
         status = 0
         errmsg = os.strerror(0)
@@ -2586,25 +2581,22 @@ class GatewayService(pb2_grpc.GatewayServicer):
         peer_msg = self.get_peer_message(context)
         self.logger.info(f"Received request to disable SPDK nvmf logs{peer_msg}")
 
-        omap_lock = self.omap_lock.get_omap_lock_to_use(context)
-        with omap_lock:
-            try:
-                nvmf_log_flags = [key for key in rpc_log.log_get_flags(self.spdk_rpc_client).keys() \
-                                  if key.startswith('nvmf')]
-                ret = [rpc_log.log_clear_flag(self.spdk_rpc_client, flag=flag) for flag in nvmf_log_flags]
-                logs_level = [rpc_log.log_set_level(self.spdk_rpc_client, level='NOTICE'),
-                              rpc_log.log_set_print_level(self.spdk_rpc_client, level='INFO')]
-                ret.extend(logs_level)
-            except Exception as ex:
-                errmsg = f"Failure in disable SPDK nvmf log flags"
-                self.logger.exception(errmsg)
-                errmsg = f"{errmsg}:\n{ex}"
-                resp = self.parse_json_exeption(ex)
-                status = errno.EINVAL
-                if resp:
-                    status = resp["code"]
-                    errmsg = f"Failure in disable SPDK nvmf log flags: {resp['message']}"
-                return pb2.req_status(status=status, error_message=errmsg)
+        try:
+            nvmf_log_flags = [key for key in rpc_log.log_get_flags(self.spdk_rpc_client).keys() if key.startswith('nvmf')]
+            ret = [rpc_log.log_clear_flag(self.spdk_rpc_client, flag=flag) for flag in nvmf_log_flags]
+            logs_level = [rpc_log.log_set_level(self.spdk_rpc_client, level='NOTICE'),
+                          rpc_log.log_set_print_level(self.spdk_rpc_client, level='INFO')]
+            ret.extend(logs_level)
+        except Exception as ex:
+            errmsg = f"Failure in disable SPDK nvmf log flags"
+            self.logger.exception(errmsg)
+            errmsg = f"{errmsg}:\n{ex}"
+            resp = self.parse_json_exeption(ex)
+            status = errno.EINVAL
+            if resp:
+                status = resp["code"]
+                errmsg = f"Failure in disable SPDK nvmf log flags: {resp['message']}"
+            return pb2.req_status(status=status, error_message=errmsg)
 
         status = 0
         errmsg = os.strerror(0)
