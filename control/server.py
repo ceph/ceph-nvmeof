@@ -200,6 +200,14 @@ class GatewayServer:
         else:
             self.logger.info(f"Prometheus endpoint is disabled. To enable, set the config option 'enable_prometheus_exporter = True'")
 
+        # Set SPDK log level
+        log_level_args = {}
+        log_level = self.config.get_with_default("spdk", "log_level", None)
+        if log_level:
+            log_level = log_level.upper()
+            log_req = pb2.set_spdk_nvmf_logs_req(log_level=log_level, print_level=log_level)
+            self.gateway_rpc.set_spdk_nvmf_logs(log_req)
+
     def _monitor_client_version(self) -> str:
         """Return monitor client version string."""
         # Get the current SIGCHLD handler
@@ -381,7 +389,7 @@ class GatewayServer:
 
         # Initialization
         timeout = self.config.getfloat_with_default("spdk", "timeout", 60.0)
-        log_level = self.config.get_with_default("spdk", "log_level", "WARNING")
+        protocol_log_level = self.config.get_with_default("spdk", "protocol_log_level", "WARNING")
         # connect timeout: spdk client retries 5 times per sec
         conn_retries = int(timeout * 5)
         self.logger.info(f"SPDK process id: {self.spdk_process.pid}")
@@ -394,14 +402,14 @@ class GatewayServer:
                 self.spdk_rpc_socket_path,
                 None,
                 timeout,
-                log_level=log_level,
+                log_level=protocol_log_level,
                 conn_retries=conn_retries,
             )
             self.spdk_rpc_ping_client = rpc_client.JSONRPCClient(
                 self.spdk_rpc_socket_path,
                 None,
                 timeout,
-                log_level=log_level,
+                log_level=protocol_log_level,
                 conn_retries=conn_retries,
             )
         except Exception:
