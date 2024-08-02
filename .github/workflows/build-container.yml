@@ -50,14 +50,20 @@ jobs:
           docker save $QUAY_NVMEOFCLI:$NVMEOF_VERSION > nvmeof-cli.tar
           docker save bdevperf > bdevperf.tar
 
-      - name: Upload container images
+      - name: Upload bdevperf container image
         uses: actions/upload-artifact@v4
         with:
-          name: container_images
+          name: container_images_bdevperf
+          path: |
+            bdevperf.tar
+
+      - name: Upload nvmeof container images
+        uses: actions/upload-artifact@v4
+        with:
+          name: container_images_nvmeof
           path: |
             nvmeof.tar
             nvmeof-cli.tar
-            bdevperf.tar
 
   build-ceph:
     runs-on: ubuntu-latest
@@ -73,7 +79,7 @@ jobs:
           . .env
           docker save $QUAY_CEPH:$CEPH_VERSION > ceph.tar
 
-      - name: Upload container images
+      - name: Upload ceph container image
         uses: actions/upload-artifact@v4
         with:
           name: container_images_ceph
@@ -645,6 +651,45 @@ jobs:
           make down
           make clean
 
+  atom:
+    needs: [build, build-ceph]
+    runs-on: ibmcloud-1
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Atom env initialization
+        run: |
+          . .env
+          ./tests/atom/atomEnvInit.sh ${{ vars.CONTAINER_REGISTRY_USERNAME }} ${{ github.repository_owner }} ${{ secrets.ATOM_REPO_TOKEN }} ${{ secrets.SELF_HOSTED_RUNNER_PASS }} $ATOM_BRANCH $ATOM_SHA
+
+      - name: Download container images
+        uses: actions/download-artifact@v4
+        with:
+          pattern: container_images_nvmeof
+          merge-multiple: true
+
+      - name: Load container images
+        run: |
+          docker load < nvmeof.tar
+          docker load < nvmeof-cli.tar
+
+      - name: Cluster build and Atom tests run
+        if: always() || failure()
+        run: |
+          . .env
+          ./tests/atom/atomClusterBuildTestsRun.sh ${{ secrets.SELF_HOSTED_RUNNER_PASS }} $GITHUB_REPOSITORY ${GITHUB_REF##*/} $NVMEOF_VERSION $CEPH_SHA $ATOM_SHA
+
+      - name: Atom artifact build
+        if: always()
+        run: ./tests/atom/cpArtifactAndCleanup.sh ${{ secrets.SELF_HOSTED_RUNNER_PASS }}
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: atom-artifact
+          path: /tmp/artifact/*
+
   push-images-to-private-registry:
     if: github.event_name == 'push' && github.ref == 'refs/heads/devel' && github.repository == 'ceph/ceph-nvmeof'
     needs: [pytest, demo, discovery, ha]
@@ -657,7 +702,7 @@ jobs:
       - name: Download container images
         uses: actions/download-artifact@v4
         with:
-          name: container_images
+          name: container_images_nvmeof
 
       - name: Load container images
         run: |
@@ -687,7 +732,7 @@ jobs:
       - name: Download container images
         uses: actions/download-artifact@v4
         with:
-          name: container_images
+          name: container_images_nvmeof
 
       - name: Load container images
         run: |
