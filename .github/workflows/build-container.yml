@@ -661,7 +661,7 @@ jobs:
       - name: Atom env initialization
         run: |
           . .env
-          ./tests/atom/atomEnvInit.sh ${{ vars.CONTAINER_REGISTRY_USERNAME }} ${{ github.repository_owner }} ${{ secrets.ATOM_REPO_TOKEN }} ${{ secrets.SELF_HOSTED_RUNNER_PASS }} $ATOM_BRANCH $ATOM_SHA
+          ./tests/atom/atomEnvInit.sh ${{ vars.CONTAINER_REGISTRY_USERNAME }} ${{ github.repository_owner }} ${{ secrets.ATOM_REPO_TOKEN }} $ATOM_BRANCH $ATOM_SHA
 
       - name: Download container images
         uses: actions/download-artifact@v4
@@ -678,11 +678,11 @@ jobs:
         if: always() || failure()
         run: |
           . .env
-          ./tests/atom/atomClusterBuildTestsRun.sh ${{ secrets.SELF_HOSTED_RUNNER_PASS }} $GITHUB_REPOSITORY ${GITHUB_REF##*/} $NVMEOF_VERSION $CEPH_SHA $ATOM_SHA
+          ./tests/atom/atomClusterBuildTestsRun.sh $GITHUB_REPOSITORY ${GITHUB_REF##*/} $NVMEOF_VERSION $CEPH_SHA $ATOM_SHA
 
       - name: Atom artifact build
         if: always()
-        run: ./tests/atom/cpArtifactAndCleanup.sh ${{ secrets.SELF_HOSTED_RUNNER_PASS }}
+        run: ./tests/atom/cpArtifactAndCleanup.sh
 
       - uses: actions/upload-artifact@v4
         if: always()

@@ -1,11 +1,10 @@
 #!/bin/bash
 
-RUNNER_PASS=$1
-REPO=$2
-BRANCH=$3
-VERSION=$4
-CEPH_SHA=$5
-ATOM_SHA=$6
+REPO=$1
+BRANCH=$2
+VERSION=$3
+CEPH_SHA=$4
+ATOM_SHA=$5
 
 # In case of merge to devel
 if [ $BRANCH = "merge" ]; then
@@ -28,7 +27,7 @@ fi
 #   - RBD size (200M)
 #   - Seed number (0)
 #   - FIO use (1=run fio, 0=don't run fio)
-echo "$RUNNER_PASS" | sudo -S docker run \
+sudo docker run \
     -v /root/.ssh:/root/.ssh \
     nvmeof_atom:"$ATOM_SHA" \
     python3 cephnvme_atom.py \
