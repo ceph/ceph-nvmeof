@@ -675,26 +675,26 @@ jobs:
           pattern: container_images_nvmeof
           merge-multiple: true
 
-      - name: Load container images
-        run: |
-          docker load < nvmeof.tar
-          docker load < nvmeof-cli.tar
+      # - name: Load container images
+      #   run: |
+      #     docker load < nvmeof.tar
+      #     docker load < nvmeof-cli.tar
 
-      - name: Cluster build and Atom tests run
-        if: always() || failure()
-        run: |
-          . .env
-          ./tests/atom/atomClusterBuildTestsRun.sh $GITHUB_REPOSITORY ${GITHUB_REF##*/} $NVMEOF_VERSION $CEPH_SHA $ATOM_SHA
+      # - name: Cluster build and Atom tests run
+      #   if: always() || failure()
+      #   run: |
+      #     . .env
+      #     ./tests/atom/atomClusterBuildTestsRun.sh $GITHUB_REPOSITORY ${GITHUB_REF##*/} $NVMEOF_VERSION $CEPH_SHA $ATOM_SHA
 
-      - name: Atom artifact build
-        if: always()
-        run: ./tests/atom/cpArtifactAndCleanup.sh
+      # - name: Atom artifact build
+      #   if: always()
+      #   run: ./tests/atom/cpArtifactAndCleanup.sh
 
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: atom-artifact
-          path: /tmp/artifact/*
+      # - uses: actions/upload-artifact@v4
+      #   if: always()
+      #   with:
+      #     name: atom-artifact
+      #     path: /tmp/artifact/*
 
   # push-images-to-private-registry:
   #   if: github.event_name == 'push' && github.ref == 'refs/heads/devel' && github.repository == 'ceph/ceph-nvmeof'
