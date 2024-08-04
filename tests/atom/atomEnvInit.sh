@@ -24,8 +24,10 @@ if [ $NVMEOF_REPO_OWNER = "devel" ]; then
     NVMEOF_REPO_OWNER="ceph"
 fi
 
-# Remove repo folder
+# Recreate repo folder
 rm -rf /home/cephnvme/actions-runner-$NVMEOF_REPO_OWNER/ceph-nvmeof-atom
+mkdir -p /home/cephnvme/actions-runner-$NVMEOF_REPO_OWNER/ceph-nvmeof-atom
+ls -lta /home/cephnvme/actions-runner-$NVMEOF_REPO_OWNER/
 
 # Check if cluster is busy with another run
 while true; do
