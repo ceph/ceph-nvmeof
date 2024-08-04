@@ -661,12 +661,13 @@ jobs:
         
       - name: Atom env initialization
         run: |
-          echo "_1_ATOM_BRANCH: $ATOM_BRANCH"
-          echo "_1_ATOM_SHA: $ATOM_SHA"
           . .env
           echo "_2_ATOM_BRANCH: $ATOM_BRANCH"
           echo "_2_ATOM_SHA: $ATOM_SHA"
           ./tests/atom/atomEnvInit.sh ${{ vars.CONTAINER_PRIVATE_REGISTRY_USERNAME }} ${{ github.repository_owner }} ${{ secrets.ATOM_REPO_TOKEN }} $ATOM_BRANCH $ATOM_SHA
+        shell: /usr/bin/bash -e {0}
+        env:
+          WAIT_INTERVAL_SECS: 1
 
       - name: Download container images
         uses: actions/download-artifact@v4
