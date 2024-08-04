@@ -19,18 +19,13 @@ cleanup_docker_images() {
 EOF
 }
 
-echo $NVMEOF_REPO_OWNER
-
 # In case of merge to devel
 if [ $NVMEOF_REPO_OWNER = 'devel' ]; then
     NVMEOF_REPO_OWNER='ceph'
 fi
 
-echo $NVMEOF_REPO_OWNER
-
 # Remove atom repo folder
 rm -rf /home/cephnvme/actions-runner-$NVMEOF_REPO_OWNER/ceph-nvmeof-atom
-ls -lta /home/cephnvme/actions-runner-$NVMEOF_REPO_OWNER/
 
 # Check if cluster is busy with another run
 while true; do
@@ -48,12 +43,9 @@ done
 # Cleanup docker images
 sudo docker ps -q | xargs -r sudo docker stop; sudo docker ps -q | xargs -r sudo docker rm -f; sudo yes | docker system prune -fa; docker ps; docker images
 
-echo "/home/cephnvme/actions-runner-$NVMEOF_REPO_OWNER"
 # Cloning atom repo
 cd /home/cephnvme/actions-runner-$NVMEOF_REPO_OWNER
-pwd; ls -lta
 git clone --branch $ATOM_BRANCH https://$TRIMMED_ATOM_REPO_OWNER:$ATOM_REPO_TOKEN@github.ibm.com/NVME-Over-Fiber/ceph-nvmeof-atom.git
-pwd; ls -lta
 if [ $? -ne 0 ]; then
     echo "Error: Failed to clone the atom repository."
     exit 1
