@@ -90,18 +90,6 @@ class GatewayServer:
             self.name = socket.gethostname()
         self.logger.info(f"Starting gateway {self.name}")
 
-        self.allowed_consecutive_spdk_ping_failures = self.config.getint_with_default("gateway",
-                                                                                      "allowed_consecutive_spdk_ping_failures", 1)
-        self.spdk_ping_interval_in_seconds = self.config.getfloat_with_default("gateway", "spdk_ping_interval_in_seconds", 2.0)
-        if self.spdk_ping_interval_in_seconds < 0.0:
-            self.logger.warning(f"Invalid SPDK ping interval {self.spdk_ping_interval_in_seconds}, will reset to 0")
-            self.spdk_ping_interval_in_seconds = 0.0
-        self.ping_spdk_under_lock = self.config.getboolean_with_default("gateway", "ping_spdk_under_lock", False)
-        if self.ping_spdk_under_lock:
-            self.ping_lock = self.rpc_lock
-        else:
-            self.ping_lock = contextlib.suppress()
-
     def __enter__(self):
         return self
 
@@ -268,7 +256,7 @@ class GatewayServer:
             return
 
         try:
-            rpc_nvmf.nvmf_delete_subsystem(self.spdk_rpc_ping_client, GatewayUtils.DISCOVERY_NQN)
+            rpc_nvmf.nvmf_delete_subsystem(self.spdk_rpc_client, GatewayUtils.DISCOVERY_NQN)
         except Exception:
             self.logger.exception(f"Delete Discovery subsystem returned with error")
             raise
@@ -422,17 +410,16 @@ class GatewayServer:
         for trtype in spdk_transports.split():
             self._create_transport(trtype.lower())
 
-        with self.ping_lock:
+        try:
+            return_version = spdk.rpc.spdk_get_version(self.spdk_rpc_client)
             try:
-                return_version = spdk.rpc.spdk_get_version(self.spdk_rpc_ping_client)
-                try:
-                    version_string = return_version["version"]
-                    self.logger.info(f"Started SPDK with version \"{version_string}\"")
-                except KeyError:
-                    self.logger.error(f"Can't find SPDK version string in {return_version}")
-            except Exception:
-                self.logger.exception(f"Can't read SPDK version")
-                pass
+                version_string = return_version["version"]
+                self.logger.info(f"Started SPDK with version \"{version_string}\"")
+            except KeyError:
+                self.logger.error(f"Can't find SPDK version string in {return_version}")
+        except Exception:
+            self.logger.exception(f"Can't read SPDK version")
+            pass
 
     def _stop_subprocess(self, proc, timeout):
         """Stops SPDK process."""
@@ -514,24 +501,30 @@ class GatewayServer:
 
     def keep_alive(self):
         """Continuously confirms communication with SPDK process."""
+        allowed_consecutive_spdk_ping_failures = self.config.getint_with_default("gateway",
+                                                                                      "allowed_consecutive_spdk_ping_failures", 1)
+        spdk_ping_interval_in_seconds = self.config.getfloat_with_default("gateway", "spdk_ping_interval_in_seconds", 2.0)
+        if spdk_ping_interval_in_seconds < 0.0:
+            self.logger.warning(f"Invalid SPDK ping interval {spdk_ping_interval_in_seconds}, will reset to 0")
+            spdk_ping_interval_in_seconds = 0.0
 
         consecutive_ping_failures = 0
         # we spend 1 second waiting for server termination so subtract it from ping interval
-        if self.spdk_ping_interval_in_seconds >= 1.0:
-            self.spdk_ping_interval_in_seconds -= 1.0
+        if spdk_ping_interval_in_seconds >= 1.0:
+            spdk_ping_interval_in_seconds -= 1.0
         else:
-            self.spdk_ping_interval_in_seconds = 0.0
+            spdk_ping_interval_in_seconds = 0.0
 
         while True:
             timedout = self.server.wait_for_termination(timeout=1)
             if not timedout:
                 break
-            if self.spdk_ping_interval_in_seconds > 0.0:
-                time.sleep(self.spdk_ping_interval_in_seconds)
+            if spdk_ping_interval_in_seconds > 0.0:
+                time.sleep(spdk_ping_interval_in_seconds)
             alive = self._ping()
             if not alive:
                 consecutive_ping_failures += 1
-                if consecutive_ping_failures >= self.allowed_consecutive_spdk_ping_failures:
+                if consecutive_ping_failures >= allowed_consecutive_spdk_ping_failures:
                     self.logger.critical(f"SPDK ping failed {consecutive_ping_failures} times, aborting")
                     break
             else:
@@ -540,8 +533,7 @@ class GatewayServer:
     def _ping(self):
         """Confirms communication with SPDK process."""
         try:
-            with self.ping_lock:
-                ret = spdk.rpc.spdk_get_version(self.spdk_rpc_ping_client)
+            ret = spdk.rpc.spdk_get_version(self.spdk_rpc_ping_client)
             return True
         except Exception:
             self.logger.exception(f"spdk_get_version failed")
