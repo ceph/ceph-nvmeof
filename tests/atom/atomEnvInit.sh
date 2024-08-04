@@ -44,7 +44,11 @@ done
 sudo docker ps -q | xargs -r sudo docker stop; sudo docker ps -q | xargs -r sudo docker rm -f; sudo yes | docker system prune -fa; docker ps; docker images
 
 # Cloning atom repo
+
 cd /home/cephnvme/actions-runner-$NVMEOF_REPO_OWNER
+pwd
+ls -lta
+echo "git clone --branch $ATOM_BRANCH https://$TRIMMED_ATOM_REPO_OWNER:$ATOM_REPO_TOKEN@github.ibm.com/NVME-Over-Fiber/ceph-nvmeof-atom.git"
 git clone --branch $ATOM_BRANCH https://$TRIMMED_ATOM_REPO_OWNER:$ATOM_REPO_TOKEN@github.ibm.com/NVME-Over-Fiber/ceph-nvmeof-atom.git
 if [ $? -ne 0 ]; then
     echo "Error: Failed to clone the atom repository."
