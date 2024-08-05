@@ -65,26 +65,26 @@ jobs:
             nvmeof.tar
             nvmeof-cli.tar
 
-  build-ceph:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+  # build-ceph:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Checkout code
+  #       uses: actions/checkout@v4
 
-      - name: Build container images - ceph
-        run: make build SVC=ceph
+  #     - name: Build container images - ceph
+  #       run: make build SVC=ceph
 
-      - name: Save container images
-        run: |
-          . .env
-          docker save $QUAY_CEPH:$CEPH_VERSION > ceph.tar
+  #     - name: Save container images
+  #       run: |
+  #         . .env
+  #         docker save $QUAY_CEPH:$CEPH_VERSION > ceph.tar
 
-      - name: Upload ceph container image
-        uses: actions/upload-artifact@v4
-        with:
-          name: container_images_ceph
-          path: |
-            ceph.tar
+  #     - name: Upload ceph container image
+  #       uses: actions/upload-artifact@v4
+  #       with:
+  #         name: container_images_ceph
+  #         path: |
+  #           ceph.tar
 
   # pytest:
   #   needs: [build, build-ceph]
@@ -653,10 +653,9 @@ jobs:
 
   atom:
     # needs: [build, build-ceph]
-    # needs: [build]
+    needs: [build]
     if: github.repository == 'ceph/ceph-nvmeof'
-    #runs-on: ibmcloud-1
-    runs-on: ubuntu-latest
+    runs-on: ibmcloud-1
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
