@@ -658,12 +658,16 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        
+
       - name: Atom env initialization
         run: |
           . .env
           echo "_1_ATOM_BRANCH : $ATOM_BRANCH"
           echo "_1_ATOM_SHA : $ATOM_SHA"
+          echo "ATOM_BRANCH=$ATOM_BRANCH" >> $GITHUB_ENV
+          echo "ATOM_SHA=$ATOM_SHA" >> $GITHUB_ENV
+          echo "_2_ATOM_BRANCH : $ATOM_BRANCH"
+          echo "_2_ATOM_SHA : $ATOM_SHA"          
           bash ./tests/atom/atomEnvInit.sh ${{ vars.CONTAINER_PRIVATE_REGISTRY_USERNAME }} ${{ github.repository_owner }} ${{ secrets.ATOM_REPO_TOKEN }} $ATOM_BRANCH $ATOM_SHA
 
       - name: Download container images
