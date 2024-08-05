@@ -662,9 +662,8 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Atom env initialization
-        # env:
-        #   ATOM_REPO_TOKEN: ${{ secrets.ATOM_REPO_TOKEN }}
-        #   CONTAINER_PRIVATE_REGISTRY_USERNAME: ${{ vars.CONTAINER_PRIVATE_REGISTRY_USERNAME }}
+        env:
+          username: ${{ vars.CONTAINER_PRIVATE_REGISTRY_USERNAME }}
         run: |
           . .env
           set -x
@@ -673,7 +672,8 @@ jobs:
           echo "_1_ATOM_REPO_OWNER : ${{ vars.CONTAINER_PRIVATE_REGISTRY_USERNAME }}
           echo "_1_NVMEOF_REPO_OWNER : ${{ github.repository_owner }}"
           echo "_1_ATOM_BRANCH : $ATOM_BRANCH"
-          username="${{ vars.CONTAINER_PRIVATE_REGISTRY_USERNAME }}"
+          #username="${{ vars.CONTAINER_PRIVATE_REGISTRY_USERNAME }}"
+          echo "username = $username"
           ./tests/atom/atomEnvInit.sh $ATOM_SHA "${{ secrets.ATOM_REPO_TOKEN }}" "$username" "${{ github.repository_owner }}" $ATOM_BRANCH 
         # shell: bash
 
