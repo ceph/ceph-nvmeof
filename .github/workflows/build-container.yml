@@ -656,6 +656,7 @@ jobs:
     # needs: [build]
     if: github.repository == 'ceph/ceph-nvmeof'
     #runs-on: ibmcloud-1
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
