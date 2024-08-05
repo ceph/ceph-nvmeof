@@ -668,7 +668,7 @@ jobs:
           echo ${{ github.repository }}
           echo "_1_ATOM_BRANCH : $ATOM_BRANCH"
           echo "_1_ATOM_SHA : $ATOM_SHA"
-          ./tests/atom/atomEnvInit.sh $ATOM_BRANCH $ATOM_SHA ${{ vars.CONTAINER_PRIVATE_REGISTRY_USERNAME }} ${{ github.repository_owner }} ${{ secrets.ATOM_REPO_TOKEN }}
+          ./tests/atom/atomEnvInit.sh "$ATOM_BRANCH" "$ATOM_SHA" "${{ vars.CONTAINER_PRIVATE_REGISTRY_USERNAME }}" "${{ github.repository_owner }}" "${{ secrets.ATOM_REPO_TOKEN }}"
 
       - name: Download container images
         uses: actions/download-artifact@v4
