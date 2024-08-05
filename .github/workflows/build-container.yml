@@ -664,22 +664,21 @@ jobs:
         run: |
           . .env
           set -x
-          echo "_1_ATOM_BRANCH : $ATOM_BRANCH"
           echo "_1_ATOM_SHA : $ATOM_SHA"
-          echo "_1_ATOM_REPO_OWNER : ${{ vars.CONTAINER_PRIVATE_REGISTRY_USERNAME }}"
-          ./tests/atom/atomEnvInit.sh $ATOM_BRANCH $ATOM_SHA ${{ secrets.ATOM_REPO_TOKEN }} ${{ vars.CONTAINER_PRIVATE_REGISTRY_USERNAME }} ${{ github.repository_owner }}
-
+          echo "_1_ATOM_REPO_OWNER : ${{ secrets.ATOM_REPO_TOKEN }}"
+          echo "_1_ATOM_REPO_OWNER : ${{ secrets.ATOM_REPO_TOKEN }}"
+          echo "./tests/atom/atomEnvInit.sh $ATOM_SHA ${{ secrets.ATOM_REPO_TOKEN }} ${{ vars.CONTAINER_PRIVATE_REGISTRY_USERNAME }} ${{ github.repository_owner }} $ATOM_BRANCH "
+          ./tests/atom/atomEnvInit.sh $ATOM_SHA ${{ secrets.ATOM_REPO_TOKEN }} ${{ vars.CONTAINER_PRIVATE_REGISTRY_USERNAME }} ${{ github.repository_owner }} $ATOM_BRANCH 
 
       # - name: Atom env initialization
       #   run: |
       #     . .env
       #     set -x
-      #     echo ${{ github.repository_owner }}
-      #     echo ${{ github.repository }}
       #     echo "_1_ATOM_BRANCH : $ATOM_BRANCH"
+      #     echo "_1_ATOM_SHA : $ATOM_SHA"
       #     echo "_1_ATOM_REPO_OWNER : ${{ vars.CONTAINER_PRIVATE_REGISTRY_USERNAME }}"
-      #     echo "_1_ATOM_REPO_TOKEN : ${{ secrets.ATOM_REPO_TOKEN }}"
-      #     ./tests/atom/atomEnvInit.sh $ATOM_BRANCH ${{ vars.CONTAINER_PRIVATE_REGISTRY_USERNAME }} ${{ secrets.ATOM_REPO_TOKEN }}  $ATOM_SHA ceph
+      #     ./tests/atom/atomEnvInit.sh $ATOM_BRANCH $ATOM_SHA ${{ secrets.ATOM_REPO_TOKEN }} ${{ vars.CONTAINER_PRIVATE_REGISTRY_USERNAME }} ${{ github.repository_owner }}
+
 
       # - name: Atom image create
       #   run: |

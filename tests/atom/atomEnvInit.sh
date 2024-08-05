@@ -1,14 +1,15 @@
 #!/bin/bash
 
-ATOM_BRANCH=$1
-ATOM_SHA=$2
-ATOM_REPO_TOKEN=$3
-ATOM_REPO_OWNER=$4
-NVMEOF_REPO_OWNER=$5
 
-echo "_2_ATOM_BRANCH : $ATOM_BRANCH"
+ATOM_SHA=$1
+ATOM_REPO_TOKEN=$2
+ATOM_REPO_OWNER=$3
+NVMEOF_REPO_OWNER=$4
+ATOM_BRANCH=$5
+
 echo "_2_ATOM_SHA : $ATOM_SHA"
-echo "_2_ATOM_REPO_OWNER : ${{ vars.CONTAINER_PRIVATE_REGISTRY_USERNAME }}"
+echo "_2_ATOM_REPO_TOKEN : $ATOM_REPO_TOKEN"
+echo "_2_ATOM_REPO_OWNER : $ATOM_REPO_OWNER"
 
 # TRIMMED_ATOM_REPO_OWNER="${ATOM_REPO_OWNER%?}"
 TRIMMED_ATOM_REPO_OWNER="barakda1"
@@ -50,8 +51,8 @@ sudo docker ps -q | xargs -r sudo docker stop; sudo docker ps -q | xargs -r sudo
 
 # Cloning atom repo
 cd /home/cephnvme/actions-runner-ceph
-echo "git clone --branch $ATOM_BRANCH https://$TRIMMED_ATOM_REPO_OWNER:$ATOM_REPO_TOKEN@github.ibm.com/NVME-Over-Fiber/ceph-nvmeof-atom.git"
-git clone --branch $ATOM_BRANCH https://$TRIMMED_ATOM_REPO_OWNER:$ATOM_REPO_TOKEN@github.ibm.com/NVME-Over-Fiber/ceph-nvmeof-atom.git
+echo "git clone --branch devel https://$TRIMMED_ATOM_REPO_OWNER:$ATOM_REPO_TOKEN@github.ibm.com/NVME-Over-Fiber/ceph-nvmeof-atom.git"
+git clone --branch devel https://$TRIMMED_ATOM_REPO_OWNER:$ATOM_REPO_TOKEN@github.ibm.com/NVME-Over-Fiber/ceph-nvmeof-atom.git
 if [ $? -ne 0 ]; then
     echo "Error: Failed to clone the atom repository."
     exit 1
@@ -90,6 +91,10 @@ for HOST in "${HOSTS[@]}"; do
 done
 
 sudo podman ps -q | xargs -r sudo podman stop; sudo podman ps -q | xargs -r sudo podman rm -f; sudo yes | podman system prune -fa; podman ps; podman images
+
+
+
+
 
 
 # #!/bin/bash
