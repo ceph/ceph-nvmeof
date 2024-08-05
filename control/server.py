@@ -64,6 +64,7 @@ class GatewayServer:
         server: gRPC server instance to receive gateway client requests
         spdk_rpc_client: Client of SPDK RPC server
         spdk_rpc_ping_client: Ping client of SPDK RPC server
+        spdk_rpc_subsystems_client: subsystems client of SPDK RPC server
         spdk_process: Subprocess running SPDK NVMEoF target application
         discovery_pid: Subprocess running Ceph nvmeof discovery service
     """
@@ -174,7 +175,7 @@ class GatewayServer:
         # Register service implementation with server
         gateway_state = GatewayStateHandler(self.config, local_state, omap_state, self.gateway_rpc_caller, f"gateway-{self.name}")
         self.omap_lock = OmapLock(omap_state, gateway_state, self.rpc_lock)
-        self.gateway_rpc = GatewayService(self.config, gateway_state, self.rpc_lock, self.omap_lock, self.group_id, self.spdk_rpc_client, self.ceph_utils)
+        self.gateway_rpc = GatewayService(self.config, gateway_state, self.rpc_lock, self.omap_lock, self.group_id, self.spdk_rpc_client, self.spdk_rpc_subsystems_client, self.ceph_utils)
         self.server = self._grpc_server(self._gateway_address())
         pb2_grpc.add_GatewayServicer_to_server(self.gateway_rpc, self.server)
 
@@ -383,6 +384,13 @@ class GatewayServer:
                 conn_retries=conn_retries,
             )
             self.spdk_rpc_ping_client = rpc_client.JSONRPCClient(
+                self.spdk_rpc_socket_path,
+                None,
+                timeout,
+                log_level=protocol_log_level,
+                conn_retries=conn_retries,
+            )
+            self.spdk_rpc_subsystems_client = rpc_client.JSONRPCClient(
                 self.spdk_rpc_socket_path,
                 None,
                 timeout,
