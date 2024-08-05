@@ -6,9 +6,8 @@ ATOM_REPO_TOKEN=$3
 ATOM_BRANCH=$4
 ATOM_SHA=$5
 
-echo "_3_ATOM_BRANCH: $ATOM_BRANCH"
-echo "_3_ATOM_SHA: $ATOM_SHA"
-
+echo "_2_ATOM_BRANCH : $ATOM_BRANCH"
+echo "_2_ATOM_SHA : $ATOM_SHA"
 TRIMMED_ATOM_REPO_OWNER="${ATOM_REPO_OWNER%?}"
 
 cleanup_docker_images() {
@@ -47,10 +46,7 @@ done
 sudo docker ps -q | xargs -r sudo docker stop; sudo docker ps -q | xargs -r sudo docker rm -f; sudo yes | docker system prune -fa; docker ps; docker images
 
 # Cloning atom repo
-
 cd /home/cephnvme/actions-runner-$NVMEOF_REPO_OWNER
-pwd
-ls -lta
 echo "git clone --branch $ATOM_BRANCH https://$TRIMMED_ATOM_REPO_OWNER:$ATOM_REPO_TOKEN@github.ibm.com/NVME-Over-Fiber/ceph-nvmeof-atom.git"
 git clone --branch $ATOM_BRANCH https://$TRIMMED_ATOM_REPO_OWNER:$ATOM_REPO_TOKEN@github.ibm.com/NVME-Over-Fiber/ceph-nvmeof-atom.git
 if [ $? -ne 0 ]; then
