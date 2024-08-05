@@ -669,7 +669,7 @@ jobs:
           echo "_1_ATOM_BRANCH : $ATOM_BRANCH"
           echo "_1_ATOM_REPO_OWNER : ${{ vars.CONTAINER_PRIVATE_REGISTRY_USERNAME }}"
           echo "_1_ATOM_REPO_TOKEN : ${{ secrets.ATOM_REPO_TOKEN }}"
-          ./tests/atom/atomEnvInit.sh ${{ vars.CONTAINER_PRIVATE_REGISTRY_USERNAME }} ${{ secrets.ATOM_REPO_TOKEN }} $ATOM_BRANCH 
+          ./tests/atom/atomEnvInit.sh $ATOM_BRANCH ${{ vars.CONTAINER_PRIVATE_REGISTRY_USERNAME }} ${{ secrets.ATOM_REPO_TOKEN }}  $ATOM_SHA ceph
 
       - name: Atom image create
         run: |
