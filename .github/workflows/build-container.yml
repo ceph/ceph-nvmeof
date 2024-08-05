@@ -369,6 +369,10 @@ jobs:
 
       - name: Load container images
         run: |
+          if ! docker-compose --version 2>&1 > /dev/null ; then
+            sudo apt update
+            sudo apt install -y docker-compose
+          fi
           docker load < nvmeof.tar
           docker load < nvmeof-cli.tar
           docker load < ceph.tar
@@ -377,10 +381,6 @@ jobs:
       - name: Start discovery controller
         if: matrix.integration == 'container'
         run: |
-          if ! docker-compose --version 2>&1 > /dev/null ; then
-            sudo apt update
-            sudo apt install -y docker-compose
-          fi
           docker-compose --version
           docker-compose up --detach discovery
 
