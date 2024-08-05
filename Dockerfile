@@ -40,7 +40,7 @@ ENV PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=off \
     PYTHON_MAJOR=3 \
     PYTHON_MINOR=9 \
-    PDM_ONLY_BINARY=:all:
+    PDM_PREFER_BINARY=:all:
 
 ARG APPDIR=/src
 
@@ -117,7 +117,7 @@ WORKDIR $APPDIR
 
 #------------------------------------------------------------------------------
 FROM python-intermediate AS builder-base
-ARG PDM_VERSION=2.7.4 \
+ARG PDM_VERSION=2.17.3 \
     PDM_INSTALL_CMD=sync \
     PDM_INSTALL_FLAGS="-v --no-isolation --no-self --no-editable" \
     PDM_INSTALL_DEV=""
@@ -129,10 +129,11 @@ ENV PDM_CHECK_UPDATE=0
 RUN \
     --mount=type=cache,target=/var/cache/dnf \
     --mount=type=cache,target=/var/lib/dnf \
-    dnf install -y python3-pip
+    dnf install -y python3-pip && \
+    dnf install -y gcc python3-devel
 RUN \
     --mount=type=cache,target=/root/.cache/pip \
-    pip install -U pip setuptools
+    pip install -U pip setuptools wheel
 
 RUN \
     --mount=type=cache,target=/root/.cache/pip \
