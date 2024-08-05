@@ -23,47 +23,47 @@ concurrency:
 env:
   WAIT_INTERVAL_SECS: 1
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
+  # build:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Checkout code
+  #       uses: actions/checkout@v4
+  #       with:
+  #         submodules: recursive
 
-      - name: Build container images - spdk
-        run: make build SVC="spdk" SPDK_TARGET_ARCH=x86-64-v2
+  #     - name: Build container images - spdk
+  #       run: make build SVC="spdk" SPDK_TARGET_ARCH=x86-64-v2
 
-      - name: Build container images - bdevperf
-        run: make build SVC="bdevperf" SPDK_TARGET_ARCH=x86-64-v2
+  #     - name: Build container images - bdevperf
+  #       run: make build SVC="bdevperf" SPDK_TARGET_ARCH=x86-64-v2
 
-      - name: Build container images - nvmeof
-        run: make build SVC="nvmeof" SPDK_TARGET_ARCH=x86-64-v2
+  #     - name: Build container images - nvmeof
+  #       run: make build SVC="nvmeof" SPDK_TARGET_ARCH=x86-64-v2
 
-      - name: Build container images - nvmeof-cli
-        run: make build SVC="nvmeof-cli" SPDK_TARGET_ARCH=x86-64-v2
+  #     - name: Build container images - nvmeof-cli
+  #       run: make build SVC="nvmeof-cli" SPDK_TARGET_ARCH=x86-64-v2
 
-      - name: Save container images
-        run: |
-          . .env
-          docker save $QUAY_NVMEOF:$NVMEOF_VERSION > nvmeof.tar
-          docker save $QUAY_NVMEOFCLI:$NVMEOF_VERSION > nvmeof-cli.tar
-          docker save bdevperf > bdevperf.tar
+  #     - name: Save container images
+  #       run: |
+  #         . .env
+  #         docker save $QUAY_NVMEOF:$NVMEOF_VERSION > nvmeof.tar
+  #         docker save $QUAY_NVMEOFCLI:$NVMEOF_VERSION > nvmeof-cli.tar
+  #         docker save bdevperf > bdevperf.tar
 
-      - name: Upload bdevperf container image
-        uses: actions/upload-artifact@v4
-        with:
-          name: container_images_bdevperf
-          path: |
-            bdevperf.tar
+  #     - name: Upload bdevperf container image
+  #       uses: actions/upload-artifact@v4
+  #       with:
+  #         name: container_images_bdevperf
+  #         path: |
+  #           bdevperf.tar
 
-      - name: Upload nvmeof container images
-        uses: actions/upload-artifact@v4
-        with:
-          name: container_images_nvmeof
-          path: |
-            nvmeof.tar
-            nvmeof-cli.tar
+  #     - name: Upload nvmeof container images
+  #       uses: actions/upload-artifact@v4
+  #       with:
+  #         name: container_images_nvmeof
+  #         path: |
+  #           nvmeof.tar
+  #           nvmeof-cli.tar
 
   # build-ceph:
   #   runs-on: ubuntu-latest
@@ -653,7 +653,7 @@ jobs:
 
   atom:
     # needs: [build, build-ceph]
-    needs: [build]
+    # needs: [build]
     if: github.repository == 'ceph/ceph-nvmeof'
     runs-on: ibmcloud-1
     steps:
@@ -667,9 +667,9 @@ jobs:
           echo ${{ github.repository_owner }}
           echo ${{ github.repository }}
           echo "_1_ATOM_BRANCH : $ATOM_BRANCH"
-          echo "./tests/atom/atomEnvInit.sh $ATOM_BRANCH ${{ vars.CONTAINER_PRIVATE_REGISTRY_USERNAME }} ${{ secrets.ATOM_REPO_TOKEN }}"
-          ./tests/atom/atomEnvInit.sh $ATOM_BRANCH ${{ vars.CONTAINER_PRIVATE_REGISTRY_USERNAME }} ${{ secrets.ATOM_REPO_TOKEN }}
-# ./tests/atom/atomEnvInit.sh "$ATOM_BRANCH" "$ATOM_SHA" "${{ vars.CONTAINER_PRIVATE_REGISTRY_USERNAME }}" "${{ github.repository_owner }}" "${{ secrets.ATOM_REPO_TOKEN }}"
+          echo "_1_ATOM_REPO_OWNER : ${{ vars.CONTAINER_PRIVATE_REGISTRY_USERNAME }}"
+          echo "_1_ATOM_REPO_TOKEN : ${{ secrets.ATOM_REPO_TOKEN }}"
+          ./tests/atom/atomEnvInit.sh ${{ vars.CONTAINER_PRIVATE_REGISTRY_USERNAME }} ${{ secrets.ATOM_REPO_TOKEN }} $ATOM_BRANCH 
 
       - name: Atom image create
         run: |
@@ -678,7 +678,6 @@ jobs:
           echo ${{ github.repository_owner }}
           echo ${{ github.repository }}
           echo "_1_ATOM_SHA : $ATOM_SHA"
-          echo "./tests/atom/buildAtomImage.sh $ATOM_SHA"
           ./tests/atom/buildAtomImage.sh $ATOM_SHA
 
       - name: Download container images
@@ -696,7 +695,7 @@ jobs:
         if: always() || failure()
         run: |
           . .env
-          ./tests/atom/atomClusterBuildTestsRun.sh $GITHUB_REPOSITORY ${GITHUB_REF##*/} $NVMEOF_VERSION $CEPH_SHA $ATOM_SHA
+          ./tests/atom/clusterBuildTestsRun.sh $GITHUB_REPOSITORY ${GITHUB_REF##*/} $NVMEOF_VERSION $CEPH_SHA $ATOM_SHA
 
       - name: Atom artifact build
         if: always()
