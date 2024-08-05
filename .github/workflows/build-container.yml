@@ -665,7 +665,7 @@ jobs:
           . .env
           set -x
           echo "_1_ATOM_SHA : $ATOM_SHA"
-          echo "_1_ATOM_REPO_TOKEN : $secrets.ATOM_REPO_TOKEN"
+          echo "_1_ATOM_REPO_TOKEN : secrets.ATOM_REPO_TOKEN"
           echo "_1_ATOM_REPO_OWNER : ${vars.CONTAINER_PRIVATE_REGISTRY_USERNAME}"
           echo "_1_NVMEOF_REPO_OWNER : '${{ github.repository_owner }}'"
           echo "_1_ATOM_BRANCH : $ATOM_BRANCH"
