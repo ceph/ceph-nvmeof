@@ -56,6 +56,52 @@ class MonitorGroupService(monitor_pb2_grpc.MonitorGroupServicer):
         self.set_group_id(request.id)
         return Empty()
 
+class NamespaceInfo:
+    def __init__(self, bdev, uuid):
+        self.bdev = bdev
+        self.uuid = uuid
+
+    def empty(self) -> bool:
+        if self.bdev or self.uuid:
+            return False
+        return True
+
+class NamespacesLocalList:
+    EMPTY_NAMESPACE = NamespaceInfo(None, None)
+
+    def __init__(self):
+        self.namespace_list = defaultdict(dict)
+
+    def remove_namespace(self, nqn, nsid=None):
+        if nqn in self.namespace_list:
+            if nsid:
+                if nsid in self.namespace_list[nqn]:
+                    self.namespace_list[nqn].pop(nsid, None)
+            else:
+                self.namespace_list.pop(nqn, None)
+
+    def add_namespace(self, nqn, nsid, bdev, uuid):
+        if not bdev:
+            bdev = GatewayService.find_unique_bdev_name(uuid)
+        self.namespace_list[nqn][nsid] = NamespaceInfo(bdev, uuid)
+
+    def find_namespace(self, nqn, nsid, uuid = None) -> NamespaceInfo:
+        if nqn not in self.namespace_list:
+            return NamespacesLocalList.EMPTY_NAMESPACE
+
+        # if we have nsid, use it as the key
+        if nsid:
+            if nsid in self.namespace_list[nqn]:
+                return self.namespace_list[nqn][nsid]
+            return NamespacesLocalList.EMPTY_NAMESPACE
+
+        if uuid:
+            for ns in self.namespace_list[nqn]:
+                if uuid == self.namespace_list[nqn][ns].uuid:
+                    return self.namespace_list[nqn][ns]
+
+        return NamespacesLocalList.EMPTY_NAMESPACE
+
 class GatewayService(pb2_grpc.GatewayServicer):
     """Implements gateway service interface.
 
@@ -138,7 +184,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         self.cluster_nonce = {}
         self.bdev_cluster = {}
         self.bdev_params  = {}
-        self.subsystem_nsid_bdev = defaultdict(dict)
+        self.subsystem_nsid_bdev_and_uuid = NamespacesLocalList()
         self.subsystem_listeners = defaultdict(set)
         self._init_cluster_context()
         self.subsys_max_ns = {}
@@ -354,9 +400,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
         """Resizes a bdev."""
 
         self.logger.info(f"Received request to resize bdev {bdev_name} to {new_size} MiB{peer_msg}")
+        assert self.rpc_lock.locked(), "RPC is unlocked when calling resize_bdev()"
         rbd_pool_name = None
         rbd_image_name = None
-        bdev_info = self.get_bdev_info(bdev_name, True)
+        bdev_info = self.get_bdev_info(bdev_name)
         if bdev_info is not None:
             try:
                 drv_specific_info = bdev_info["driver_specific"]
@@ -379,38 +426,35 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 self.logger.warning(f"Error trying to get the size of image {rbd_pool_name}/{rbd_image_name}, won't check size for shrinkage:\n{ex}")
                 pass
 
-        with self.rpc_lock:
-            try:
-                ret = rpc_bdev.bdev_rbd_resize(
-                    self.spdk_rpc_client,
-                    name=bdev_name,
-                    new_size=new_size,
-                )
-                self.logger.debug(f"resize_bdev {bdev_name}: {ret}")
-            except Exception as ex:
-                errmsg = f"Failure resizing bdev {bdev_name}"
-                self.logger.exception(errmsg)
-                errmsg = f"{errmsg}:\n{ex}"
-                resp = self.parse_json_exeption(ex)
-                status = errno.EINVAL
-                if resp:
-                    status = resp["code"]
-                    errmsg = f"Failure resizing bdev {bdev_name}: {resp['message']}"
-                return pb2.req_status(status=status, error_message=errmsg)
+        try:
+            ret = rpc_bdev.bdev_rbd_resize(
+                self.spdk_rpc_client,
+                name=bdev_name,
+                new_size=new_size,
+            )
+            self.logger.debug(f"resize_bdev {bdev_name}: {ret}")
+        except Exception as ex:
+            errmsg = f"Failure resizing bdev {bdev_name}"
+            self.logger.exception(errmsg)
+            errmsg = f"{errmsg}:\n{ex}"
+            resp = self.parse_json_exeption(ex)
+            status = errno.EINVAL
+            if resp:
+                status = resp["code"]
+                errmsg = f"Failure resizing bdev {bdev_name}: {resp['message']}"
+            return pb2.req_status(status=status, error_message=errmsg)
 
-            if not ret:
-                errmsg = f"Failure resizing bdev {bdev_name}"
-                self.logger.error(errmsg)
-                return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
+        if not ret:
+            errmsg = f"Failure resizing bdev {bdev_name}"
+            self.logger.error(errmsg)
+            return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
 
-            return pb2.req_status(status=0, error_message=os.strerror(0))
+        return pb2.req_status(status=0, error_message=os.strerror(0))
 
     def delete_bdev(self, bdev_name, recycling_mode=False, peer_msg=""):
         """Deletes a bdev."""
 
-        if not self.rpc_lock.locked():
-            self.logger.error(f"A call to delete_bdev() without holding the RPC lock")
-            assert self.rpc_lock.locked(), "RPC is unlocked when calling delete_bdev()"
+        assert self.rpc_lock.locked(), "RPC is unlocked when calling delete_bdev()"
 
         self.logger.info(f"Received request to delete bdev {bdev_name}{peer_msg}")
         try:
@@ -666,7 +710,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 )
                 self.subsys_max_ns.pop(request.subsystem_nqn)
                 if request.subsystem_nqn in self.subsystem_listeners:
-                    self.subsystem_listeners.pop(request.subsystem_nqn)
+                    self.subsystem_listeners.pop(request.subsystem_nqn, None)
+                self.subsystem_nsid_bdev_and_uuid.remove_namespace(request.subsystem_nqn)
                 self.logger.debug(f"delete_subsystem {request.subsystem_nqn}: {ret}")
             except Exception as ex:
                 self.logger.exception(delete_subsystem_error_prefix)
@@ -788,7 +833,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 anagrpid=anagrpid,
                 uuid=uuid,
             )
-            self.subsystem_nsid_bdev[subsystem_nqn][nsid] = bdev_name
+            self.subsystem_nsid_bdev_and_uuid.add_namespace(subsystem_nqn, nsid, bdev_name, uuid)
             self.logger.debug(f"subsystem_add_ns: {nsid}")
         except Exception as ex:
             self.logger.exception(add_namespace_error_prefix)
@@ -798,6 +843,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
             if resp:
                 status = resp["code"]
                 errmsg = f"{add_namespace_error_prefix}: {resp['message']}"
+            self.subsystem_nsid_bdev_and_uuid.remove_namespace(subsystem_nqn, nsid)
             return pb2.nsid_status(status=status, error_message=errmsg)
 
         # Just in case SPDK failed with no exception
@@ -807,7 +853,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         return pb2.nsid_status(nsid=nsid, status=0, error_message=os.strerror(0))
 
-    def find_unique_bdev_name(self, uuid) -> str:
+    def find_unique_bdev_name(uuid) -> str:
         assert uuid, "Got an empty UUID"
         return f"bdev_{uuid}"
 
@@ -931,6 +977,19 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 anagrp = self.choose_anagrpid_for_namespace(request.nsid)
                 assert anagrp != 0, "Chosen ANA group is 0"
 
+            if request.nsid:
+                ns = self.subsystem_nsid_bdev_and_uuid.find_namespace(request.subsystem_nqn, request.nsid)
+                if not ns.empty():
+                    errmsg = f"Failure adding namespace, NSID {request.nsid} is already in use"
+                    self.logger.error(f"{errmsg}")
+                    return pb2.nsid_status(status=errno.EEXIST, error_message = errmsg)
+
+            ns = self.subsystem_nsid_bdev_and_uuid.find_namespace(request.subsystem_nqn, None, request.uuid)
+            if not ns.empty():
+                 errmsg = f"Failure adding namespace, UUID {request.uuid} is already in use"
+                 self.logger.error(f"{errmsg}")
+                 return pb2.nsid_status(status=errno.EEXIST, error_message = errmsg)
+
         omap_lock = self.omap_lock.get_omap_lock_to_use(context)
         with omap_lock:
             if context:
@@ -943,7 +1002,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                         self.logger.error(errmsg)
                         return pb2.nsid_status(status=errno.EEXIST, error_message=errmsg)
 
-            bdev_name = self.find_unique_bdev_name(request.uuid)
+            bdev_name = GatewayService.find_unique_bdev_name(request.uuid)
 
             create_image = request.create_image
             if not context:
@@ -965,17 +1024,18 @@ class GatewayService(pb2_grpc.GatewayServicer):
             if ret_bdev.status != 0:
                 errmsg = f"Failure adding namespace {nsid_msg}to {request.subsystem_nqn}: {ret_bdev.error_message}"
                 self.logger.error(errmsg)
-                # Delete the bdev just to be on the safe side
-                ns_bdev = self.get_bdev_info(bdev_name, False)
-                if ns_bdev != None:
-                    try:
-                        ret_del = self.delete_bdev(bdev_name, peer_msg = peer_msg)
-                        self.logger.debug(f"delete_bdev({bdev_name}): {ret_del.status}")
-                    except AssertionError:
-                        self.logger.exception(f"Got an assert while trying to delete bdev {bdev_name}")
-                        raise
-                    except Exception:
-                        self.logger.exception(f"Got exception while trying to delete bdev {bdev_name}")
+                # Delete the bdev unless there was one already there, just to be on the safe side
+                if ret_bdev.status != errno.EEXIST:
+                    ns_bdev = self.get_bdev_info(bdev_name)
+                    if ns_bdev != None:
+                        try:
+                            ret_del = self.delete_bdev(bdev_name, peer_msg = peer_msg)
+                            self.logger.debug(f"delete_bdev({bdev_name}): {ret_del.status}")
+                        except AssertionError:
+                            self.logger.exception(f"Got an assert while trying to delete bdev {bdev_name}")
+                            raise
+                        except Exception:
+                            self.logger.exception(f"Got exception while trying to delete bdev {bdev_name}")
                 return pb2.nsid_status(status=ret_bdev.status, error_message=errmsg)
 
             # If we got here we asserted that ret_bdev.bdev_name == bdev_name
@@ -1175,23 +1235,18 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         return pb2.req_status(status=0, error_message=os.strerror(0))
 
-    def get_bdev_info(self, bdev_name, need_to_lock):
+    def get_bdev_info(self, bdev_name):
         """Get bdev info"""
 
+        assert self.rpc_lock.locked(), "RPC is unlocked when calling get_bdev_info()"
         ret_bdev = None
-        if need_to_lock:
-            lock_to_use = self.rpc_lock
-        else:
-            lock_to_use = contextlib.suppress()
-
-        with lock_to_use:
-            try:
-                bdevs = rpc_bdev.bdev_get_bdevs(self.spdk_rpc_client, name=bdev_name)
-                if (len(bdevs) > 1):
-                    self.logger.warning(f"Got {len(bdevs)} bdevs for bdev name {bdev_name}, will use the first one")
-                ret_bdev = bdevs[0]
-            except Exception:
-                self.logger.exception(f"Got exception while getting bdev {bdev_name} info")
+        try:
+            bdevs = rpc_bdev.bdev_get_bdevs(self.spdk_rpc_client, name=bdev_name)
+            if (len(bdevs) > 1):
+                self.logger.warning(f"Got {len(bdevs)} bdevs for bdev name {bdev_name}, will use the first one")
+            ret_bdev = bdevs[0]
+        except Exception:
+            self.logger.exception(f"Got exception while getting bdev {bdev_name} info")
 
         return ret_bdev
 
@@ -1242,24 +1297,28 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 except Exception:
                     ns_list = []
                     pass
+                if not ns_list:
+                    self.subsystem_nsid_bdev_and_uuid.remove_namespace(request.subsystem)
                 for n in ns_list:
+                    nsid = n["nsid"]
+                    bdev_name = n["bdev_name"]
                     if request.nsid and request.nsid != n["nsid"]:
                         self.logger.debug(f'Filter out namespace {n["nsid"]} which is different than requested nsid {request.nsid}')
                         continue
                     if request.uuid and request.uuid != n["uuid"]:
                         self.logger.debug(f'Filter out namespace with UUID {n["uuid"]} which is different than requested UUID {request.uuid}')
                         continue
-                    bdev_name = n["bdev_name"]
-                    ns_bdev = self.get_bdev_info(bdev_name, True)
                     lb_group = 0
                     try:
                         lb_group = n["anagrpid"]
                     except KeyError:
                         pass
-                    one_ns = pb2.namespace_cli(nsid = n["nsid"],
+                    one_ns = pb2.namespace_cli(nsid = nsid,
                                            bdev_name = bdev_name,
                                            uuid = n["uuid"],
                                            load_balancing_group = lb_group)
+                    with self.rpc_lock:
+                        ns_bdev = self.get_bdev_info(bdev_name)
                     if ns_bdev == None:
                         self.logger.warning(f"Can't find namespace's bdev {bdev_name}, will not list bdev's information")
                     else:
@@ -1305,13 +1364,13 @@ class GatewayService(pb2_grpc.GatewayServicer):
             return pb2.namespace_io_stats_info(status=errno.EINVAL, error_message=errmsg)
 
         with self.rpc_lock:
-            find_ret = self.find_namespace_and_bdev_name(request.subsystem_nqn, request.nsid, False, "Failure getting namespace's IO stats")
-            ns = find_ret[0]
-            if not ns:
+            find_ret = self.subsystem_nsid_bdev_and_uuid.find_namespace(request.subsystem_nqn, request.nsid)
+            uuid = find_ret.uuid
+            if not uuid:
                 errmsg = f"Failure getting IO stats for namespace {request.nsid} on {request.subsystem_nqn}: Can't find namespace"
                 self.logger.error(errmsg)
                 return pb2.namespace_io_stats_info(status=errno.ENODEV, error_message=errmsg)
-            bdev_name = find_ret[1]
+            bdev_name = find_ret.bdev
             if not bdev_name:
                 errmsg = f"Failure getting IO stats for namespace {request.nsid} on {request.subsystem_nqn}: Can't find associated block device"
                 self.logger.error(errmsg)
@@ -1360,8 +1419,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
             io_stats = pb2.namespace_io_stats_info(status=0,
                                error_message=os.strerror(0),
                                subsystem_nqn=request.subsystem_nqn,
-                               nsid=ns["nsid"],
-                               uuid=ns["uuid"],
+                               nsid=request.nsid,
+                               uuid=uuid,
                                bdev_name=bdev_name,
                                tick_rate=ret["tick_rate"],
                                ticks=ret["ticks"],
@@ -1423,17 +1482,16 @@ class GatewayService(pb2_grpc.GatewayServicer):
             self.logger.error(f"{errmsg}")
             return pb2.namespace_io_stats_info(status=errno.EINVAL, error_message=errmsg)
 
-        find_ret = self.find_namespace_and_bdev_name(request.subsystem_nqn, request.nsid, False, "Failure setting namespace's QOS limits")
-        if not find_ret[0]:
+        find_ret = self.subsystem_nsid_bdev_and_uuid.find_namespace(request.subsystem_nqn, request.nsid)
+        if not find_ret.uuid:
             errmsg = f"Failure setting QOS limits for namespace {request.nsid} on {request.subsystem_nqn}: Can't find namespace"
             self.logger.error(errmsg)
             return pb2.req_status(status=errno.ENODEV, error_message=errmsg)
-        bdev_name = find_ret[1]
+        bdev_name = find_ret.bdev
         if not bdev_name:
             errmsg = f"Failure setting QOS limits for namespace {request.nsid} on {request.subsystem_nqn}: Can't find associated block device"
             self.logger.error(errmsg)
             return pb2.req_status(status=errno.ENODEV, error_message=errmsg)
-        nsid = find_ret[0]["nsid"]
 
         set_qos_limits_args = {}
         set_qos_limits_args["name"] = bdev_name
@@ -1449,7 +1507,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         ns_qos_entry = None
         if context:
             state = self.gateway_state.local.get_state()
-            ns_qos_key = GatewayState.build_namespace_qos_key(request.subsystem_nqn, nsid)
+            ns_qos_key = GatewayState.build_namespace_qos_key(request.subsystem_nqn, request.nsid)
             try:
                 state_ns_qos = state[ns_qos_key]
                 ns_qos_entry = json.loads(state_ns_qos)
@@ -1499,7 +1557,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 try:
                     json_req = json_format.MessageToJson(
                         request, preserving_proto_field_name=True, including_default_value_fields=True)
-                    self.gateway_state.add_namespace_qos(request.subsystem_nqn, nsid, json_req)
+                    self.gateway_state.add_namespace_qos(request.subsystem_nqn, request.nsid, json_req)
                 except Exception as ex:
                     errmsg = f"Error persisting namespace QOS settings {request.nsid} on {request.subsystem_nqn}"
                     self.logger.exception(errmsg)
@@ -1512,72 +1570,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         """Set namespace's qos limits."""
         return self.execute_grpc_function(self.namespace_set_qos_limits_safe, request, context)
 
-    def find_namespace_and_bdev_name(self, nqn, nsid, needs_lock, err_prefix):
-        if not nsid:
-           self.logger.error(f"{err_prefix}: NSID should be specified for finding a namesapce")
-           return (None, None)
-
-        if nsid <= 0:
-           self.logger.error(f"{err_prefix}: NSID should be positive")
-           return (None, None)
-
-        if needs_lock:
-            lock_to_use = self.rpc_lock
-        else:
-            if not self.rpc_lock.locked():
-                self.logger.error(f"A call to find_namespace_and_bdev_name() with 'needs_lock' set to False and without holding the RPC lock")
-                assert self.rpc_lock.locked(), "RPC is unlocked when calling find_namespace_and_bdev_name()"
-            lock_to_use = contextlib.suppress()
-
-        with lock_to_use:
-            try:
-                ret = rpc_nvmf.nvmf_get_subsystems(self.spdk_rpc_client, nqn=nqn)
-                self.logger.debug(f"find_namespace_and_bdev_name: {ret}")
-            except Exception as ex:
-                self.logger.exception(err_prefix)
-                errmsg = f"{err_prefix}:\n{ex}"
-                return (None, None)
-
-        if not ret:
-           return (None, None)
-
-        bdev_name = None
-        found_ns = None
-        for s in ret:
-            try:
-                if s["nqn"] != nqn:
-                    self.logger.warning(f'Got subsystem {s["nqn"]} instead of {nqn}, ignore')
-                    continue
-                try:
-                    ns_list = s["namespaces"]
-                except Exception:
-                    ns_list = []
-                    pass
-                for n in ns_list:
-                    if nsid != n["nsid"]:
-                        continue
-                    found_ns = n
-                    break
-                break
-            except Exception:
-                self.logger.exception(f"{s=} parse error")
-                pass
-
-        uuid = None
-        if found_ns:
-            try:
-                uuid = found_ns["uuid"]
-            except Exception:
-                self.logger.exception(f"{found_ns=} parse error")
-                uuid = None
-                pass
-
-        if uuid:
-            bdev_name = self.find_unique_bdev_name(uuid)
-
-        return (found_ns, bdev_name)
-
-    def namespace_resize(self, request, context=None):
+    def namespace_resize_safe(self, request, context=None):
         """Resize a namespace."""
 
         peer_msg = self.get_peer_message(context)
@@ -1598,12 +1591,12 @@ class GatewayService(pb2_grpc.GatewayServicer):
             self.logger.error(f"{errmsg}")
             return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
 
-        find_ret = self.find_namespace_and_bdev_name(request.subsystem_nqn, request.nsid, True, "Failure resizing namespace")
-        if not find_ret[0]:
+        find_ret = self.subsystem_nsid_bdev_and_uuid.find_namespace(request.subsystem_nqn, request.nsid)
+        if not find_ret.uuid:
             errmsg = f"Failure resizing namespace {request.nsid} on {request.subsystem_nqn}: Can't find namespace"
             self.logger.error(errmsg)
             return pb2.req_status(status=errno.ENODEV, error_message=errmsg)
-        bdev_name = find_ret[1]
+        bdev_name = find_ret.bdev
         if not bdev_name:
             errmsg = f"Failure resizing namespace {request.nsid} on {request.subsystem_nqn}: Can't find associated block device"
             self.logger.error(errmsg)
@@ -1618,6 +1611,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
             self.logger.error(errmsg)
 
         return pb2.req_status(status=ret.status, error_message=errmsg)
+
+    def namespace_resize(self, request, context=None):
+        """Resize a namespace."""
+        return self.execute_grpc_function(self.namespace_resize_safe, request, context)
 
     def namespace_delete_safe(self, request, context):
         """Delete a namespace."""
@@ -1635,24 +1632,23 @@ class GatewayService(pb2_grpc.GatewayServicer):
         peer_msg = self.get_peer_message(context)
         self.logger.info(f"Received request to delete namespace {request.nsid} from {request.subsystem_nqn}, context: {context}{peer_msg}")
 
+        find_ret = self.subsystem_nsid_bdev_and_uuid.find_namespace(request.subsystem_nqn, request.nsid)
+        if not find_ret.uuid:
+            errmsg = f"Failure deleting namespace: Can't find namespace"
+            self.logger.error(errmsg)
+            return pb2.req_status(status=errno.ENODEV, error_message=errmsg)
+        bdev_name = find_ret.bdev
+        if not bdev_name:
+            self.logger.warning(f"Can't find namespace's bdev name, will try to delete namespace anyway")
+
         omap_lock = self.omap_lock.get_omap_lock_to_use(context)
         with omap_lock:
-            find_ret = self.find_namespace_and_bdev_name(request.subsystem_nqn, request.nsid, False, "Failure deleting namespace")
-            if not find_ret[0]:
-                errmsg = f"Failure deleting namespace: Can't find namespace"
-                self.logger.error(errmsg)
-                return pb2.req_status(status=errno.ENODEV, error_message=errmsg)
-            bdev_name = find_ret[1]
-            if not bdev_name:
-                self.logger.warning(f"Can't find namespace's bdev name, will try to delete namespace anyway")
-
-            ns = find_ret[0]
-            nsid = ns["nsid"]
-            ret = self.remove_namespace(request.subsystem_nqn, nsid, context)
+            ret = self.remove_namespace(request.subsystem_nqn, request.nsid, context)
             if ret.status != 0:
                 return ret
 
-            self.remove_namespace_from_state(request.subsystem_nqn, nsid, context)
+            self.remove_namespace_from_state(request.subsystem_nqn, request.nsid, context)
+            self.subsystem_nsid_bdev_and_uuid.remove_namespace(request.subsystem_nqn, request.nsid)
             if bdev_name:
                 ret_del = self.delete_bdev(bdev_name, peer_msg = peer_msg)
                 if ret_del.status != 0:
@@ -2418,7 +2414,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     if s["serial_number"] != request.serial_number:
                         continue
                 if s["subtype"] == "NVMe":
-                    s["namespace_count"] = len(s["namespaces"])
+                    ns_count = len(s["namespaces"])
+                    if not ns_count:
+                        self.subsystem_nsid_bdev_and_uuid.remove_namespace(s["nqn"])
+                    s["namespace_count"] = ns_count
                     s["enable_ha"] = True
                 else:
                     s["namespace_count"] = 0
@@ -2449,21 +2448,26 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         for s in ret:
             try:
+                nqn = s["nqn"]
                 ns_key = "namespaces"
+                ns_list = []
                 if ns_key in s:
-                    for n in s[ns_key]:
-                        nqn = s["nqn"]
-                        nsid = n["nsid"]
-                        bdev = self.subsystem_nsid_bdev[nqn][nsid]
-                        nonce = self.cluster_nonce[self.bdev_cluster[bdev]]
-                        n["nonce"] = nonce
+                    ns_list = s[ns_key]
+                if not ns_list:
+                    self.subsystem_nsid_bdev_and_uuid.remove_namespace(nqn)
+                for n in ns_list:
+                    nsid = n["nsid"]
+                    uuid = n["uuid"]
+                    bdev = n["bdev_name"]
+                    nonce = self.cluster_nonce[self.bdev_cluster[bdev]]
+                    n["nonce"] = nonce
                 # Parse the JSON dictionary into the protobuf message
                 subsystem = pb2.subsystem()
                 json_format.Parse(json.dumps(s), subsystem, ignore_unknown_fields=True)
                 subsystems.append(subsystem)
             except Exception:
                 self.logger.exception(f"{s=} parse error")
-                raise
+                pass
 
         return pb2.subsystems_info(subsystems=subsystems)
 
