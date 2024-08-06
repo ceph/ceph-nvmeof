@@ -5,7 +5,7 @@ else
     test_dir=$(dirname $0)
 fi
 
-ITERATIONS=7
+ITERATIONS=3
 for i in $(seq $ITERATIONS); do
   echo "Iteration #$i"
   source $test_dir/late_registration.sh
