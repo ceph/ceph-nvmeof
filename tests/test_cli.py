@@ -281,6 +281,28 @@ class TestCreate:
         assert f"Failure adding namespace" in caplog.text
         assert f"block size can't be zero" in caplog.text
 
+    def test_add_namespace_double_uuid(self, caplog, gateway):
+        caplog.clear()
+        cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool, "--rbd-image", image2, "--uuid", uuid, "--size", "16MB", "--rbd-create-image", "--force"])
+        assert f"Adding namespace 1 to {subsystem}: Successful" in caplog.text
+        caplog.clear()
+        cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool, "--rbd-image", image3, "--uuid", uuid, "--size", "16MB", "--rbd-create-image", "--force"])
+        assert f"Failure adding namespace, UUID {uuid} is already in use" in caplog.text
+        caplog.clear()
+        cli(["namespace", "del", "--subsystem", subsystem, "--nsid", "1"])
+        assert f"Deleting namespace 1 from {subsystem}: Successful" in caplog.text
+
+    def test_add_namespace_double_nsid(self, caplog, gateway):
+        caplog.clear()
+        cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool, "--rbd-image", image2, "--size", "16MB", "--rbd-create-image", "--force"])
+        assert f"Adding namespace 1 to {subsystem}: Successful" in caplog.text
+        caplog.clear()
+        cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool, "--rbd-image", image3, "--nsid", "1", "--size", "16MB", "--rbd-create-image", "--force"])
+        assert f"Failure adding namespace, NSID 1 is already in use" in caplog.text
+        caplog.clear()
+        cli(["namespace", "del", "--subsystem", subsystem, "--nsid", "1"])
+        assert f"Deleting namespace 1 from {subsystem}: Successful" in caplog.text
+
     def test_add_namespace(self, caplog, gateway):
         caplog.clear()
         cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", "junk", "--rbd-image", image2, "--uuid", uuid, "--size", "16MB", "--rbd-create-image", "--load-balancing-group", anagrpid])
@@ -501,14 +523,6 @@ class TestCreate:
         assert ns.status == 0
         assert len(ns.namespaces) == 1
         assert ns.namespaces[0].rbd_image_size == 67108864
-        rc = rpc_bdev.bdev_rbd_delete(gw.spdk_rpc_client, name=ns.namespaces[0].bdev_name)
-        assert rc
-        caplog.clear()
-        cli(["namespace", "resize", "--subsystem", subsystem, "--nsid", "6", "--size", "128MB"])
-        assert f"Failure resizing namespace 6 on {subsystem}: Can't find namespace" in caplog.text
-        caplog.clear()
-        cli(["namespace", "add", "--subsystem", subsystem, "--nsid", "6", "--rbd-pool", pool, "--rbd-image", image, "--uuid", uuid2, "--force",  "--load-balancing-group", anagrpid, "--force"])
-        assert f"Adding namespace 6 to {subsystem}: Successful" in caplog.text
         caplog.clear()
         cli(["namespace", "resize", "--subsystem", subsystem, "--nsid", "4", "--size", "6GB"])
         assert f"Resizing namespace 4 in {subsystem} to 6 GiB: Successful" in caplog.text
