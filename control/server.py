@@ -95,8 +95,10 @@ class GatewayServer:
 
     def __exit__(self, exc_type, exc_value, traceback):
         """Cleans up SPDK and server instances."""
-        if exc_type is not None:
+        if exc_type is not None and exc_type is not SystemExit:
             self.logger.exception("GatewayServer exception occurred:")
+        else:
+            self.logger.info("GatewayServer is terminating gracefully...")
 
         gw_name = self.name
         gw_logger = self.gw_logger_object
@@ -432,8 +434,8 @@ class GatewayServer:
             self.logger.error(f"{self.name} pid {proc.pid} "
                               f"already terminated, exit code: {return_code}")
         else:
-            self.logger.info(f"Aborting ({self.name}) pid {proc.pid}...")
-            proc.send_signal(signal.SIGABRT)
+            self.logger.info(f"Terminating sub process of ({self.name}) pid {proc.pid} args {proc.args} ...")
+            proc.terminate()
 
         try:
             proc.communicate(timeout=timeout)
