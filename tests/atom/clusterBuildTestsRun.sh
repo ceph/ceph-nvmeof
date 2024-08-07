@@ -40,6 +40,7 @@ sudo docker run \
     --stopNvmeofDaemon \
     --stopNvmeofSystemctl \
     --stopMonLeader \
+    --rmNvmeofDaemon \
     --gitHubActionDeployment \
     --dontUseMTLS \
     --dontPowerOffCloudVMs noKey \
