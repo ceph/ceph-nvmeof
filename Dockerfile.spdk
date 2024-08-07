@@ -73,7 +73,8 @@ RUN \
     && dnf install $DNF_OPTS -y \
         rpm-build \
         git-core \
-    && rpm -vih https://buildlogs.centos.org/centos/9-stream/storage/x86_64/ceph-reef/Packages/t/thrift-0.15.0-3.el9s.x86_64.rpm \
+	epel-release \
+	epel-next-release \
     && scripts/pkgdep.sh $SPDK_PKGDEP_ARGS \
     && dnf $DNF_OPTS update -y
 
@@ -153,7 +154,7 @@ RUN \
     --mount=type=cache,target=/var/lib/dnf \
     rpm -vih $SPDK_CENTOS_BASE/centos-stream-repos-$SPDK_CENTOS_REPO_VER.noarch.rpm \
              $SPDK_CENTOS_BASE/centos-gpg-keys-$SPDK_CENTOS_REPO_VER.noarch.rpm \
-    && rpm -vih https://buildlogs.centos.org/centos/9-stream/storage/x86_64/ceph-reef/Packages/t/thrift-0.15.0-3.el9s.x86_64.rpm \
+    && rpm -vih https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm \
     && dnf $DNF_OPTS install -y /rpm/$(uname -m)/*.rpm \
     && dnf $DNF_OPTS update -y
 

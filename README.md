@@ -335,6 +335,20 @@ To build the container images from the local sources:
 make build
 ```
 
+To build the container images for Arm64, you need to override the default values of `SPDK_TARGET_ARCH` and `SPDK_MAKEFLAGS`. For how to set the values for all the supported Arm64 SoCs see [the socs and implementer_xxx parts](https://github.com/DPDK/dpdk/blob/main/config/arm/meson.build#L674).
+And override the values of [ceph-ci git repo](https://github.com/ceph/ceph-ci) `CEPH_BRANCH` and `CEPH_SHA` or `CEPH_CLUSTER_CEPH_REPO_BASEURL` if the default Ceph rpm repo doesn't contain Arm64 rpm.
+
+E.g.
+```bash
+make build SPDK_TARGET_ARCH="armv8-a+crypto" \
+    SPDK_MAKEFLAGS="DPDKBUILD_FLAGS=-Dplatform=generic" \
+    CEPH_BRANCH=ceph-nvmeof-mon-arm64-testin \
+    CEPH_SHA=0adaeecf622b3867ee27e9fabeb939831c4967dc
+make build SPDK_TARGET_ARCH="armv8.2-a+crypto" \
+    SPDK_MAKEFLAGS="DPDKBUILD_FLAGS=-Dplatform=kunpeng920" \
+    CEPH_CLUSTER_CEPH_REPO_BASEURL="https://uk.linaro.cloud/repo/ceph/9-stream"
+```
+
 The resulting images should be like these:
 
 ```bash

@@ -1,5 +1,6 @@
 # Make config
 MAKEFLAGS += --no-builtin-rules --no-builtin-variables
+TARGET_ARCH := $(shell uname -m | sed -e 's/aarch64/arm64/')
 .SUFFIXES:
 
 # Includes
@@ -33,7 +34,7 @@ build: export SPDK_GIT_BRANCH != git -C spdk name-rev --name-only HEAD
 build: export SPDK_GIT_COMMIT != git rev-parse HEAD:spdk
 build: export BUILD_DATE != date -u +"%Y-%m-%d %H:%M:%S %Z"
 build: export NVMEOF_GIT_MODIFIED_FILES != git status -s | grep -e "^ *M" | sed 's/^ *M //' | xargs
-build: export CEPH_CLUSTER_CEPH_REPO_BASEURL != curl -s https://shaman.ceph.com/api/repos/ceph/$(CEPH_BRANCH)/$(CEPH_SHA)/centos/9/ | jq -r '.[] | select(.status == "ready" and .sha1 == "$(CEPH_SHA)" and .archs[] == "x86_64") | .url'
+build: export CEPH_CLUSTER_CEPH_REPO_BASEURL != curl -s https://shaman.ceph.com/api/repos/ceph/$(CEPH_BRANCH)/$(CEPH_SHA)/centos/9/ | jq -r '.[] | select(.status == "ready" and .sha1 == "$(CEPH_SHA)" and .archs[] == "$(TARGET_ARCH)") | .url'
 up: ## Launch services
 up: SCALE?= 1 ## Number of gateways
 up:
