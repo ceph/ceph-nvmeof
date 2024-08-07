@@ -20,10 +20,10 @@ class TestServer(unittest.TestCase):
         assert(pid > 0)
         assert(code == 1)
 
-    def assert_core_files(self, directory_path):
+    def assert_no_core_files(self, directory_path):
         assert(os.path.exists(directory_path) and os.path.isdir(directory_path))
         files = [f for f in os.listdir(directory_path) if os.path.isfile(os.path.join(directory_path, f)) and f.startswith("core.")]
-        assert(len(files) > 0)
+        assert(len(files) == 0)
 
     def test_spdk_exception(self):
         """Tests spdk sub process exiting with error."""
@@ -38,15 +38,15 @@ class TestServer(unittest.TestCase):
                 gateway.serve()
         self.validate_exception(cm.exception)
 
-    def test_spdk_abort(self):
-        """Tests spdk sub process dumps core on during normal shutdown."""
+    def test_no_coredumps_on_gracefull_shutdown(self):
+        """Tests gateway's sub processes do not dump cores on gracefull shutdown."""
         with GatewayServer(copy.deepcopy(self.config)) as gateway:
             gateway.set_group_id(0)
             gateway.serve()
             time.sleep(10)
-        # exited context, spdk process should be aborted here by __exit__()
+        # exited context, sub processes should terminate gracefully
         time.sleep(10) # let it dump
-        self.assert_core_files("/tmp/coredump")
+        self.assert_no_core_files("/tmp/coredump")
 
     def test_spdk_multi_gateway_exception(self):
         """Tests spdk sub process exiting with error, in multi gateway configuration."""
