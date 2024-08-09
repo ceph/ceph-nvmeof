@@ -131,12 +131,8 @@ jobs:
 
       - name: Start ceph cluster
         run: |
-          if ! docker-compose --version 2>&1 > /dev/null ; then
-            sudo apt update
-            sudo apt install -y docker-compose
-          fi
-          docker-compose --version
-          docker-compose up -d ceph
+          docker compose version
+          docker compose up -d ceph
 
       - name: Wait for the ceph cluster container to become healthy
         timeout-minutes: 3
@@ -230,11 +226,6 @@ jobs:
       - name: Start containers
         timeout-minutes: 3
         run: |
-          if ! docker-compose --version 2>&1 > /dev/null ; then
-            sudo apt update
-            sudo apt install -y docker-compose
-          fi
-          docker-compose --version
           make up
 
       - name: Wait for the Gateway to be listening
@@ -258,7 +249,7 @@ jobs:
 
       - name: Test
         run: |
-          make demo OPTS=-T NVMEOF_CONTAINER_NAME="ceph-nvmeof_nvmeof_1"
+          make demo OPTS=-T
 
       - name: List resources
         run: |
@@ -282,7 +273,7 @@ jobs:
           . .env
           set -x
           echo -n "ℹ️  Starting bdevperf container"
-          docker-compose up -d bdevperf
+          docker compose up -d bdevperf
           sleep 10
           echo "ℹ️  bdevperf start up logs"
           make logs SVC=bdevperf
@@ -377,12 +368,8 @@ jobs:
       - name: Start discovery controller
         if: matrix.integration == 'container'
         run: |
-          if ! docker-compose --version 2>&1 > /dev/null ; then
-            sudo apt update
-            sudo apt install -y docker-compose
-          fi
-          docker-compose --version
-          docker-compose up --detach discovery
+          docker compose version
+          docker compose up --detach discovery
 
       - name: Wait for discovery controller to be listening
         if: matrix.integration == 'container'
@@ -425,12 +412,12 @@ jobs:
       - name: List containers
         if: success() || failure()
         run: |
-          docker-compose ps
+          docker compose ps
 
       - name: List processes
         if: success() || failure()
         run: |
-          docker-compose top
+          docker compose top
 
       - name: Set up target
         run: |
@@ -447,7 +434,7 @@ jobs:
           cli_gw() {
             gw=$1
             shift
-            docker-compose run --rm nvmeof-cli --server-address $gw --server-port $NVMEOF_GW_PORT "$@"
+            docker compose run --rm nvmeof-cli --server-address $gw --server-port $NVMEOF_GW_PORT "$@"
           }
 
           gw1=$(container_ip $GW1)
@@ -479,7 +466,7 @@ jobs:
           }
 
           echo -n "ℹ️  Starting bdevperf container"
-          docker-compose up -d bdevperf
+          docker compose up -d bdevperf
           sleep 10
           echo "ℹ️  bdevperf start up logs"
           make logs SVC=bdevperf
@@ -563,11 +550,7 @@ jobs:
       - name: Start HA with two gateways
         timeout-minutes: 3
         run: |
-          if ! docker-compose --version 2>&1 > /dev/null ; then
-            sudo apt update
-            sudo apt install -y docker-compose
-          fi
-          docker-compose --version
+          docker compose version
           test_specific_start_up="./tests/ha/start_up_${{ matrix.test }}.sh"
           if [ -x "$test_specific_start_up" ] || [ -L "$test_specific_start_up" ] && [ -x "$(readlink -f "$test_specific_start_up")" ]; then
             $test_specific_start_up
@@ -588,12 +571,12 @@ jobs:
       - name: List containers
         if: success() || failure()
         run: |
-          docker-compose ps
+          docker compose ps
 
       - name: List processes
         if: success() || failure()
         run: |
-          docker-compose top
+          docker compose top
 
       - name: Set up target
         run: |
