@@ -2,10 +2,10 @@
 
 # Docker and docker-compose specific commands
 DOCKER = docker
-# Docker-compose v1 or v2
-DOCKER_COMPOSE != command -v docker-compose || (DOCKER=$$(command -v docker) && printf "%s compose\n" $$DOCKER)
+# Require docker-compose v2 to support multi-platform build option 'services.xxx.build.platforms'
+DOCKER_COMPOSE != DOCKER=$$(command -v docker) && $$DOCKER compose version > /dev/null && printf "%s compose\n" $$DOCKER
 ifndef DOCKER_COMPOSE
-$(error DOCKER_COMPOSE command not found. Please install from: https://docs.docker.com/engine/install/))
+$(error DOCKER_COMPOSE command not found. Please install from: https://docs.docker.com/compose/install/)
 endif
 DOCKER_COMPOSE_COMMANDS = pull build run exec ps top images logs port \
 	pause unpause stop restart down events
@@ -67,7 +67,6 @@ stop: ## Stop SVC
 restart: ## Restart SVC
 
 down: ## Shut down deployment
-down: override SVC =
 down: override OPTS += --volumes --remove-orphans
 
 events: ## Receive real-time events from containers

@@ -22,13 +22,13 @@ The [creation and management of RBD images](https://docs.ceph.com/en/latest/rbd/
 
 ### Dependencies
 
-* `moby-engine` (`docker-engine`) (v20.10) and `docker-compose` (v1.29). These versions are just indicative
+* `moby-engine` (`docker-engine`) (v20.10) and `docker-compose` (v2.11.0+). These versions are just indicative
 *  `make` (only needed to launch `docker-compose` commands).
 
 To install these dependencies in Fedora:
 
 ```bash
-sudo dnf install -y make moby-engine docker-compose
+sudo dnf install -y make moby-engine docker-compose-plugin
 ```
 
 Some [post-installation steps](https://docs.docker.com/engine/install/linux-postinstall/) are required to use `docker` with regular users:
@@ -92,17 +92,17 @@ The following command executes all the steps required to set up the NVMe-oF envi
 
 ```bash
 $ make demo
-docker-compose  exec  ceph bash -c "rbd -p rbd info demo_image || rbd -p rbd create demo_image --size 10M"
+docker compose  exec  ceph bash -c "rbd -p rbd info demo_image || rbd -p rbd create demo_image --size 10M"
 rbd: error opening image demo_image: (2) No such file or directory
-docker-compose  run --rm nvmeof-cli --server-address 192.168.13.3 --server-port 5500 subsystem add --subsystem "nqn.2016-06.io.spdk:cnode1"
+docker compose  run --rm nvmeof-cli --server-address 192.168.13.3 --server-port 5500 subsystem add --subsystem "nqn.2016-06.io.spdk:cnode1"
 Adding subsystem nqn.2016-06.io.spdk:cnode1: Successful
-docker-compose  run --rm nvmeof-cli --server-address 192.168.13.3 --server-port 5500 namespace add --subsystem "nqn.2016-06.io.spdk:cnode1" --rbd-pool rbd --rbd-image demo_image
+docker compose  run --rm nvmeof-cli --server-address 192.168.13.3 --server-port 5500 namespace add --subsystem "nqn.2016-06.io.spdk:cnode1" --rbd-pool rbd --rbd-image demo_image
 Adding namespace 1 to nqn.2016-06.io.spdk:cnode1: Successful
-docker-compose  run --rm nvmeof-cli --server-address 192.168.13.3 --server-port 5500 listener add --subsystem "nqn.2016-06.io.spdk:cnode1" --host-name fbca1a3d3ed8 --traddr 192.168.13.3 --trsvcid 4420
+docker compose  run --rm nvmeof-cli --server-address 192.168.13.3 --server-port 5500 listener add --subsystem "nqn.2016-06.io.spdk:cnode1" --host-name fbca1a3d3ed8 --traddr 192.168.13.3 --trsvcid 4420
 Adding listener 192.168.13.3:4420 to nqn.2016-06.io.spdk:cnode1: Successful
-docker-compose  run --rm nvmeof-cli --server-address 2001:db8::3 --server-port 5500 listener add --subsystem "nqn.2016-06.io.spdk:cnode1" --host-name fbca1a3d3ed8 --traddr 2001:db8::3 --trsvcid 4420 --adrfam IPV6
+docker compose  run --rm nvmeof-cli --server-address 2001:db8::3 --server-port 5500 listener add --subsystem "nqn.2016-06.io.spdk:cnode1" --host-name fbca1a3d3ed8 --traddr 2001:db8::3 --trsvcid 4420 --adrfam IPV6
 Adding listener [2001:db8::3]:4420 to nqn.2016-06.io.spdk:cnode1: Successful
-docker-compose  run --rm nvmeof-cli --server-address 192.168.13.3 --server-port 5500 host add --subsystem "nqn.2016-06.io.spdk:cnode1" --host-nqn "*"
+docker compose  run --rm nvmeof-cli --server-address 192.168.13.3 --server-port 5500 host add --subsystem "nqn.2016-06.io.spdk:cnode1" --host-nqn "*"
 Allowing any host for nqn.2016-06.io.spdk:cnode1: Successful
 ```
 
@@ -155,7 +155,7 @@ EOF
 
 
 // using containers
-docker-compose run --env-file /etc/ceph/nvmeof-cli.env -it <container_image> subsystem add --subsystem nqn.2016-06.io.spdk:cnode1 
+docker compose run --env-file /etc/ceph/nvmeof-cli.env -it <container_image> subsystem add --subsystem nqn.2016-06.io.spdk:cnode1
 // using pypi package
 source /etc/ceph/nvmeof-cli.env
 ceph-nvmeof subsystem add --subsystem nqn.2016-06.io.spdk:cnode1 
@@ -246,7 +246,7 @@ The discovery service can provide all the targets that the current user can acce
 
 2. To start discovery service container in docker-compose environment
    ```bash
-   $ docker-compose up --detach discovery
+   $ docker compose up --detach discovery
    ```
 
 3. Discover targets from discovery service. The default port is 8009.
@@ -399,7 +399,7 @@ This can also be installed from https://pypi.org/project/ceph-nvmeof/, by runnin
 To avoid having to re-build container on every code change, developer friendly containers are provided:
 
 ```bash
-docker-compose up nvmeof-devel
+docker compose up nvmeof-devel
 ```
 
 Devel containers provide the same base layer as the production containers but with the source code mounted at run-time.

@@ -89,7 +89,7 @@ fi
 make down
 
 # Step 2 Start a new deployment
-docker-compose up -d --scale nvmeof=2 nvmeof
+docker compose up -d --scale nvmeof=2 nvmeof
 
 # Step 3 Wait for ceph container to become healthy"
 while true; do
@@ -111,7 +111,7 @@ random_sleep
 # Step 5 Send nvme-gw create for both gateways
 for i in $(seq 2); do
   GW_NAME=$(docker ps --format '{{.ID}}\t{{.Names}}' | awk '$2 ~ /nvmeof/ && $2 ~ /'$i'/ {print $1}')
-  docker-compose exec -T ceph ceph nvme-gw create $GW_NAME rbd ''
+  docker compose exec -T ceph ceph nvme-gw create $GW_NAME rbd ''
 done
 
 # Step 6 Wait for both gateways to be ready

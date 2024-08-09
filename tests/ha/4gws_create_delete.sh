@@ -153,7 +153,7 @@ for i in $(seq 0 $(expr $FAILING_GATEWAYS - 1)); do
   echo "ℹ️ Stop gw $gw_name i=$i gw=$gw"
   docker stop $gw_name
   echo  📫 nvme-gw delete gateway: \'$gw_name\' pool: \'$POOL\', group: \'\' \(empty string\)
-  docker-compose exec -T ceph ceph nvme-gw delete $gw_name $POOL ''
+  docker compose exec -T ceph ceph nvme-gw delete $gw_name $POOL ''
 done
 
 docker ps
@@ -189,7 +189,7 @@ for i in $(seq 0 $(expr $FAILING_GATEWAYS - 1)); do
   echo "ℹ️ Start gw $gw_name i=$i gw=$gw"
   docker start $gw_name
   echo  📫 nvme-gw create gateway: \'$gw_name\' pool: \'$POOL\', group: \'\' \(empty string\)
-  docker-compose exec -T ceph ceph nvme-gw create $gw_name $POOL ''
+  docker compose exec -T ceph ceph nvme-gw create $gw_name $POOL ''
 done
 
 docker ps

@@ -1,4 +1,3 @@
-version: "3.8"
 services:
   spdk:
     image: $QUAY_SPDK:$SPDK_VERSION
