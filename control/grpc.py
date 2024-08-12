@@ -1122,13 +1122,14 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     return pb2.req_status(status=errno.ENOENT, error_message=errmsg)
 
             try:
-                ret = rpc_nvmf.nvmf_subsystem_set_ns_anagrpid(
+                ret = rpc_nvmf.nvmf_subsystem_set_ns_ana_group(
                     self.spdk_rpc_client,
                     nqn=request.subsystem_nqn,
                     nsid=request.nsid,
-                    anagrpid=request.anagrpid
+                    anagrpid=request.anagrpid,
+                    transit_anagrpid=0
                 )
-                self.logger.debug(f"nvmf_subsystem_set_ns_anagrpid: {ret}")
+                self.logger.debug(f"nvmf_subsystem_set_ns_ana_group: {ret}")
             except Exception as ex:
                 errmsg = f"{change_lb_group_failure_prefix}:\n{ex}"
                 resp = self.parse_json_exeption(ex)
