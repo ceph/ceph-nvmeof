@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -ex
+
 REPO=$1
 BRANCH=$2
 VERSION=$3
@@ -36,11 +38,26 @@ sudo docker run \
     quay.io/ceph/nvmeof-cli:"$VERSION" \
     "https://github.com/$REPO" \
     "$BRANCH" \
-    None None None 4 1 2 4 1024 2 2 200M 0 1 \
+    None \
+    None \
+    None \
+    4 \
+    1 \
+    2 \
+    4 \
+    1024 \
+    2 \
+    2 \
+    2 \
+    200M \
+    0 \
+    1 \
+    60 \
     --stopNvmeofDaemon \
     --stopNvmeofSystemctl \
     --stopMonLeader \
     --gitHubActionDeployment \
     --dontUseMTLS \
     --dontPowerOffCloudVMs noKey \
+    --skipLbalancingTest \
     --multiIBMCloudServers_m2
