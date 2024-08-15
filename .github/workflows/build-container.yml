@@ -662,7 +662,8 @@ jobs:
       - name: Atom env initialization
         run: |
           . .env
-          ./tests/atom/atomEnvInit.sh $ATOM_SHA 
+          ACTION_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          ./tests/atom/atomEnvInit.sh $ATOM_SHA $ACTION_URL
 
       - name: Download container images
         uses: actions/download-artifact@v4
@@ -679,7 +680,7 @@ jobs:
         if: always() || failure()
         run: |
           . .env
-          ./tests/atom/clusterBuildTestsRun.sh $GITHUB_REPOSITORY ${GITHUB_REF##*/} $NVMEOF_VERSION $CEPH_SHA $ATOM_SHA
+          ./tests/atom/clusterBuildTestsRun.sh $NVMEOF_VERSION $CEPH_SHA $ATOM_SHA
 
       - name: Atom artifact build
         if: always()
