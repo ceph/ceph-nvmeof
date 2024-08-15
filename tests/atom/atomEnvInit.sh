@@ -1,6 +1,7 @@
 #!/bin/bash
 
 ATOM_SHA=$1
+ACTION_URL=$2
 
 cleanup_docker_images() {
     local HOST=$1
@@ -13,8 +14,9 @@ cleanup_docker_images() {
 EOF
 }
 
-# Remove atom repo folder
+# Remove previous run data
 rm -rf /home/cephnvme/actions-runner-ceph/ceph-nvmeof-atom
+sudo rm -rf /root/.ssh/atom_backup/artifact/multiIBMCloudServers_m2/*
 
 # Check if cluster is busy with another run
 while true; do
@@ -23,7 +25,7 @@ while true; do
         sleep 90
     else
         echo "The server is available for use!"
-        touch /home/cephnvme/busyServer.txt
+        echo $ACTION_URL > /home/cephnvme/busyServer.txt
         chmod +rx /home/cephnvme/busyServer.txt
         break
     fi
