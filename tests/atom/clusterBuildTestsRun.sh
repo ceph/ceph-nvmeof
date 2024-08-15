@@ -1,16 +1,8 @@
 #!/bin/bash
 
-REPO=$1
-BRANCH=$2
-VERSION=$3
-CEPH_SHA=$4
-ATOM_SHA=$5
-
-# In case of merge to devel
-if [ $BRANCH = "merge" ]; then
-    REPO="ceph/ceph-nvmeof"
-    BRANCH="devel"
-fi
+VERSION=$1
+CEPH_SHA=$2
+ATOM_SHA=$3
 
 # Atom test script run
 #   Description of the uncleared flags with their default values
@@ -19,6 +11,7 @@ fi
 #   - Nvmeof cli image use in target (None)
 #   - Number of gateways (4)
 #   - Number of gateways to stop (1)
+#   - Number of gateways after scale down (1)
 #   - Number of subsystems (2)
 #   - Number of namespaces (4)
 #   - Max namespaces per subsystem (1024)
@@ -34,13 +27,13 @@ sudo docker run \
     quay.ceph.io/ceph-ci/ceph:"$CEPH_SHA" \
     quay.io/ceph/nvmeof:"$VERSION" \
     quay.io/ceph/nvmeof-cli:"$VERSION" \
-    "https://github.com/$REPO" \
-    "$BRANCH" \
-    None None None 4 1 2 4 1024 2 2 200M 0 1 \
+    None None None None None 4 1 1 2 4 1024 2 2 200M 0 1 20 \
     --stopNvmeofDaemon \
     --stopNvmeofSystemctl \
     --stopMonLeader \
     --gitHubActionDeployment \
     --dontUseMTLS \
+    --skipLbalancingTest \
+    --journalctlToConsole \
     --dontPowerOffCloudVMs noKey \
     --multiIBMCloudServers_m2
