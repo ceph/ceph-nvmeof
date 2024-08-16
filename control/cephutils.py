@@ -42,9 +42,9 @@ class CephUtils:
                 self.anagroup_list = []
                 self.last_sent = now
                 str = '{' + f'"prefix":"nvme-gw show", "pool":"{pool}", "group":"{group}"' + '}'
-                self.logger.debug(f"nvme-show string: {str}")
+                self.logger.info(f"nvme-show string: {str}")
                 rply = self.execute_ceph_monitor_command(str)
-                self.logger.debug(f"reply \"{rply}\"")
+                self.logger.info(f"reply \"{rply}\"")
                 conv_str = rply[1].decode()
                 pos = conv_str.find("[")
                 if pos != -1:
