@@ -181,6 +181,7 @@ message list_namespaces_req {
 message add_host_req {
 	string subsystem_nqn = 1;
 	string host_nqn = 2;
+	optional string psk = 3;
 }
 
 message remove_host_req {
@@ -202,6 +203,7 @@ message create_listener_req {
 	string traddr = 3;
 	optional AddressFamily adrfam = 5;
 	optional uint32 trsvcid = 6;
+	optional bool secure = 7;
 }
 
 message delete_listener_req {
@@ -315,6 +317,7 @@ message listen_address {
         string traddr = 3;
         string trsvcid = 4;
         optional string transport = 5;
+        optional bool secure = 6;
 }
 
 message namespace {
@@ -378,6 +381,7 @@ message listener_info {
 	AddressFamily adrfam = 3;
 	string traddr = 4;
 	uint32 trsvcid = 5;
+	optional bool secure = 6;
 }
 
 message listeners_info {
@@ -387,7 +391,8 @@ message listeners_info {
 }
 
 message host {
-    string nqn = 1;
+	string nqn = 1;
+	optional bool use_psk = 2;
 }
 
 message hosts_info {
@@ -407,6 +412,8 @@ message connection {
 	bool connected = 6;
 	int32 qpairs_count = 7;
 	int32 controller_id = 8;
+	optional bool secure = 9;
+	optional bool use_psk = 10;
 }
 
 message connections_info {

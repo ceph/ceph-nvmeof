@@ -91,7 +91,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        test: ["cli", "cli_change_lb", "state", "multi_gateway", "server", "grpc", "omap_lock", "old_omap", "log_files", "nsid"]
+        test: ["cli", "cli_change_lb", "state", "multi_gateway", "server", "grpc", "omap_lock", "old_omap", "log_files", "nsid", "psk"]
     runs-on: ubuntu-latest
     env:
       HUGEPAGES: 512  # for multi gateway test, approx 256 per gateway instance
@@ -314,6 +314,178 @@ jobs:
           fi
           echo $conns | grep -q "\"qpairs_count\": 1"
           echo $conns | grep -q "\"connected\": true"
+          echo "ℹ️  bdevperf perform_tests"
+          eval $(make run SVC=bdevperf OPTS="--entrypoint=env" | grep BDEVPERF_TEST_DURATION | tr -d '\n\r' )
+          timeout=$(expr $BDEVPERF_TEST_DURATION \* 2)
+          bdevperf="/usr/libexec/spdk/scripts/bdevperf.py"
+          make exec SVC=bdevperf OPTS=-T CMD="$bdevperf -v -t $timeout -s $BDEVPERF_SOCKET perform_tests"
+
+      - name: Check coredump existence
+        if: success() || failure()
+        id: check_coredumps
+        uses: andstor/file-existence-action@20b4d2e596410855db8f9ca21e96fbe18e12930b  # v2, pinned to SHA for security reasons
+        with:
+          files: "/tmp/coredump/core.*"
+
+      - name: Upload demo core dumps
+        if: steps.check_coredumps.outputs.files_exists == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: core_demo
+          path: /tmp/coredump/core.*
+
+      # For debugging purposes (provides an SSH connection to the runner)
+      # - name: Setup tmate session
+      #   uses: mxschmitt/action-tmate@v3
+      #   with:
+      #     limit-access-to-actor: true
+
+      - name: Display logs
+        if: success() || failure()
+        run: make logs OPTS=''
+
+      - name: Tear down
+        if: success() || failure()
+        run: |
+          make down
+          make clean
+
+  demo-secure:
+    needs: [build, build-ceph]
+    runs-on: ubuntu-latest
+    env:
+      HUGEPAGES: 512
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup huge-pages
+        run: make setup HUGEPAGES=$HUGEPAGES
+
+      - name: Download container images
+        uses: actions/download-artifact@v4
+        with:
+          pattern: container_images*
+          merge-multiple: true
+
+      - name: Load container images
+        run: |
+          docker load < nvmeof.tar
+          docker load < nvmeof-cli.tar
+          docker load < ceph.tar
+          docker load < bdevperf.tar
+
+      - name: Start containers
+        timeout-minutes: 3
+        run: |
+          if ! docker-compose --version 2>&1 > /dev/null ; then
+            sudo apt update
+            sudo apt install -y docker-compose
+          fi
+          docker-compose --version
+          make up
+
+      - name: Wait for the Gateway to be listening
+        timeout-minutes: 3
+        run: |
+          . .env
+
+          echo using gateway $NVMEOF_IP_ADDRESS port $NVMEOF_GW_PORT
+          until nc -z $NVMEOF_IP_ADDRESS $NVMEOF_GW_PORT; do
+            echo -n .
+            sleep ${{ env.WAIT_INTERVAL_SECS }}
+          done
+
+      - name: List containers
+        if: success() || failure()
+        run: make ps
+
+      - name: List processes
+        if: success() || failure()
+        run: make top
+
+      - name: Test
+        run: |
+          . .env
+          port2=`expr ${NVMEOF_IO_PORT} + 10`
+          make demosecure OPTS=-T NVMEOF_CONTAINER_NAME="ceph-nvmeof_nvmeof_1" HOSTNQN="${NQN}host" HOSTNQN2="${NQN}host2" NVMEOF_IO_PORT2=${port2}
+
+      - name: List resources
+        run: |
+          # https://github.com/actions/toolkit/issues/766
+          shopt -s expand_aliases
+          eval $(make alias)
+          cephnvmf get_subsystems
+          cephnvmf subsystem list
+          subs=$(cephnvmf --output stdio --format json subsystem list | grep nqn | sed 's/"nqn": "//' | sed 's/",$//')
+          for sub in $subs
+          do
+              cephnvmf namespace list --subsystem $sub
+              cephnvmf listener list --subsystem $sub
+              cephnvmf host list --subsystem $sub
+          done
+
+      - name: Run bdevperf
+        run: |
+          # see https://spdk.io/doc/nvmf_multipath_howto.html
+          shopt -s expand_aliases
+          eval $(make alias)
+          . .env
+          set -x
+          echo -n "ℹ️  Starting bdevperf container"
+          docker-compose up -d bdevperf
+          sleep 10
+          echo "ℹ️  bdevperf start up logs"
+          make logs SVC=bdevperf
+          eval $(make run SVC=bdevperf OPTS="--entrypoint=env" | grep BDEVPERF_SOCKET | tr -d '\n\r' )
+          psk_path_prefix="/tmp/psk/"
+          psk_path="${psk_path_prefix}${NQN}"
+          mkdir -p ${psk_path}
+          echo -n "NVMeTLSkey-1:01:YzrPElk4OYy1uUERriPwiiyEJE/+J5ckYpLB+5NHMsR2iBuT:" > ${psk_path}/${NQN}host
+          chmod 600 ${psk_path}/${NQN}host
+          docker cp ${psk_path_prefix} ceph-nvmeof_bdevperf_1:${psk_path_prefix}
+
+          rpc="/usr/libexec/spdk/scripts/rpc.py"
+          port2=`expr ${NVMEOF_IO_PORT} + 10`
+          echo "ℹ️  bdevperf bdev_nvme_set_options"
+          make exec SVC=bdevperf OPTS=-T CMD="$rpc -v -s $BDEVPERF_SOCKET bdev_nvme_set_options -r -1"
+          echo "ℹ️  bdevperf tcp connect ip: $NVMEOF_IP_ADDRESS port: $NVMEOF_IO_PORT nqn: $NQN"
+          make exec SVC=bdevperf OPTS=-T CMD="$rpc -v -s $BDEVPERF_SOCKET bdev_nvme_attach_controller -b Nvme0 -t tcp -a $NVMEOF_IP_ADDRESS -s $NVMEOF_IO_PORT -f ipv4 -n $NQN -q ${NQN}host -l -1 -o 10 --psk ${psk_path}/${NQN}host"
+          echo "ℹ️  verify connection list"
+          conns=$(cephnvmf --output stdio --format json connection list --subsystem $NQN)
+          echo $conns | grep -q '"status": 0'
+          echo $conns | grep -q "\"nqn\": \"${NQN}host\""
+          echo $conns | grep -q "\"trsvcid\": ${NVMEOF_IO_PORT}"
+          echo $conns | grep -q "\"traddr\": \"${NVMEOF_IP_ADDRESS}\""
+          echo $conns | grep -q "\"adrfam\": \"ipv4\""
+          echo $conns | grep -q "\"trtype\": \"TCP\""
+          echo $conns | grep -q "\"qpairs_count\": 1"
+          echo $conns | grep -q "\"connected\": true"
+          echo $conns | grep -q "\"secure\": true"
+          echo $conns | grep -q -v "\"secure\": false"
+          echo $conns | grep -q "\"use_psk\": true"
+          echo $conns | grep -q "\"use_psk\": false"
+          con_cnt=$(echo $conns | xargs -n 2 | grep traddr | grep -v "n/a" | wc -l)
+          if [ $con_cnt -ne 1 ]; then
+              echo "Number of connections ${con_cnt}, expected 1, list: ${conns}"
+              exit 1
+          fi
+          echo "ℹ️  bdevperf tcp connect ip: $NVMEOF_IP_ADDRESS port: ${port2} nqn: ${NQN}host2"
+          make exec SVC=bdevperf OPTS=-T CMD="$rpc -v -s $BDEVPERF_SOCKET bdev_nvme_attach_controller -b Nvme1 -t tcp -a $NVMEOF_IP_ADDRESS -s ${port2} -f ipv4 -n $NQN -q "${NQN}host2" -l -1 -o 10"
+          echo "ℹ️  verify connection list again"
+          conns=$(cephnvmf --output stdio --format json connection list --subsystem $NQN)
+          con_cnt=$(echo $conns | xargs -n 2 | grep traddr | grep -v "n/a" | wc -l)
+          if [ $con_cnt -ne 2 ]; then
+              echo "Number of connections ${con_cnt}, expected 2, list: ${conns}"
+              exit 1
+          fi
+          echo $conns | grep -q "\"nqn\": \"${NQN}host2\""
+          echo $conns | grep -q "\"trsvcid\": ${port2}"
+          echo $conns | grep -q "\"secure\": true"
+          echo $conns | grep -q "\"secure\": false"
+          echo $conns | grep -q "\"use_psk\": true"
+          echo $conns | grep -q "\"use_psk\": false"
+          echo "ℹ️  bdevperf tcp connect ip: $NVMEOF_IP_ADDRESS port: ${port2} nqn: ${NQN}host2"
           echo "ℹ️  bdevperf perform_tests"
           eval $(make run SVC=bdevperf OPTS="--entrypoint=env" | grep BDEVPERF_TEST_DURATION | tr -d '\n\r' )
           timeout=$(expr $BDEVPERF_TEST_DURATION \* 2)

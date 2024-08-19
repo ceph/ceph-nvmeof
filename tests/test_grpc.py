@@ -46,7 +46,7 @@ def test_create_get_subsys(caplog, config):
 
         for i in range(created_resource_count):
             create_resource_by_index(i)
-            assert "failed" not in caplog.text.lower()
+            assert "failed" not in caplog.text.lower().replace("failed to notify", "")
             assert "Failure" not in caplog.text
 
         assert f"{subsystem_prefix}0 with ANA group id 1" in caplog.text

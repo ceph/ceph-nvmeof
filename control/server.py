@@ -338,20 +338,9 @@ class GatewayServer:
         if spdk_rpc_socket:
             return spdk_rpc_socket
 
-        spdk_rpc_socket_dir = self.config.get_with_default("spdk", "rpc_socket_dir", "")
-        if not spdk_rpc_socket_dir:
-            spdk_rpc_socket_dir = GatewayConfig.CEPH_RUN_DIRECTORY
-            if self.ceph_utils:
-                fsid = self.ceph_utils.fetch_ceph_fsid()
-                if fsid:
-                    spdk_rpc_socket_dir += fsid + "/"
-        if not spdk_rpc_socket_dir.endswith("/"):
-            spdk_rpc_socket_dir += "/"
-        try:
-            os.makedirs(spdk_rpc_socket_dir, 0o777, True)
-        except Exception:
-            logger.exception(f"makedirs({spdk_rpc_socket_dir}, 0o777, True) failed")
-            pass
+        (spdk_rpc_socket_dir, create_status) = GatewayUtils.get_directory_with_fsid(
+                                         self.logger, self.config, self.ceph_utils, "spdk", "rpc_socket_dir",
+                                         GatewayConfig.CEPH_RUN_DIRECTORY, "", True)
         spdk_rpc_socket = spdk_rpc_socket_dir + self.config.get_with_default("spdk", "rpc_socket_name", "spdk.sock")
         return spdk_rpc_socket
 

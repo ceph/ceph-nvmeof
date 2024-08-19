@@ -7,6 +7,7 @@ TARGET_ARCH := $(shell uname -m | sed -e 's/aarch64/arm64/')
 include .env
 include mk/containerized.mk
 include mk/demo.mk
+include mk/demosecure.mk
 include mk/misc.mk
 include mk/autohelp.mk
 
@@ -19,6 +20,7 @@ setup: ## Configure huge-pages (requires sudo/root password)
 	@echo Setup core dump pattern as /tmp/coredump/core.*
 	mkdir -p /tmp/coredump
 	sudo mkdir -p /var/log/ceph
+	sudo chmod 0755 /var/log/ceph
 	sudo bash -c 'echo "|/usr/bin/env tee /tmp/coredump/core.%e.%p.%h.%t" > /proc/sys/kernel/core_pattern'
 	sudo bash -c 'echo $(HUGEPAGES) > $(HUGEPAGES_DIR)'
 	@echo Actual Hugepages allocation: $$(cat $(HUGEPAGES_DIR))
