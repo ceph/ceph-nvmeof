@@ -124,6 +124,7 @@ services:
         SPDK_GIT_COMMIT:
         HUGEPAGES:
         HUGEPAGES_DIR:
+        CONTAINER_REGISTRY:
       labels:
         io.ceph.nvmeof:
     volumes:
