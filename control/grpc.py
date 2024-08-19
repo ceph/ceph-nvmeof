@@ -56,6 +56,41 @@ class MonitorGroupService(monitor_pb2_grpc.MonitorGroupServicer):
         self.set_group_id(request.id)
         return Empty()
 
+class SubsystemHostAuth:
+    def __init__(self):
+        self.subsys_allow_any_hosts = defaultdict(dict)
+        self.host_has_psk = defaultdict(dict)
+
+    def clean_subsystem(self, subsys):
+        self.host_has_psk.pop(subsys, None)
+        self.subsys_allow_any_hosts.pop(subsys, None)
+
+    def add_psk_host(self, subsys, host):
+        self.host_has_psk[subsys][host] = True
+
+    def remove_psk_host(self, subsys, host):
+        if subsys in self.host_has_psk:
+            self.host_has_psk[subsys].pop(host, None)
+            if len(self.host_has_psk[subsys]) == 0:
+                self.host_has_psk.pop(subsys, None)    # last host was removed from subsystem
+
+    def is_psk_host(self, subsys, host = None) -> bool:
+        if subsys in self.host_has_psk:
+            if not host:
+                return len(self.host_has_psk[subsys]) != 0
+            if host in self.host_has_psk[subsys]:
+                return True
+        return False
+
+    def allow_any_host(self, subsys):
+        self.subsys_allow_any_hosts[subsys] = True
+
+    def disallow_any_host(self, subsys):
+        self.subsys_allow_any_hosts.pop(subsys, None)
+
+    def is_any_host_allowed(self, subsys) -> bool:
+        return subsys in self.subsys_allow_any_hosts
+
 class NamespaceInfo:
     def __init__(self, bdev, uuid):
         self.bdev = bdev
@@ -77,6 +112,8 @@ class NamespacesLocalList:
             if nsid:
                 if nsid in self.namespace_list[nqn]:
                     self.namespace_list[nqn].pop(nsid, None)
+                    if len(self.namespace_list[nqn]) == 0:
+                        self.namespace_list.pop(nqn, None)    # last namespace of subsystem was removed
             else:
                 self.namespace_list.pop(nqn, None)
 
@@ -119,6 +156,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         """Constructor"""
         self.gw_logger_object = GatewayLogger(config)
         self.logger = self.gw_logger_object.logger
+        # notice that this was already called from main, the extra call is for the tests environment where we skip main
         config.display_environment_info(self.logger)
         self.ceph_utils = ceph_utils
         self.ceph_utils.fetch_and_display_ceph_version()
@@ -188,7 +226,45 @@ class GatewayService(pb2_grpc.GatewayServicer):
         self.subsystem_listeners = defaultdict(set)
         self._init_cluster_context()
         self.subsys_max_ns = {}
+        self.host_info = SubsystemHostAuth()
 
+    def create_host_psk_file(self, subsysnqn : str, hostnqn : str, psk_value : str) -> str:
+        assert subsysnqn, "Subsystem NQN can't be empty"
+        assert hostnqn, "Host NQN can't be empty"
+        assert psk_value, "PSK value can't be empty"
+
+        psk_dir = f"/tmp/psk/{subsysnqn}"
+        psk_file = f"{psk_dir}/{hostnqn}"
+        try:
+            os.makedirs(psk_dir, 0o755, True)
+        except Exception:
+            self.logger.exception(f"Error creating directory {psk_dir}")
+            return None
+        try:
+            with open(psk_file, 'wt') as f:
+                print(psk_value, end="", file=f)
+            os.chmod(psk_file, 0o600)
+        except Exception:
+            self.logger.exception(f"Error creating file {psk_file}")
+            return None
+        return psk_file
+
+    def remove_host_psk_file(self, subsysnqn : str, hostnqn : str) -> None:
+        psk_dir = f"/tmp/psk/{subsysnqn}"
+        psk_file = f"{psk_dir}/{hostnqn}"
+        try:
+            os.remove(psk_file)
+        except FileNotFoundError:
+            self.logger.exception(f"Error deleting file {psk_file}")
+            pass
+        try:
+            os.rmdir(psk_dir)
+            os.rmdir("/tmp/psk")
+        except Exception:
+            self.logger.exception(f"Error deleting directory {psk_dir}")
+            pass
+
+    @staticmethod
     def is_valid_host_nqn(nqn):
         if nqn == "*":
             return pb2.req_status(status=0, error_message=os.strerror(0))
@@ -711,6 +787,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 self.subsys_max_ns.pop(request.subsystem_nqn)
                 if request.subsystem_nqn in self.subsystem_listeners:
                     self.subsystem_listeners.pop(request.subsystem_nqn, None)
+                self.host_info.clean_subsystem(request.subsystem_nqn)
                 self.subsystem_nsid_bdev_and_uuid.remove_namespace(request.subsystem_nqn)
                 self.logger.debug(f"delete_subsystem {request.subsystem_nqn}: {ret}")
             except Exception as ex:
@@ -904,7 +981,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                 optimized_ana_groups.add(grp_id)
 
                         self.logger.debug(f"set_ana_state nvmf_subsystem_listener_set_ana_state {nqn=} {listener=} {ana_state=} {grp_id=}")
-                        (adrfam, traddr, trsvcid) = listener
+                        (adrfam, traddr, trsvcid, secure) = listener
                         ret = rpc_nvmf.nvmf_subsystem_listener_set_ana_state(
                             self.spdk_rpc_client,
                             nqn=nqn,
@@ -1665,12 +1742,11 @@ class GatewayService(pb2_grpc.GatewayServicer):
     def matching_host_exists(self, context, subsys_nqn, host_nqn) -> bool:
         if not context:
             return False
-        host_key = GatewayState.build_host_key(subsys_nqn, host_nqn)
         state = self.gateway_state.local.get_state()
+        host_key = GatewayState.build_host_key(subsys_nqn, host_nqn)
         if state.get(host_key):
             return True
-        else:
-            return False
+        return False
 
     def add_host_safe(self, request, context):
         """Adds a host to a subsystem."""
@@ -1709,20 +1785,33 @@ class GatewayService(pb2_grpc.GatewayServicer):
             self.logger.error(f"{errmsg}")
             return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
 
+        if request.psk and request.host_nqn == "*":
+            errmsg=f"{host_failure_prefix}: PSK is only allowed for specific hosts"
+            self.logger.error(f"{errmsg}")
+            return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
+
+        host_already_exist = self.matching_host_exists(context, request.subsystem_nqn, request.host_nqn)
+        if host_already_exist:
+            if request.host_nqn == "*":
+                errmsg = f"{all_host_failure_prefix}: Open host access is already allowed"
+                self.logger.error(f"{errmsg}")
+                return pb2.req_status(status=errno.EEXIST, error_message=errmsg)
+            else:
+                errmsg = f"{host_failure_prefix}: Host is already added"
+                self.logger.error(f"{errmsg}")
+                return pb2.req_status(status=errno.EEXIST, error_message=errmsg)
+
+        psk_file = None
+        if request.psk:
+            psk_file = self.create_host_psk_file(request.subsystem_nqn, request.host_nqn, request.psk)
+            if not psk_file:
+                errmsg=f"{host_failure_prefix}: Can't write PSK file"
+                self.logger.error(f"{errmsg}")
+                return pb2.req_status(status=errno.ENOENT, error_message=errmsg)
+
         omap_lock = self.omap_lock.get_omap_lock_to_use(context)
         with omap_lock:
             try:
-                host_already_exist = self.matching_host_exists(context, request.subsystem_nqn, request.host_nqn)
-                if host_already_exist:
-                    if request.host_nqn == "*":
-                        errmsg = f"{all_host_failure_prefix}: Open host access is already allowed"
-                        self.logger.error(f"{errmsg}")
-                        return pb2.req_status(status=errno.EEXIST, error_message=errmsg)
-                    else:
-                        errmsg = f"{host_failure_prefix}: Host is already added"
-                        self.logger.error(f"{errmsg}")
-                        return pb2.req_status(status=errno.EEXIST, error_message=errmsg)
-
                 if request.host_nqn == "*":  # Allow any host access to subsystem
                     self.logger.info(f"Received request to allow any host access for {request.subsystem_nqn}, context: {context}{peer_msg}")
                     ret = rpc_nvmf.nvmf_subsystem_allow_any_host(
@@ -1731,20 +1820,27 @@ class GatewayService(pb2_grpc.GatewayServicer):
                         disable=False,
                     )
                     self.logger.debug(f"add_host *: {ret}")
+                    self.host_info.allow_any_host(request.subsystem_nqn)
                 else:  # Allow single host access to subsystem
                     self.logger.info(
-                        f"Received request to add host {request.host_nqn} to {request.subsystem_nqn}, context: {context}{peer_msg}")
+                        f"Received request to add host {request.host_nqn} to {request.subsystem_nqn}, psk: {request.psk}, context: {context}{peer_msg}")
                     ret = rpc_nvmf.nvmf_subsystem_add_host(
                         self.spdk_rpc_client,
                         nqn=request.subsystem_nqn,
                         host=request.host_nqn,
+                        psk=psk_file,
                     )
                     self.logger.debug(f"add_host {request.host_nqn}: {ret}")
+                    if psk_file:
+                        self.host_info.add_psk_host(request.subsystem_nqn, request.host_nqn)
+                        self.remove_host_psk_file(request.subsystem_nqn, request.host_nqn)
             except Exception as ex:
                 if request.host_nqn == "*":
                     self.logger.exception(all_host_failure_prefix)
                     errmsg = f"{all_host_failure_prefix}:\n{ex}"
                 else:
+                    if psk_file:
+                        self.remove_host_psk_file(request.subsystem_nqn, request.host_nqn)
                     self.logger.exception(host_failure_prefix)
                     errmsg = f"{host_failure_prefix}:\n{ex}"
                 resp = self.parse_json_exeption(ex)
@@ -1771,8 +1867,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 try:
                     json_req = json_format.MessageToJson(
                         request, preserving_proto_field_name=True, including_default_value_fields=True)
-                    self.gateway_state.add_host(request.subsystem_nqn,
-                                                request.host_nqn, json_req)
+                    self.gateway_state.add_host(request.subsystem_nqn, request.host_nqn, json_req)
                 except Exception as ex:
                     errmsg = f"Error persisting host {request.host_nqn} access addition"
                     self.logger.exception(errmsg)
@@ -1836,6 +1931,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                         disable=True,
                     )
                     self.logger.debug(f"remove_host *: {ret}")
+                    self.host_info.disallow_any_host(request.subsystem_nqn)
                 else:  # Remove single host access to subsystem
                     self.logger.info(
                         f"Received request to remove host {request.host_nqn} access from"
@@ -1846,6 +1942,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                         host=request.host_nqn,
                     )
                     self.logger.debug(f"remove_host {request.host_nqn}: {ret}")
+                    self.host_info.remove_psk_host(request.subsystem_nqn, request.host_nqn)
             except Exception as ex:
                 if request.host_nqn == "*":
                     self.logger.exception(all_host_failure_prefix)
@@ -1913,7 +2010,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     host_nqns = []
                     pass
                 for h in host_nqns:
-                    one_host = pb2.host(nqn = h["nqn"])
+                    host_nqn = h["nqn"]
+                    psk = self.host_info.is_psk_host(request.subsystem, host_nqn)
+                    one_host = pb2.host(nqn = host_nqn, use_psk = psk)
                     hosts.append(one_host)
                 break
             except Exception:
@@ -2011,6 +2110,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 hostnqn = conn["hostnqn"]
                 connected = False
                 found = False
+                secure = False
+                psk = False
 
                 for qp in qpair_ret:
                     try:
@@ -2039,16 +2140,25 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     except Exception:
                         self.logger.exception(f"Got exception while parsing qpair: {qp}")
                         pass
+
                 if not found:
                     self.logger.debug(f"Can't find active qpair for connection {conn}")
                     continue
+
+                psk = self.host_info.is_psk_host(request.subsystem, hostnqn)
+
+                if request.subsystem in self.subsystem_listeners:
+                    if (adrfam, traddr, trsvcid, True) in self.subsystem_listeners[request.subsystem]:
+                        secure = True
+
                 if not trtype:
                     trtype = "TCP"
                 if not adrfam:
                     adrfam = "ipv4"
                 one_conn = pb2.connection(nqn=hostnqn, connected=True,
                                           traddr=traddr, trsvcid=trsvcid, trtype=trtype, adrfam=adrfam,
-                                          qpairs_count=conn["num_io_qpairs"], controller_id=conn["cntlid"])
+                                          qpairs_count=conn["num_io_qpairs"], controller_id=conn["cntlid"],
+                                          secure=secure, use_psk=psk)
                 connections.append(one_conn)
                 if hostnqn in host_nqns:
                     host_nqns.remove(hostnqn)
@@ -2057,8 +2167,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 pass
 
         for nqn in host_nqns:
+            psk = False
+            psk = self.host_info.is_psk_host(request.subsystem, nqn)
             one_conn = pb2.connection(nqn=nqn, connected=False, traddr="<n/a>", trsvcid=0,
-                                      qpairs_count=-1, controller_id=-1)
+                                      qpairs_count=-1, controller_id=-1, use_psk=psk)
             connections.append(one_conn)
 
         return pb2.connections_info(status = 0, error_message = os.strerror(0),
@@ -2082,7 +2194,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         peer_msg = self.get_peer_message(context)
         self.logger.info(f"Received request to create {request.host_name}"
                          f" TCP {adrfam} listener for {request.nqn} at"
-                         f" {request.traddr}:{request.trsvcid}, context: {context}{peer_msg}")
+                         f" {request.traddr}:{request.trsvcid}, secure: {request.secure}, context: {context}{peer_msg}")
 
         if GatewayUtils.is_discovery_nqn(request.nqn):
             errmsg=f"{create_listener_error_prefix}: Can't create a listener for a discovery subsystem"
@@ -2094,24 +2206,31 @@ class GatewayService(pb2_grpc.GatewayServicer):
             self.logger.error(f"{errmsg}")
             return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
 
+        if request.secure and self.host_info.is_any_host_allowed(request.nqn):
+            errmsg=f"{create_listener_error_prefix}: Secure channel is only allowed for subsystems in which \"allow any host\" is off"
+            self.logger.error(f"{errmsg}")
+            return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
+
+        add_listener_args = {}
+        add_listener_args["nqn"] = request.nqn
+        add_listener_args["trtype"] = "TCP"
+        add_listener_args["traddr"] = request.traddr
+        add_listener_args["trsvcid"] = str(request.trsvcid)
+        add_listener_args["adrfam"] = adrfam
+        if request.secure:
+            add_listener_args["secure_channel"] = True
+
         omap_lock = self.omap_lock.get_omap_lock_to_use(context)
         with omap_lock:
             try:
                 if request.host_name == self.host_name:
-                    if (adrfam, request.traddr, request.trsvcid) in self.subsystem_listeners[request.nqn]:
+                    if (adrfam, request.traddr, request.trsvcid, False) in self.subsystem_listeners[request.nqn] or (adrfam, request.traddr, request.trsvcid, True) in self.subsystem_listeners[request.nqn]:
                         self.logger.error(f"{request.nqn} already listens on address {request.traddr}:{request.trsvcid}")
                         return pb2.req_status(status=errno.EEXIST,
                                   error_message=f"{create_listener_error_prefix}: Subsystem already listens on this address")
-                    ret = rpc_nvmf.nvmf_subsystem_add_listener(
-                        self.spdk_rpc_client,
-                        nqn=request.nqn,
-                        trtype="TCP",
-                        traddr=request.traddr,
-                        trsvcid=str(request.trsvcid),
-                        adrfam=adrfam,
-                    )
+                    ret = rpc_nvmf.nvmf_subsystem_add_listener(self.spdk_rpc_client, **add_listener_args)
                     self.logger.debug(f"create_listener: {ret}")
-                    self.subsystem_listeners[request.nqn].add((adrfam, request.traddr, request.trsvcid))
+                    self.subsystem_listeners[request.nqn].add((adrfam, request.traddr, request.trsvcid, request.secure))
                 else:
                     if context:
                         errmsg=f"{create_listener_error_prefix}: Gateway's host name must match current host ({self.host_name})"
@@ -2210,7 +2329,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         listener_hosts = []
         if host_name == "*":
             state = self.gateway_state.local.get_state()
-            listener_prefix = GatewayState.build_partial_listener_key(nqn)
+            listener_prefix = GatewayState.build_partial_listener_key(nqn, None)
             for key, val in state.items():
                 if not key.startswith(listener_prefix):
                     continue
@@ -2309,7 +2428,11 @@ class GatewayService(pb2_grpc.GatewayServicer):
                         adrfam=adrfam,
                     )
                     self.logger.debug(f"delete_listener: {ret}")
-                    self.subsystem_listeners[request.nqn].remove((adrfam, request.traddr, request.trsvcid))
+                    if request.nqn in self.subsystem_listeners:
+                        if (adrfam, request.traddr, request.trsvcid, False) in self.subsystem_listeners[request.nqn]:
+                            self.subsystem_listeners[request.nqn].remove((adrfam, request.traddr, request.trsvcid, False))
+                        if (adrfam, request.traddr, request.trsvcid, True) in self.subsystem_listeners[request.nqn]:
+                            self.subsystem_listeners[request.nqn].remove((adrfam, request.traddr, request.trsvcid, True))
                 else:
                     errmsg=f"{delete_listener_error_prefix}. Gateway's host name must match current host ({self.host_name}). You can continue to delete the listener by adding the `--force` parameter."
                     self.logger.error(f"{errmsg}")
@@ -2352,7 +2475,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         omap_lock = self.omap_lock.get_omap_lock_to_use(context)
         with omap_lock:
             state = self.gateway_state.local.get_state()
-            listener_prefix = GatewayState.build_partial_listener_key(request.subsystem)
+            listener_prefix = GatewayState.build_partial_listener_key(request.subsystem, None)
             for key, val in state.items():
                 if not key.startswith(listener_prefix):
                     continue
@@ -2362,11 +2485,15 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     if nqn != request.subsystem:
                         self.logger.warning(f"Got subsystem {nqn} instead of {request.subsystem}, ignore")
                         continue
+                    secure = False
+                    if "secure" in listener:
+                        secure = listener["secure"]
                     one_listener = pb2.listener_info(host_name = listener["host_name"],
                                                      trtype = "TCP",
                                                      adrfam = listener["adrfam"],
                                                      traddr = listener["traddr"],
-                                                     trsvcid = listener["trsvcid"])
+                                                     trsvcid = listener["trsvcid"],
+                                                     secure = secure)
                     listeners.append(one_listener)
                 except Exception:
                     self.logger.exception(f"Got exception while parsing {val}")
@@ -2464,7 +2591,47 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 # Parse the JSON dictionary into the protobuf message
                 subsystem = pb2.subsystem()
                 json_format.Parse(json.dumps(s), subsystem, ignore_unknown_fields=True)
-                subsystems.append(subsystem)
+                psk_hosts = []
+                saw_psk = False
+                # if now host nqn is passed, just check if there is any psk host in subsystem
+                if self.host_info.is_psk_host(nqn):
+                    for h in subsystem.hosts:
+                        psk_val = False
+                        if self.host_info.is_psk_host(nqn, h.nqn):
+                            psk_val = True
+                            saw_psk = True
+                        psk_hosts.append(pb2.host(nqn=h.nqn, use_psk = psk_val))
+
+                secure_listeners = []
+                saw_secure = False
+                if nqn in self.subsystem_listeners:
+                    for lstnr in subsystem.listen_addresses:
+                        secure_val = False
+                        # We get the address family as IPv4 and the port as a string, we need to adjust to internal form
+                        if (lstnr.adrfam.lower(), lstnr.traddr, int(lstnr.trsvcid), True) in self.subsystem_listeners[nqn]:
+                            saw_secure = True
+                            secure_val = True
+                        secure_listeners.append(pb2.listen_address(trtype=lstnr.trtype,
+                                                                   adrfam=lstnr.adrfam.lower(),
+                                                                   traddr=lstnr.traddr,
+                                                                   trsvcid=lstnr.trsvcid,
+                                                                   transport=lstnr.transport,
+                                                                   secure=secure_val))
+
+                if saw_psk or saw_secure:
+                    secure_subsystem = pb2.subsystem(nqn = subsystem.nqn,
+                                                  subtype = subsystem.subtype,
+                                                  listen_addresses = secure_listeners,
+                                                  hosts = psk_hosts,
+                                                  allow_any_host = subsystem.allow_any_host,
+                                                  serial_number = subsystem.serial_number,
+                                                  max_namespaces = subsystem.max_namespaces,
+                                                  min_cntlid = subsystem.min_cntlid,
+                                                  max_cntlid = subsystem.max_cntlid,
+                                                  namespaces = subsystem.namespaces)
+                    subsystems.append(secure_subsystem)
+                else:
+                    subsystems.append(subsystem)
             except Exception:
                 self.logger.exception(f"{s=} parse error")
                 pass

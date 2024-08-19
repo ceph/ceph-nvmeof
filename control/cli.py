@@ -855,6 +855,7 @@ class GatewayClient:
             adrfam=adrfam,
             traddr=traddr,
             trsvcid=args.trsvcid,
+            secure=args.secure,
         )
 
         try:
@@ -960,14 +961,15 @@ class GatewayClient:
                 for l in listeners_info.listeners:
                     adrfam = GatewayEnumUtils.get_key_from_value(pb2.AddressFamily, l.adrfam)
                     adrfam = self.format_adrfam(adrfam)
-                    listeners_list.append([l.host_name, l.trtype, adrfam, f"{l.traddr}:{l.trsvcid}"])
+                    secure = "Yes" if l.secure else "No"
+                    listeners_list.append([l.host_name, l.trtype, adrfam, f"{l.traddr}:{l.trsvcid}", secure])
                 if len(listeners_list) > 0:
                     if args.format == "text":
                         table_format = "fancy_grid"
                     else:
                         table_format = "plain"
                     listeners_out = tabulate(listeners_list,
-                                      headers = ["Host", "Transport", "Address Family", "Address"],
+                                      headers = ["Host", "Transport", "Address Family", "Address", "Secure"],
                                       tablefmt=table_format)
                     out_func(f"Listeners for {args.subsystem}:\n{listeners_out}")
                 else:
@@ -1000,6 +1002,7 @@ class GatewayClient:
         argument("--traddr", "-a", help="NVMe host IP", required=True),
         argument("--trsvcid", "-s", help="Port number", type=int, required=False),
         argument("--adrfam", "-f", help="Address family", default="", choices=get_enum_keys_list(pb2.AddressFamily)),
+        argument("--secure", help="Use secure channel", action='store_true', required=False),
     ]
     listener_del_args = listener_common_args + [
         argument("--host-name", "-t", help="Host name", required=True),
@@ -1033,7 +1036,10 @@ class GatewayClient:
         out_func, err_func = self.get_output_functions(args)
         if not args.host:
             self.cli.parser.error("--host argument is mandatory for add command")
-        req = pb2.add_host_req(subsystem_nqn=args.subsystem, host_nqn=args.host)
+        if args.host == "*" and args.psk:
+            self.cli.parser.error("PSK is only allowed for specific hosts")
+
+        req = pb2.add_host_req(subsystem_nqn=args.subsystem, host_nqn=args.host, psk=args.psk)
         try:
             ret = self.stub.add_host(req)
         except Exception as ex:
@@ -1127,16 +1133,17 @@ class GatewayClient:
             if hosts_info.status == 0:
                 hosts_list = []
                 if hosts_info.allow_any_host:
-                    hosts_list.append(["Any host"])
+                    hosts_list.append(["Any host", "n/a"])
                 for h in hosts_info.hosts:
-                    hosts_list.append([h.nqn])
+                    use_psk = "Yes" if h.use_psk else "No"
+                    hosts_list.append([h.nqn, use_psk])
                 if len(hosts_list) > 0:
                     if args.format == "text":
                         table_format = "fancy_grid"
                     else:
                         table_format = "plain"
                     hosts_out = tabulate(hosts_list,
-                                      headers = [f"Host NQN"],
+                                      headers = ["Host NQN", "Uses PSK"],
                                       tablefmt=table_format, stralign="center")
                     out_func(f"Hosts allowed to access {args.subsystem}:\n{hosts_out}")
                 else:
@@ -1166,6 +1173,7 @@ class GatewayClient:
     ]
     host_add_args = host_common_args + [
         argument("--host", "-t", help="Host NQN", required=True),
+        argument("--psk", help="Host's PSK key", required=False),
     ]
     host_del_args = host_common_args + [
         argument("--host", "-t", help="Host NQN", required=True),
@@ -1204,18 +1212,24 @@ class GatewayClient:
             if connections_info.status == 0:
                 connections_list = []
                 for conn in connections_info.connections:
+                    conn_secure = "<n/a>"
+                    conn_psk = "Yes" if conn.use_psk else "No"
+                    if conn.connected:
+                        conn_secure = "Yes" if conn.secure else "No"
                     connections_list.append([conn.nqn,
                                             f"{conn.traddr}:{conn.trsvcid}" if conn.connected else "<n/a>",
                                             "Yes" if conn.connected else "No",
                                             conn.qpairs_count if conn.connected else "<n/a>",
-                                            conn.controller_id if conn.connected else "<n/a>"])
+                                            conn.controller_id if conn.connected else "<n/a>",
+                                            conn_secure,
+                                            conn_psk])
                 if len(connections_list) > 0:
                     if args.format == "text":
                         table_format = "fancy_grid"
                     else:
                         table_format = "plain"
                     connections_out = tabulate(connections_list,
-                                      headers = ["Host NQN", "Address", "Connected", "QPairs Count", "Controller ID"],
+                                      headers = ["Host NQN", "Address", "Connected", "QPairs Count", "Controller ID", "Secure", "PSK"],
                                       tablefmt=table_format)
                     out_func(f"Connections for {args.subsystem}:\n{connections_out}")
                 else:

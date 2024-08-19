@@ -63,13 +63,13 @@ class GatewayState(ABC):
     def build_subsystem_key(subsystem_nqn: str) -> str:
         return GatewayState.SUBSYSTEM_PREFIX + subsystem_nqn
 
-    def build_host_key(subsystem_nqn: str, host_nqn) -> str:
+    def build_host_key(subsystem_nqn: str, host_nqn: str) -> str:
         key = GatewayState.HOST_PREFIX + subsystem_nqn
         if host_nqn is not None:
             key += GatewayState.OMAP_KEY_DELIMITER + host_nqn
         return key
 
-    def build_partial_listener_key(subsystem_nqn: str, host = None) -> str:
+    def build_partial_listener_key(subsystem_nqn: str, host: str) -> str:
         key = GatewayState.LISTENER_PREFIX + subsystem_nqn
         if host:
             key += GatewayState.OMAP_KEY_DELIMITER + host
@@ -135,7 +135,7 @@ class GatewayState(ABC):
         for key in state.keys():
             if (key.startswith(GatewayState.build_namespace_key(subsystem_nqn, None)) or
                     key.startswith(GatewayState.build_host_key(subsystem_nqn, None)) or
-                    key.startswith(GatewayState.build_partial_listener_key(subsystem_nqn))):
+                    key.startswith(GatewayState.build_partial_listener_key(subsystem_nqn, None))):
                 self._remove_key(key)
 
     def add_host(self, subsystem_nqn: str, host_nqn: str, val: str):
@@ -145,20 +145,22 @@ class GatewayState(ABC):
 
     def remove_host(self, subsystem_nqn: str, host_nqn: str):
         """Removes a host from the state data store."""
+        state = self.get_state()
         key = GatewayState.build_host_key(subsystem_nqn, host_nqn)
-        self._remove_key(key)
+        if key in state.keys():
+            self._remove_key(key)
 
-    def add_listener(self, subsystem_nqn: str, gateway: str, trtype: str,
-                     traddr: str, trsvcid: int, val: str):
+    def add_listener(self, subsystem_nqn: str, gateway: str, trtype: str, traddr: str, trsvcid: int, val: str):
         """Adds a listener to the state data store."""
         key = GatewayState.build_listener_key(subsystem_nqn, gateway, trtype, traddr, trsvcid)
         self._add_key(key, val)
 
-    def remove_listener(self, subsystem_nqn: str, gateway: str, trtype: str,
-                        traddr: str, trsvcid: int):
+    def remove_listener(self, subsystem_nqn: str, gateway: str, trtype: str, traddr: str, trsvcid: int):
         """Removes a listener from the state data store."""
+        state = self.get_state()
         key = GatewayState.build_listener_key(subsystem_nqn, gateway, trtype, traddr, trsvcid)
-        self._remove_key(key)
+        if key in state.keys():
+            self._remove_key(key)
 
     @abstractmethod
     def delete_state(self):
@@ -629,13 +631,10 @@ class GatewayStateHandler:
         self.omap.remove_host(subsystem_nqn, host_nqn)
         self.local.remove_host(subsystem_nqn, host_nqn)
 
-    def add_listener(self, subsystem_nqn: str, gateway: str, trtype: str,
-                     traddr: str, trsvcid: str, val: str):
+    def add_listener(self, subsystem_nqn: str, gateway: str, trtype: str, traddr: str, trsvcid: str, val: str):
         """Adds a listener to the state data store."""
-        self.omap.add_listener(subsystem_nqn, gateway, trtype, traddr, trsvcid,
-                               val)
-        self.local.add_listener(subsystem_nqn, gateway, trtype, traddr, trsvcid,
-                                val)
+        self.omap.add_listener(subsystem_nqn, gateway, trtype, traddr, trsvcid, val)
+        self.local.add_listener(subsystem_nqn, gateway, trtype, traddr, trsvcid, val)
 
     def remove_listener(self, subsystem_nqn: str, gateway: str, trtype: str,
                         traddr: str, trsvcid: str):
@@ -744,7 +743,7 @@ class GatewayStateHandler:
                 GatewayState.SUBSYSTEM_PREFIX,
                 GatewayState.NAMESPACE_PREFIX, GatewayState.HOST_PREFIX,
                 GatewayState.NAMESPACE_QOS_PREFIX,
-                GatewayState.LISTENER_PREFIX
+                GatewayState.LISTENER_PREFIX,
             ]
 
             # Get version and state from OMAP
