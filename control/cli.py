@@ -1824,6 +1824,8 @@ class GatewayClient:
     @cli.cmd()
     def get_subsystems(self, args):
         """Get subsystems"""
+        out_func, err_func = self.get_output_functions(args)
+
         subsystems = self.stub.get_subsystems(pb2.get_subsystems_req())
         if args.format == "python":
             return subsystems
@@ -1831,7 +1833,7 @@ class GatewayClient:
                         subsystems,
                         indent=4, including_default_value_fields=True,
                         preserving_proto_field_name=True)
-        self.logger.info(f"Get subsystems:\n{subsystems_out}")
+        out_func(f"Get subsystems:\n{subsystems_out}")
 
 def main_common(client, args):
     client.logger.setLevel(GatewayEnumUtils.get_value_from_key(pb2.GwLogLevel, args.log_level.lower()))
