@@ -1,10 +1,24 @@
 # Make config
 MAKEFLAGS += --no-builtin-rules --no-builtin-variables
-TARGET_ARCH := $(shell uname -m | sed -e 's/aarch64/arm64/')
+TARGET_ARCH := $(shell uname -m)
 .SUFFIXES:
 
-# Includes
+# Assign default CPU arch related parameters
 include .env
+ifneq (, $(filter $(TARGET_ARCH), arm64 aarch64))
+ceph_repo_arch = arm64
+TARGET_PLATFORM = linux/arm64
+SPDK_TARGET_ARCH = armv8-a+crypto
+SPDK_MAKEFLAGS = $(shell echo "DPDKBUILD_FLAGS=-Dplatform=generic -j $$(nproc)")
+else ifneq (, $(filter $(TARGET_ARCH), amd64 x86_64))
+ceph_repo_arch = x86_64
+TARGET_PLATFORM = linux/amd64
+SPDK_TARGET_ARCH = x86-64-v2
+else
+$(error Unspported CPU arch '$(TARGET_ARCH)' !! Set TARGET_ARCH to x86_64, amd64 or arm64, aarch64 arches)
+endif
+
+# Includes
 include mk/containerized.mk
 include mk/demo.mk
 include mk/demosecure.mk
@@ -36,7 +50,10 @@ build: export SPDK_GIT_BRANCH != git -C spdk name-rev --name-only HEAD
 build: export SPDK_GIT_COMMIT != git rev-parse HEAD:spdk
 build: export BUILD_DATE != date -u +"%Y-%m-%d %H:%M:%S %Z"
 build: export NVMEOF_GIT_MODIFIED_FILES != git status -s | grep -e "^ *M" | sed 's/^ *M //' | xargs
-build: export CEPH_CLUSTER_CEPH_REPO_BASEURL != curl -s https://shaman.ceph.com/api/repos/ceph/$(CEPH_BRANCH)/$(CEPH_SHA)/centos/9/ | jq -r '.[] | select(.status == "ready" and .sha1 == "$(CEPH_SHA)" and .archs[] == "$(TARGET_ARCH)") | .url'
+build: export CEPH_CLUSTER_CEPH_REPO_BASEURL != curl -s https://shaman.ceph.com/api/repos/ceph/$(CEPH_BRANCH)/$(CEPH_SHA)/centos/9/ | jq -r '.[] | select(.status == "ready" and .sha1 == "$(CEPH_SHA)" and .archs[] == "$(ceph_repo_arch)") | .url'
+build: export TARGET_PLATFORM := $(TARGET_PLATFORM)
+build: export SPDK_TARGET_ARCH := $(SPDK_TARGET_ARCH)
+build: export SPDK_MAKEFLAGS := $(SPDK_MAKEFLAGS)
 up: ## Launch services
 up: SCALE?= 1 ## Number of gateways
 up:

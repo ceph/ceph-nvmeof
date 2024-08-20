@@ -86,6 +86,48 @@ jobs:
           path: |
             ceph.tar
 
+  build-arm64:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Build container images - spdk
+        run: make build SVC=spdk TARGET_ARCH=arm64
+
+      - name: Build container images - bdevperf
+        run: make build SVC=bdevperf TARGET_ARCH=arm64
+
+      - name: Build container images - nvmeof
+        run: make build SVC=nvmeof TARGET_ARCH=arm64
+
+      - name: Build container images - nvmeof-cli
+        run: make build SVC=nvmeof-cli TARGET_ARCH=arm64
+
+      - name: Build container images - ceph
+        run: make build SVC=ceph TARGET_ARCH=arm64
+
+      - name: Save container images
+        run: |
+          . .env
+          docker tag $QUAY_NVMEOF:$NVMEOF_VERSION $QUAY_NVMEOF:$NVMEOF_VERSION-arm64
+          docker tag $QUAY_NVMEOFCLI:$NVMEOF_VERSION $QUAY_NVMEOFCLI:$NVMEOF_VERSION-arm64
+          docker save $QUAY_NVMEOF:$NVMEOF_VERSION-arm64 > nvmeof-arm64.tar
+          docker save $QUAY_NVMEOFCLI:$NVMEOF_VERSION-arm64 > nvmeof-cli-arm64.tar
+
+      - name: Upload nvmeof-arm64 container images
+        uses: actions/upload-artifact@v4
+        with:
+          name: container_images_nvmeof_arm64
+          path: |
+            nvmeof-arm64.tar
+            nvmeof-cli-arm64.tar
+
   pytest:
     needs: [build, build-ceph]
     strategy:
@@ -844,7 +886,7 @@ jobs:
 
   push-images-to-ceph-registry:
     if: github.event_name == 'release'
-    needs: [pytest, demo, discovery, ha]
+    needs: [pytest, demo, discovery, ha, build-arm64]
     runs-on: ubuntu-latest
 
     steps:
@@ -854,12 +896,15 @@ jobs:
       - name: Download container images
         uses: actions/download-artifact@v4
         with:
-          name: container_images_nvmeof
+          pattern: container_images_nvmeof*
+          merge-multiple: true
 
       - name: Load container images
         run: |
           docker load < nvmeof.tar
           docker load < nvmeof-cli.tar
+          docker load < nvmeof-arm64.tar
+          docker load < nvmeof-cli-arm64.tar
 
       - name: Login to quay.io
         uses: docker/login-action@v2
@@ -870,4 +915,6 @@ jobs:
 
       - name: Publish nvmeof containers when release/tag is created
         run: |
-          make push QUAY="${{ vars.CONTAINER_REGISTRY_USERNAME }}"
+          make push
+          make push TAG_SUFFIX="-arm64"
+          make push-manifest-list
