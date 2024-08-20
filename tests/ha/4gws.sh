@@ -10,7 +10,7 @@ expect_optimized() {
   socket_retries=0
   socket=""
   while [ $socket_retries -lt 10 ] ; do
-      socket=$(docker exec "$GW_NAME" find /var/run/ceph -name spdk.sock)
+      socket=$(docker exec "$GW_NAME" find /var/tmp -name spdk.sock)
       if [ -n "$socket" ]; then
           break
       fi

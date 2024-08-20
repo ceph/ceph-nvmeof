@@ -332,18 +332,6 @@ class GatewayServer:
 
         return server
 
-    def _get_spdk_rpc_socket_path(self, omap_state) -> str:
-        # For backward compatibility, try first to get the old attribute
-        spdk_rpc_socket = self.config.get_with_default("spdk", "rpc_socket", "")
-        if spdk_rpc_socket:
-            return spdk_rpc_socket
-
-        (spdk_rpc_socket_dir, create_status) = GatewayUtils.get_directory_with_fsid(
-                                         self.logger, self.config, self.ceph_utils, "spdk", "rpc_socket_dir",
-                                         GatewayConfig.CEPH_RUN_DIRECTORY, "", True)
-        spdk_rpc_socket = spdk_rpc_socket_dir + self.config.get_with_default("spdk", "rpc_socket_name", "spdk.sock")
-        return spdk_rpc_socket
-
     def _start_spdk(self, omap_state):
         """Starts SPDK process."""
 
@@ -351,7 +339,7 @@ class GatewayServer:
         self.logger.debug(f"Configuring server {self.name}")
         spdk_tgt_path = self.config.get("spdk", "tgt_path")
         self.logger.info(f"SPDK Target Path: {spdk_tgt_path}")
-        self.spdk_rpc_socket_path = self._get_spdk_rpc_socket_path(omap_state)
+        self.spdk_rpc_socket_path = self.config.get_with_default("spdk", "rpc_socket", "/var/tmp/spdk.sock")
         self.logger.info(f"SPDK Socket: {self.spdk_rpc_socket_path}")
         spdk_tgt_cmd_extra_args = self.config.get_with_default(
             "spdk", "tgt_cmd_extra_args", "")
