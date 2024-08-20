@@ -33,14 +33,14 @@ def two_gateways(config):
     configB = copy.deepcopy(config)
     configA.config["gateway"]["name"] = nameA
     configA.config["gateway"]["override_hostname"] = nameA
-    configA.config["spdk"]["rpc_socket_name"] = sockA
+    configA.config["spdk"]["rpc_socket"] = f"/var/tmp/{sockA}"
     portA = configA.getint("gateway", "port") + 1
     configA.config["gateway"]["port"] = str(portA)
     discPortA = configA.getint("discovery", "port") + 1
     configA.config["discovery"]["port"] = str(discPortA)
     configB.config["gateway"]["name"] = nameB
     configB.config["gateway"]["override_hostname"] = nameB
-    configB.config["spdk"]["rpc_socket_name"] = sockB
+    configB.config["spdk"]["rpc_socket"] = f"/var/tmp/{sockB}"
     portB = portA + 1
     discPortB = discPortA + 1
     configB.config["gateway"]["port"] = str(portB)

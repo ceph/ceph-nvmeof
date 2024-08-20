@@ -176,43 +176,6 @@ class GatewayUtils:
 
         return (0, os.strerror(0))
 
-    def get_directory_with_fsid(logger, config, ceph_utils, conf_section, conf_field, def_value, suffix, should_create):
-        status = errno.ENOENT
-        dir_name = config.get_with_default(conf_section, conf_field, "")
-        if dir_name:
-            # If there is an explicit dir name in configuration file, do not change it
-            suffix = ""
-        else:
-            dir_name = def_value
-            if ceph_utils:
-                fsid = ceph_utils.fetch_ceph_fsid()
-                if fsid:
-                    dir_name += fsid + "/"
-        if not dir_name.endswith("/"):
-            dir_name += "/"
-        if suffix:
-            dir_name += suffix
-        if not dir_name.endswith("/"):
-            dir_name += "/"
-        if should_create:
-            try:
-                os.makedirs(dir_name, 0o777, True)
-                status = 0
-            except OSError as err:
-                logger.exception(f"makedirs({dir_name}, 0o777, True) failed")
-                status = err.errno
-            except Exception:
-                logger.exception(f"makedirs({dir_name}, 0o777, True) failed")
-                status = errno.ENOENT
-        else:
-            if os.path.isdir(dir_name):
-                status = 0
-            else:
-                logger.error(f"Directory {dir_name} does not exist")
-                status = errno.ENOENT
-
-        return (dir_name, status)
-
 class GatewayLogger:
     CEPH_LOG_DIRECTORY = "/var/log/ceph/"
     MAX_LOG_FILE_SIZE_DEFAULT = 10
