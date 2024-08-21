@@ -1,3 +1,4 @@
+set -x
 SCALE=2
 echo CLI_TLS_ARGS $CLI_TLS_ARGS
 # Check if argument is provided

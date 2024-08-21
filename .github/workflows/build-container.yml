@@ -738,7 +738,7 @@ jobs:
           docker load < ceph.tar
           docker load < bdevperf.tar
 
-      - name: Start HA with two gateways
+      - name: Start HA gateways
         timeout-minutes: 3
         run: |
           if ! docker-compose --version 2>&1 > /dev/null ; then
