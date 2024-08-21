@@ -636,10 +636,10 @@ class TestCreate:
         except SystemExit as sysex:
             rc = int(str(sysex))
             pass
-        assert "error: the following arguments are required: --host/-t" in caplog.text
+        assert "error: the following arguments are required: --host-nqn/-t" in caplog.text
         assert rc == 2
         caplog.clear()
-        cli(["host", "add", "--subsystem", subsystem, "--host", host])
+        cli(["host", "add", "--subsystem", subsystem, "--host-nqn", host])
         if host == "*":
             assert f"Allowing open host access to {subsystem}: Successful" in caplog.text
         else:
@@ -647,17 +647,17 @@ class TestCreate:
 
     def test_add_host_invalid_nqn(self, caplog):
         caplog.clear()
-        cli(["host", "add", "--subsystem", subsystem, "--host", "nqn.2016"])
+        cli(["host", "add", "--subsystem", subsystem, "--host-nqn", "nqn.2016"])
         assert f'NQN "nqn.2016" is too short, minimal length is 11' in caplog.text
         caplog.clear()
-        cli(["host", "add", "--subsystem", subsystem, "--host", "nqn.2X16-06.io.spdk:host1"])
+        cli(["host", "add", "--subsystem", subsystem, "--host-nqn", "nqn.2X16-06.io.spdk:host1"])
         assert f"invalid date code" in caplog.text
         caplog.clear()
-        cli(["host", "add", "--subsystem", subsystem, "--host", "nqn.2016-06.io.spdk:host1_X"])
+        cli(["host", "add", "--subsystem", subsystem, "--host-nqn", "nqn.2016-06.io.spdk:host1_X"])
         assert f"Invalid host NQN" in caplog.text
         assert f"contains invalid characters" in caplog.text
         caplog.clear()
-        cli(["host", "add", "--subsystem", f"{subsystem}_X", "--host", "nqn.2016-06.io.spdk:host2"])
+        cli(["host", "add", "--subsystem", f"{subsystem}_X", "--host-nqn", "nqn.2016-06.io.spdk:host2"])
         assert f"Invalid subsystem NQN" in caplog.text
         assert f"contains invalid characters" in caplog.text
 
@@ -754,10 +754,10 @@ class TestDelete:
         except SystemExit as sysex:
             rc = int(str(sysex))
             pass
-        assert "error: the following arguments are required: --host/-t" in caplog.text
+        assert "error: the following arguments are required: --host-nqn/-t" in caplog.text
         assert rc == 2
         caplog.clear()
-        cli(["host", "del", "--subsystem", subsystem, "--host", host])
+        cli(["host", "del", "--subsystem", subsystem, "--host-nqn", host])
         if host == "*":
             assert f"Disabling open host access to {subsystem}: Successful" in caplog.text
         else:

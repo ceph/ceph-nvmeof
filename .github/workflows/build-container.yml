@@ -639,7 +639,7 @@ jobs:
             echo ℹ️ Create listener address $ip gateway $name
             cli_gw $ip listener add --subsystem $NQN --host-name $name --traddr $ip --trsvcid $NVMEOF_IO_PORT
           done
-          cli_gw $gw1 host add --subsystem $NQN --host "*"
+          cli_gw $gw1 host add --subsystem $NQN --host-nqn "*"
           for gw in $GW1 $GW2; do
             ip=$(container_ip $gw)
             echo ℹ️ Subsystems for name $gw ip $ip

@@ -72,7 +72,7 @@ def test_setup(caplog, gateway):
 
 def test_allow_any_host(caplog, gateway):
     caplog.clear()
-    cli(["host", "add", "--subsystem", subsystem, "--host", "*"])
+    cli(["host", "add", "--subsystem", subsystem, "--host-nqn", "*"])
     assert f"Allowing open host access to {subsystem}: Successful" in caplog.text
 
 def test_create_secure_with_any_host(caplog, gateway):
@@ -82,7 +82,7 @@ def test_create_secure_with_any_host(caplog, gateway):
 
 def test_remove_any_host_access(caplog, gateway):
     caplog.clear()
-    cli(["host", "del", "--subsystem", subsystem, "--host", "*"])
+    cli(["host", "del", "--subsystem", subsystem, "--host-nqn", "*"])
     assert f"Disabling open host access to {subsystem}: Successful" in caplog.text
 
 def test_create_secure(caplog, gateway):
@@ -90,13 +90,13 @@ def test_create_secure(caplog, gateway):
     cli(["listener", "add", "--subsystem", subsystem, "--host-name", host_name, "-a", addr, "-s", "5001", "--secure"])
     assert f"Adding {subsystem} listener at {addr}:5001: Successful" in caplog.text
     caplog.clear()
-    cli(["host", "add", "--subsystem", subsystem, "--host", hostnqn, "--psk", hostpsk])
+    cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn, "--psk", hostpsk])
     assert f"Adding host {hostnqn} to {subsystem}: Successful" in caplog.text
     caplog.clear()
-    cli(["host", "add", "--subsystem", subsystem, "--host", hostnqn2, "--psk", hostpsk2])
+    cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn2, "--psk", hostpsk2])
     assert f"Adding host {hostnqn2} to {subsystem}: Successful" in caplog.text
     caplog.clear()
-    cli(["host", "add", "--subsystem", subsystem, "--host", hostnqn4, "--psk", hostpsk4])
+    cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn4, "--psk", hostpsk4])
     assert f"Adding host {hostnqn4} to {subsystem}: Successful" in caplog.text
 
 def test_create_not_secure(caplog, gateway):
@@ -104,22 +104,22 @@ def test_create_not_secure(caplog, gateway):
     cli(["listener", "add", "--subsystem", subsystem, "--host-name", host_name, "-a", addr, "-s", "5002"])
     assert f"Adding {subsystem} listener at {addr}:5002: Successful" in caplog.text
     caplog.clear()
-    cli(["host", "add", "--subsystem", subsystem, "--host", hostnqn6])
+    cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn6])
     assert f"Adding host {hostnqn6} to {subsystem}: Successful" in caplog.text
     caplog.clear()
-    cli(["host", "add", "--subsystem", subsystem, "--host", hostnqn7])
+    cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn7])
     assert f"Adding host {hostnqn7} to {subsystem}: Successful" in caplog.text
 
 def test_create_secure_junk_key(caplog, gateway):
     caplog.clear()
-    cli(["host", "add", "--subsystem", subsystem, "--host", hostnqn3, "--psk", hostpsk3])
+    cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn3, "--psk", hostpsk3])
     assert f"Failure adding host {hostnqn3} to {subsystem}" in caplog.text
 
 def test_create_secure_no_key(caplog, gateway):
     caplog.clear()
     rc = 0
     try:
-        cli(["host", "add", "--subsystem", subsystem, "--host", hostnqn5, "--psk"])
+        cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn5, "--psk"])
     except SystemExit as sysex:
         rc = int(str(sysex))
         pass
@@ -157,7 +157,7 @@ def test_allow_any_host_with_psk(caplog, gateway):
     caplog.clear()
     rc = 0
     try:
-        cli(["host", "add", "--subsystem", subsystem, "--host", "*", "--psk", hostpsk])
+        cli(["host", "add", "--subsystem", subsystem, "--host-nqn", "*", "--psk", hostpsk])
     except SystemExit as sysex:
         rc = int(str(sysex))
         pass
