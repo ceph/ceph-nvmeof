@@ -102,7 +102,7 @@ docker-compose  run --rm nvmeof-cli --server-address 192.168.13.3 --server-port 
 Adding listener 192.168.13.3:4420 to nqn.2016-06.io.spdk:cnode1: Successful
 docker-compose  run --rm nvmeof-cli --server-address 2001:db8::3 --server-port 5500 listener add --subsystem "nqn.2016-06.io.spdk:cnode1" --host-name fbca1a3d3ed8 --traddr 2001:db8::3 --trsvcid 4420 --adrfam IPV6
 Adding listener [2001:db8::3]:4420 to nqn.2016-06.io.spdk:cnode1: Successful
-docker-compose  run --rm nvmeof-cli --server-address 192.168.13.3 --server-port 5500 host add --subsystem "nqn.2016-06.io.spdk:cnode1" --host "*"
+docker-compose  run --rm nvmeof-cli --server-address 192.168.13.3 --server-port 5500 host add --subsystem "nqn.2016-06.io.spdk:cnode1" --host-nqn "*"
 Allowing any host for nqn.2016-06.io.spdk:cnode1: Successful
 ```
 
@@ -143,7 +143,7 @@ The same configuration can also be manually run:
 1. Define which hosts can connect:
 
     ```bash
-    cephnvmf host add --subsystem nqn.2016-06.io.spdk:cnode1 --host "*"
+    cephnvmf host add --subsystem nqn.2016-06.io.spdk:cnode1 --host-nqn "*"
     ```
 
 These can also be run by setting environment variables `CEPH_NVMEOF_SERVER_ADDRESS` and `CEPH_NVMEOF_SERVER_PORT` before running nvmeof-cli commands, example:

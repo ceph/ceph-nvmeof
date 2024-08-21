@@ -1034,27 +1034,25 @@ class GatewayClient:
         """Add a host to a subsystem."""
 
         out_func, err_func = self.get_output_functions(args)
-        if not args.host:
-            self.cli.parser.error("--host argument is mandatory for add command")
-        if args.host == "*" and args.psk:
+        if args.host_nqn == "*" and args.psk:
             self.cli.parser.error("PSK is only allowed for specific hosts")
 
-        req = pb2.add_host_req(subsystem_nqn=args.subsystem, host_nqn=args.host, psk=args.psk)
+        req = pb2.add_host_req(subsystem_nqn=args.subsystem, host_nqn=args.host_nqn, psk=args.psk)
         try:
             ret = self.stub.add_host(req)
         except Exception as ex:
-            if args.host == "*":
+            if args.host_nqn == "*":
                 errmsg = f"Failure allowing open host access to {args.subsystem}"
             else:
-                errmsg = f"Failure adding host {args.host} to {args.subsystem}"
+                errmsg = f"Failure adding host {args.host_nqn} to {args.subsystem}"
             ret = pb2.req_status(status = errno.EINVAL, error_message = f"{errmsg}:\n{ex}")
 
         if args.format == "text" or args.format == "plain":
             if ret.status == 0:
-                if args.host == "*":
+                if args.host_nqn == "*":
                     out_func(f"Allowing open host access to {args.subsystem}: Successful")
                 else:
-                    out_func(f"Adding host {args.host} to {args.subsystem}: Successful")
+                    out_func(f"Adding host {args.host_nqn} to {args.subsystem}: Successful")
             else:
                 err_func(f"{ret.error_message}")
         elif args.format == "json" or args.format == "yaml":
@@ -1079,25 +1077,23 @@ class GatewayClient:
         """Delete a host from a subsystem."""
 
         out_func, err_func = self.get_output_functions(args)
-        if not args.host:
-            self.cli.parser.error("--host argument is mandatory for del command")
-        req = pb2.remove_host_req(subsystem_nqn=args.subsystem, host_nqn=args.host)
+        req = pb2.remove_host_req(subsystem_nqn=args.subsystem, host_nqn=args.host_nqn)
 
         try:
             ret = self.stub.remove_host(req)
         except Exception as ex:
-            if args.host == "*":
+            if args.host_nqn == "*":
                 errmsg = f"Failure disabling open host access to {args.subsystem}"
             else:
-                errmsg = f"Failure removing host {args.host} access to {args.subsystem}"
+                errmsg = f"Failure removing host {args.host_nqn} access to {args.subsystem}"
             ret = pb2.req_status(status = errno.EINVAL, error_message = f"{errmsg}:\n{ex}")
 
         if args.format == "text" or args.format == "plain":
             if ret.status == 0:
-                if args.host == "*":
+                if args.host_nqn == "*":
                     out_func(f"Disabling open host access to {args.subsystem}: Successful")
                 else:
-                    out_func(f"Removing host {args.host} access from {args.subsystem}: Successful")
+                    out_func(f"Removing host {args.host_nqn} access from {args.subsystem}: Successful")
             else:
                 err_func(f"{ret.error_message}")
         elif args.format == "json" or args.format == "yaml":
@@ -1172,11 +1168,11 @@ class GatewayClient:
         argument("--subsystem", "-n", help="Subsystem NQN", required=True),
     ]
     host_add_args = host_common_args + [
-        argument("--host", "-t", help="Host NQN", required=True),
+        argument("--host-nqn", "-t", help="Host NQN", required=True),
         argument("--psk", help="Host's PSK key", required=False),
     ]
     host_del_args = host_common_args + [
-        argument("--host", "-t", help="Host NQN", required=True),
+        argument("--host-nqn", "-t", help="Host NQN", required=True),
     ]
     host_list_args = host_common_args + [
     ]

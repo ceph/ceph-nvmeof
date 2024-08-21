@@ -11,7 +11,7 @@ docker-compose  run --rm nvmeof-cli --server-address $GW1_IP --server-port 5500 
 docker-compose  run --rm nvmeof-cli --server-address $GW1_IP --server-port 5500 namespace add --subsystem $NQN --rbd-pool rbd --rbd-image demo_image2 --size 10M --rbd-create-image -l 2
 docker-compose  run --rm nvmeof-cli --server-address $GW1_IP --server-port 5500 listener add  --subsystem $NQN --host-name $GW1_NAME --traddr $GW1_IP --trsvcid 4420
 docker-compose  run --rm nvmeof-cli --server-address $GW2_IP --server-port 5500 listener add  --subsystem $NQN --host-name $GW2_NAME --traddr $GW2_IP --trsvcid 4420
-docker-compose  run --rm nvmeof-cli --server-address $GW1_IP --server-port 5500 host add      --subsystem $NQN --host "*"
+docker-compose  run --rm nvmeof-cli --server-address $GW1_IP --server-port 5500 host add      --subsystem $NQN --host-nqn "*"
 docker-compose  run --rm nvmeof-cli --server-address $GW1_IP --server-port 5500 get_subsystems
 docker-compose  run --rm nvmeof-cli --server-address $GW2_IP --server-port 5500 get_subsystems
 
