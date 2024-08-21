@@ -864,36 +864,6 @@ jobs:
           name: atom-artifact
           path: /tmp/artifact/*
 
-  push-images-to-private-registry:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/devel' && github.repository == 'ceph/ceph-nvmeof'
-    needs: [pytest, demo, discovery, ha]
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Download container images
-        uses: actions/download-artifact@v4
-        with:
-          name: container_images_nvmeof
-
-      - name: Load container images
-        run: |
-          docker load < nvmeof.tar
-          docker load < nvmeof-cli.tar
-
-      - name: Login to quay.io
-        uses: docker/login-action@v2
-        with:
-          registry: ${{ vars.CONTAINER_REGISTRY }}
-          username: '${{ vars.CONTAINER_PRIVATE_REGISTRY_USERNAME }}'
-          password: '${{ secrets.CONTAINER_PRIVATE_REGISTRY_PASSWORD }}'
-
-      - name: Publish nvmeof containers when release/tag is created
-        run: |
-          make push QUAY="${{ vars.CONTAINER_REGISTRY }}/${{ vars.CONTAINER_PRIVATE_REGISTRY_USERNAME }}"
-
   push-images-to-ceph-registry:
     if: github.event_name == 'release'
     needs: [pytest, demo, discovery, ha]
