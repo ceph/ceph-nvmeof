@@ -1,3 +1,4 @@
+set -x
 SCALE=2
 echo CLI_TLS_ARGS $CLI_TLS_ARGS
 # Check if argument is provided
@@ -14,6 +15,7 @@ fi
 for i in $(seq $SCALE); do
   while true; do
     sleep 1  # Adjust the sleep duration as needed
+    docker ps
     GW_NAME=$(docker ps --format '{{.ID}}\t{{.Names}}' | awk '$2 ~ /nvmeof/ && $2 ~ /'$i'/ {print $1}')
     container_status=$(docker inspect -f '{{.State.Status}}' "$GW_NAME")
     if [ "$container_status" == "running" ]; then
