@@ -22,11 +22,21 @@ hostnqn4 = "nqn.2014-08.org.nvmexpress:uuid:6488a49c-dfa3-11d4-ac31-b232c6c68a8a
 hostnqn5 = "nqn.2014-08.org.nvmexpress:uuid:22207d09-d8af-4ed2-84ec-a6d80b0cf7ef"
 hostnqn6 = "nqn.2014-08.org.nvmexpress:uuid:22207d09-d8af-4ed2-84ec-a6d80b0cf7f0"
 hostnqn7 = "nqn.2014-08.org.nvmexpress:uuid:22207d09-d8af-4ed2-84ec-a6d80b0cf7f1"
+hostnqn8 = "nqn.2014-08.org.nvmexpress:uuid:22207d09-d8af-4ed2-84ec-a6d80b0cf7f2"
+hostnqn9 = "nqn.2014-08.org.nvmexpress:uuid:22207d09-d8af-4ed2-84ec-a6d80b0cf7f3"
+hostnqn10 = "nqn.2014-08.org.nvmexpress:uuid:22207d09-d8af-4ed2-84ec-a6d80b0cf7f4"
+hostnqn11 = "nqn.2014-08.org.nvmexpress:uuid:22207d09-d8af-4ed2-84ec-a6d80b0cf7f5"
+hostnqn12 = "nqn.2014-08.org.nvmexpress:uuid:22207d09-d8af-4ed2-84ec-a6d80b0cf7f6"
 
 hostpsk = "NVMeTLSkey-1:01:YzrPElk4OYy1uUERriPwiiyEJE/+J5ckYpLB+5NHMsR2iBuT:"
 hostpsk2 = "NVMeTLSkey-1:02:FTFds4vH4utVcfrOforxbrWIgv+Qq4GQHgMdWwzDdDxE1bAqK2mOoyXxmbJxGeueEVVa/Q==:"
 hostpsk3 = "junk" 
 hostpsk4 = "NVMeTLSkey-1:01:YzrPElk4OYy1uUERriPwiiyEJE/+J5ckYpLB+5NHMsR2iBuT:"
+hostpsk5 = "NVMeTLSkey-1:01:sDSy/cehSZT7WBKuwfwvWzeYR5xV5BKBR3Q1ILO2StCDEfge:"
+hostpsk6 = "NVMeTLSkey-1:01:e4zyO+j6DF5eZHanqYmHqFjEF2enzY8N/r1S4jijfabgsRUR:"
+hostpsk7 = "NVMeTLSkey-1:02:IuO9SMATHiHFfiGkEqh/eKzAtx9zkDDs55PoAz1ndKhW0KZUHYfKtrsCgx0X+c30ygP8Ew==:"
+hostpsk8 = "NVMeTLSkey-1:01:uJhA3uB/cMwNnz4PW8pf4LIPpt6wZ1ldt4n3OUERAc5iv38T:"
+hostpsk9 = "NVMeTLSkey-1:01:YcM21gigb+0pFJXO+sOWj9Sz6gzIHxzBDTP8HYLEpqLBwznp:"
 
 host_name = socket.gethostname()
 addr = "127.0.0.1"
@@ -110,6 +120,21 @@ def test_create_not_secure(caplog, gateway):
     cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn7])
     assert f"Adding host {hostnqn7} to {subsystem}: Successful" in caplog.text
 
+def test_create_secure_list(caplog, gateway):
+    caplog.clear()
+    cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn8, hostnqn9, hostnqn10, "--psk", hostpsk5, hostpsk6, hostpsk7, hostpsk])
+    assert f"There are more PSK values than hosts, will ignore redundant values" in caplog.text
+    assert f"Adding host {hostnqn8} to {subsystem}: Successful" in caplog.text
+    assert f"Adding host {hostnqn9} to {subsystem}: Successful" in caplog.text
+    assert f"Adding host {hostnqn10} to {subsystem}: Successful" in caplog.text
+
+def test_create_secure_list_missing_psk(caplog, gateway):
+    caplog.clear()
+    cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn11, hostnqn12,  "--psk", hostpsk8])
+    assert f"Adding host {hostnqn11} to {subsystem}: Successful" in caplog.text
+    assert f"Adding host {hostnqn12} to {subsystem}: Successful" in caplog.text
+    assert f"There are more hosts than PSK values, will assume empty PSK values" in caplog.text
+
 def test_create_secure_junk_key(caplog, gateway):
     caplog.clear()
     cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn3, "--psk", hostpsk3])
@@ -124,13 +149,13 @@ def test_create_secure_no_key(caplog, gateway):
         rc = int(str(sysex))
         pass
     assert rc == 2
-    assert f"error: argument --psk: expected one argument" in caplog.text
+    assert f"error: argument --psk: expected at least one argument" in caplog.text
 
 def test_list_psk_hosts(caplog, gateway):
     caplog.clear()
     hosts = cli_test(["host", "list", "--subsystem", subsystem])
     found = 0
-    assert len(hosts.hosts) == 5
+    assert len(hosts.hosts) == 10
     for h in hosts.hosts:
         assert h.nqn != hostnqn3
         assert h.nqn != hostnqn5
@@ -149,20 +174,29 @@ def test_list_psk_hosts(caplog, gateway):
         elif h.nqn == hostnqn7:
             found += 1
             assert not h.use_psk
+        elif h.nqn == hostnqn8:
+            found += 1
+            assert h.use_psk
+        elif h.nqn == hostnqn9:
+            found += 1
+            assert h.use_psk
+        elif h.nqn == hostnqn10:
+            found += 1
+            assert h.use_psk
+        elif h.nqn == hostnqn11:
+            found += 1
+            assert h.use_psk
+        elif h.nqn == hostnqn12:
+            found += 1
+            assert not h.use_psk
         else:
             assert False
-    assert found == 5
+    assert found == 10
 
 def test_allow_any_host_with_psk(caplog, gateway):
     caplog.clear()
-    rc = 0
-    try:
-        cli(["host", "add", "--subsystem", subsystem, "--host-nqn", "*", "--psk", hostpsk])
-    except SystemExit as sysex:
-        rc = int(str(sysex))
-        pass
-    assert rc == 2
-    assert f"PSK is only allowed for specific hosts" in caplog.text
+    cli(["host", "add", "--subsystem", subsystem, "--host-nqn", "*", "--psk", hostpsk])
+    assert f"PSK is only allowed for specific hosts, ignoring PSK value \"{hostpsk}\"" in caplog.text
 
 def test_list_listeners(caplog, gateway):
     caplog.clear()

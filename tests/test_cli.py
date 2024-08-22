@@ -661,6 +661,13 @@ class TestCreate:
         assert f"Invalid subsystem NQN" in caplog.text
         assert f"contains invalid characters" in caplog.text
 
+    def test_host_list(self, caplog):
+        caplog.clear()
+        cli(["host", "add", "--subsystem", subsystem, "--host-nqn", "nqn.2016-06.io.spdk:host5", "nqn.2016-06.io.spdk:host6", "nqn.2016-06.io.spdk:host7"])
+        assert f"Adding host nqn.2016-06.io.spdk:host5 to {subsystem}: Successful" in caplog.text
+        assert f"Adding host nqn.2016-06.io.spdk:host6 to {subsystem}: Successful" in caplog.text
+        assert f"Adding host nqn.2016-06.io.spdk:host7 to {subsystem}: Successful" in caplog.text
+
     @pytest.mark.parametrize("listener", listener_list)
     def test_create_listener(self, caplog, listener, gateway):
         caplog.clear()
@@ -762,6 +769,13 @@ class TestDelete:
             assert f"Disabling open host access to {subsystem}: Successful" in caplog.text
         else:
             assert f"Removing host {host} access from {subsystem}: Successful" in caplog.text
+
+    def remove_host_list(self, caplog):
+        caplog.clear()
+        cli(["host", "del", "--subsystem", subsystem, "--host-nqn", "nqn.2016-06.io.spdk:host5", "nqn.2016-06.io.spdk:host6", "nqn.2016-06.io.spdk:host7"])
+        assert f"Removing host nqn.2016-06.io.spdk:host5 access from {subsystem}: Successful" in caplog.text
+        assert f"Removing host nqn.2016-06.io.spdk:host6 access from {subsystem}: Successful" in caplog.text
+        assert f"Removing host nqn.2016-06.io.spdk:host7 access from {subsystem}: Successful" in caplog.text
 
     @pytest.mark.parametrize("listener", listener_list)
     def test_delete_listener_using_wild_hostname_no_force(self, caplog, listener, gateway):
