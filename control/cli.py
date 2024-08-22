@@ -1033,86 +1033,120 @@ class GatewayClient:
     def host_add(self, args):
         """Add a host to a subsystem."""
 
+        rc = 0
+        ret_list = []
         out_func, err_func = self.get_output_functions(args)
-        if args.host_nqn == "*" and args.psk:
-            self.cli.parser.error("PSK is only allowed for specific hosts")
 
-        req = pb2.add_host_req(subsystem_nqn=args.subsystem, host_nqn=args.host_nqn, psk=args.psk)
-        try:
-            ret = self.stub.add_host(req)
-        except Exception as ex:
-            if args.host_nqn == "*":
-                errmsg = f"Failure allowing open host access to {args.subsystem}"
-            else:
-                errmsg = f"Failure adding host {args.host_nqn} to {args.subsystem}"
-            ret = pb2.req_status(status = errno.EINVAL, error_message = f"{errmsg}:\n{ex}")
+        if args.psk:
+            if len(args.psk) > len(args.host_nqn):
+                err_func("There are more PSK values than hosts, will ignore redundant values")
+            elif len(args.psk) < len(args.host_nqn):
+                err_func("There are more hosts than PSK values, will assume empty PSK values")
 
-        if args.format == "text" or args.format == "plain":
-            if ret.status == 0:
-                if args.host_nqn == "*":
-                    out_func(f"Allowing open host access to {args.subsystem}: Successful")
+        for i in range(len(args.host_nqn)):
+            one_host_nqn = args.host_nqn[i]
+            one_host_psk = None
+            if args.psk:
+                try:
+                    one_host_psk = args.psk[i]
+                except IndexError:
+                    pass
+
+            if one_host_nqn == "*" and one_host_psk:
+                err_func(f"PSK is only allowed for specific hosts, ignoring PSK value \"{one_host_psk}\"")
+                one_host_psk = None
+
+            req = pb2.add_host_req(subsystem_nqn=args.subsystem, host_nqn=one_host_nqn, psk=one_host_psk)
+            try:
+                ret = self.stub.add_host(req)
+            except Exception as ex:
+                if one_host_nqn == "*":
+                    errmsg = f"Failure allowing open host access to {args.subsystem}"
                 else:
-                    out_func(f"Adding host {args.host_nqn} to {args.subsystem}: Successful")
-            else:
-                err_func(f"{ret.error_message}")
-        elif args.format == "json" or args.format == "yaml":
-            ret_str = json_format.MessageToJson(
-                        ret,
-                        indent=4,
-                        including_default_value_fields=True,
-                        preserving_proto_field_name=True)
-            if args.format == "json":
-                out_func(f"{ret_str}")
-            elif args.format == "yaml":
-                obj = json.loads(ret_str)
-                out_func(yaml.dump(obj))
-        elif args.format == "python":
-            return ret
-        else:
-            assert False
+                    errmsg = f"Failure adding host {one_host_nqn} to {args.subsystem}"
+                ret = pb2.req_status(status = errno.EINVAL, error_message = f"{errmsg}:\n{ex}")
 
-        return ret.status
+            if not rc:
+                rc = ret.status
+
+            if args.format == "text" or args.format == "plain":
+                if ret.status == 0:
+                    if one_host_nqn == "*":
+                        out_func(f"Allowing open host access to {args.subsystem}: Successful")
+                    else:
+                        out_func(f"Adding host {one_host_nqn} to {args.subsystem}: Successful")
+                else:
+                    err_func(f"{ret.error_message}")
+            elif args.format == "json" or args.format == "yaml":
+                ret_str = json_format.MessageToJson(
+                            ret,
+                            indent=4,
+                            including_default_value_fields=True,
+                            preserving_proto_field_name=True)
+                if args.format == "json":
+                    out_func(f"{ret_str}")
+                elif args.format == "yaml":
+                    obj = json.loads(ret_str)
+                    out_func(yaml.dump(obj))
+            elif args.format == "python":
+                ret_list.append(ret)
+            else:
+                assert False
+
+        if args.format == "python":
+            return ret_list
+
+        return rc
 
     def host_del(self, args):
         """Delete a host from a subsystem."""
 
+        rc = 0
+        ret_list = []
         out_func, err_func = self.get_output_functions(args)
-        req = pb2.remove_host_req(subsystem_nqn=args.subsystem, host_nqn=args.host_nqn)
+        for one_host_nqn in args.host_nqn:
+            req = pb2.remove_host_req(subsystem_nqn=args.subsystem, host_nqn=one_host_nqn)
 
-        try:
-            ret = self.stub.remove_host(req)
-        except Exception as ex:
-            if args.host_nqn == "*":
-                errmsg = f"Failure disabling open host access to {args.subsystem}"
-            else:
-                errmsg = f"Failure removing host {args.host_nqn} access to {args.subsystem}"
-            ret = pb2.req_status(status = errno.EINVAL, error_message = f"{errmsg}:\n{ex}")
-
-        if args.format == "text" or args.format == "plain":
-            if ret.status == 0:
-                if args.host_nqn == "*":
-                    out_func(f"Disabling open host access to {args.subsystem}: Successful")
+            try:
+                ret = self.stub.remove_host(req)
+            except Exception as ex:
+                if one_host_nqn == "*":
+                    errmsg = f"Failure disabling open host access to {args.subsystem}"
                 else:
-                    out_func(f"Removing host {args.host_nqn} access from {args.subsystem}: Successful")
-            else:
-                err_func(f"{ret.error_message}")
-        elif args.format == "json" or args.format == "yaml":
-            ret_str = json_format.MessageToJson(
-                        ret,
-                        indent=4,
-                        including_default_value_fields=True,
-                        preserving_proto_field_name=True)
-            if args.format == "json":
-                out_func(f"{ret_str}")
-            elif args.format == "yaml":
-                obj = json.loads(ret_str)
-                out_func(yaml.dump(obj))
-        elif args.format == "python":
-            return ret
-        else:
-            assert False
+                    errmsg = f"Failure removing host {one_host_nqn} access to {args.subsystem}"
+                ret = pb2.req_status(status = errno.EINVAL, error_message = f"{errmsg}:\n{ex}")
 
-        return ret.status
+            if not rc:
+                rc = ret.status
+
+            if args.format == "text" or args.format == "plain":
+                if ret.status == 0:
+                    if one_host_nqn == "*":
+                        out_func(f"Disabling open host access to {args.subsystem}: Successful")
+                    else:
+                        out_func(f"Removing host {one_host_nqn} access from {args.subsystem}: Successful")
+                else:
+                    err_func(f"{ret.error_message}")
+            elif args.format == "json" or args.format == "yaml":
+                ret_str = json_format.MessageToJson(
+                            ret,
+                            indent=4,
+                            including_default_value_fields=True,
+                            preserving_proto_field_name=True)
+                if args.format == "json":
+                    out_func(f"{ret_str}")
+                elif args.format == "yaml":
+                    obj = json.loads(ret_str)
+                    out_func(yaml.dump(obj))
+            elif args.format == "python":
+                ret_list.append(ret)
+            else:
+                assert False
+
+        if args.format == "python":
+            return ret_list
+
+        return rc
 
     def host_list(self, args):
         """List a host for a subsystem."""
@@ -1168,11 +1202,11 @@ class GatewayClient:
         argument("--subsystem", "-n", help="Subsystem NQN", required=True),
     ]
     host_add_args = host_common_args + [
-        argument("--host-nqn", "-t", help="Host NQN", required=True),
-        argument("--psk", help="Host's PSK key", required=False),
+        argument("--host-nqn", "-t", help="Host NQN list", nargs="+", required=True),
+        argument("--psk", help="Hosts PSK key list", nargs="+", required=False),
     ]
     host_del_args = host_common_args + [
-        argument("--host-nqn", "-t", help="Host NQN", required=True),
+        argument("--host-nqn", "-t", help="Host NQN list", nargs="+", required=True),
     ]
     host_list_args = host_common_args + [
     ]

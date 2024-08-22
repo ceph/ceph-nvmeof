@@ -648,6 +648,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 errmsg = f"{create_subsystem_error_prefix}: {rc[1]}"
                 self.logger.error(f"{errmsg}")
                 return pb2.req_status(status = rc[0], error_message = errmsg)
+
         if GatewayUtils.is_discovery_nqn(request.subsystem_nqn):
             errmsg = f"{create_subsystem_error_prefix}: Can't create a discovery subsystem"
             self.logger.error(f"{errmsg}")
@@ -820,6 +821,13 @@ class GatewayService(pb2_grpc.GatewayServicer):
             errmsg = f"Failure deleting subsystem, missing subsystem NQN"
             self.logger.error(f"{errmsg}")
             return pb2.req_status(status = errno.EINVAL, error_message = errmsg)
+
+        if self.verify_nqns:
+            rc = GatewayUtils.is_valid_nqn(request.subsystem_nqn)
+            if rc[0] != 0:
+                errmsg = f"{delete_subsystem_error_prefix}: {rc[1]}"
+                self.logger.error(f"{errmsg}")
+                return pb2.req_status(status = rc[0], error_message = errmsg)
 
         if GatewayUtils.is_discovery_nqn(request.subsystem_nqn):
             errmsg = f"{delete_subsystem_error_prefix}: Can't delete a discovery subsystem"
@@ -1901,6 +1909,13 @@ class GatewayService(pb2_grpc.GatewayServicer):
         peer_msg = self.get_peer_message(context)
         all_host_failure_prefix=f"Failure disabling open host access to {request.subsystem_nqn}"
         host_failure_prefix=f"Failure removing host {request.host_nqn} access from {request.subsystem_nqn}"
+
+        if self.verify_nqns:
+            rc = GatewayService.is_valid_host_nqn(request.host_nqn)
+            if rc.status != 0:
+                errmsg = f"{host_failure_prefix}: {rc.error_message}"
+                self.logger.error(f"{errmsg}")
+                return pb2.req_status(status = rc.status, error_message = errmsg)
 
         if GatewayUtils.is_discovery_nqn(request.subsystem_nqn):
             if request.host_nqn == "*":
