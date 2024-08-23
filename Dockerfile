@@ -1,6 +1,7 @@
 # syntax = docker/dockerfile:1.4
 
 ARG NVMEOF_SPDK_VERSION \
+    CONTAINER_REGISTRY \
     NVMEOF_TARGET  # either 'gateway' or 'cli'
 
 #------------------------------------------------------------------------------
@@ -12,7 +13,7 @@ CMD []
 
 #------------------------------------------------------------------------------
 # Base image for NVMEOF_TARGET=gateway (nvmeof-gateway)
-FROM quay.io/ceph/spdk:${NVMEOF_SPDK_VERSION:-NULL} AS base-gateway
+FROM ${CONTAINER_REGISTRY:-quay.io/ceph}/spdk:${NVMEOF_SPDK_VERSION:-NULL} AS base-gateway
 RUN \
     --mount=type=cache,target=/var/cache/dnf \
     --mount=type=cache,target=/var/lib/dnf \

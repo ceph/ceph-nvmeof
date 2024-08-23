@@ -2,10 +2,10 @@
 
 # Docker and docker-compose specific commands
 DOCKER = docker
-# Docker-compose v1 or v2
-DOCKER_COMPOSE != command -v docker-compose || (DOCKER=$$(command -v docker) && printf "%s compose\n" $$DOCKER)
+# Require docker-compose v2 to support multi-platform build option 'services.xxx.build.platforms'
+DOCKER_COMPOSE != DOCKER=$$(command -v docker) && $$DOCKER compose version > /dev/null && printf "%s compose\n" $$DOCKER
 ifndef DOCKER_COMPOSE
-$(error DOCKER_COMPOSE command not found. Please install from: https://docs.docker.com/engine/install/))
+$(error DOCKER_COMPOSE command not found. Please install from: https://docs.docker.com/compose/install/)
 endif
 DOCKER_COMPOSE_COMMANDS = pull build run exec ps top images logs port \
 	pause unpause stop restart down events
@@ -22,20 +22,37 @@ pull: ## Download SVC images
 build:  ## Build SVC images
 build: DOCKER_COMPOSE_ENV = DOCKER_BUILDKIT=1 COMPOSE_DOCKER_CLI_BUILD=1
 
+push: QUAY := $(CONTAINER_REGISTRY)
+push: IMAGES := nvmeof nvmeof-cli
+push: TAG_SUFFIX :=  # e.g. "-aarch64" for multi-arch image push
 push: ## Push nvmeof and nvmeof-cli containers images to quay.io registries
-	@SHORT_VERSION=$(shell echo $(VERSION) | cut -d. -f1-2); \
-	echo "NVMEoF images are about to be pushed to ceph registry"; \
-	docker tag $(QUAY_NVMEOF):$(VERSION) $(QUAY_NVMEOF):$$SHORT_VERSION; \
-	docker tag $(QUAY_NVMEOF):$(VERSION) $(QUAY_NVMEOF):latest; \
-	docker tag $(QUAY_NVMEOFCLI):$(VERSION) $(QUAY_NVMEOFCLI):$$SHORT_VERSION; \
-	docker tag $(QUAY_NVMEOFCLI):$(VERSION) $(QUAY_NVMEOFCLI):latest; \
-	docker push $(QUAY_NVMEOF):$(VERSION); \
-	docker push $(QUAY_NVMEOF):$$SHORT_VERSION; \
-	docker push $(QUAY_NVMEOF):latest; \
-	docker push $(QUAY_NVMEOFCLI):$(VERSION); \
-	docker push $(QUAY_NVMEOFCLI):$$SHORT_VERSION; \
-	docker push $(QUAY_NVMEOFCLI):latest; \
+	@echo "Push images $(IMAGES) to registry $(QUAY)";  \
+	short_version=$(shell echo $(VERSION) | cut -d. -f1-2); \
+	versions="$(VERSION) $${short_version} latest"; \
+	for image in $(IMAGES); do \
+		for version in $$versions; do \
+			if [ -n "$(TAG_SUFFIX)" ] && [ "$$version" = "$(VERSION)" ] || \
+			   [ -z "$(TAG_SUFFIX)" ]; then \
+				echo "Pushing image $(QUAY)/$${image}:$${version}$(TAG_SUFFIX) ...";  \
+				docker tag $(CONTAINER_REGISTRY)/$${image}:$(VERSION)$(TAG_SUFFIX) $(QUAY)/$${image}:$${version}$(TAG_SUFFIX) && \
+				docker push $(QUAY)/$${image}:$${version}$(TAG_SUFFIX); \
+			fi \
+		done \
+	done
 
+push-manifest-list: QUAY := $(CONTAINER_REGISTRY)
+push-manifest-list: IMAGES := nvmeof nvmeof-cli
+push-manifest-list:
+	@echo "Push images $(IMAGES) manifestlists to $(QUAY)"; \
+	short_version=$(shell echo $(VERSION) | cut -d. -f1-2); \
+	versions="$(VERSION) $${short_version} latest"; \
+	for image in $(IMAGES); do \
+		source_list=$$(docker image list --filter reference="$(QUAY)/$${image}:$(VERSION)*" --format "{{.Repository}}:{{.Tag}}"); \
+		for version in $$versions; do \
+			echo "Pushing image manifestlist $(QUAY)/$${image}:$${version} ..."; \
+			docker buildx imagetools create  --tag $(QUAY)/$${image}:$${version} $$source_list; \
+		done \
+	done
 
 run: ## Run command CMD inside SVC containers
 run: override OPTS += --rm
@@ -67,7 +84,6 @@ stop: ## Stop SVC
 restart: ## Restart SVC
 
 down: ## Shut down deployment
-down: override SVC =
 down: override OPTS += --volumes --remove-orphans
 
 events: ## Receive real-time events from containers

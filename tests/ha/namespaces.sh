@@ -12,7 +12,7 @@ create_namespace() {
   ANA_GRP=$3
   IMAGE="test_image_$NSID"
 
-  docker-compose  run --rm nvmeof-cli --server-address $GW_IP --server-port 5500 namespace add --subsystem $NQN --nsid $NSID --rbd-pool rbd --rbd-image $IMAGE --size 10 --rbd-create-image -l $ANA_GRP
+  docker compose  run --rm nvmeof-cli --server-address $GW_IP --server-port 5500 namespace add --subsystem $NQN --nsid $NSID --rbd-pool rbd --rbd-image $IMAGE --size 10 --rbd-create-image -l $ANA_GRP
 }
 
 delete_namespaces() {
@@ -22,7 +22,7 @@ delete_namespaces() {
   LAST=$4
 
   for i in $(seq $FIRST $INC $LAST); do
-    docker-compose  run --rm nvmeof-cli --server-address $GW_IP --server-port 5500 namespace del --subsystem $NQN --nsid $i
+    docker compose  run --rm nvmeof-cli --server-address $GW_IP --server-port 5500 namespace del --subsystem $NQN --nsid $i
   done
 }
 
@@ -50,7 +50,7 @@ verify_num_namespaces() {
   NQN_INDEX=1 # the tested subsystem is expected to be a second one, after tests/ha/setup.
 
   for i in $(seq 100); do
-    subs=$(docker-compose  run -T --rm nvmeof-cli --server-address $GW_IP --server-port 5500 get_subsystems 2>&1 1>/dev/null | grep -v Creating | sed 's/Get subsystems://')
+    subs=$(docker compose  run -T --rm nvmeof-cli --server-address $GW_IP --server-port 5500 get_subsystems 2>&1 1>/dev/null | grep -v Creating | sed 's/Get subsystems://')
     nss="$(num_nss "$subs" $NQN_INDEX)"
     if [ "$nss" -ne "$EXPECTED_NAMESPACES" ]; then
       echo "Not ready $GW_IP $nss $EXPECTED_NAMESPACES"
@@ -77,7 +77,7 @@ GW2_ANA=2
 GW_INC=2
 
 echo "ℹ️  Step 1: create subsystem $NQN"
-docker-compose  run --rm nvmeof-cli --server-address $GW1_IP --server-port 5500 subsystem add --subsystem  $NQN
+docker compose  run --rm nvmeof-cli --server-address $GW1_IP --server-port 5500 subsystem add --subsystem  $NQN
 verify_num_namespaces $GW1_IP $NO_NAMESPACE
 verify_num_namespaces $GW2_IP $NO_NAMESPACE
 
@@ -103,4 +103,4 @@ verify_num_namespaces $GW1_IP $NO_NAMESPACE
 verify_num_namespaces $GW2_IP $NO_NAMESPACE
 
 echo "ℹ️  Step 5: delete subsystem $NQN"
-docker-compose  run --rm nvmeof-cli --server-address $GW1_IP --server-port 5500 subsystem del --subsystem  $NQN
+docker compose  run --rm nvmeof-cli --server-address $GW1_IP --server-port 5500 subsystem del --subsystem  $NQN

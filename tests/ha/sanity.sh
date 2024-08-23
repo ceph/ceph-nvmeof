@@ -6,7 +6,7 @@ set -xe
 GW1_NAME=$(docker ps --format '{{.ID}}\t{{.Names}}' | awk '$2 ~ /nvmeof/ && $2 ~ /1/ {print $1}')
 ip="$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$GW1_NAME")"
 echo -n "ℹ️  Starting bdevperf container"
-docker-compose up -d bdevperf
+docker compose up -d bdevperf
 sleep 10
 echo "ℹ️  bdevperf start up logs"
 make logs SVC=bdevperf

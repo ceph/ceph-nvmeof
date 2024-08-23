@@ -86,6 +86,48 @@ jobs:
           path: |
             ceph.tar
 
+  build-arm64:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Build container images - spdk
+        run: make build SVC=spdk TARGET_ARCH=arm64
+
+      - name: Build container images - bdevperf
+        run: make build SVC=bdevperf TARGET_ARCH=arm64
+
+      - name: Build container images - nvmeof
+        run: make build SVC=nvmeof TARGET_ARCH=arm64
+
+      - name: Build container images - nvmeof-cli
+        run: make build SVC=nvmeof-cli TARGET_ARCH=arm64
+
+      - name: Build container images - ceph
+        run: make build SVC=ceph TARGET_ARCH=arm64
+
+      - name: Save container images
+        run: |
+          . .env
+          docker tag $QUAY_NVMEOF:$NVMEOF_VERSION $QUAY_NVMEOF:$NVMEOF_VERSION-arm64
+          docker tag $QUAY_NVMEOFCLI:$NVMEOF_VERSION $QUAY_NVMEOFCLI:$NVMEOF_VERSION-arm64
+          docker save $QUAY_NVMEOF:$NVMEOF_VERSION-arm64 > nvmeof-arm64.tar
+          docker save $QUAY_NVMEOFCLI:$NVMEOF_VERSION-arm64 > nvmeof-cli-arm64.tar
+
+      - name: Upload nvmeof-arm64 container images
+        uses: actions/upload-artifact@v4
+        with:
+          name: container_images_nvmeof_arm64
+          path: |
+            nvmeof-arm64.tar
+            nvmeof-cli-arm64.tar
+
   pytest:
     needs: [build, build-ceph]
     strategy:
@@ -137,12 +179,8 @@ jobs:
 
       - name: Start ceph cluster
         run: |
-          if ! docker-compose --version 2>&1 > /dev/null ; then
-            sudo apt update
-            sudo apt install -y docker-compose
-          fi
-          docker-compose --version
-          docker-compose up -d ceph
+          docker compose version
+          docker compose up -d ceph
 
       - name: Wait for the ceph cluster container to become healthy
         timeout-minutes: 3
@@ -236,11 +274,6 @@ jobs:
       - name: Start containers
         timeout-minutes: 3
         run: |
-          if ! docker-compose --version 2>&1 > /dev/null ; then
-            sudo apt update
-            sudo apt install -y docker-compose
-          fi
-          docker-compose --version
           make up
 
       - name: Wait for the Gateway to be listening
@@ -264,7 +297,7 @@ jobs:
 
       - name: Test
         run: |
-          make demo OPTS=-T NVMEOF_CONTAINER_NAME="ceph-nvmeof_nvmeof_1"
+          make demo OPTS=-T
 
       - name: List resources
         run: |
@@ -288,7 +321,7 @@ jobs:
           . .env
           set -x
           echo -n "ℹ️  Starting bdevperf container"
-          docker-compose up -d bdevperf
+          docker compose up -d bdevperf
           sleep 10
           echo "ℹ️  bdevperf start up logs"
           make logs SVC=bdevperf
@@ -378,11 +411,6 @@ jobs:
       - name: Start containers
         timeout-minutes: 3
         run: |
-          if ! docker-compose --version 2>&1 > /dev/null ; then
-            sudo apt update
-            sudo apt install -y docker-compose
-          fi
-          docker-compose --version
           make up
 
       - name: Wait for the Gateway to be listening
@@ -408,7 +436,7 @@ jobs:
         run: |
           . .env
           port2=`expr ${NVMEOF_IO_PORT} + 10`
-          make demosecure OPTS=-T NVMEOF_CONTAINER_NAME="ceph-nvmeof_nvmeof_1" HOSTNQN="${NQN}host" HOSTNQN2="${NQN}host2" NVMEOF_IO_PORT2=${port2}
+          make demosecure OPTS=-T HOSTNQN="${NQN}host" HOSTNQN2="${NQN}host2" NVMEOF_IO_PORT2=${port2}
 
       - name: List resources
         run: |
@@ -433,7 +461,7 @@ jobs:
           . .env
           set -x
           echo -n "ℹ️  Starting bdevperf container"
-          docker-compose up -d bdevperf
+          docker compose up -d bdevperf
           sleep 10
           echo "ℹ️  bdevperf start up logs"
           make logs SVC=bdevperf
@@ -443,7 +471,7 @@ jobs:
           mkdir -p ${psk_path}
           echo -n "NVMeTLSkey-1:01:YzrPElk4OYy1uUERriPwiiyEJE/+J5ckYpLB+5NHMsR2iBuT:" > ${psk_path}/${NQN}host
           chmod 600 ${psk_path}/${NQN}host
-          docker cp ${psk_path_prefix} ceph-nvmeof_bdevperf_1:${psk_path_prefix}
+          docker cp ${psk_path_prefix} ${BDEVPERF_CONTAINER_NAME}:${psk_path_prefix}
 
           rpc="/usr/libexec/spdk/scripts/rpc.py"
           port2=`expr ${NVMEOF_IO_PORT} + 10`
@@ -547,10 +575,6 @@ jobs:
 
       - name: Load container images
         run: |
-          if ! docker-compose --version 2>&1 > /dev/null ; then
-            sudo apt update
-            sudo apt install -y docker-compose
-          fi
           docker load < nvmeof.tar
           docker load < nvmeof-cli.tar
           docker load < ceph.tar
@@ -559,8 +583,8 @@ jobs:
       - name: Start discovery controller
         if: matrix.integration == 'container'
         run: |
-          docker-compose --version
-          docker-compose up --detach discovery
+          docker compose version
+          docker compose up --detach discovery
 
       - name: Wait for discovery controller to be listening
         if: matrix.integration == 'container'
@@ -603,12 +627,12 @@ jobs:
       - name: List containers
         if: success() || failure()
         run: |
-          docker-compose ps
+          docker compose ps
 
       - name: List processes
         if: success() || failure()
         run: |
-          docker-compose top
+          docker compose top
 
       - name: Set up target
         run: |
@@ -625,7 +649,7 @@ jobs:
           cli_gw() {
             gw=$1
             shift
-            docker-compose run --rm nvmeof-cli --server-address $gw --server-port $NVMEOF_GW_PORT "$@"
+            docker compose run --rm nvmeof-cli --server-address $gw --server-port $NVMEOF_GW_PORT "$@"
           }
 
           gw1=$(container_ip $GW1)
@@ -657,7 +681,7 @@ jobs:
           }
 
           echo -n "ℹ️  Starting bdevperf container"
-          docker-compose up -d bdevperf
+          docker compose up -d bdevperf
           sleep 10
           echo "ℹ️  bdevperf start up logs"
           make logs SVC=bdevperf
@@ -741,11 +765,7 @@ jobs:
       - name: Start HA with two gateways
         timeout-minutes: 3
         run: |
-          if ! docker-compose --version 2>&1 > /dev/null ; then
-            sudo apt update
-            sudo apt install -y docker-compose
-          fi
-          docker-compose --version
+          docker compose version
           test_specific_start_up="./tests/ha/start_up_${{ matrix.test }}.sh"
           if [ -x "$test_specific_start_up" ] || [ -L "$test_specific_start_up" ] && [ -x "$(readlink -f "$test_specific_start_up")" ]; then
             $test_specific_start_up
@@ -766,12 +786,12 @@ jobs:
       - name: List containers
         if: success() || failure()
         run: |
-          docker-compose ps
+          docker compose ps
 
       - name: List processes
         if: success() || failure()
         run: |
-          docker-compose top
+          docker compose top
 
       - name: Set up target
         run: |
@@ -866,7 +886,7 @@ jobs:
 
   push-images-to-ceph-registry:
     if: github.event_name == 'release'
-    needs: [pytest, demo, discovery, ha]
+    needs: [pytest, demo, discovery, ha, build-arm64]
     runs-on: ubuntu-latest
 
     steps:
@@ -876,12 +896,15 @@ jobs:
       - name: Download container images
         uses: actions/download-artifact@v4
         with:
-          name: container_images_nvmeof
+          pattern: container_images_nvmeof*
+          merge-multiple: true
 
       - name: Load container images
         run: |
           docker load < nvmeof.tar
           docker load < nvmeof-cli.tar
+          docker load < nvmeof-arm64.tar
+          docker load < nvmeof-cli-arm64.tar
 
       - name: Login to quay.io
         uses: docker/login-action@v2
@@ -892,4 +915,6 @@ jobs:
 
       - name: Publish nvmeof containers when release/tag is created
         run: |
-          make push QUAY="${{ vars.CONTAINER_REGISTRY_USERNAME }}"
+          make push
+          make push TAG_SUFFIX="-arm64"
+          make push-manifest-list

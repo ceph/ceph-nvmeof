@@ -1,4 +1,3 @@
-version: "3.8"
 services:
   spdk:
     image: $QUAY_SPDK:$SPDK_VERSION
@@ -8,6 +7,7 @@ services:
       context: spdk/
       dockerfile: ../Dockerfile.spdk
       target: spdk
+      platforms: [$TARGET_PLATFORM]
       args:
         SPDK_VERSION:
         SPDK_CEPH_VERSION:
@@ -57,6 +57,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.ceph
+      platforms: [$TARGET_PLATFORM]
       args:
         CEPH_CLUSTER_VERSION:
         CEPH_CLUSTER_CEPH_REPO_BASEURL:
@@ -101,6 +102,7 @@ services:
   nvmeof-base:
     build:
       context: .
+      platforms: [$TARGET_PLATFORM]
       args:
         NVMEOF_TARGET: gateway
         NVMEOF_SPDK_VERSION:
@@ -124,6 +126,7 @@ services:
         SPDK_GIT_COMMIT:
         HUGEPAGES:
         HUGEPAGES_DIR:
+        CONTAINER_REGISTRY:
       labels:
         io.ceph.nvmeof:
     volumes:
@@ -222,6 +225,7 @@ services:
     image: $QUAY_NVMEOFCLI:$NVMEOF_VERSION
     build:
       context: .
+      platforms: [$TARGET_PLATFORM]
       args:
         NVMEOF_TARGET: cli
         NVMEOF_NAME: $NVMEOF_CLI_NAME
