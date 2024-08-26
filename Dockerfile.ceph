@@ -98,7 +98,7 @@ ENV MON=1 \
     RGW=0 \
     NFS=0 \
     CEPH_PORT=10000 \
-    CEPH_VSTART_ARGS="--memstore"
+    CEPH_VSTART_ARGS="--memstore -o \"debug_mon 20\""
 
 ENV CEPH_BIN=/usr/bin \
     CEPH_LIB=/usr/lib64/ceph \
