@@ -71,6 +71,12 @@ services:
       openssl req -x509 -newkey rsa:4096 -nodes -keyout server.key -out server.crt -days 3650 -subj /CN=my.server  -addext "subjectAltName = IP:192.168.13.3, IP:0.0.0.0" &&
       openssl req -x509 -newkey rsa:4096 -nodes -keyout client.key -out client.crt -days 3650 -subj /CN=client1 &&
       popd &&
+      ceph config set mon.a debug_mon 20/20 &&
+      echo "ℹ️ ceph config get mon.a debug_mon" &&
+      ceph config get mon.a debug_mon &&
+      ceph config set mon.a debug_ms 20/20 &&
+      echo "ℹ️ ceph config get mon.a debug_ms" &&
+      ceph config get mon.a debug_ms &&
       ceph osd pool create rbd &&
       sleep infinity'
     healthcheck:
