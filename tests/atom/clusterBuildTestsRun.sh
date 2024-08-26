@@ -27,7 +27,7 @@ sudo docker run \
     quay.ceph.io/ceph-ci/ceph:"$CEPH_SHA" \
     quay.io/ceph/nvmeof:"$VERSION" \
     quay.io/ceph/nvmeof-cli:"$VERSION" \
-    None None None None None 4 1 1 2 4 1024 2 2 200M 0 1 20 \
+    None None None None None None 4 1 1 2 4 1024 2 2 200M 0 1 20 \
     --stopNvmeofDaemon \
     --stopNvmeofSystemctl \
     --stopMonLeader \
