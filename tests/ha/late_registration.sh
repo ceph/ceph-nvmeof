@@ -7,7 +7,7 @@ expect_optimized() {
   GW_NAME=$1
   EXPECTED_OPTIMIZED=$2
 
-  socket=$(docker exec "$GW_NAME" find /var/tmp -name spdk.sock)
+  socket=$(docker exec "$GW_NAME" find /var/run/ceph -name spdk.sock)
   # Verify expected number of "optimized"
   while true; do
     response=$(docker exec "$GW_NAME" "$rpc" "-s" "$socket" "$cmd" "$nqn")
