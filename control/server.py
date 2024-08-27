@@ -359,8 +359,17 @@ class GatewayServer:
         if spdk_tgt_cmd_extra_args:
             cmd += shlex.split(spdk_tgt_cmd_extra_args)
         self.logger.info(f"Starting {' '.join(cmd)}")
+        sockdir = os.path.dirname(self.spdk_rpc_socket_path)
+        if not os.path.isdir(sockdir):
+            self.logger.warning(f"Directory {sockdir} does not exist, will create it")
+            try:
+                os.makedirs(sockdir, 0o755)
+            except Exception:
+                self.logger.exception(f"Error trying to create {sockdir}")
+                raise
         try:
             # start spdk process
+            time.sleep(2)      # this is a temporary hack, we have a timing issue here. Once we solve it the sleep will ve removed
             self.spdk_process = subprocess.Popen(cmd)
         except Exception:
             self.logger.exception(f"Unable to start SPDK")
