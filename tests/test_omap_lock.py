@@ -86,7 +86,6 @@ def conn_omap_reread(config, request):
         stubA, stubB = start_servers(gatewayA, gatewayB, "Group1", addr, portA, portB, ceph_utils)
         yield stubA, stubB, gatewayA.gateway_rpc, gatewayB.gateway_rpc
         stop_servers(gatewayA, gatewayB)
-    time.sleep(15)    # let the monitor client time to settle after stopping the gateway and before starting a new one
 
 @pytest.fixture(scope="function")
 def conn_lock_twice(config, request):
@@ -107,7 +106,6 @@ def conn_lock_twice(config, request):
         stubA, stubB = start_servers(gatewayA, gatewayB, "Group2", addr, portA, portB, ceph_utils)
         yield stubA, stubB
         stop_servers(gatewayA, gatewayB)
-    time.sleep(15)    # let the monitor client time to settle after stopping the gateway and before starting a new one
 
 @pytest.fixture(scope="function")
 def conn_concurrent(config, request):
@@ -133,7 +131,6 @@ def conn_concurrent(config, request):
         stubA, stubB = start_servers(gatewayA, gatewayB, "Group3", addr, portA, portB, ceph_utils)
         yield gatewayA.gateway_rpc, gatewayB.gateway_rpc, stubA, stubB
         stop_servers(gatewayA, gatewayB)
-    time.sleep(15)    # let the monitor client time to settle after stopping the gateway and before starting a new one
 
 def build_host_nqn(i):
     ihex = hex(i).split("x")[1]
