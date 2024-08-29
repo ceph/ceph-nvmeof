@@ -84,6 +84,7 @@ class GatewayServer:
         self.group_id = 0
         self.monitor_client = '/usr/bin/ceph-nvmeof-monitor-client'
         self.omap_state = None
+        self.omap_lock = None
 
         self.name = self.config.get("gateway", "name")
         if not self.name:
@@ -120,7 +121,7 @@ class GatewayServer:
             self._stop_discovery()
 
         if self.omap_state:
-            self.omap_state.cleanup_omap()
+            self.omap_state.cleanup_omap(self.omap_lock)
             self.omap_state = None
 
         if logger:
@@ -172,8 +173,8 @@ class GatewayServer:
 
         # Register service implementation with server
         gateway_state = GatewayStateHandler(self.config, local_state, omap_state, self.gateway_rpc_caller, f"gateway-{self.name}")
-        omap_lock = OmapLock(omap_state, gateway_state, self.rpc_lock)
-        self.gateway_rpc = GatewayService(self.config, gateway_state, self.rpc_lock, omap_lock, self.group_id, self.spdk_rpc_client, self.ceph_utils)
+        self.omap_lock = OmapLock(omap_state, gateway_state, self.rpc_lock)
+        self.gateway_rpc = GatewayService(self.config, gateway_state, self.rpc_lock, self.omap_lock, self.group_id, self.spdk_rpc_client, self.ceph_utils)
         self.server = self._grpc_server(self._gateway_address())
         pb2_grpc.add_GatewayServicer_to_server(self.gateway_rpc, self.server)
 

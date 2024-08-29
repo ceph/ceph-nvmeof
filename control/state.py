@@ -327,17 +327,18 @@ class OmapLock:
             return
 
         if not self.omap_state.ioctx:
+            self.is_locked = False
             return
 
         try:
             self.omap_state.ioctx.unlock(self.omap_state.omap_name, self.OMAP_FILE_LOCK_NAME, self.OMAP_FILE_LOCK_COOKIE)
-            self.is_locked = False
         except rados.ObjectNotFound as ex:
-            self.logger.warning(f"No such lock, the lock duration might have passed")
-            self.is_locked = False
+            if self.is_locked:
+                self.logger.warning(f"No such lock, the lock duration might have passed")
         except Exception:
             self.logger.exception(f"Unable to unlock OMAP file")
             pass
+        self.is_locked = False
 
     def locked(self):
         return self.is_locked
@@ -543,7 +544,7 @@ class OmapGatewayState(GatewayState):
         else:
             self.logger.info(f"Watch already exists.")
 
-    def cleanup_omap(self):
+    def cleanup_omap(self, omap_lock = None):
         self.logger.info(f"Cleanup OMAP on exit ({self.id_text})")
         if self.watch:
             try:
@@ -551,6 +552,11 @@ class OmapGatewayState(GatewayState):
                 self.logger.debug(f"Unregistered watch ({self.id_text})")
                 self.watch = None
             except Exception:
+                pass
+        if omap_lock and omap_lock.omap_file_lock_duration > 0:
+            try:
+                omap_lock.unlock_omap()
+            except Exceprion:
                 pass
         if self.ioctx:
             try:
