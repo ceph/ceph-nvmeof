@@ -225,6 +225,7 @@ class OmapLock:
         self.omap_file_lock_retries = self.omap_state.config.getint_with_default("gateway", "omap_file_lock_retries", 30)
         self.omap_file_lock_retry_sleep_interval = self.omap_state.config.getfloat_with_default("gateway",
                                                                                     "omap_file_lock_retry_sleep_interval", 1.0)
+        self.lock_start_time = 0.0
         # This is used for testing purposes only. To allow us testing locking from two gateways at the same time
         self.omap_file_disable_unlock = self.omap_state.config.getboolean_with_default("gateway", "omap_file_disable_unlock", False)
         if self.omap_file_disable_unlock:
@@ -240,11 +241,18 @@ class OmapLock:
     def __enter__(self):
         if self.omap_file_lock_duration > 0:
             self.lock_omap()
+            self.lock_start_time = time.monotonic()
         return self
 
     def __exit__(self, typ, value, traceback):
         if self.omap_file_lock_duration > 0:
+            duration = 0.0
+            if self.lock_start_time:
+                duration = time.monotonic() - self.lock_start_time
+            self.lock_start_time = 0.0
             self.unlock_omap()
+            if duration > self.omap_file_lock_duration:
+                self.logger.error(f"Operation ran for {duration:.2f} seconds, but the OMAP lock expired after {self.omap_file_lock_duration} seconds")
 
     def get_omap_lock_to_use(self, context):
         if context:
