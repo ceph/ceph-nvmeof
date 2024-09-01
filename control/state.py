@@ -786,8 +786,9 @@ class GatewayStateHandler:
 
                 # Handle namespace changes in which only the load balancing group id was changed
                 only_lb_group_changed = []
+                ns_prefix = GatewayState.build_namespace_key("nqn", None)
                 for key in changed.keys():
-                    if not key.startswith(GatewayState.NAMESPACE_PREFIX):
+                    if not key.startswith(ns_prefix):
                         continue
                     try:
                         (should_process, new_lb_grp_id) = self.namespace_only_lb_group_id_changed(local_state_dict[key],
