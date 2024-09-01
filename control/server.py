@@ -341,15 +341,7 @@ class GatewayServer:
         self.logger.debug(f"Configuring server {self.name}")
         spdk_tgt_path = self.config.get("spdk", "tgt_path")
         self.logger.info(f"SPDK Target Path: {spdk_tgt_path}")
-        self.spdk_rpc_socket_path = self.config.get_with_default("spdk", "rpc_socket", "/var/tmp/spdk.sock")
-        self.logger.info(f"SPDK Socket: {self.spdk_rpc_socket_path}")
-        spdk_tgt_cmd_extra_args = self.config.get_with_default(
-            "spdk", "tgt_cmd_extra_args", "")
-        cmd = [spdk_tgt_path, "-u", "-r", self.spdk_rpc_socket_path]
-        if spdk_tgt_cmd_extra_args:
-            cmd += shlex.split(spdk_tgt_cmd_extra_args)
-        self.logger.info(f"Starting {' '.join(cmd)}")
-        sockdir = os.path.dirname(self.spdk_rpc_socket_path)
+        sockdir = self.config.get_with_default("spdk", "rpc_socket_dir", "/var/tmp/")
         if not os.path.isdir(sockdir):
             self.logger.warning(f"Directory {sockdir} does not exist, will create it")
             try:
@@ -357,6 +349,20 @@ class GatewayServer:
             except Exception:
                 self.logger.exception(f"Error trying to create {sockdir}")
                 raise
+        if not sockdir.endswith("/"):
+            sockdir += "/"
+        sockname = self.config.get_with_default("spdk", "rpc_socket_name", "spdk.sock")
+        if sockname.find("/") >= 0:
+            self.logger.error(f"Invalid SPDK socket name \"{sockname}\". Name should not contain a \"/\".")
+            raise(f"Invalid SPDK socket name.")
+        self.spdk_rpc_socket_path = sockdir + sockname
+        self.logger.info(f"SPDK Socket: {self.spdk_rpc_socket_path}")
+        spdk_tgt_cmd_extra_args = self.config.get_with_default(
+            "spdk", "tgt_cmd_extra_args", "")
+        cmd = [spdk_tgt_path, "-u", "-r", self.spdk_rpc_socket_path]
+        if spdk_tgt_cmd_extra_args:
+            cmd += shlex.split(spdk_tgt_cmd_extra_args)
+        self.logger.info(f"Starting {' '.join(cmd)}")
         try:
             # start spdk process
             time.sleep(2)      # this is a temporary hack, we have a timing issue here. Once we solve it the sleep will ve removed
@@ -367,7 +373,7 @@ class GatewayServer:
 
         # Initialization
         timeout = self.config.getfloat_with_default("spdk", "timeout", 60.0)
-        protocol_log_level = self.config.get_with_default("spdk", "protocol_log_level", "WARNING")
+        protocol_log_level = self.config.get_with_default("spdk", "log_level", "WARNING")
         # connect timeout: spdk client retries 5 times per sec
         conn_retries = int(timeout * 5)
         self.logger.info(f"SPDK process id: {self.spdk_process.pid}")

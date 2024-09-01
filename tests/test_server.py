@@ -57,7 +57,7 @@ class TestServer(unittest.TestCase):
         configB = copy.deepcopy(configA)
         configB.config["gateway"]["name"] = "GatewayB"
         configB.config["gateway"]["port"] = str(configA.getint("gateway", "port") + 1)
-        configB.config["spdk"]["rpc_socket"] = "/var/tmp/spdk_GatewayB.sock"
+        configB.config["spdk"]["rpc_socket_name"] = "spdk_GatewayB.sock"
         # invalid arg, spdk would exit with code 1 at start up
         configB.config["spdk"]["tgt_cmd_extra_args"] = "-m 0x343435545"
 
