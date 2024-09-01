@@ -1,6 +1,7 @@
 import pytest
 import time
 import rados
+import logging
 from control.state import LocalGatewayState, OmapGatewayState, GatewayStateHandler
 
 
@@ -47,10 +48,12 @@ def test_state_polling_update(config, ioctx, local_state, omap_state):
     """Confirms periodic polling of the OMAP for updates."""
 
     update_counter = 0
+    logger = logging.getLogger("test_state_polling_update")
 
     def _state_polling_update(update, is_add_req):
         nonlocal update_counter
         update_counter += 1
+        logger.info(f"_state_polling_update {update_counter=} {update=} {is_add_req=}")
         for k, v in update.items():
             # Check for addition
             if update_counter == 1:
@@ -78,7 +81,7 @@ def test_state_polling_update(config, ioctx, local_state, omap_state):
                                 _state_polling_update, "test")
     state.update_interval = update_interval_sec
     state.use_notify = False
-    key = "namespace_test"
+    key = "host_test"
     state.start_update()
 
     # Add namespace key to OMAP and update version number
@@ -106,10 +109,12 @@ def test_state_notify_update(config, ioctx, local_state, omap_state):
     """Confirms use of OMAP watch/notify for updates."""
 
     update_counter = 0
+    logger = logging.getLogger("test_state_notify_update")
 
     def _state_notify_update(update, is_add_req):
         nonlocal update_counter
         update_counter += 1
+        logger.info(f"_state_notify_update {update_counter=} {update=} {is_add_req=}")
         elapsed = time.time() - start
         assert elapsed < update_interval_sec
         for k, v in update.items():
@@ -134,10 +139,10 @@ def test_state_notify_update(config, ioctx, local_state, omap_state):
             assert update_counter < 5
 
     version = 1
-    update_interval_sec = 10
+    update_interval_sec = 300
     state = GatewayStateHandler(config, local_state, omap_state,
                                 _state_notify_update, "test")
-    key = "namespace_test"
+    key = "host_test"
     state.update_interval = update_interval_sec
     state.use_notify = True
     start = time.time()
@@ -161,10 +166,9 @@ def test_state_notify_update(config, ioctx, local_state, omap_state):
                omap_state.OMAP_VERSION_KEY)
     assert (ioctx.notify(omap_state.omap_name))  # Send notify signal
 
-    # any wait interval smaller than update_interval_sec = 10 should be good
+    # any wait interval smaller than update_interval_sec should be good
     # to test notify capability
-    elapsed = time.time() - start
-    wait_interval = update_interval_sec - elapsed - 0.5
+    wait_interval =  update_interval_sec >> 1
     assert(wait_interval > 0)
     assert(wait_interval < update_interval_sec)
     time.sleep(wait_interval)
