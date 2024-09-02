@@ -195,8 +195,8 @@ class GatewayServer:
         # Set SPDK log level
         log_level_args = {}
         log_level = self.config.get_with_default("spdk", "log_level", None)
-        if log_level:
-            log_level = log_level.upper()
+        if log_level and log_level.strip():
+            log_level = log_level.strip().upper()
             log_req = pb2.set_spdk_nvmf_logs_req(log_level=log_level, print_level=log_level)
             self.gateway_rpc.set_spdk_nvmf_logs(log_req)
 
@@ -374,12 +374,16 @@ class GatewayServer:
         # Initialization
         timeout = self.config.getfloat_with_default("spdk", "timeout", 60.0)
         protocol_log_level = self.config.get_with_default("spdk", "log_level", "WARNING")
+        if not protocol_log_level or not protocol_log_level.strip():
+            protocol_log_level = "WARNING"
+        else:
+            protocol_log_level = protocol_log_level.strip().upper()
         # connect timeout: spdk client retries 5 times per sec
         conn_retries = int(timeout * 5)
         self.logger.info(f"SPDK process id: {self.spdk_process.pid}")
         self.logger.info(
             f"Attempting to initialize SPDK: rpc_socket: {self.spdk_rpc_socket_path},"
-            f" conn_retries: {conn_retries}, timeout: {timeout}"
+            f" conn_retries: {conn_retries}, timeout: {timeout}, log level: {protocol_log_level}"
         )
         try:
             self.spdk_rpc_client = rpc_client.JSONRPCClient(
