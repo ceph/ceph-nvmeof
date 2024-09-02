@@ -52,9 +52,9 @@ def test_state_polling_update(config, ioctx, local_state, omap_state):
 
     def _state_polling_update(update, is_add_req):
         nonlocal update_counter
-        update_counter += 1
         logger.info(f"_state_polling_update {update_counter=} {update=} {is_add_req=}")
         for k, v in update.items():
+            update_counter += 1
             # Check for addition
             if update_counter == 1:
                 assert is_add_req is True
@@ -113,11 +113,11 @@ def test_state_notify_update(config, ioctx, local_state, omap_state):
 
     def _state_notify_update(update, is_add_req):
         nonlocal update_counter
-        update_counter += 1
         logger.info(f"_state_notify_update {update_counter=} {update=} {is_add_req=}")
         elapsed = time.time() - start
         assert elapsed < update_interval_sec
         for k, v in update.items():
+            update_counter += 1
             # Check for addition
             if update_counter == 1:
                 assert is_add_req is True
@@ -173,7 +173,7 @@ def test_state_notify_update(config, ioctx, local_state, omap_state):
     assert(wait_interval < update_interval_sec)
     time.sleep(wait_interval)
 
-    # expect 4 updates: addition, two-step change and removal
+    # expect 4 updates completed: addition, two-step change and removal
     # registered before update_interval_sec
     assert update_counter == 4
     elapsed = time.time() - start
