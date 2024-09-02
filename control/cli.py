@@ -205,15 +205,20 @@ class GatewayClient:
             raise AttributeError("stub is None. Set with connect method.")
         return self._stub
 
-    def connect(self, host, port, client_key, client_cert, server_cert):
+    def connect(self, args, host, port, client_key, client_cert, server_cert):
         """Connects to server and sets stub."""
+        out_func, err_func = self.get_output_functions(args)
+        if args.format == "json" or args.format == "yaml" or args.format == "python":
+            out_func = None
+
         # We need to enclose IPv6 addresses in brackets before concatenating a colon and port number to it
         host = GatewayUtils.escape_address_if_ipv6(host)
         server = f"{host}:{port}"
 
         if client_key and client_cert:
             # Create credentials for mutual TLS and a secure channel
-            self.logger.info("Enable server auth since both --client-key and --client-cert are provided")
+            if out_func:
+                out_func("Enable server auth since both --client-key and --client-cert are provided")
             with client_cert as f:
                 client_cert = f.read()
             with client_key as f:
@@ -222,7 +227,7 @@ class GatewayClient:
                 with server_cert as f:
                     server_cert = f.read()
             else:
-                self.logger.warn("No server certificate file was provided")
+                err_func("No server certificate file was provided")
 
             credentials = grpc.ssl_channel_credentials(
                 root_certificates=server_cert,
@@ -1872,7 +1877,7 @@ def main_common(client, args):
     client_key = args.client_key
     client_cert = args.client_cert
     server_cert = args.server_cert
-    client.connect(server_address, server_port, client_key, client_cert, server_cert)
+    client.connect(args, server_address, server_port, client_key, client_cert, server_cert)
     call_function = getattr(client, args.func.__name__)
     rc = call_function(args)
     return rc
