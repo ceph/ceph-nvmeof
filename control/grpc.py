@@ -2592,7 +2592,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         """Gets subsystems."""
 
         peer_msg = self.get_peer_message(context)
-        self.logger.debug(f"Received request to get subsystems, context: {context}{peer_msg}")
+        self.logger.info(f"Received request to get subsystems, context: {context}{peer_msg}")
         subsystems = []
         try:
             ret = rpc_nvmf.nvmf_get_subsystems(self.spdk_rpc_subsystems_client)
@@ -2602,6 +2602,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
             context.set_details(f"{ex}")
             return pb2.subsystems_info()
 
+        self.logger.info(f"Completed the request to get subsystems, context: {context}{peer_msg}")
         for s in ret:
             try:
                 ns_key = "namespaces"
@@ -2622,6 +2623,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         return pb2.subsystems_info(subsystems=subsystems)
 
     def get_subsystems(self, request, context):
+        self.logger.info(f"Received request to get subsystems, context: {context}, taking spdk_rpc_subsystems_lock")
         with self.spdk_rpc_subsystems_lock:
             return self.get_subsystems_safe(request, context)
 

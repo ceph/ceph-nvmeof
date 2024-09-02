@@ -301,7 +301,7 @@ class GatewayServer:
         #  very large resources implicitly on many-core machines.
         cpu_count = os.cpu_count()
         max_workers = min(32, cpu_count + 4)
-        self.logger.info(f"constructing gRPC server at {addresses=}  {cpu_count=} {max_workers=}")
+        self.logger.info(f"constructing gRPC server at {address=}  {cpu_count=} {max_workers=}")
         server = grpc.server(futures.ThreadPoolExecutor(max_workers = max_workers))
 
         enable_auth = self.config.getboolean("gateway", "enable_auth")
