@@ -30,6 +30,7 @@ def setup_config(config, gw1_name, gw2_name, gw_group, update_notify ,update_int
     configA.config["gateway"]["omap_file_lock_duration"] = str(lock_duration)
     configA.config["gateway"]["enable_spdk_discovery_controller"] = "True"
     configA.config["spdk"]["rpc_socket_name"] = sock1_name
+    configA.config["spdk"]["tgt_cmd_extra_args"] = "-m 0x03"
     configB = copy.deepcopy(configA)
     portA = configA.getint("gateway", "port") + port_inc
     configA.config["gateway"]["port"] = str(portA)
@@ -38,7 +39,7 @@ def setup_config(config, gw1_name, gw2_name, gw_group, update_notify ,update_int
     configB.config["gateway"]["override_hostname"] = gw2_name
     configB.config["gateway"]["port"] = str(portB)
     configB.config["spdk"]["rpc_socket_name"] = sock2_name
-    configB.config["spdk"]["tgt_cmd_extra_args"] = "-m 0x02"
+    configB.config["spdk"]["tgt_cmd_extra_args"] = "-m 0x0C"
 
     return configA, configB
 
