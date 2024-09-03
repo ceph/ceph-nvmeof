@@ -1,6 +1,7 @@
 import pytest
 import time
 import rados
+import threading
 from control.state import LocalGatewayState, OmapGatewayState, GatewayStateHandler
 
 
@@ -106,9 +107,11 @@ def test_state_notify_update(config, ioctx, local_state, omap_state):
     """Confirms use of OMAP watch/notify for updates."""
 
     update_counter = 0
+    notify_event = threading.Event() # Event to signal when notify is called
 
     def _state_notify_update(update, is_add_req):
         nonlocal update_counter
+        nonlocal notify_event
         update_counter += 1
         elapsed = time.time() - start
         assert elapsed < update_interval_sec
@@ -132,6 +135,7 @@ def test_state_notify_update(config, ioctx, local_state, omap_state):
                 assert is_add_req is False
                 assert k == key
             assert update_counter < 5
+        notify_event.set()  # Signal that notify was called
 
     version = 1
     update_interval_sec = 10
@@ -148,18 +152,30 @@ def test_state_notify_update(config, ioctx, local_state, omap_state):
     add_key(ioctx, key, "add", version, omap_state.omap_name,
             omap_state.OMAP_VERSION_KEY)
     assert (ioctx.notify(omap_state.omap_name))  # Send notify signal
+    # Wait for the notify to be triggered
+    assert notify_event.wait(update_interval_sec - 0.5)
+    notify_event.clear()  # Reset the event for the next notification
+    assert update_counter == 1
 
     # Change namespace key and update version number
     version += 1
     add_key(ioctx, key, "changed", version, omap_state.omap_name,
             omap_state.OMAP_VERSION_KEY)
     assert (ioctx.notify(omap_state.omap_name))  # Send notify signal
+    # Wait for the notify to be triggered
+    assert notify_event.wait(update_interval_sec - 0.5)
+    notify_event.clear()  # Reset the event for the next notification
+    assert update_counter == 3
 
     # Remove namespace key and update version number
     version += 1
     remove_key(ioctx, key, version, omap_state.omap_name,
                omap_state.OMAP_VERSION_KEY)
     assert (ioctx.notify(omap_state.omap_name))  # Send notify signal
+    # Wait for the notify to be triggered
+    assert notify_event.wait(update_interval_sec - 0.5)
+    notify_event.clear()  # Reset the event for the next notification
+    assert update_counter == 4
 
     # any wait interval smaller than update_interval_sec = 10 should be good
     # to test notify capability
