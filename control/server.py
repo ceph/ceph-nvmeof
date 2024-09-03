@@ -54,6 +54,10 @@ def sigchld_handler(signum, frame):
     # GW process should exit now
     raise SystemExit(f"Gateway subprocess terminated {pid=} {exit_code=}")
 
+def int_to_bitmask(n):
+    """Converts an integer n to a bitmask string"""
+    return f"0x{hex((1 << n) - 1)[2:].upper()}"
+
 class GatewayServer:
     """Runs SPDK and receives client requests for the gateway service.
 
@@ -360,8 +364,18 @@ class GatewayServer:
         spdk_tgt_cmd_extra_args = self.config.get_with_default(
             "spdk", "tgt_cmd_extra_args", "")
         cmd = [spdk_tgt_path, "-u", "-r", self.spdk_rpc_socket_path]
+
+        # Add extra args from the conf file
         if spdk_tgt_cmd_extra_args:
             cmd += shlex.split(spdk_tgt_cmd_extra_args)
+
+        # If not provided in configuration,
+        # calculate cpu mask available for spdk reactors
+        if '-m' not in cmd and '--cpumask' not in cmd:
+            cpu_mask = f"-m {int_to_bitmask(min(4, os.cpu_count()))}"
+            self.logger.info(f"SPDK autodetecting cpu_mask: {cpu_mask}")
+            cmd += shlex.split(cpu_mask)
+
         self.logger.info(f"Starting {' '.join(cmd)}")
         try:
             # start spdk process

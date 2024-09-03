@@ -35,6 +35,7 @@ def two_gateways(config):
     configA.config["gateway"]["name"] = nameA
     configA.config["gateway"]["override_hostname"] = nameA
     configA.config["spdk"]["rpc_socket_name"] = sockA
+    configA.config["spdk"]["tgt_cmd_extra_args"] = "-m 0x03"
     portA = configA.getint("gateway", "port") + 1
     configA.config["gateway"]["port"] = str(portA)
     discPortA = configA.getint("discovery", "port") + 1
@@ -46,7 +47,7 @@ def two_gateways(config):
     discPortB = discPortA + 1
     configB.config["gateway"]["port"] = str(portB)
     configB.config["discovery"]["port"] = str(discPortB)
-    configB.config["spdk"]["tgt_cmd_extra_args"] = "-m 0x02"
+    configB.config["spdk"]["tgt_cmd_extra_args"] = "-m 0x0C"
 
     ceph_utils = CephUtils(config)
     with (GatewayServer(configA) as gatewayA, GatewayServer(configB) as gatewayB):

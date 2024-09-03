@@ -23,6 +23,7 @@ def conn(config):
     configA.config["gateway"]["state_update_notify"] = str(update_notify)
     configA.config["gateway"]["enable_spdk_discovery_controller"] = "True"
     configA.config["spdk"]["rpc_socket_name"] = "spdk_GatewayA.sock"
+    configA.config["spdk"]["tgt_cmd_extra_args"] = "-m 0x03"
     configB = copy.deepcopy(configA)
     addr = configA.get("gateway", "addr")
     portA = configA.getint("gateway", "port")
@@ -31,7 +32,7 @@ def conn(config):
     configB.config["gateway"]["port"] = str(portB)
     configB.config["gateway"]["state_update_interval_sec"] = str(update_interval_sec)
     configB.config["spdk"]["rpc_socket_name"] = "spdk_GatewayB.sock"
-    configB.config["spdk"]["tgt_cmd_extra_args"] = "-m 0x02"
+    configB.config["spdk"]["tgt_cmd_extra_args"] = "-m 0x0C"
     ceph_utils = CephUtils(config)
 
     # Start servers
