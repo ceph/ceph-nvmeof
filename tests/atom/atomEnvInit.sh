@@ -2,6 +2,7 @@
 
 ATOM_SHA=$1
 ACTION_URL=$2
+RUNNER_FILDER='/home/cephnvme/actions-runner-ceph'
 
 cleanup_docker_images() {
     local HOST=$1
@@ -15,7 +16,7 @@ EOF
 }
 
 # Remove previous run data
-rm -rf /home/cephnvme/actions-runner-ceph/ceph-nvmeof-atom
+rm -rf $RUNNER_FILDER/ceph-nvmeof-atom
 sudo rm -rf /root/.ssh/atom_backup/artifact/multiIBMCloudServers_m2/*
 
 # Check if cluster is busy with another run
@@ -35,7 +36,7 @@ done
 sudo docker ps -q | xargs -r sudo docker stop; sudo docker ps -q | xargs -r sudo docker rm -f; sudo yes | docker system prune -fa; docker ps; docker images
 
 # Cloning atom repo
-cd /home/cephnvme/actions-runner-ceph
+cd $RUNNER_FILDER
 git clone git@github.ibm.com:NVME-Over-Fiber/ceph-nvmeof-atom.git
 if [ $? -ne 0 ]; then
     echo "Error: Failed to clone the atom repository."
@@ -51,7 +52,7 @@ if [ $? -ne 0 ]; then
 fi
 
 # Build atom images based on the cloned repo
-docker build -t nvmeof_atom:$ATOM_SHA /home/cephnvme/actions-runner-ceph/ceph-nvmeof-atom
+docker build -t nvmeof_atom:$ATOM_SHA $RUNNER_FILDER/ceph-nvmeof-atom
 if [ $? -ne 0 ]; then
     echo "Error: Failed to build Docker image."
     exit 1
@@ -74,4 +75,11 @@ for HOST in "${HOSTS[@]}"; do
     fi
 done
 
-sudo podman ps -q | xargs -r sudo podman stop; sudo podman ps -q | xargs -r sudo podman rm -f; sudo yes | podman system prune -fa; podman ps; podman images
+echo "Cleaning up Podman containers and images on installer"
+sudo podman ps -q | xargs -r sudo podman stop
+sudo podman ps -q | xargs -r sudo podman rm -f
+sudo podman rmi -f $(sudo podman images -q)
+sudo yes | podman system prune -fa
+echo "show exist podman images/containers (should be empty)"
+sudo podman ps
+sudo podman images
