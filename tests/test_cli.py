@@ -18,6 +18,8 @@ image4 = "mytestdevimage4"
 pool = "rbd"
 subsystem = "nqn.2016-06.io.spdk:cnode1"
 subsystem2 = "nqn.2016-06.io.spdk:cnode2"
+subsystem3 = "nqn.2016-06.io.spdk:cnode3"
+subsystem4 = "nqn.2016-06.io.spdk:cnode4"
 discovery_nqn = "nqn.2014-08.org.nvmexpress.discovery"
 serial = "Ceph00000000000001"
 uuid = "948878ee-c3b2-4d58-a29b-2cff713fc02d"
@@ -39,6 +41,7 @@ listener_list_negative_port = [["-t", host_name, "-a", addr, "-s", "-2000"]]
 listener_list_big_port = [["-t", host_name, "-a", addr, "-s", "70000"]]
 listener_list_wrong_host = [["-t", "WRONG", "-a", addr, "-s", "5015", "-f", "ipv4"]]
 config = "ceph-nvmeof.conf"
+group_name = "GROUPNAME"
 
 @pytest.fixture(scope="module")
 def gateway(config):
@@ -46,6 +49,7 @@ def gateway(config):
 
     addr = config.get("gateway", "addr")
     port = config.getint("gateway", "port")
+    config.config["gateway"]["group"] = group_name
     config.config["gateway-logs"]["log_level"] = "debug"
     ceph_utils = CephUtils(config)
 
@@ -53,7 +57,7 @@ def gateway(config):
 
         # Start gateway
         gateway.gw_logger_object.set_log_level("debug")
-        ceph_utils.execute_ceph_monitor_command("{" + f'"prefix":"nvme-gw create", "id": "{gateway.name}", "pool": "{pool}", "group": ""' + "}")
+        ceph_utils.execute_ceph_monitor_command("{" + f'"prefix":"nvme-gw create", "id": "{gateway.name}", "pool": "{pool}", "group": "{group_name}"' + "}")
         gateway.serve()
 
         # Bind the client and Gateway
@@ -134,52 +138,52 @@ class TestGet:
 class TestCreate:
     def test_create_subsystem(self, caplog, gateway):
         caplog.clear()
-        cli(["subsystem", "add", "--subsystem", "nqn.2016"])
+        cli(["subsystem", "add", "--subsystem", "nqn.2016", "--no-group-append"])
         assert f'NQN "nqn.2016" is too short, minimal length is 11' in caplog.text
         caplog.clear()
         cli(["subsystem", "add", "--subsystem",
-"nqn.2016-06XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"])
+"nqn.2016-06XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX", "--no-group-append"])
         assert f"is too long, maximal length is 223" in caplog.text
         caplog.clear()
-        cli(["subsystem", "add", "--subsystem", "nqn.2014-08.org.nvmexpress:uuid:0"])
+        cli(["subsystem", "add", "--subsystem", "nqn.2014-08.org.nvmexpress:uuid:0", "--no-group-append"])
         assert f"UUID is not the correct length" in caplog.text
         caplog.clear()
-        cli(["subsystem", "add", "--subsystem", "nqn.2014-08.org.nvmexpress:uuid:9e9134-3cb431-4f3e-91eb-a13cefaabebf"])
+        cli(["subsystem", "add", "--subsystem", "nqn.2014-08.org.nvmexpress:uuid:9e9134-3cb431-4f3e-91eb-a13cefaabebf", "--no-group-append"])
         assert f"UUID is not formatted correctly" in caplog.text
         caplog.clear()
-        cli(["subsystem", "add", "--subsystem", "qqn.2016-06.io.spdk:cnode1"])
+        cli(["subsystem", "add", "--subsystem", "qqn.2016-06.io.spdk:cnode1", "--no-group-append"])
         assert f"doesn't start with" in caplog.text
         caplog.clear()
-        cli(["subsystem", "add", "--subsystem", "nqn.016-206.io.spdk:cnode1"])
+        cli(["subsystem", "add", "--subsystem", "nqn.016-206.io.spdk:cnode1", "--no-group-append"])
         assert f"invalid date code" in caplog.text
         caplog.clear()
-        cli(["subsystem", "add", "--subsystem", "nqn.2X16-06.io.spdk:cnode1"])
+        cli(["subsystem", "add", "--subsystem", "nqn.2X16-06.io.spdk:cnode1", "--no-group-append"])
         assert f"invalid date code" in caplog.text
         caplog.clear()
-        cli(["subsystem", "add", "--subsystem", "nqn.2016-06.io.spdk:"])
+        cli(["subsystem", "add", "--subsystem", "nqn.2016-06.io.spdk:", "--no-group-append"])
         assert f"must contain a user specified name starting with" in caplog.text
         caplog.clear()
-        cli(["subsystem", "add", "--subsystem", "nqn.2016-06.io..spdk:cnode1"])
+        cli(["subsystem", "add", "--subsystem", "nqn.2016-06.io..spdk:cnode1", "--no-group-append"])
         assert f"reverse domain is not formatted correctly" in caplog.text
         caplog.clear()
-        cli(["subsystem", "add", "--subsystem", "nqn.2016-06.io.XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX.spdk:cnode1"])
+        cli(["subsystem", "add", "--subsystem", "nqn.2016-06.io.XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX.spdk:cnode1", "--no-group-append"])
         assert f"reverse domain is not formatted correctly" in caplog.text
         caplog.clear()
-        cli(["subsystem", "add", "--subsystem", "nqn.2016-06.io.-spdk:cnode1"])
+        cli(["subsystem", "add", "--subsystem", "nqn.2016-06.io.-spdk:cnode1", "--no-group-append"])
         assert f"reverse domain is not formatted correctly" in caplog.text
         caplog.clear()
-        cli(["subsystem", "add", "--subsystem", f"{subsystem}_X"])
+        cli(["subsystem", "add", "--subsystem", f"{subsystem}_X", "--no-group-append"])
         assert f"Invalid NQN" in caplog.text
         assert f"contains invalid characters" in caplog.text
         caplog.clear()
-        cli(["subsystem", "add", "--subsystem", subsystem, "--max-namespaces", "2049"])
+        cli(["subsystem", "add", "--subsystem", subsystem, "--max-namespaces", "2049", "--no-group-append"])
         assert f"create_subsystem {subsystem}: True" in caplog.text
         cli(["--format", "json", "subsystem", "list"])
         assert f'"serial_number": "{serial}"' not in caplog.text
         assert f'"nqn": "{subsystem}"' in caplog.text
         assert f'"max_namespaces": 2049' in caplog.text
         caplog.clear()
-        cli(["subsystem", "add", "--subsystem", subsystem2, "--serial-number", serial])
+        cli(["subsystem", "add", "--subsystem", subsystem2, "--serial-number", serial, "--no-group-append"])
         assert f"create_subsystem {subsystem2}: True" in caplog.text
         caplog.clear()
         cli(["--format", "json", "subsystem", "list"])
@@ -229,6 +233,15 @@ class TestCreate:
         rc = 0
         try:
             cli(["subsystem", "add", "--subsystem", discovery_nqn])
+        except SystemExit as sysex:
+            rc = int(str(sysex))
+            pass
+        assert "Can't add a discovery subsystem" in caplog.text
+        assert rc == 2
+        caplog.clear()
+        rc = 0
+        try:
+            cli(["subsystem", "add", "--subsystem", discovery_nqn, "--no-group-append"])
         except SystemExit as sysex:
             rc = int(str(sysex))
             pass
@@ -911,7 +924,7 @@ class TestCreateWithAna:
         cli(["subsystem", "list"])
         assert "No subsystems" in caplog.text
         caplog.clear()
-        cli(["subsystem", "add", "--subsystem", subsystem])
+        cli(["subsystem", "add", "--subsystem", subsystem, "--no-group-append"])
         assert f"Adding subsystem {subsystem}: Successful" in caplog.text
         caplog.clear()
         cli(["subsystem", "list"])
@@ -954,6 +967,25 @@ class TestDeleteAna:
         caplog.clear()
         cli(["subsystem", "list"])
         assert "No subsystems" in caplog.text
+
+class TestSubsysWithGroupName:
+    def test_create_subsys_group_name(self, caplog, gateway):
+        caplog.clear()
+        cli(["subsystem", "add", "--subsystem", subsystem3])
+        assert f"Subsystem NQN was changed to {subsystem3}.{group_name}, adding the group name" in caplog.text
+        assert f"create_subsystem {subsystem3}.{group_name}: True" in caplog.text
+        assert f"create_subsystem {subsystem3}: True" not in caplog.text
+        cli(["--format", "json", "subsystem", "list"])
+        assert f'"nqn": "{subsystem3}.{group_name}"' in caplog.text
+        assert f'"nqn": "{subsystem3}"' not in caplog.text
+        caplog.clear()
+        cli(["subsystem", "add", "--subsystem", subsystem4, "--no-group-append"])
+        assert f"Subsystem NQN will not be changed" in caplog.text
+        assert f"create_subsystem {subsystem4}.{group_name}: True" not in caplog.text
+        assert f"create_subsystem {subsystem4}: True" in caplog.text
+        cli(["--format", "json", "subsystem", "list"])
+        assert f'"nqn": "{subsystem4}.{group_name}"' not in caplog.text
+        assert f'"nqn": "{subsystem4}"' in caplog.text
 
 class TestGwLogLevel:
     def test_gw_log_level(self, caplog, gateway):

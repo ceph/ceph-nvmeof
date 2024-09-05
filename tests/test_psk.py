@@ -49,6 +49,7 @@ def gateway(config):
     addr = config.get("gateway", "addr")
     port = config.getint("gateway", "port")
     config.config["gateway-logs"]["log_level"] = "debug"
+    config.config["gateway"]["group"] = ""
     ceph_utils = CephUtils(config)
 
     with GatewayServer(config) as gateway:

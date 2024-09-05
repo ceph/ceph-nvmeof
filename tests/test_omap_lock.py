@@ -139,7 +139,7 @@ def build_host_nqn(i):
 
 def create_resource_by_index(stub, i, caplog):
     subsystem = f"{subsystem_prefix}{i}"
-    subsystem_req = pb2.create_subsystem_req(subsystem_nqn=subsystem, max_namespaces=256, enable_ha=True)
+    subsystem_req = pb2.create_subsystem_req(subsystem_nqn=subsystem, max_namespaces=256, enable_ha=True, no_group_append=True)
     ret_subsystem = stub.create_subsystem(subsystem_req)
     assert ret_subsystem.status == 0
     if caplog != None:
@@ -191,7 +191,7 @@ def test_multi_gateway_omap_reread(config, conn_omap_reread, caplog):
     num_subsystems = 2
 
     # Send requests to create a subsystem with one namespace to GatewayA
-    subsystem_req = pb2.create_subsystem_req(subsystem_nqn=nqn, serial_number=serial, max_namespaces=256, enable_ha=True)
+    subsystem_req = pb2.create_subsystem_req(subsystem_nqn=nqn, serial_number=serial, max_namespaces=256, enable_ha=True, no_group_append=True)
     namespace_req = pb2.namespace_add_req(subsystem_nqn=nqn, nsid=nsid,
                                           rbd_pool_name=pool, rbd_image_name=image, block_size=4096,
                                           create_image=True, size=16*1024*1024, force=True)
@@ -319,7 +319,7 @@ def test_multi_gateway_listener_update(config, image, conn_concurrent, caplog):
 
     caplog.clear()
     subsystem = f"{subsystem_prefix}QQQ"
-    subsystem_add_req = pb2.create_subsystem_req(subsystem_nqn=subsystem, max_namespaces=256, enable_ha=True)
+    subsystem_add_req = pb2.create_subsystem_req(subsystem_nqn=subsystem, max_namespaces=256, enable_ha=True, no_group_append=True)
     ret_subsystem = stubA.create_subsystem(subsystem_add_req)
     assert ret_subsystem.status == 0
     assert f"create_subsystem {subsystem}: True" in caplog.text

@@ -673,7 +673,8 @@ class GatewayClient:
         req = pb2.create_subsystem_req(subsystem_nqn=args.subsystem,
                                         serial_number=args.serial_number,
                                         max_namespaces=args.max_namespaces,
-                                        enable_ha=True)
+                                        enable_ha=True,
+                                        no_group_append=args.no_group_append)
         try:
             ret = self.stub.create_subsystem(req)
         except Exception as ex:
@@ -809,6 +810,7 @@ class GatewayClient:
         argument("--subsystem", "-n", help="Subsystem NQN", required=True),
         argument("--serial-number", "-s", help="Serial number", required=False),
         argument("--max-namespaces", "-m", help="Maximum number of namespaces", type=int, required=False),
+        argument("--no-group-append", help="Do not append gateway group name to the NQN", action='store_true', required=False),
     ]
     subsys_del_args = [
         argument("--subsystem", "-n", help="Subsystem NQN", required=True),

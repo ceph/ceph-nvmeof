@@ -39,6 +39,7 @@ def check_resource_by_index(i, caplog):
 # for pytest. In order for the test to fail in such a case we need to ask pytest to regard this as an error
 @pytest.mark.filterwarnings("error::pytest.PytestUnhandledThreadExceptionWarning")
 def test_create_get_subsys(caplog, config):
+    config.config["gateway"]["group"] = ""
     ceph_utils = CephUtils(config)
     with GatewayServer(config) as gateway:
         ceph_utils.execute_ceph_monitor_command("{" + f'"prefix":"nvme-gw create", "id": "{gateway.name}", "pool": "{pool}", "group": ""' + "}")

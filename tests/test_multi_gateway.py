@@ -76,7 +76,7 @@ def test_multi_gateway_coordination(config, image, conn):
 
     # Send requests to create a subsystem with one namespace to GatewayA
     subsystem_req = pb2.create_subsystem_req(subsystem_nqn=nqn, max_namespaces=256,
-                                             serial_number=serial, enable_ha=True)
+                                             serial_number=serial, enable_ha=True, no_group_append=True)
     namespace_req = pb2.namespace_add_req(subsystem_nqn=nqn,
                                           rbd_pool_name=pool,
                                           rbd_image_name=image,

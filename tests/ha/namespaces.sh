@@ -77,7 +77,7 @@ GW2_ANA=2
 GW_INC=2
 
 echo "ℹ️  Step 1: create subsystem $NQN"
-docker compose  run --rm nvmeof-cli --server-address $GW1_IP --server-port 5500 subsystem add --subsystem  $NQN
+docker compose  run --rm nvmeof-cli --server-address $GW1_IP --server-port 5500 subsystem add --subsystem $NQN --no-group-append
 verify_num_namespaces $GW1_IP $NO_NAMESPACE
 verify_num_namespaces $GW2_IP $NO_NAMESPACE
 
@@ -103,4 +103,4 @@ verify_num_namespaces $GW1_IP $NO_NAMESPACE
 verify_num_namespaces $GW2_IP $NO_NAMESPACE
 
 echo "ℹ️  Step 5: delete subsystem $NQN"
-docker compose  run --rm nvmeof-cli --server-address $GW1_IP --server-port 5500 subsystem del --subsystem  $NQN
+docker compose  run --rm nvmeof-cli --server-address $GW1_IP --server-port 5500 subsystem del --subsystem $NQN
