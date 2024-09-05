@@ -77,13 +77,13 @@ def test_multi_gateway_namespace_ids(config, image, caplog):
         # Send requests to create a subsystem on GatewayA
         caplog.clear()
         subsystem = f"{subsystem_prefix}PPP"
-        subsystem_add_req = pb2.create_subsystem_req(subsystem_nqn=subsystem, max_namespaces=256)
+        subsystem_add_req = pb2.create_subsystem_req(subsystem_nqn=subsystem, max_namespaces=256, no_group_append=True)
         ret_subsystem = stubA.create_subsystem(subsystem_add_req)
         assert ret_subsystem.status != 0
         assert "HA must be enabled for subsystems" in caplog.text
         caplog.clear()
         subsystem = f"{subsystem_prefix}WWW"
-        subsystem_add_req = pb2.create_subsystem_req(subsystem_nqn=subsystem, max_namespaces=256, enable_ha=True)
+        subsystem_add_req = pb2.create_subsystem_req(subsystem_nqn=subsystem, max_namespaces=256, enable_ha=True, no_group_append=True)
         ret_subsystem = stubA.create_subsystem(subsystem_add_req)
         assert ret_subsystem.status == 0
         assert f"create_subsystem {subsystem}: True" in caplog.text

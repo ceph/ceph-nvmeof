@@ -32,8 +32,9 @@ echo ℹ️  Running processes of services
 docker compose top
 
 echo ℹ️  Send nvme-gw create for all gateways
+GW_GROUP=$(grep group ceph-nvmeof.conf | sed 's/^[^=]*=//' | sed 's/^ *//' | sed 's/ *$//')
 for i in $(seq $SCALE); do
   GW_NAME=$(docker ps --format '{{.ID}}\t{{.Names}}' | grep -v discovery | awk '$2 ~ /nvmeof/ && $2 ~ /'$i'/ {print $1}')
-  echo  📫 nvme-gw create gateway: \'$GW_NAME\' pool: \'$POOL\', group: \'\' \(empty string\)
-  docker compose exec -T ceph ceph nvme-gw create $GW_NAME $POOL ''
+  echo  📫 nvme-gw create gateway: \'$GW_NAME\' pool: \'$POOL\', group: \'$GW_GROUP\'
+  docker compose exec -T ceph ceph nvme-gw create $GW_NAME $POOL "$GW_GROUP"
 done

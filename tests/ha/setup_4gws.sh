@@ -33,7 +33,7 @@ NUM_NAMESPACES=32
 # Setup
 for i in $(seq $NUM_SUBSYSTEMS); do
     NQN="nqn.2016-06.io.spdk:cnode$i"
-    docker compose  run --rm nvmeof-cli --server-address $(gw_ip 1) --server-port 5500 subsystem add --subsystem $NQN --max-namespaces $NUM_NAMESPACES
+    docker compose  run --rm nvmeof-cli --server-address $(gw_ip 1) --server-port 5500 subsystem add --subsystem $NQN --max-namespaces $NUM_NAMESPACES --no-group-append
     for n in $(seq $NUM_NAMESPACES); do
        IMAGE="image_${i}_${n}"
        L=$(expr $n % $NUM_GATEWAYS + 1)

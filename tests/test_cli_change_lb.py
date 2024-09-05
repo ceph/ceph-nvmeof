@@ -28,6 +28,7 @@ def two_gateways(config):
     sockA = f"spdk_{nameA}.sock"
     sockB = f"spdk_{nameB}.sock"
     config.config["gateway-logs"]["log_level"] = "debug"
+    config.config["gateway"]["group"] = ""
     addr = config.get("gateway", "addr")
     configA = copy.deepcopy(config)
     configB = copy.deepcopy(config)

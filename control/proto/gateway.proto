@@ -165,6 +165,7 @@ message create_subsystem_req {
 	string serial_number = 2;
 	optional uint32 max_namespaces = 3;
 	bool enable_ha = 4;
+	optional bool no_group_append = 5;
 }
 
 message delete_subsystem_req {

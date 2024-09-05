@@ -217,7 +217,6 @@ class GatewayService(pb2_grpc.GatewayServicer):
         self.gateway_name = self.config.get("gateway", "name")
         if not self.gateway_name:
             self.gateway_name = socket.gethostname()
-        self.gateway_group = self.config.get("gateway", "group")
         override_hostname = self.config.get_with_default("gateway", "override_hostname", "")
         if override_hostname:
             self.host_name = override_hostname
@@ -637,7 +636,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         peer_msg = self.get_peer_message(context)
 
         self.logger.info(
-            f"Received request to create subsystem {request.subsystem_nqn}, enable_ha: {request.enable_ha}, max_namespaces: {request.max_namespaces}, context: {context}{peer_msg}")
+            f"Received request to create subsystem {request.subsystem_nqn}, enable_ha: {request.enable_ha}, max_namespaces: {request.max_namespaces}, no group append: {request.no_group_append}, context: {context}{peer_msg}")
 
         if not request.enable_ha:
             errmsg = f"{create_subsystem_error_prefix}: HA must be enabled for subsystems"
@@ -666,6 +665,14 @@ class GatewayService(pb2_grpc.GatewayServicer):
             errmsg = f"{create_subsystem_error_prefix}: Can't create a discovery subsystem"
             self.logger.error(f"{errmsg}")
             return pb2.req_status(status = errno.EINVAL, error_message = errmsg)
+
+        if context:
+            if request.no_group_append or not self.gateway_group:
+                self.logger.info(f"Subsystem NQN will not be changed")
+            else:
+                group_name_to_use = self.gateway_group.replace(GatewayState.OMAP_KEY_DELIMITER, "-")
+                request.subsystem_nqn += f".{group_name_to_use}"
+                self.logger.info(f"Subsystem NQN was changed to {request.subsystem_nqn}, adding the group name")
 
         # Set client ID range according to group id assigned by the monitor
         offset = self.group_id * CNTLID_RANGE_SIZE
