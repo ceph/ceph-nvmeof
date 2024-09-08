@@ -37,7 +37,7 @@ service Gateway {
 	rpc namespace_add(namespace_add_req) returns (nsid_status) {}
 
 	// Creates a subsystem
-	rpc create_subsystem(create_subsystem_req) returns(req_status) {}
+	rpc create_subsystem(create_subsystem_req) returns(subsys_status) {}
 
 	// Deletes a subsystem
 	rpc delete_subsystem(delete_subsystem_req) returns(req_status) {}
@@ -286,6 +286,12 @@ message ana_info {
 message req_status {
 	int32 status = 1;
 	string error_message = 2;
+}
+
+message subsys_status {
+	int32 status = 1;
+	string error_message = 2;
+	string nqn = 3;
 }
 
 message nsid_status {

@@ -972,6 +972,7 @@ class TestSubsysWithGroupName:
     def test_create_subsys_group_name(self, caplog, gateway):
         caplog.clear()
         cli(["subsystem", "add", "--subsystem", subsystem3])
+        assert f"Adding subsystem {subsystem3}.{group_name}: Successful" in caplog.text
         assert f"Subsystem NQN was changed to {subsystem3}.{group_name}, adding the group name" in caplog.text
         assert f"create_subsystem {subsystem3}.{group_name}: True" in caplog.text
         assert f"create_subsystem {subsystem3}: True" not in caplog.text
@@ -980,6 +981,7 @@ class TestSubsysWithGroupName:
         assert f'"nqn": "{subsystem3}"' not in caplog.text
         caplog.clear()
         cli(["subsystem", "add", "--subsystem", subsystem4, "--no-group-append"])
+        assert f"Adding subsystem {subsystem4}: Successful" in caplog.text
         assert f"Subsystem NQN will not be changed" in caplog.text
         assert f"create_subsystem {subsystem4}.{group_name}: True" not in caplog.text
         assert f"create_subsystem {subsystem4}: True" in caplog.text
