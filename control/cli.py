@@ -678,11 +678,20 @@ class GatewayClient:
         try:
             ret = self.stub.create_subsystem(req)
         except Exception as ex:
-            ret = pb2.req_status(status = errno.EINVAL, error_message = f"Failure adding subsystem {args.subsystem}:\n{ex}")
+            ret = pb2.subsys_status(status = errno.EINVAL, error_message = f"Failure adding subsystem {args.subsystem}:\n{ex}",
+                                    nqn = args.subsystem)
+
+        new_nqn = ""
+        try:
+            new_nqn = ret.nqn
+        except Exception as ex:  # In case of an old gateway the returned value wouldn't have the nqn field
+           pass
+        if not new_nqn:
+            new_nqn = args.subsystem
 
         if args.format == "text" or args.format == "plain":
             if ret.status == 0:
-                out_func(f"Adding subsystem {args.subsystem}: Successful")
+                out_func(f"Adding subsystem {new_nqn}: Successful")
             else:
                 err_func(f"{ret.error_message}")
         elif args.format == "json" or args.format == "yaml":

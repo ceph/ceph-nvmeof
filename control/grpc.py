@@ -641,30 +641,30 @@ class GatewayService(pb2_grpc.GatewayServicer):
         if not request.enable_ha:
             errmsg = f"{create_subsystem_error_prefix}: HA must be enabled for subsystems"
             self.logger.error(f"{errmsg}")
-            return pb2.req_status(status = errno.EINVAL, error_message = errmsg)
+            return pb2.subsys_status(status = errno.EINVAL, error_message = errmsg, nqn = request.subsystem_nqn)
 
         if not request.subsystem_nqn:
             errmsg = f"Failure creating subsystem, missing subsystem NQN"
             self.logger.error(f"{errmsg}")
-            return pb2.req_status(status = errno.EINVAL, error_message = errmsg)
+            return pb2.subsys_status(status = errno.EINVAL, error_message = errmsg, nqn = request.subsystem_nqn)
 
         errmsg = ""
         if not GatewayState.is_key_element_valid(request.subsystem_nqn):
             errmsg = f"{create_subsystem_error_prefix}: Invalid NQN \"{request.subsystem_nqn}\", contains invalid characters"
             self.logger.error(f"{errmsg}")
-            return pb2.req_status(status = errno.EINVAL, error_message = errmsg)
+            return pb2.subsys_status(status = errno.EINVAL, error_message = errmsg, nqn = request.subsystem_nqn)
 
         if self.verify_nqns:
             rc = GatewayUtils.is_valid_nqn(request.subsystem_nqn)
             if rc[0] != 0:
                 errmsg = f"{create_subsystem_error_prefix}: {rc[1]}"
                 self.logger.error(f"{errmsg}")
-                return pb2.req_status(status = rc[0], error_message = errmsg)
+                return pb2.subsys_status(status = rc[0], error_message = errmsg, nqn = request.subsystem_nqn)
 
         if GatewayUtils.is_discovery_nqn(request.subsystem_nqn):
             errmsg = f"{create_subsystem_error_prefix}: Can't create a discovery subsystem"
             self.logger.error(f"{errmsg}")
-            return pb2.req_status(status = errno.EINVAL, error_message = errmsg)
+            return pb2.subsys_status(status = errno.EINVAL, error_message = errmsg, nqn = request.subsystem_nqn)
 
         if context:
             if request.no_group_append or not self.gateway_group:
@@ -701,7 +701,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 if subsys_already_exists or subsys_using_serial:
                     errmsg = f"{create_subsystem_error_prefix}: {errmsg}"
                     self.logger.error(f"{errmsg}")
-                    return pb2.req_status(status=errno.EEXIST, error_message=errmsg)
+                    return pb2.subsys_status(status=errno.EEXIST, error_message=errmsg, nqn = request.subsystem_nqn)
                 ret = rpc_nvmf.nvmf_create_subsystem(
                     self.spdk_rpc_client,
                     nqn=request.subsystem_nqn,
@@ -722,12 +722,12 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 if resp:
                     status = resp["code"]
                     errmsg = f"{create_subsystem_error_prefix}: {resp['message']}"
-                return pb2.req_status(status=status, error_message=errmsg)
+                return pb2.subsys_status(status=status, error_message=errmsg, nqn = request.subsystem_nqn)
 
             # Just in case SPDK failed with no exception
             if not ret:
                 self.logger.error(create_subsystem_error_prefix)
-                return pb2.req_status(status=errno.EINVAL, error_message=create_subsystem_error_prefix)
+                return pb2.subsys_status(status=errno.EINVAL, error_message=create_subsystem_error_prefix, nqn = request.subsystem_nqn)
 
             if context:
                 # Update gateway state
@@ -739,9 +739,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     errmsg = f"Error persisting subsystem {request.subsystem_nqn}"
                     self.logger.exception(errmsg)
                     errmsg = f"{errmsg}:\n{ex}"
-                    return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
+                    return pb2.subsys_status(status=errno.EINVAL, error_message=errmsg, nqn = request.subsystem_nqn)
 
-        return pb2.req_status(status=0, error_message=os.strerror(0))
+        return pb2.subsys_status(status=0, error_message=os.strerror(0), nqn = request.subsystem_nqn)
 
     def create_subsystem(self, request, context=None):
         return self.execute_grpc_function(self.create_subsystem_safe, request, context)
