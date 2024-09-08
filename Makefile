@@ -50,7 +50,7 @@ build: export SPDK_GIT_BRANCH != git -C spdk name-rev --name-only HEAD
 build: export SPDK_GIT_COMMIT != git rev-parse HEAD:spdk
 build: export BUILD_DATE != date -u +"%Y-%m-%d %H:%M:%S %Z"
 build: export NVMEOF_GIT_MODIFIED_FILES != git status -s | grep -e "^ *M" | sed 's/^ *M //' | xargs
-build: export CEPH_CLUSTER_CEPH_REPO_BASEURL != curl -s https://shaman.ceph.com/api/repos/ceph/$(CEPH_BRANCH)/$(CEPH_SHA)/centos/9/ | jq -r '.[] | select(.status == "ready" and .sha1 == "$(CEPH_SHA)" and .archs[] == "$(ceph_repo_arch)") | .url'
+build: export CEPH_CLUSTER_CEPH_REPO_BASEURL != curl -s https://shaman.ceph.com/api/repos/ceph/$(CEPH_BRANCH)/$(CEPH_SHA)/centos/9/ | jq -r '.[] | select(.status == "ready" and .archs[] == "$(ceph_repo_arch)") | .url'
 build: export TARGET_PLATFORM := $(TARGET_PLATFORM)
 build: export SPDK_TARGET_ARCH := $(SPDK_TARGET_ARCH)
 build: export SPDK_MAKEFLAGS := $(SPDK_MAKEFLAGS)
