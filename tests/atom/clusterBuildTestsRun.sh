@@ -1,7 +1,11 @@
 #!/bin/bash
 
 VERSION=$1
-CEPH_SHA=$2
+if [ "$2" = "latest" ]; then
+    CEPH_SHA=$(curl -s https://shaman.ceph.com/api/repos/ceph/main/latest/centos/9/ | jq -r ".[] | select(.archs[] == \"$(uname -m)\" and .status == \"ready\") | .sha1")
+else
+    CEPH_SHA=$2
+fi
 ATOM_SHA=$3
 
 # Atom test script run
