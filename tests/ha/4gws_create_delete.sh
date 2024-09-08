@@ -133,6 +133,7 @@ validate_all_active() {
 NUM_SUBSYSTEMS=2
 NUM_GATEWAYS=4
 FAILING_GATEWAYS=2
+NUM_OPTIMIZED=2
 #
 # Step 1 validate all gateways are optimized for one of ANA group
 # and all groups are unique
@@ -174,7 +175,7 @@ for i in $(seq 4); do
      echo "ℹ️ Check healthy gw gw=$i"
      for s in $(seq $NUM_SUBSYSTEMS); do
        NQN="nqn.2016-06.io.spdk:cnode$s"
-       GW_OPTIMIZED=$(expect_optimized "$(gw_name $i)" 1 "$NQN")
+       GW_OPTIMIZED=$(expect_optimized "$(gw_name $i)" "$NUM_OPTIMIZED" "$NQN")
      done
   fi
 done
