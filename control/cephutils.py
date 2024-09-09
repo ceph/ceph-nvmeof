@@ -96,6 +96,22 @@ class CephUtils:
 
         return False
 
+    def service_daemon_register(self, cluster, metadata):
+        try:
+            if cluster: # rados client 
+                daemon_name = metadata['id']
+                cluster.service_daemon_register("nvmeof", daemon_name, metadata)
+                self.logger.info(f"Registered {daemon_name} to service_map!")
+        except Exception:
+            self.logger.exception(f"Can't register daemon to service_map!")
+
+    def service_daemon_update(self, cluster, status_buffer):
+        try:
+            if cluster and status_buffer:
+                cluster.service_daemon_update(status_buffer)
+        except Exception:
+            self.logger.exception(f"Can't update daemon status to service_map!") 
+
     def create_image(self, pool_name, image_name, size) -> bool:
         # Check for pool existence in advance as we don't create it if it's not there
         if not self.pool_exists(pool_name):

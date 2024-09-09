@@ -203,6 +203,19 @@ class GatewayServer:
             log_level = log_level.strip().upper()
             log_req = pb2.set_spdk_nvmf_logs_req(log_level=log_level, print_level=log_level)
             self.gateway_rpc.set_spdk_nvmf_logs(log_req)
+        
+        self._register_service_map()
+
+    def _register_service_map(self):
+        # show gateway in "ceph status" output
+        conn = self.omap_state.conn
+        metadata = {
+            "id": self.name.removeprefix("client.nvmeof."),
+            "pool_name": self.config.get("ceph", "pool"),
+            "daemon_type": "gateway", # "nvmeof: 3 <daemon_type> active (3 hosts)"
+            "group": self.config.get_with_default("gateway", "group", ""),
+        } 
+        self.ceph_utils.service_daemon_register(conn, metadata) 
 
     def _monitor_client_version(self) -> str:
         """Return monitor client version string."""

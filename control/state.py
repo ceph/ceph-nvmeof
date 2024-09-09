@@ -573,6 +573,9 @@ class OmapGatewayState(GatewayState):
                 self.ioctx = None
             except Exception:
                 pass
+        if self.conn:
+            self.conn.shutdown()
+            self.conn = None
 
 class GatewayStateHandler:
     """Maintains consistency in NVMeoF target state store instances.
