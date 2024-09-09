@@ -1227,6 +1227,14 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     return pb2.req_status(status=errno.ENOENT, error_message=errmsg)
 
             try:
+               # ret = rpc_nvmf.nvmf_subsystem_set_ns_ana_group(
+               #     self.spdk_rpc_client,
+               #     nqn=request.subsystem_nqn,
+               #     nsid=request.nsid,
+               #     anagrpid=32,
+               #     transit_anagrpid=0
+               # )
+               # self.logger.info(f"nvmf_subsystem_set_ns_ana_group: {ret} to transit-anagrp 32")
                 ret = rpc_nvmf.nvmf_subsystem_set_ns_ana_group(
                     self.spdk_rpc_client,
                     nqn=request.subsystem_nqn,
@@ -1234,7 +1242,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     anagrpid=request.anagrpid,
                     transit_anagrpid=0
                 )
-                self.logger.debug(f"nvmf_subsystem_set_ns_ana_group: {ret}")
+                self.logger.info(f"nvmf_subsystem_set_ns_ana_group: {ret} to {request.anagrpid} ")
+
             except Exception as ex:
                 errmsg = f"{change_lb_group_failure_prefix}:\n{ex}"
                 resp = self.parse_json_exeption(ex)
