@@ -378,6 +378,11 @@ class GatewayServer:
             "spdk", "tgt_cmd_extra_args", "")
         cmd = [spdk_tgt_path, "-u", "-r", self.spdk_rpc_socket_path]
 
+        spdk_tgt_dsa = self.config.getboolean_with_default("spdk", "enable_dsa", False)
+        if spdk_tgt_dsa:
+            self.logger.info(f"Start SPDK, but wait for DSA detection before initialization")
+            cmd = [spdk_tgt_path, "-r", self.spdk_rpc_socket_path, "--wait-for-rpc"]
+
         # Add extra args from the conf file
         if spdk_tgt_cmd_extra_args:
             cmd += shlex.split(spdk_tgt_cmd_extra_args)
@@ -434,6 +439,11 @@ class GatewayServer:
                 log_level=protocol_log_level,
                 conn_retries=conn_retries,
             )
+            if spdk_tgt_dsa:
+                # init dsa
+                spdk.rpc.dsa.dsa_scan_accel_module(self.spdk_rpc_client)
+                spdk.rpc.framework_start_init(self.spdk_rpc_client)
+                self.logger.info(f"SPDK with DSA started")
         except Exception:
             self.logger.exception(f"Unable to initialize SPDK")
             raise
