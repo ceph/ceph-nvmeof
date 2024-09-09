@@ -1234,7 +1234,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     anagrpid=request.anagrpid,
                     transit_anagrpid=0
                 )
-                self.logger.debug(f"nvmf_subsystem_set_ns_ana_group: {ret}")
+                self.logger.info(f"nvmf_subsystem_set_ns_ana_group: {ret} to {request.anagrpid} ")
+
             except Exception as ex:
                 errmsg = f"{change_lb_group_failure_prefix}:\n{ex}"
                 resp = self.parse_json_exeption(ex)
