@@ -372,7 +372,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         nonce = rpc_bdev.bdev_rbd_register_cluster(
             self.spdk_rpc_client,
             name = name,
-            user = self.rados_id,
+            user_id = self.rados_id,
             core_mask = self.librbd_core_mask,
         )
         with self.shared_state_lock:
@@ -2153,8 +2153,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     try:
                         if qp["cntlid"] != conn["cntlid"]:
                             continue
-                        if qp["state"] != "active":
-                            self.logger.debug(f"Qpair {qp} is not active")
+                        if qp["state"] != "enabled":
+                            self.logger.debug(f"Qpair {qp} is not enabled")
                             continue
                         addr = qp["listen_address"]
                         if not addr:
