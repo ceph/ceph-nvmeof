@@ -886,7 +886,7 @@ jobs:
 
   push-images-to-ceph-registry:
     if: github.event_name == 'release'
-    needs: [pytest, demo, discovery, ha, build-arm64]
+    needs: [pytest, demo, demo-secure, discovery, ha, atom, build-arm64]
     runs-on: ubuntu-latest
 
     steps:
