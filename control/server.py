@@ -58,6 +58,20 @@ def int_to_bitmask(n):
     """Converts an integer n to a bitmask string"""
     return f"0x{hex((1 << n) - 1)[2:].upper()}"
 
+def cpumask_set(args):
+    """Check if reactor cpu mask is set in command line args"""
+
+    # Check if "-m" or "--cpumask" is in the arguments
+    if "-m" in args or "--cpumask" in args:
+        return True
+
+    # Check for the presence of "--cpumask="
+    for arg in args:
+        if arg.startswith('--cpumask='):
+            return True
+
+    return False
+
 class GatewayServer:
     """Runs SPDK and receives client requests for the gateway service.
 
@@ -384,7 +398,7 @@ class GatewayServer:
 
         # If not provided in configuration,
         # calculate cpu mask available for spdk reactors
-        if '-m' not in cmd and '--cpumask' not in cmd:
+        if not cpumask_set(cmd):
             cpu_mask = f"-m {int_to_bitmask(min(4, os.cpu_count()))}"
             self.logger.info(f"SPDK autodetecting cpu_mask: {cpu_mask}")
             cmd += shlex.split(cpu_mask)
