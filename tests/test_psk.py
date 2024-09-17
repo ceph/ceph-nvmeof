@@ -25,8 +25,6 @@ hostnqn7 = "nqn.2014-08.org.nvmexpress:uuid:22207d09-d8af-4ed2-84ec-a6d80b0cf7f1
 hostnqn8 = "nqn.2014-08.org.nvmexpress:uuid:22207d09-d8af-4ed2-84ec-a6d80b0cf7f2"
 hostnqn9 = "nqn.2014-08.org.nvmexpress:uuid:22207d09-d8af-4ed2-84ec-a6d80b0cf7f3"
 hostnqn10 = "nqn.2014-08.org.nvmexpress:uuid:22207d09-d8af-4ed2-84ec-a6d80b0cf7f4"
-hostnqn11 = "nqn.2014-08.org.nvmexpress:uuid:22207d09-d8af-4ed2-84ec-a6d80b0cf7f5"
-hostnqn12 = "nqn.2014-08.org.nvmexpress:uuid:22207d09-d8af-4ed2-84ec-a6d80b0cf7f6"
 
 hostpsk = "NVMeTLSkey-1:01:YzrPElk4OYy1uUERriPwiiyEJE/+J5ckYpLB+5NHMsR2iBuT:"
 hostpsk2 = "NVMeTLSkey-1:02:FTFds4vH4utVcfrOforxbrWIgv+Qq4GQHgMdWwzDdDxE1bAqK2mOoyXxmbJxGeueEVVa/Q==:"
@@ -123,18 +121,14 @@ def test_create_not_secure(caplog, gateway):
 
 def test_create_secure_list(caplog, gateway):
     caplog.clear()
-    cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn8, hostnqn9, hostnqn10, "--psk", hostpsk5, hostpsk6, hostpsk7, hostpsk])
-    assert f"There are more PSK values than hosts, will ignore redundant values" in caplog.text
-    assert f"Adding host {hostnqn8} to {subsystem}: Successful" in caplog.text
-    assert f"Adding host {hostnqn9} to {subsystem}: Successful" in caplog.text
-    assert f"Adding host {hostnqn10} to {subsystem}: Successful" in caplog.text
-
-def test_create_secure_list_missing_psk(caplog, gateway):
-    caplog.clear()
-    cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn11, hostnqn12,  "--psk", hostpsk8])
-    assert f"Adding host {hostnqn11} to {subsystem}: Successful" in caplog.text
-    assert f"Adding host {hostnqn12} to {subsystem}: Successful" in caplog.text
-    assert f"There are more hosts than PSK values, will assume empty PSK values" in caplog.text
+    rc = 0
+    try:
+        cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn8, hostnqn9, hostnqn10, "--psk", hostpsk])
+    except SystemExit as sysex:
+        rc = int(str(sysex))
+        pass
+    assert rc == 2
+    assert f"error: Can't have more than one host NQN when PSK keys are used" in caplog.text
 
 def test_create_secure_junk_key(caplog, gateway):
     caplog.clear()
@@ -150,16 +144,14 @@ def test_create_secure_no_key(caplog, gateway):
         rc = int(str(sysex))
         pass
     assert rc == 2
-    assert f"error: argument --psk: expected at least one argument" in caplog.text
+    assert f"error: argument --psk: expected one argument" in caplog.text
 
 def test_list_psk_hosts(caplog, gateway):
     caplog.clear()
     hosts = cli_test(["host", "list", "--subsystem", subsystem])
     found = 0
-    assert len(hosts.hosts) == 10
+    assert len(hosts.hosts) == 5
     for h in hosts.hosts:
-        assert h.nqn != hostnqn3
-        assert h.nqn != hostnqn5
         if h.nqn == hostnqn:
             found += 1
             assert h.use_psk
@@ -175,29 +167,20 @@ def test_list_psk_hosts(caplog, gateway):
         elif h.nqn == hostnqn7:
             found += 1
             assert not h.use_psk
-        elif h.nqn == hostnqn8:
-            found += 1
-            assert h.use_psk
-        elif h.nqn == hostnqn9:
-            found += 1
-            assert h.use_psk
-        elif h.nqn == hostnqn10:
-            found += 1
-            assert h.use_psk
-        elif h.nqn == hostnqn11:
-            found += 1
-            assert h.use_psk
-        elif h.nqn == hostnqn12:
-            found += 1
-            assert not h.use_psk
         else:
             assert False
-    assert found == 10
+    assert found == 5
 
 def test_allow_any_host_with_psk(caplog, gateway):
     caplog.clear()
-    cli(["host", "add", "--subsystem", subsystem, "--host-nqn", "*", "--psk", hostpsk])
-    assert f"PSK is only allowed for specific hosts, ignoring PSK value \"{hostpsk}\"" in caplog.text
+    rc = 0
+    try:
+        cli(["host", "add", "--subsystem", subsystem, "--host-nqn", "*", "--psk", hostpsk])
+    except SystemExit as sysex:
+        rc = int(str(sysex))
+        pass
+    assert rc == 2
+    assert f"error: PSK is only allowed for specific hosts" in caplog.text
 
 def test_list_listeners(caplog, gateway):
     caplog.clear()

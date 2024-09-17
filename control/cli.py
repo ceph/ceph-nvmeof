@@ -1054,25 +1054,16 @@ class GatewayClient:
         out_func, err_func = self.get_output_functions(args)
 
         if args.psk:
-            if len(args.psk) > len(args.host_nqn):
-                err_func("There are more PSK values than hosts, will ignore redundant values")
-            elif len(args.psk) < len(args.host_nqn):
-                err_func("There are more hosts than PSK values, will assume empty PSK values")
+            if len(args.host_nqn) > 1:
+                self.cli.parser.error(f"Can't have more than one host NQN when PSK keys are used")
 
         for i in range(len(args.host_nqn)):
             one_host_nqn = args.host_nqn[i]
-            one_host_psk = None
-            if args.psk:
-                try:
-                    one_host_psk = args.psk[i]
-                except IndexError:
-                    pass
 
-            if one_host_nqn == "*" and one_host_psk:
-                err_func(f"PSK is only allowed for specific hosts, ignoring PSK value \"{one_host_psk}\"")
-                one_host_psk = None
+            if one_host_nqn == "*" and args.psk:
+                self.cli.parser.error(f"PSK is only allowed for specific hosts")
 
-            req = pb2.add_host_req(subsystem_nqn=args.subsystem, host_nqn=one_host_nqn, psk=one_host_psk)
+            req = pb2.add_host_req(subsystem_nqn=args.subsystem, host_nqn=one_host_nqn, psk=args.psk)
             try:
                 ret = self.stub.add_host(req)
             except Exception as ex:
@@ -1219,7 +1210,7 @@ class GatewayClient:
     ]
     host_add_args = host_common_args + [
         argument("--host-nqn", "-t", help="Host NQN list", nargs="+", required=True),
-        argument("--psk", help="Hosts PSK key list", nargs="+", required=False),
+        argument("--psk", help="Hosts PSK key list", required=False),
     ]
     host_del_args = host_common_args + [
         argument("--host-nqn", "-t", help="Host NQN list", nargs="+", required=True),
