@@ -869,10 +869,16 @@ jobs:
           docker load < nvmeof-cli.tar
 
       - name: Cluster build and Atom tests run
-        if: always() || failure()
+        if: always() && github.event_name != 'schedule'
         run: |
           . .env
           ./tests/atom/clusterBuildTestsRun.sh $NVMEOF_VERSION $CEPH_SHA $ATOM_SHA
+
+      - name: Cluster build and Atom (nightly) tests run
+        if: always() && github.event_name == 'schedule'
+        run: |
+          . .env
+          ./tests/atom/nightlyBuildTestsRun.sh $NVMEOF_VERSION $CEPH_SHA $ATOM_SHA
 
       - name: Atom artifact build
         if: always()
