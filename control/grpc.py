@@ -1225,6 +1225,13 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     errmsg = f"{change_lb_group_failure_prefix}: Can't find entry for namespace {request.nsid} in {request.subsystem_nqn}"
                     self.logger.error(errmsg)
                     return pb2.req_status(status=errno.ENOENT, error_message=errmsg)
+                anagrp = ns_entry["anagrpid"]
+                gw_id = self.ceph_utils.get_gw_id_owner_ana_group(self.gateway_pool, self.gateway_group, anagrp)
+                self.logger.debug(f"ANA group of ns#{request.nsid} - {anagrp} is owned by gateway {gw_id}, self.name is {self.gateway_name}")
+                if self.gateway_name != gw_id:
+                    errmsg = f"ANA group of ns#{request.nsid} - {anagrp} is owned by gateway {gw_id} so try this command from it, this gateway name is {self.gateway_name}"
+                    self.logger.error(errmsg)
+                    return pb2.req_status(status=errno.ENODEV, error_message=errmsg)
 
             try:
                 ret = rpc_nvmf.nvmf_subsystem_set_ns_ana_group(
