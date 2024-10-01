@@ -33,7 +33,7 @@ echo "sudo docker run \
     quay.ceph.io/ceph-ci/ceph:"$CEPH_SHA" \
     quay.io/ceph/nvmeof:"$VERSION" \
     quay.io/ceph/nvmeof-cli:"$VERSION" \
-    None None None None None None 1 1 4 1 1 2 4 1024 2 2 200M 0 1 20 20 1 \
+    None None None None None None 1 1 4 1 1 2 4 1024 2 2 200M 0 1 20 10 1 \
     --stopNvmeofDaemon \
     --stopNvmeofSystemctl \
     --stopMonLeader \
@@ -51,7 +51,7 @@ sudo docker run \
     quay.ceph.io/ceph-ci/ceph:"$CEPH_SHA" \
     quay.io/ceph/nvmeof:"$VERSION" \
     quay.io/ceph/nvmeof-cli:"$VERSION" \
-    None None None None None None 1 1 4 1 1 2 4 1024 2 2 200M 0 1 20 20 1 \
+    None None None None None None 1 1 4 3 1 10 90 1024 6 2 200M 0 1 20 10 1 \
     --stopNvmeofDaemon \
     --stopNvmeofSystemctl \
     --stopMonLeader \
