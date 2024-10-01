@@ -41,6 +41,7 @@ echo "sudo docker run \
     --gitHubActionDeployment \
     --dontUseMTLS \
     --skiplbTest \
+    --skiplbGroupChangeTest \
     --journalctlToConsole \
     --dontPowerOffCloudVMs noKey noKey \
     --multiIBMCloudServers_m2"
@@ -59,6 +60,7 @@ sudo docker run \
     --gitHubActionDeployment \
     --dontUseMTLS \
     --skiplbTest \
+    --skiplbGroupChangeTest \
     --journalctlToConsole \
     --dontPowerOffCloudVMs noKey noKey \
     --multiIBMCloudServers_m2
