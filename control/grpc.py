@@ -17,12 +17,17 @@ import errno
 import contextlib
 import threading
 import time
+import hashlib
+import tempfile
+from pathlib import Path
 from typing import Callable
 from collections import defaultdict
 import logging
+import shutil
 
 import spdk.rpc.bdev as rpc_bdev
 import spdk.rpc.nvmf as rpc_nvmf
+import spdk.rpc.keyring as rpc_keyring
 import spdk.rpc.log as rpc_log
 from spdk.rpc.client import JSONRPCException
 
@@ -58,12 +63,16 @@ class MonitorGroupService(monitor_pb2_grpc.MonitorGroupServicer):
         return Empty()
 
 class SubsystemHostAuth:
+    MAX_PSK_KEY_NAME_LENGTH = 200     # taken from SPDK SPDK_TLS_PSK_MAX_LEN
+
     def __init__(self):
         self.subsys_allow_any_hosts = defaultdict(dict)
         self.host_has_psk = defaultdict(dict)
+        self.host_has_dhchap = defaultdict(dict)
 
     def clean_subsystem(self, subsys):
         self.host_has_psk.pop(subsys, None)
+        self.host_has_dhchap.pop(subsys, None)
         self.subsys_allow_any_hosts.pop(subsys, None)
 
     def add_psk_host(self, subsys, host):
@@ -80,6 +89,23 @@ class SubsystemHostAuth:
             if not host:
                 return len(self.host_has_psk[subsys]) != 0
             if host in self.host_has_psk[subsys]:
+                return True
+        return False
+
+    def add_dhchap_host(self, subsys, host):
+        self.host_has_dhchap[subsys][host] = True
+
+    def remove_dhchap_host(self, subsys, host):
+        if subsys in self.host_has_dhchap:
+            self.host_has_dhchap[subsys].pop(host, None)
+            if len(self.host_has_dhchap[subsys]) == 0:
+                self.host_has_dhchap.pop(subsys, None)    # last host was removed from subsystem
+
+    def is_dhchap_host(self, subsys, host = None) -> bool:
+        if subsys in self.host_has_dhchap:
+            if not host:
+                return len(self.host_has_dhchap[subsys]) != 0
+            if host in self.host_has_dhchap[subsys]:
                 return True
         return False
 
@@ -157,6 +183,11 @@ class GatewayService(pb2_grpc.GatewayServicer):
         subsystem_nsid_bdev_and_uuid: map of nsid to bdev
         cluster_nonce: cluster context nonce map
     """
+
+    PSK_PREFIX = "psk"
+    DHCHAP_PREFIX = "dhchap"
+    DHCHAP_CONTROLLER_PREFIX = "dhchap_ctrlr"
+    KEYS_DIR = "/var/tmp"
 
     def __init__(self, config: GatewayConfig, gateway_state: GatewayStateHandler, rpc_lock, omap_lock: OmapLock, group_id: int, spdk_rpc_client, spdk_rpc_subsystems_client, ceph_utils: CephUtils) -> None:
         """Constructor"""
@@ -236,41 +267,164 @@ class GatewayService(pb2_grpc.GatewayServicer):
         self.subsys_max_ns = {}
         self.host_info = SubsystemHostAuth()
 
-    def create_host_psk_file(self, subsysnqn : str, hostnqn : str, psk_value : str) -> str:
+    def get_directories_for_key_file(self, key_type : str, subsysnqn : str, create_dir : bool = False) -> []:
+        tmp_dirs = []
+        dir_prefix = f"{key_type}_{subsysnqn}_"
+
+        try:
+            for f in Path(self.KEYS_DIR).iterdir():
+                if f.is_dir() and f.match(dir_prefix + "*"):
+                    tmp_dirs.insert(0, str(f))
+        except Exception:
+            self.logger.exception(f"Error listing files in {self.KEYS_DIR}")
+            return None
+
+        if tmp_dirs:
+            return tmp_dirs
+
+        if not create_dir:
+            return None
+
+        tmp_dir_name = None
+        try:
+            tmp_dir_name = tempfile.mkdtemp(prefix=dir_prefix, dir=self.KEYS_DIR)
+        except Exception:
+            self.logger.exception("Error creating directory for key file")
+            return None
+        return [tmp_dir_name]
+
+    def create_host_key_file(self, key_type : str, subsysnqn : str, hostnqn : str, key_value : str) -> str:
         assert subsysnqn, "Subsystem NQN can't be empty"
         assert hostnqn, "Host NQN can't be empty"
-        assert psk_value, "PSK value can't be empty"
+        assert key_type, "Key type can't be empty"
+        assert key_value, "Key value can't be empty"
 
-        psk_dir = f"/tmp/psk/{subsysnqn}"
-        psk_file = f"{psk_dir}/{hostnqn}"
+        tmp_dir_names = self.get_directories_for_key_file(key_type, subsysnqn, create_dir = True)
+        if not tmp_dir_names:
+            return None
+
+        file = None
+        filepath = None
+        keyfile_prefix = f"{hostnqn}_"
         try:
-            os.makedirs(psk_dir, 0o755, True)
+            (file_fd, filepath) = tempfile.mkstemp(prefix=keyfile_prefix, dir=tmp_dir_names[0], text=True)
         except Exception:
-            self.logger.exception(f"Error creating directory {psk_dir}")
+            self.logger.exception("Error creating key file")
+            return None
+        if not filepath:
+            self.loger.error("Error creating key file")
             return None
         try:
-            with open(psk_file, 'wt') as f:
-                print(psk_value, end="", file=f)
-            os.chmod(psk_file, 0o600)
+            with open(file_fd, "wt") as f:
+                f.write(key_value)
         except Exception:
-            self.logger.exception(f"Error creating file {psk_file}")
+            self.logger.exception(f"Error creating file")
+            try:
+                os.remove(filepath)
+            except Exception:
+                pass
             return None
-        return psk_file
+        return filepath
+
+    def create_host_psk_file(self, subsysnqn : str, hostnqn : str, key_value : str) -> str:
+        return self.create_host_key_file(self.PSK_PREFIX, subsysnqn, hostnqn, key_value)
+
+    def create_host_dhchap_file(self, subsysnqn : str, hostnqn : str, key_value : str) -> str:
+        return self.create_host_key_file(self.DHCHAP_PREFIX, subsysnqn, hostnqn, key_value)
+
+    def remove_host_key_file(self, key_type : str, subsysnqn : str, hostnqn : str) -> None:
+        assert key_type, "Key type can't be empty"
+        assert subsysnqn, "Subsystem NQN can't be empty"
+
+        tmp_dir_names = self.get_directories_for_key_file(key_type, subsysnqn, create_dir = False)
+        if not tmp_dir_names:
+            return
+
+        # If there is no host NQN remove all hosts in this subsystem
+        if not hostnqn:
+            for one_tmp_dir in tmp_dir_names:
+                try:
+                    shutil.rmtree(one_tmp_dir, ignore_errors = True)
+                except Exception:
+                    pass
+            return
+
+        # We have a host NQN so only remove its files
+        for one_tmp_dir in tmp_dir_names:
+            for f in Path(one_tmp_dir).iterdir():
+                if f.is_file() and f.match(f"{hostnqn}_*"):
+                    try:
+                        f.unlink()
+                    except Exception:
+                        self.logger.exception(f"Error deleting file {f.name}")
+                        pass
 
     def remove_host_psk_file(self, subsysnqn : str, hostnqn : str) -> None:
-        psk_dir = f"/tmp/psk/{subsysnqn}"
-        psk_file = f"{psk_dir}/{hostnqn}"
+        self.remove_host_key_file(self.PSK_PREFIX, subsysnqn, hostnqn)
+
+    def remove_host_dhchap_file(self, subsysnqn : str, hostnqn : str) -> None:
+        self.remove_host_key_file(self.DHCHAP_PREFIX, subsysnqn, hostnqn)
+
+    def remove_all_host_key_files(self, subsysnqn : str, hostnqn : str) -> None:
+        self.remove_host_psk_file(subsysnqn, hostnqn)
+        self.remove_host_dhchap_file(subsysnqn, hostnqn)
+
+    def remove_all_subsystem_key_files(self, subsysnqn : str) -> None:
+        self.remove_all_host_key_files(subsysnqn, None)
+
+    @staticmethod
+    def construct_key_name_for_keyring(subsysnqn : str, hostnqn : str, prefix : str = None) -> str:
+        key_name = hashlib.sha256(subsysnqn.encode()).hexdigest() + "_" + hashlib.sha256(hostnqn.encode()).hexdigest()
+        if prefix:
+            key_name = prefix + "_" + key_name
+        return key_name
+
+    def remove_key_from_keyring(self, key_type : str, subsysnqn : str, hostnqn : str) -> None:
+        assert self.rpc_lock.locked(), "RPC is unlocked when calling remove_key_from_keyring()"
+        key_name = GatewayService.construct_key_name_for_keyring(subsysnqn, hostnqn, key_type)
         try:
-            os.remove(psk_file)
-        except FileNotFoundError:
-            self.logger.exception(f"Error deleting file {psk_file}")
-            pass
-        try:
-            os.rmdir(psk_dir)
-            os.rmdir("/tmp/psk")
+            rpc_keyring.keyring_file_remove_key(self.spdk_rpc_client, key_name)
         except Exception:
-            self.logger.exception(f"Error deleting directory {psk_dir}")
             pass
+
+    def remove_psk_key_from_keyring(self, subsysnqn : str, hostnqn : str) -> None:
+        self.remove_key_from_keyring(self.PSK_PREFIX, subsysnqn, hostnqn)
+
+    def remove_dhchap_key_from_keyring(self, subsysnqn : str, hostnqn : str) -> None:
+        self.remove_key_from_keyring(self.DHCHAP_PREFIX, subsysnqn, hostnqn)
+
+    def remove_dhchap_controller_key_from_keyring(self, subsysnqn : str, hostnqn : str) -> None:
+        self.remove_key_from_keyring(self.DHCHAP_CONTROLLER_PREFIX, subsysnqn, hostnqn)
+
+    def remove_all_host_keys_from_keyring(self, subsysnqn : str, hostnqn : str) -> None:
+        self.remove_psk_key_from_keyring(subsysnqn, hostnqn)
+        self.remove_dhchap_key_from_keyring(subsysnqn, hostnqn)
+        self.remove_dhchap_controller_key_from_keyring(subsysnqn, hostnqn)
+
+    def remove_all_subsystem_keys_from_keyring(self, subsysnqn : str) -> None:
+        assert self.rpc_lock.locked(), "RPC is unlocked when calling remove_all_subsystem_keys_from_keyring()"
+        try:
+            key_list = rpc_keyring.keyring_get_keys(self.spdk_rpc_client)
+        except Exception:
+            self.logger.exception("Can't list keyring keys")
+            return
+        for one_key in key_list:
+            key_path = None
+            key_name = None
+            try:
+                key_path = one_key["path"]
+                key_name = one_key["name"]
+            except Exception:
+                self.logger.exception(f"Can't get details for key {one_key}")
+                continue
+            if not key_name or not key_path:
+                continue
+            if (key_path.startswith(f"{self.KEYS_DIR}/{self.PSK_PREFIX}_{subsysnqn}_") or
+                              key_path.startswith(f"{self.KEYS_DIR}/{self.DHCHAP_PREFIX}_{subsysnqn}_")):
+                try:
+                    rpc_keyring.keyring_file_remove_key(self.spdk_rpc_client, key_name)
+                except Exception:
+                    pass
 
     @staticmethod
     def is_valid_host_nqn(nqn):
@@ -810,6 +964,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     self.subsystem_listeners.pop(request.subsystem_nqn, None)
                 self.host_info.clean_subsystem(request.subsystem_nqn)
                 self.subsystem_nsid_bdev_and_uuid.remove_namespace(request.subsystem_nqn)
+                self.remove_all_subsystem_key_files(request.subsystem_nqn)
+                self.remove_all_subsystem_keys_from_keyring(request.subsystem_nqn)
                 self.logger.debug(f"delete_subsystem {request.subsystem_nqn}: {ret}")
             except Exception as ex:
                 self.logger.exception(delete_subsystem_error_prefix)
@@ -1826,6 +1982,21 @@ class GatewayService(pb2_grpc.GatewayServicer):
             self.logger.error(f"{errmsg}")
             return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
 
+        if request.dhchap_key and request.host_nqn == "*":
+            errmsg=f"{host_failure_prefix}: DH-HMAC-CHAP key is only allowed for specific hosts"
+            self.logger.error(f"{errmsg}")
+            return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
+
+        if request.dhchap_ctrlr_key and not request.dhchap_key:
+            errmsg=f"{host_failure_prefix}: DH-HMAC-CHAP controller key can only be used with a DH-HMAC-CHAP key"
+            self.logger.error(f"{errmsg}")
+            return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
+
+        if request.psk and request.dhchap_key:
+            errmsg=f"{host_failure_prefix}: PSK and DH-HMAC-CHAP keys are mutually exclusive"
+            self.logger.error(f"{errmsg}")
+            return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
+
         host_already_exist = self.matching_host_exists(context, request.subsystem_nqn, request.host_nqn)
         if host_already_exist:
             if request.host_nqn == "*":
@@ -1838,12 +2009,44 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 return pb2.req_status(status=errno.EEXIST, error_message=errmsg)
 
         psk_file = None
+        psk_key_name = None
         if request.psk:
             psk_file = self.create_host_psk_file(request.subsystem_nqn, request.host_nqn, request.psk)
             if not psk_file:
                 errmsg=f"{host_failure_prefix}: Can't write PSK file"
                 self.logger.error(f"{errmsg}")
                 return pb2.req_status(status=errno.ENOENT, error_message=errmsg)
+            psk_key_name = GatewayService.construct_key_name_for_keyring(request.subsystem_nqn, request.host_nqn, GatewayService.PSK_PREFIX)
+            if len(psk_key_name) >= SubsystemHostAuth.MAX_PSK_KEY_NAME_LENGTH:
+                errmsg=f"{host_failure_prefix}: PSK key name {psk_key_name} is too long, max length is {SubsystemHostAuth.MAX_PSK_KEY_NAME_LENGTH}"
+                self.logger.error(f"{errmsg}")
+                return pb2.req_status(status=errno.E2BIG, error_message=errmsg)
+
+        dhchap_file = None
+        dhchap_key_name = None
+        if request.dhchap_key:
+            dhchap_file = self.create_host_dhchap_file(request.subsystem_nqn, request.host_nqn, request.dhchap_key)
+            if not dhchap_file:
+                errmsg=f"{host_failure_prefix}: Can't write DH-HMAC-CHAP file"
+                self.logger.error(f"{errmsg}")
+                if psk_file:
+                    self.remove_host_psk_file(request.subsystem_nqn, request.host_nqn)
+                return pb2.req_status(status=errno.ENOENT, error_message=errmsg)
+            dhchap_key_name = GatewayService.construct_key_name_for_keyring(request.subsystem_nqn, request.host_nqn, GatewayService.DHCHAP_PREFIX)
+
+        dhchap_ctrlr_file = None
+        dhchap_ctrlr_key_name = None
+        if request.dhchap_ctrlr_key:
+            dhchap_ctrlr_file = self.create_host_dhchap_file(request.subsystem_nqn, request.host_nqn, request.dhchap_ctrlr_key)
+            if not dhchap_ctrlr_file:
+                errmsg=f"{host_failure_prefix}: Can't write DH-HMAC-CHAP controller file"
+                self.logger.error(f"{errmsg}")
+                if psk_file:
+                    self.remove_host_psk_file(request.subsystem_nqn, request.host_nqn)
+                if dhchap_file:
+                    self.remove_host_dhchap_file(request.subsystem_nqn, request.host_nqn)
+                return pb2.req_status(status=errno.ENOENT, error_message=errmsg)
+            dhchap_ctrlr_key_name = GatewayService.construct_key_name_for_keyring(request.subsystem_nqn, request.host_nqn, GatewayService.DHCHAP_CONTROLLER_PREFIX)
 
         omap_lock = self.omap_lock.get_omap_lock_to_use(context)
         with omap_lock:
@@ -1859,24 +2062,56 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     self.host_info.allow_any_host(request.subsystem_nqn)
                 else:  # Allow single host access to subsystem
                     self.logger.info(
-                        f"Received request to add host {request.host_nqn} to {request.subsystem_nqn}, psk: {request.psk}, context: {context}{peer_msg}")
+                        f"Received request to add host {request.host_nqn} to {request.subsystem_nqn}, psk: {request.psk}, dhchap: {request.dhchap_key}, dhchap controller: {request.dhchap_ctrlr_key}, context: {context}{peer_msg}")
+                    if psk_file:
+                        try:
+                            rpc_keyring.keyring_file_remove_key(self.spdk_rpc_client, psk_key_name)
+                        except Exception:
+                            pass
+                        ret = rpc_keyring.keyring_file_add_key(self.spdk_rpc_client, psk_key_name, psk_file)
+                        self.logger.debug(f"keyring_file_add_key {psk_key_name}: {ret}")
+                        self.logger.info(f"Added PSK key {psk_key_name} to keyring")
+                    if dhchap_file:
+                        try:
+                            rpc_keyring.keyring_file_remove_key(self.spdk_rpc_client, dhchap_key_name)
+                        except Exception:
+                            pass
+                        ret = rpc_keyring.keyring_file_add_key(self.spdk_rpc_client, dhchap_key_name, dhchap_file)
+                        self.logger.debug(f"keyring_file_add_key {dhchap_key_name}: {ret}")
+                        self.logger.info(f"Added DH-HMAC-CHAP key {dhchap_key_name} to keyring")
+                        if dhchap_ctrlr_file:
+                            try:
+                                rpc_keyring.keyring_file_remove_key(self.spdk_rpc_client, dhchap_ctrlr_key_name)
+                            except Exception:
+                                pass
+                            ret = rpc_keyring.keyring_file_add_key(self.spdk_rpc_client, dhchap_ctrlr_key_name, dhchap_ctrlr_file)
+                            self.logger.debug(f"keyring_file_add_key {dhchap_ctrlr_key_name}: {ret}")
+                            self.logger.info(f"Added DH-HMAC-CHAP controller key {dhchap_ctrlr_key_name} to keyring")
                     ret = rpc_nvmf.nvmf_subsystem_add_host(
                         self.spdk_rpc_client,
                         nqn=request.subsystem_nqn,
                         host=request.host_nqn,
-                        psk=psk_file,
+                        psk=psk_key_name,
+                        dhchap_key=dhchap_key_name,
+                        dhchap_ctrlr_key=dhchap_ctrlr_key_name,
                     )
                     self.logger.debug(f"add_host {request.host_nqn}: {ret}")
                     if psk_file:
                         self.host_info.add_psk_host(request.subsystem_nqn, request.host_nqn)
                         self.remove_host_psk_file(request.subsystem_nqn, request.host_nqn)
+                        try:
+                            rpc_keyring.keyring_file_remove_key(self.spdk_rpc_client, psk_key_name)
+                        except Exception:
+                            pass
+                    if dhchap_file:
+                        self.host_info.add_dhchap_host(request.subsystem_nqn, request.host_nqn)
             except Exception as ex:
                 if request.host_nqn == "*":
                     self.logger.exception(all_host_failure_prefix)
                     errmsg = f"{all_host_failure_prefix}:\n{ex}"
                 else:
-                    if psk_file:
-                        self.remove_host_psk_file(request.subsystem_nqn, request.host_nqn)
+                    self.remove_all_host_key_files(request.subsystem_nqn, request.host_nqn)
+                    self.remove_all_host_keys_from_keyring(request.subsystem_nqn, request.host_nqn)
                     self.logger.exception(host_failure_prefix)
                     errmsg = f"{host_failure_prefix}:\n{ex}"
                 resp = self.parse_json_exeption(ex)
@@ -1895,6 +2130,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     errmsg = all_host_failure_prefix
                 else:
                     errmsg = host_failure_prefix
+                    self.remove_all_host_key_files(request.subsystem_nqn, request.host_nqn)
+                    self.remove_all_host_keys_from_keyring(request.subsystem_nqn, request.host_nqn)
                 self.logger.error(errmsg)
                 return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
 
@@ -1908,6 +2145,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     errmsg = f"Error persisting host {request.host_nqn} access addition"
                     self.logger.exception(errmsg)
                     errmsg = f"{errmsg}:\n{ex}"
+                    self.remove_all_host_key_files(request.subsystem_nqn, request.host_nqn)
+                    self.remove_all_host_keys_from_keyring(request.subsystem_nqn, request.host_nqn)
                     return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
 
         return pb2.req_status(status=0, error_message=os.strerror(0))
@@ -1986,6 +2225,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     )
                     self.logger.debug(f"remove_host {request.host_nqn}: {ret}")
                     self.host_info.remove_psk_host(request.subsystem_nqn, request.host_nqn)
+                    self.host_info.remove_dhchap_host(request.subsystem_nqn, request.host_nqn)
+                    self.remove_all_host_key_files(request.subsystem_nqn, request.host_nqn)
+                    self.remove_all_host_keys_from_keyring(request.subsystem_nqn, request.host_nqn)
             except Exception as ex:
                 if request.host_nqn == "*":
                     self.logger.exception(all_host_failure_prefix)
@@ -2055,7 +2297,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 for h in host_nqns:
                     host_nqn = h["nqn"]
                     psk = self.host_info.is_psk_host(request.subsystem, host_nqn)
-                    one_host = pb2.host(nqn = host_nqn, use_psk = psk)
+                    dhchap = self.host_info.is_dhchap_host(request.subsystem, host_nqn)
+                    one_host = pb2.host(nqn = host_nqn, use_psk = psk, use_dhchap = dhchap)
                     hosts.append(one_host)
                 break
             except Exception:
@@ -2155,6 +2398,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 found = False
                 secure = False
                 psk = False
+                dhchap = False
 
                 for qp in qpair_ret:
                     try:
@@ -2189,6 +2433,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     continue
 
                 psk = self.host_info.is_psk_host(request.subsystem, hostnqn)
+                dhchap = self.host_info.is_dhchap_host(request.subsystem, hostnqn)
 
                 if request.subsystem in self.subsystem_listeners:
                     if (adrfam, traddr, trsvcid, True) in self.subsystem_listeners[request.subsystem]:
@@ -2201,7 +2446,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 one_conn = pb2.connection(nqn=hostnqn, connected=True,
                                           traddr=traddr, trsvcid=trsvcid, trtype=trtype, adrfam=adrfam,
                                           qpairs_count=conn["num_io_qpairs"], controller_id=conn["cntlid"],
-                                          secure=secure, use_psk=psk)
+                                          secure=secure, use_psk=psk, use_dhchap=dhchap)
                 connections.append(one_conn)
                 if hostnqn in host_nqns:
                     host_nqns.remove(hostnqn)
@@ -2211,9 +2456,11 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         for nqn in host_nqns:
             psk = False
+            dhchap = False
             psk = self.host_info.is_psk_host(request.subsystem, nqn)
+            dhchap = self.host_info.is_dhchap_host(request.subsystem, nqn)
             one_conn = pb2.connection(nqn=nqn, connected=False, traddr="<n/a>", trsvcid=0,
-                                      qpairs_count=-1, controller_id=-1, use_psk=psk)
+                                      qpairs_count=-1, controller_id=-1, use_psk=psk, use_dhchap=dhchap)
             connections.append(one_conn)
 
         return pb2.connections_info(status = 0, error_message = os.strerror(0),
