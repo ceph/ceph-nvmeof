@@ -60,11 +60,9 @@ make exec SVC=bdevperf OPTS=-T CMD="$bdevperf -v -t $timeout -s $BDEVPERF_SOCKET
 
 (
 sleep 8;   
-
 lb_group=1;
-docker compose run -T --rm nvmeof-cli --server-address $ip --server-port 5500  namespace change_load_balancing_group -n nqn.2016-06.io.spdk:cnode1 --nsid 1 --load-balancing-group $lb_group ;
 
-
+docker compose run -T --rm nvmeof-cli --server-address $ip --server-port 5500  namespace change_load_balancing_group -n nqn.2016-06.io.spdk:cnode1 --nsid 1 --load-balancing-group $lb_group;
 priv_res1=$(calc_written_bytes_in_sec $ip) ; 
 
 echo "ℹ️  written bytes through $ip   $priv_res1 ";
@@ -77,14 +75,16 @@ echo "ℹ️  written bytes through $ip2  $priv_res2 ";
 for i in $(seq 6); do
    if [ $lb_group -eq 1 ]; then
        lb_group=2
+       IP=$ip
    else 
        lb_group=1
+       IP=$ip2
    fi;
 
    echo "ℹ️ ℹ️ Change lb group of ns 1 to $lb_group :" ;
-   docker compose run -T --rm nvmeof-cli --server-address $ip --server-port 5500  namespace change_load_balancing_group -n nqn.2016-06.io.spdk:cnode1 --nsid 1 --load-balancing-group $lb_group ;
+   docker compose run -T --rm nvmeof-cli --server-address $IP --server-port 5500  namespace change_load_balancing_group -n nqn.2016-06.io.spdk:cnode1 --nsid 1 --load-balancing-group $lb_group;
    sleep 4;
-
+ 
    res1=$(calc_written_bytes_in_sec $ip) ;
  
    echo "ℹ️  written bytes through $ip ?:  $res1";

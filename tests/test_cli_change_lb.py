@@ -109,8 +109,13 @@ def create_namespaces(caplog, ns_count, subsys):
 
 def change_one_namespace_lb_group(caplog, subsys, nsid_to_change, new_group):
     caplog.clear()
-    cli(["--server-port", "5501", "namespace", "change_load_balancing_group", "--subsystem", subsys, "--nsid", nsid_to_change, "--load-balancing-group", new_group])
-    time.sleep(10)
+    cli(["--server-port", "5502", "namespace", "change_load_balancing_group", "--subsystem", subsys, "--nsid", nsid_to_change, "--load-balancing-group", new_group])
+    time.sleep(8)
+    if "so try this command from it" in caplog.text:
+        caplog.clear()
+        cli(["--server-port", "5501", "namespace", "change_load_balancing_group", "--subsystem", subsys, "--nsid", nsid_to_change, "--load-balancing-group", new_group])
+        time.sleep(8)
+
     assert f"Changing load balancing group of namespace {nsid_to_change} in {subsys} to {new_group}: Successful" in caplog.text
     assert f"Received request to change load balancing group for namespace with NSID {nsid_to_change} in {subsys} to {new_group}, context: <grpc._server" in caplog.text
     assert f"Received request to delete namespace" not in caplog.text

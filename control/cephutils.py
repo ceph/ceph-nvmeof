@@ -12,6 +12,7 @@ import errno
 import rbd
 import rados
 import time
+import json
 from .utils import GatewayLogger
 
 class CephUtils:
@@ -31,6 +32,23 @@ class CephUtils:
             rply = cluster.mon_command(cmd, b'')
             self.logger.debug(f"Monitor reply: {rply}")
             return rply
+    def get_gw_id_owner_ana_group(self, pool, group, anagrp):
+        str = '{' + f'"prefix":"nvme-gw show", "pool":"{pool}", "group":"{group}"' + '}'
+        self.logger.debug(f"nvme-show string: {str}")
+        rply = self.execute_ceph_monitor_command(str)
+        self.logger.debug(f"reply \"{rply}\"")
+        conv_str = rply[1].decode()
+        data = json.loads(conv_str)
+
+        # Find the gw-id that contains "2: ACTIVE" in "ana states"
+        gw_id = None
+        comp_str = f"{anagrp}: ACTIVE"
+        for gateway in data["Created Gateways:"]:
+            if comp_str in gateway["ana states"]:
+              gw_id = gateway["gw-id"]
+              self.logger.debug(f"found gw owner of anagrp {anagrp}: gw {gw_id}")
+              break
+        return gw_id
 
     def get_number_created_gateways(self, pool, group):
         now = time.time()
