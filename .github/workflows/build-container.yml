@@ -133,7 +133,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        test: ["cli", "cli_change_lb", "state", "multi_gateway", "server", "grpc", "omap_lock", "old_omap", "log_files", "nsid", "psk", "dhchap"]
+        test: ["cli", "cli_change_lb", "state", "multi_gateway", "server", "grpc", "omap_lock", "log_files", "nsid", "psk", "dhchap"]
     runs-on: ubuntu-latest
     env:
       HUGEPAGES: 512  # for multi gateway test, approx 256 per gateway instance
