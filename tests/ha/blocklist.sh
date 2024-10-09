@@ -1,10 +1,12 @@
-docker compose exec ceph ceph orch ps --refresh
+# docker compose exec -T ceph ceph orch ps --refresh
 echo 111
 GW1_NAME=$(docker ps --format '{{.ID}}\t{{.Names}}' | awk '$2 ~ /nvmeof/ && $2 ~ /1/ {print $1}')
+echo $GW1_NAME
 echo 222
 docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' $GW1_NAME
-NODE_IP=$(docker compose exec ceph ceph orch host ls --format json | jq -r ".[] | select(.hostname==\"$GW1_NAME\") | .public_addr")
+NODE_IP=$(docker compose exec -T ceph ceph orch host ls --format json | jq -r ".[] | select(.hostname==\"$GW1_NAME\") | .public_addr")
 echo $NODE_IP
+
 # # Check if NODE_IP was found
 # if [ -z "$NODE_IP" ]; then
 #     echo "Error: Could not find IP for node $NODE."
