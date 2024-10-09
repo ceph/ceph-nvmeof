@@ -17,7 +17,6 @@ pool = "rbd"
 subsystem = "nqn.2016-06.io.spdk:cnode1"
 hostnqn1 = "nqn.2014-08.org.nvmexpress:uuid:22207d09-d8af-4ed2-84ec-a6d80b0cf7eb"
 hostnqn2 = "nqn.2014-08.org.nvmexpress:uuid:22207d09-d8af-4ed2-84ec-a6d80b0cf7ec"
-hostnqn3 = "nqn.2014-08.org.nvmexpress:uuid:22207d09-d8af-4ed2-84ec-a6d80b0cf7ee"
 hostnqn4 = "nqn.2014-08.org.nvmexpress:uuid:6488a49c-dfa3-11d4-ac31-b232c6c68a8a"
 hostnqn5 = "nqn.2014-08.org.nvmexpress:uuid:22207d09-d8af-4ed2-84ec-a6d80b0cf7ef"
 hostnqn6 = "nqn.2014-08.org.nvmexpress:uuid:22207d09-d8af-4ed2-84ec-a6d80b0cf7f0"
@@ -25,11 +24,13 @@ hostnqn7 = "nqn.2014-08.org.nvmexpress:uuid:22207d09-d8af-4ed2-84ec-a6d80b0cf7f1
 hostnqn8 = "nqn.2014-08.org.nvmexpress:uuid:22207d09-d8af-4ed2-84ec-a6d80b0cf7f2"
 hostnqn9 = "nqn.2014-08.org.nvmexpress:uuid:22207d09-d8af-4ed2-84ec-a6d80b0cf7f3"
 hostnqn10 = "nqn.2014-08.org.nvmexpress:uuid:22207d09-d8af-4ed2-84ec-a6d80b0cf7f4"
+hostnqn11 = "nqn.2014-08.org.nvmexpress:uuid:22207d09-d8af-4ed2-84ec-a6d80b0cf7f5"
 
-hostpsk1 = "NVMeTLSkey-1:01:YzrPElk4OYy1uUERriPwiiyEJE/+J5ckYpLB+5NHMsR2iBuT:"
-hostpsk2 = "NVMeTLSkey-1:02:FTFds4vH4utVcfrOforxbrWIgv+Qq4GQHgMdWwzDdDxE1bAqK2mOoyXxmbJxGeueEVVa/Q==:"
-hostpsk3 = "junk" 
-hostpsk4 = "NVMeTLSkey-1:01:YzrPElk4OYy1uUERriPwiiyEJE/+J5ckYpLB+5NHMsR2iBuT:"
+hostdhchap1 = "DHHC-1:00:MWPqcx1Ug1debg8fPIGpkqbQhLcYUt39k7UWirkblaKEH1kE:"
+hostdhchap2 = "DHHC-1:00:ojmm6ISA2DBpZEldEJqJvA1/cAl1wDmeolS0fCIn2qZpK0b7gpx3qu76yHpjlOOXNyjqf0oFYCWxUqkXGN2xEBOVxoA=:"
+hostdhchap4 = "DHHC-1:01:Ei7kUrD7iyrjzXDwIZ666sSPBswUk4wDjSQtodytVB5YiBru:"
+hostdhchap5 = "DHHC-1:03:6EKZcEL86u4vzTE8sCETvskE3pLKE+qOorl9QxrRfLvfOEQ5GvqCzM41U8fFVAz1cs+T14PjSpd1J641rfeCC1x2VNg=:"
+hostdhchap6 = "DHHC-1:02:ULMaRuJ40ui58nK4Qk5b0J89G3unbGb8mBUbt/XSrf18PBPvyL3sivZOINNh2o/fPpXbGg==:"
 
 host_name = socket.gethostname()
 addr = "127.0.0.1"
@@ -69,33 +70,18 @@ def test_setup(caplog, gateway):
     cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool, "--rbd-image", image, "--rbd-create-image", "--size", "16MB"])
     assert f"Adding namespace 1 to {subsystem}: Successful" in caplog.text
 
-def test_allow_any_host(caplog, gateway):
-    caplog.clear()
-    cli(["host", "add", "--subsystem", subsystem, "--host-nqn", "*"])
-    assert f"Allowing open host access to {subsystem}: Successful" in caplog.text
-
-def test_create_secure_with_any_host(caplog, gateway):
-    caplog.clear()
-    cli(["listener", "add", "--subsystem", subsystem, "--host-name", host_name, "-a", addr, "-s", "5001", "--secure"])
-    assert f"Secure channel is only allowed for subsystems in which \"allow any host\" is off" in caplog.text
-
-def test_remove_any_host_access(caplog, gateway):
-    caplog.clear()
-    cli(["host", "del", "--subsystem", subsystem, "--host-nqn", "*"])
-    assert f"Disabling open host access to {subsystem}: Successful" in caplog.text
-
 def test_create_secure(caplog, gateway):
     caplog.clear()
     cli(["listener", "add", "--subsystem", subsystem, "--host-name", host_name, "-a", addr, "-s", "5001", "--secure"])
     assert f"Adding {subsystem} listener at {addr}:5001: Successful" in caplog.text
     caplog.clear()
-    cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn1, "--psk", hostpsk1])
+    cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn1, "--dhchap-key", hostdhchap1])
     assert f"Adding host {hostnqn1} to {subsystem}: Successful" in caplog.text
     caplog.clear()
-    cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn2, "--psk", hostpsk2])
+    cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn2, "--dhchap-key", hostdhchap2])
     assert f"Adding host {hostnqn2} to {subsystem}: Successful" in caplog.text
     caplog.clear()
-    cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn4, "--psk", hostpsk4])
+    cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn4, "--dhchap-key", hostdhchap4])
     assert f"Adding host {hostnqn4} to {subsystem}: Successful" in caplog.text
 
 def test_create_not_secure(caplog, gateway):
@@ -113,75 +99,78 @@ def test_create_secure_list(caplog, gateway):
     caplog.clear()
     rc = 0
     try:
-        cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn8, hostnqn9, hostnqn10, "--psk", hostpsk1])
+        cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn8, hostnqn9, hostnqn10, "--dhchap-key", hostdhchap1])
     except SystemExit as sysex:
         rc = int(str(sysex))
         pass
     assert rc == 2
-    assert f"error: Can't have more than one host NQN when PSK keys are used" in caplog.text
-
-def test_create_secure_junk_key(caplog, gateway):
-    caplog.clear()
-    cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn3, "--psk", hostpsk3])
-    assert f"Failure adding host {hostnqn3} to {subsystem}" in caplog.text
+    assert f"error: Can't have more than one host NQN when DH-HMAC-CHAP keys are used" in caplog.text
 
 def test_create_secure_no_key(caplog, gateway):
     caplog.clear()
     rc = 0
     try:
-        cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn5, "--psk"])
+        cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn5, "--dhchap-key"])
     except SystemExit as sysex:
         rc = int(str(sysex))
         pass
     assert rc == 2
-    assert f"error: argument --psk: expected one argument" in caplog.text
+    assert f"error: argument --dhchap-key: expected one argument" in caplog.text
 
-def test_list_psk_hosts(caplog, gateway):
+def test_dhchap_controller_key(caplog, gateway):
+    caplog.clear()
+    cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn11, "--dhchap-key", hostdhchap5, "--dhchap-ctrlr-key", hostdhchap6])
+    assert f"Adding host {hostnqn11} to {subsystem}: Successful" in caplog.text
+
+def test_list_dhchap_hosts(caplog, gateway):
     caplog.clear()
     hosts = cli_test(["host", "list", "--subsystem", subsystem])
     found = 0
-    assert len(hosts.hosts) == 5
+    assert len(hosts.hosts) == 6
     for h in hosts.hosts:
         if h.nqn == hostnqn1:
             found += 1
-            assert h.use_psk
+            assert h.use_dhchap
         elif h.nqn == hostnqn2:
             found += 1
-            assert h.use_psk
+            assert h.use_dhchap
         elif h.nqn == hostnqn4:
             found += 1
-            assert h.use_psk
+            assert h.use_dhchap
         elif h.nqn == hostnqn6:
             found += 1
-            assert not h.use_psk
+            assert not h.use_dhchap
         elif h.nqn == hostnqn7:
             found += 1
-            assert not h.use_psk
+            assert not h.use_dhchap
+        elif h.nqn == hostnqn11:
+            found += 1
+            assert h.use_dhchap
         else:
             assert False
-    assert found == 5
+    assert found == 6
 
-def test_allow_any_host_with_psk(caplog, gateway):
+def test_allow_any_host_with_dhchap(caplog, gateway):
     caplog.clear()
     rc = 0
     try:
-        cli(["host", "add", "--subsystem", subsystem, "--host-nqn", "*", "--psk", hostpsk1])
+        cli(["host", "add", "--subsystem", subsystem, "--host-nqn", "*", "--dhchap-key", hostdhchap1])
     except SystemExit as sysex:
         rc = int(str(sysex))
         pass
     assert rc == 2
-    assert f"error: PSK key is only allowed for specific hosts" in caplog.text
+    assert f"error: DH-HMAC-CHAP key is only allowed for specific hosts" in caplog.text
 
-def test_psk_with_dhchap(caplog, gateway):
+def test_dhchap_controller_with_no_dhchap_key(caplog, gateway):
     caplog.clear()
     rc = 0
     try:
-        cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn10, "--psk", hostpsk1, "--dhchap-key", "junk"])
+        cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn10, "--dhchap-ctrlr-key", hostdhchap1])
     except SystemExit as sysex:
         rc = int(str(sysex))
         pass
     assert rc == 2
-    assert f"error: PSK and DH-HMAC-CHAP keys are mutually exclusive" in caplog.text
+    assert f"error: DH-HMAC-CHAP controller keys can not be used without DH-HMAC-CHAP keys" in caplog.text
 
 def test_list_listeners(caplog, gateway):
     caplog.clear()

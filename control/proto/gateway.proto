@@ -183,6 +183,8 @@ message add_host_req {
 	string subsystem_nqn = 1;
 	string host_nqn = 2;
 	optional string psk = 3;
+	optional string dhchap_key = 4;
+	optional string dhchap_ctrlr_key = 5;
 }
 
 message remove_host_req {
@@ -400,6 +402,7 @@ message listeners_info {
 message host {
 	string nqn = 1;
 	optional bool use_psk = 2;
+	optional bool use_dhchap = 3;
 }
 
 message hosts_info {
@@ -421,6 +424,7 @@ message connection {
 	int32 controller_id = 8;
 	optional bool secure = 9;
 	optional bool use_psk = 10;
+	optional bool use_dhchap = 11;
 }
 
 message connections_info {
