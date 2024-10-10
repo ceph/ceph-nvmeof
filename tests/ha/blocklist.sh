@@ -29,5 +29,5 @@ if echo "$BLOCKLIST" | grep -qv "$NODE_IP"; then
     echo "found at least 1 entry in blocklist which is not related to gw1 in the stopped gw1. failing"
     exit 1
 else
-    echo "didn't find entries unrelaetd to gw1."
+    echo "didn't find unexpected entries which are not relaetd to gw1."
 fi
