@@ -9,6 +9,7 @@ import warnings
 image = "mytestdevimage"
 pool = "rbd"
 subsystem_prefix = "nqn.2016-06.io.spdk:cnode"
+host_prefix = "nqn.2016-06.io.spdk:host"
 created_resource_count = 20
 subsys_list_count = 5
 
@@ -23,7 +24,7 @@ def wait_for_string(caplog, str, timeout):
 def create_resource_by_index(i):
     subsystem = f"{subsystem_prefix}{i}"
     cli(["subsystem", "add", "--subsystem", subsystem])
-    cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool, "--rbd-image", image, "--size", "16MB", "--rbd-create-image","--load-balancing-group", "1", "--force"])
+    cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool, "--rbd-image", image, "--size", "16MB", "--rbd-create-image","--load-balancing-group", "1", "--force", "--no-auto-visible"])
 
 def check_resource_by_index(i, caplog):
     subsystem = f"{subsystem_prefix}{i}"
@@ -68,6 +69,11 @@ def test_create_get_subsys(caplog, config):
              "--r-megabytes-per-second", "5"])
         assert f"Setting QOS limits of namespace 1 in {subsystem_prefix}0: Successful" in caplog.text
         assert f"No previous QOS limits found, this is the first time the limits are set for namespace 1 on {subsystem_prefix}0" not in caplog.text
+ 
+        # add host to the first namespace
+        caplog.clear()
+        cli(["namespace", "add_host", "--subsystem", f"{subsystem_prefix}0", "--nsid", "1", "--host-nqn", f"{host_prefix}0"])
+        assert f"Failure adding host" not in caplog.text
 
     caplog.clear()
 
@@ -88,6 +94,8 @@ def test_create_get_subsys(caplog, config):
         time.sleep(20)     # Make sure update() is over
         assert f"{subsystem_prefix}0 with ANA group id 1" in caplog.text
         assert f"Received request to set QOS limits for namespace 1 on {subsystem_prefix}0, R/W IOs per second: 2000 Read megabytes per second: 5" in caplog.text
+        assert f"Received request to set QOS limits for namespace 1 on {subsystem_prefix}0, R/W IOs per second: 2000 Read megabytes per second: 5" in caplog.text
+        assert f"Received request to add host {host_prefix}0 to namespace 1 on {subsystem_prefix}0, context: None" in caplog.text
         caplog.clear()
         cli(["--format", "plain", "subsystem", "list"])
         assert "Exception" not in caplog.text

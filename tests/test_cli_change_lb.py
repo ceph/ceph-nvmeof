@@ -140,8 +140,8 @@ def test_change_namespace_lb_group(caplog, two_gateways):
     time.sleep(10)
     assert f"Adding namespace 1 to {subsystem}: Successful" in caplog.text
     assert f"get_cluster cluster_name='cluster_context_{anagrpid}_0'" in caplog.text
-    assert f"Received request to add namespace to {subsystem}, ana group {anagrpid}, context: <grpc._server" in caplog.text
-    assert f"Received request to add namespace 1 to {subsystem}, ana group {anagrpid}, context: None" in caplog.text
+    assert f"Received request to add namespace to {subsystem}, ana group {anagrpid}, no_auto_visible: False, context: <grpc._server" in caplog.text
+    assert f"Received request to add namespace 1 to {subsystem}, ana group {anagrpid}, no_auto_visible: False, context: None" in caplog.text
     caplog.clear()
     cli(["--server-port", "5501", "namespace", "set_qos", "--subsystem", subsystem, "--nsid", "1", "--rw-ios-per-second", "2000"])
     assert f"Setting QOS limits of namespace 1 in {subsystem}: Successful" in caplog.text
@@ -154,7 +154,9 @@ def test_change_namespace_lb_group(caplog, two_gateways):
     assert f'"rw_ios_per_second": "2000",' in caplog.text
     assert f'"rw_mbytes_per_second": "0",' in caplog.text
     assert f'"r_mbytes_per_second": "0",' in caplog.text
-    assert f'"w_mbytes_per_second": "0"\n' in caplog.text
+    assert f'"w_mbytes_per_second": "0",' in caplog.text
+    assert f'"no_auto_visible": false,' in caplog.text
+    assert f'"hosts": []' in caplog.text
     caplog.clear()
     cli(["--server-port", "5502", "--format", "json", "namespace", "list", "--subsystem", subsystem, "--nsid", "1"])
     assert f'"nsid": 1,' in caplog.text
@@ -164,7 +166,9 @@ def test_change_namespace_lb_group(caplog, two_gateways):
     assert f'"rw_ios_per_second": "2000",' in caplog.text
     assert f'"rw_mbytes_per_second": "0",' in caplog.text
     assert f'"r_mbytes_per_second": "0",' in caplog.text
-    assert f'"w_mbytes_per_second": "0"\n' in caplog.text
+    assert f'"w_mbytes_per_second": "0",' in caplog.text
+    assert f'"no_auto_visible": false,' in caplog.text
+    assert f'"hosts": []' in caplog.text
     change_one_namespace_lb_group(caplog, subsystem, "1", anagrpid2)
     caplog.clear()
     cli(["--server-port", "5501", "--format", "json", "namespace", "list", "--subsystem", subsystem, "--nsid", "1"])
@@ -175,7 +179,9 @@ def test_change_namespace_lb_group(caplog, two_gateways):
     assert f'"rw_ios_per_second": "2000",' in caplog.text
     assert f'"rw_mbytes_per_second": "0",' in caplog.text
     assert f'"r_mbytes_per_second": "0",' in caplog.text
-    assert f'"w_mbytes_per_second": "0"\n' in caplog.text
+    assert f'"w_mbytes_per_second": "0",' in caplog.text
+    assert f'"no_auto_visible": false,' in caplog.text
+    assert f'"hosts": []' in caplog.text
     caplog.clear()
     cli(["--server-port", "5502", "--format", "json", "namespace", "list", "--subsystem", subsystem, "--nsid", "1"])
     assert f'"nsid": 1,' in caplog.text
@@ -185,14 +191,16 @@ def test_change_namespace_lb_group(caplog, two_gateways):
     assert f'"rw_ios_per_second": "2000",' in caplog.text
     assert f'"rw_mbytes_per_second": "0",' in caplog.text
     assert f'"r_mbytes_per_second": "0",' in caplog.text
-    assert f'"w_mbytes_per_second": "0"\n' in caplog.text
+    assert f'"w_mbytes_per_second": "0",' in caplog.text
+    assert f'"no_auto_visible": false,' in caplog.text
+    assert f'"hosts": []' in caplog.text
     caplog.clear()
     cli(["--server-port", "5501", "namespace", "add", "--subsystem", subsystem, "--uuid", uuid2, "--rbd-pool", pool, "--rbd-image", f"{image}2", "--size", "16MB", "--rbd-create-image", "--load-balancing-group", anagrpid2, "--force"])
     time.sleep(10)
     assert f"Adding namespace 2 to {subsystem}: Successful" in caplog.text
     assert f"get_cluster cluster_name='cluster_context_{anagrpid2}_0'" in caplog.text
-    assert f"Received request to add namespace to {subsystem}, ana group {anagrpid2}, context: <grpc._server" in caplog.text
-    assert f"Received request to add namespace 2 to {subsystem}, ana group {anagrpid2}, context: None" in caplog.text
+    assert f"Received request to add namespace to {subsystem}, ana group {anagrpid2}, no_auto_visible: False, context: <grpc._server" in caplog.text
+    assert f"Received request to add namespace 2 to {subsystem}, ana group {anagrpid2}, no_auto_visible: False, context: None" in caplog.text
     caplog.clear()
     cli(["--server-port", "5501", "--format", "json", "namespace", "list", "--subsystem", subsystem, "--nsid", "2"])
     assert f'"nsid": 2,' in caplog.text
