@@ -107,6 +107,12 @@ def create_namespaces(caplog, ns_count, subsys):
         cli(["--server-port", "5501", "namespace", "add", "--subsystem", subsys, "--rbd-pool", pool, "--rbd-image", f"{image}{i}", "--size", "16MB", "--rbd-create-image", "--load-balancing-group", anagrpid2])
         assert f"Adding namespace {i} to {subsys}: Successful" in caplog.text
 
+def try_change_one_namespace_lb_group_no_listeners(caplog, subsys, nsid_to_change, new_group):
+    caplog.clear()
+    cli(["--server-port", "5502", "namespace", "change_load_balancing_group", "--subsystem", subsys, "--nsid", nsid_to_change, "--load-balancing-group", new_group])
+    time.sleep(8)
+    assert "is owned by gateway None so try this command from it" in caplog.text
+
 def change_one_namespace_lb_group(caplog, subsys, nsid_to_change, new_group):
     caplog.clear()
     cli(["--server-port", "5502", "namespace", "change_load_balancing_group", "--subsystem", subsys, "--nsid", nsid_to_change, "--load-balancing-group", new_group])
@@ -169,6 +175,10 @@ def test_change_namespace_lb_group(caplog, two_gateways):
     assert f'"w_mbytes_per_second": "0",' in caplog.text
     assert f'"no_auto_visible": false,' in caplog.text
     assert f'"hosts": []' in caplog.text
+    try_change_one_namespace_lb_group_no_listeners(caplog, subsystem, "1", anagrpid2)
+    caplog.clear()
+    cli(["--server-port", "5502", "listener", "add", "--subsystem", subsystem, "--host-name",  "GatewayBB", "--traddr", "127.0.0.1", "--trsvcid", "4420"])
+    cli(["--server-port", "5501", "listener", "add", "--subsystem", subsystem, "--host-name",  "GatewayAA", "--traddr", "127.0.0.1", "--trsvcid", "4430"])
     change_one_namespace_lb_group(caplog, subsystem, "1", anagrpid2)
     caplog.clear()
     cli(["--server-port", "5501", "--format", "json", "namespace", "list", "--subsystem", subsystem, "--nsid", "1"])
