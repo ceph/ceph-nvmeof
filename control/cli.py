@@ -1056,14 +1056,28 @@ class GatewayClient:
         if args.psk:
             if len(args.host_nqn) > 1:
                 self.cli.parser.error(f"Can't have more than one host NQN when PSK keys are used")
+            if args.dhchap_key:
+                self.cli.parser.error(f"PSK and DH-HMAC-CHAP keys are mutually exclusive")
+
+        if args.dhchap_key:
+            if len(args.host_nqn) > 1:
+                self.cli.parser.error(f"Can't have more than one host NQN when DH-HMAC-CHAP keys are used")
+
+        if args.dhchap_ctrlr_key:
+            if not args.dhchap_key:
+                self.cli.parser.error(f"DH-HMAC-CHAP controller keys can not be used without DH-HMAC-CHAP keys")
 
         for i in range(len(args.host_nqn)):
             one_host_nqn = args.host_nqn[i]
 
             if one_host_nqn == "*" and args.psk:
-                self.cli.parser.error(f"PSK is only allowed for specific hosts")
+                self.cli.parser.error(f"PSK key is only allowed for specific hosts")
 
-            req = pb2.add_host_req(subsystem_nqn=args.subsystem, host_nqn=one_host_nqn, psk=args.psk)
+            if one_host_nqn == "*" and args.dhchap_key:
+                self.cli.parser.error(f"DH-HMAC-CHAP key is only allowed for specific hosts")
+
+            req = pb2.add_host_req(subsystem_nqn=args.subsystem, host_nqn=one_host_nqn,
+                                   psk=args.psk, dhchap_key=args.dhchap_key, dhchap_ctrlr_key=args.dhchap_ctrlr_key)
             try:
                 ret = self.stub.add_host(req)
             except Exception as ex:
@@ -1173,14 +1187,15 @@ class GatewayClient:
                     hosts_list.append(["Any host", "n/a"])
                 for h in hosts_info.hosts:
                     use_psk = "Yes" if h.use_psk else "No"
-                    hosts_list.append([h.nqn, use_psk])
+                    use_dhchap = "Yes" if h.use_dhchap else "No"
+                    hosts_list.append([h.nqn, use_psk, use_dhchap])
                 if len(hosts_list) > 0:
                     if args.format == "text":
                         table_format = "fancy_grid"
                     else:
                         table_format = "plain"
                     hosts_out = tabulate(hosts_list,
-                                      headers = ["Host NQN", "Uses PSK"],
+                                      headers = ["Host NQN", "Uses PSK", "Uses DHCHAP"],
                                       tablefmt=table_format, stralign="center")
                     out_func(f"Hosts allowed to access {args.subsystem}:\n{hosts_out}")
                 else:
@@ -1210,7 +1225,9 @@ class GatewayClient:
     ]
     host_add_args = host_common_args + [
         argument("--host-nqn", "-t", help="Host NQN list", nargs="+", required=True),
-        argument("--psk", help="Hosts PSK key list", required=False),
+        argument("--psk", help="Hosts PSK key", required=False),
+        argument("--dhchap-key", help="Host DH-HMAC-CHAP key", required=False),
+        argument("--dhchap-ctrlr-key", help="Host DH-HMAC-CHAP controller key", required=False),
     ]
     host_del_args = host_common_args + [
         argument("--host-nqn", "-t", help="Host NQN list", nargs="+", required=True),
@@ -1251,6 +1268,7 @@ class GatewayClient:
                 for conn in connections_info.connections:
                     conn_secure = "<n/a>"
                     conn_psk = "Yes" if conn.use_psk else "No"
+                    conn_dhchap = "Yes" if conn.use_dhchap else "No"
                     if conn.connected:
                         conn_secure = "Yes" if conn.secure else "No"
                     connections_list.append([conn.nqn,
@@ -1259,14 +1277,15 @@ class GatewayClient:
                                             conn.qpairs_count if conn.connected else "<n/a>",
                                             conn.controller_id if conn.connected else "<n/a>",
                                             conn_secure,
-                                            conn_psk])
+                                            conn_psk,
+                                            conn_dhchap])
                 if len(connections_list) > 0:
                     if args.format == "text":
                         table_format = "fancy_grid"
                     else:
                         table_format = "plain"
                     connections_out = tabulate(connections_list,
-                                      headers = ["Host NQN", "Address", "Connected", "QPairs Count", "Controller ID", "Secure", "PSK"],
+                                      headers = ["Host NQN", "Address", "Connected", "QPairs Count", "Controller ID", "Secure", "Uses\nPSK", "Uses\nDHCHAP"],
                                       tablefmt=table_format)
                     out_func(f"Connections for {args.subsystem}:\n{connections_out}")
                 else:
