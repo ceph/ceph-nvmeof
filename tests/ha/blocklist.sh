@@ -1,15 +1,14 @@
 source .env
 
+echo "obtaining gw1 container id and its ip"
 GW1_NAME=$(docker ps --format '{{.ID}}\t{{.Names}}' | awk '$2 ~ /nvmeof/ && $2 ~ /1/ {print $1}')
-echo $GW1_NAME
 NODE_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' $GW1_NAME)
-echo $NODE_IP
 
 echo "clearing blocklist"
 docker compose exec -T ceph ceph osd blocklist clear
 
 echo "shutting down gw1:$GW1_NAME"
-docker stop $GW1_NAME
+docker stop $GW1_NAME 
 
 echo "waiting for 30s after shutdown"
 sleep 30
