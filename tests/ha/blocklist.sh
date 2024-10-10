@@ -16,7 +16,7 @@ sleep 30
 docker ps
 BLOCKLIST=$(docker compose exec -T ceph ceph osd blocklist ls)
 echo $BLOCKLIST
-$BLOCKLIST | grep -q $NODE_IP
+echo $BLOCKLIST | grep -q $NODE_IP
 
 echo 222
 
