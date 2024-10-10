@@ -5,16 +5,16 @@ docker ps
 echo 111
 GW1_NAME=$(docker ps --format '{{.ID}}\t{{.Names}}' | awk '$2 ~ /nvmeof/ && $2 ~ /1/ {print $1}')
 echo $GW1_NAME
-NODE_IP = docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' $GW1_NAME
+NODE_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' $GW1_NAME)
 echo $NODE_IP
 
-BLOCKLIST = docker compose exec -T ceph ceph osd blocklist clear
+docker compose exec -T ceph ceph osd blocklist clear
 
 docker stop $GW1_NAME
 
 sleep 30
 docker ps
-BLOCKLIST = docker compose exec -T ceph ceph osd blocklist ls
+BLOCKLIST=$(docker compose exec -T ceph ceph osd blocklist ls)
 echo $BLOCKLIST
 $BLOCKLIST | grep -q $NODE_IP
 
