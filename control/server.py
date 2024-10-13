@@ -633,3 +633,10 @@ class GatewayServer:
                 if is_add_req:
                     req = json_format.Parse(val, pb2.namespace_change_load_balancing_group_req(), ignore_unknown_fields=True)
                     self.gateway_rpc.namespace_change_load_balancing_group(req)
+            elif key.startswith(GatewayState.NAMESPACE_HOST_PREFIX):
+                if is_add_req:
+                    req = json_format.Parse(val, pb2.namespace_add_host_req(), ignore_unknown_fields=True)
+                    self.gateway_rpc.namespace_add_host(req)
+                else:
+                    req = json_format.Parse(val, pb2.namespace_delete_host_req(), ignore_unknown_fields=True)
+                    self.gateway_rpc.namespace_delete_host(req)

@@ -62,6 +62,8 @@ up:
 
 clean: $(CLEAN) setup  ## Clean-up environment
 clean: override HUGEPAGES = 0
+clean:
+	/usr/bin/rm -f control/proto/gateway_pb2_grpc.py control/proto/gateway_pb2.py control/proto/gateway_pb2.pyi control/proto/monitor_pb2_grpc.py control/proto/monitor_pb2.py control/proto/monitor_pb2.pyi
 
 update-lockfile: run ## Update dependencies in lockfile (pdm.lock)
 update-lockfile: SVC=nvmeof-builder-base

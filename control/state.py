@@ -34,6 +34,7 @@ class GatewayState(ABC):
     LISTENER_PREFIX = "listener" + OMAP_KEY_DELIMITER
     NAMESPACE_QOS_PREFIX = "qos" + OMAP_KEY_DELIMITER
     NAMESPACE_LB_GROUP_PREFIX = "lbgroup" + OMAP_KEY_DELIMITER
+    NAMESPACE_HOST_PREFIX = "ns_host" + OMAP_KEY_DELIMITER
 
     def is_key_element_valid(s: str) -> bool:
         if type(s) != str:
@@ -58,6 +59,13 @@ class GatewayState(ABC):
         key = GatewayState.NAMESPACE_QOS_PREFIX + subsystem_nqn
         if nsid is not None:
             key += GatewayState.OMAP_KEY_DELIMITER + str(nsid)
+        return key
+
+    def build_namespace_host_key(subsystem_nqn: str, nsid, host : str) -> str:
+        key = GatewayState.NAMESPACE_HOST_PREFIX + subsystem_nqn
+        if nsid is not None:
+            key += GatewayState.OMAP_KEY_DELIMITER + str(nsid)
+            key += GatewayState.OMAP_KEY_DELIMITER + host
         return key
 
     def build_subsystem_key(subsystem_nqn: str) -> str:
@@ -110,6 +118,13 @@ class GatewayState(ABC):
         key = GatewayState.build_namespace_key(subsystem_nqn, nsid)
         self._remove_key(key)
 
+        # Delete all keys related to the namespace
+        state = self.get_state()
+        for key in state.keys():
+            if (key.startswith(GatewayState.build_namespace_qos_key(subsystem_nqn, nsid)) or
+                    key.startswith(GatewayState.build_namespace_host_key(subsystem_nqn, nsid, ""))):
+                self._remove_key(key)
+
     def add_namespace_qos(self, subsystem_nqn: str, nsid: str, val: str):
         """Adds namespace's QOS settings to the state data store."""
         key = GatewayState.build_namespace_qos_key(subsystem_nqn, nsid)
@@ -118,6 +133,16 @@ class GatewayState(ABC):
     def remove_namespace_qos(self, subsystem_nqn: str, nsid: str):
         """Removes namespace's QOS settings from the state data store."""
         key = GatewayState.build_namespace_qos_key(subsystem_nqn, nsid)
+        self._remove_key(key)
+
+    def add_namespace_host(self, subsystem_nqn: str, nsid: str, host : str, val: str):
+        """Adds namespace's host to the state data store."""
+        key = GatewayState.build_namespace_host_key(subsystem_nqn, nsid, host)
+        self._add_key(key, val)
+
+    def remove_namespace_host(self, subsystem_nqn: str, nsid: str, host : str):
+        """Removes namespace's host from the state data store."""
+        key = GatewayState.build_namespace_host_key(subsystem_nqn, nsid, host)
         self._remove_key(key)
 
     def add_subsystem(self, subsystem_nqn: str, val: str):
@@ -134,6 +159,8 @@ class GatewayState(ABC):
         state = self.get_state()
         for key in state.keys():
             if (key.startswith(GatewayState.build_namespace_key(subsystem_nqn, None)) or
+                    key.startswith(GatewayState.build_namespace_qos_key(subsystem_nqn, None)) or
+                    key.startswith(GatewayState.build_namespace_host_key(subsystem_nqn, None, "")) or
                     key.startswith(GatewayState.build_host_key(subsystem_nqn, None)) or
                     key.startswith(GatewayState.build_partial_listener_key(subsystem_nqn, None))):
                 self._remove_key(key)
@@ -628,6 +655,16 @@ class GatewayStateHandler:
         self.omap.remove_namespace_qos(subsystem_nqn, nsid)
         self.local.remove_namespace_qos(subsystem_nqn, nsid)
 
+    def add_namespace_host(self, subsystem_nqn: str, nsid: str, host : str, val: str):
+        """Adds namespace's host to the state data store."""
+        self.omap.add_namespace_host(subsystem_nqn, nsid, host, val)
+        self.local.add_namespace_host(subsystem_nqn, nsid, host, val)
+
+    def remove_namespace_host(self, subsystem_nqn: str, nsid: str, host : str):
+        """Removes namespace's host from the state data store."""
+        self.omap.remove_namespace_host(subsystem_nqn, nsid, host)
+        self.local.remove_namespace_host(subsystem_nqn, nsid, host)
+
     def add_subsystem(self, subsystem_nqn: str, val: str):
         """Adds a subsystem to the state data store."""
         self.omap.add_subsystem(subsystem_nqn, val)
@@ -760,6 +797,7 @@ class GatewayStateHandler:
                 GatewayState.SUBSYSTEM_PREFIX,
                 GatewayState.NAMESPACE_PREFIX, GatewayState.HOST_PREFIX,
                 GatewayState.NAMESPACE_QOS_PREFIX,
+                GatewayState.NAMESPACE_HOST_PREFIX,
                 GatewayState.LISTENER_PREFIX,
             ]
 

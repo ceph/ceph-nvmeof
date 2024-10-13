@@ -60,6 +60,12 @@ service Gateway {
 	// Deletes a namespace
 	rpc namespace_delete(namespace_delete_req) returns (req_status) {}
 
+	// Adds a host to a namespace
+	rpc namespace_add_host(namespace_add_host_req) returns (req_status) {}
+
+	// Deletes a host from a namespace
+	rpc namespace_delete_host(namespace_delete_host_req) returns (req_status) {}
+
 	// Adds a host to a subsystem
 	rpc add_host(add_host_req) returns (req_status) {}
 
@@ -122,6 +128,7 @@ message namespace_add_req {
 	optional bool create_image = 8;
 	optional uint64 size = 9;
 	optional bool force = 10;
+	optional bool no_auto_visible = 11;
 }
 
 message namespace_resize_req {
@@ -158,6 +165,18 @@ message namespace_delete_req {
 	string subsystem_nqn = 1;
 	uint32 nsid = 2;
 	optional string OBSOLETE_uuid = 3;
+}
+
+message namespace_add_host_req {
+	string subsystem_nqn = 1;
+	uint32 nsid = 2;
+	string host_nqn = 3;
+}
+
+message namespace_delete_host_req {
+	string subsystem_nqn = 1;
+	uint32 nsid = 2;
+	string host_nqn = 3;
 }
 
 message create_subsystem_req {
@@ -337,6 +356,8 @@ message namespace {
     optional string uuid = 5;
     optional uint32 anagrpid = 6;
     optional string nonce = 7;
+    optional bool no_auto_visible = 8;
+    repeated string hosts = 9;
 }
 
 message subsystems_info_cli {
@@ -447,6 +468,8 @@ message namespace_cli {
 	uint64 rw_mbytes_per_second = 10;
 	uint64 r_mbytes_per_second = 11;
 	uint64 w_mbytes_per_second = 12;
+	bool no_auto_visible = 13;
+	repeated string hosts = 14;
 }
 
 message namespaces_info {

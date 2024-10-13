@@ -299,7 +299,7 @@ jobs:
         if: success() || failure()
         run: make top
 
-      - name: Test
+      - name: Test ${{ matrix.security_protocol }}
         run: |
           ./tests/ha/demo_test.sh test_${{ matrix.security_protocol }}
 
@@ -328,11 +328,11 @@ jobs:
         with:
           files: "/tmp/coredump/core.*"
 
-      - name: Upload demo core dumps
+      - name: Upload demo-${{ matrix.security_protocol }} core dumps
         if: steps.check_coredumps.outputs.files_exists == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: core_demo
+          name: core_demo_${{ matrix.security_protocol }}
           path: /tmp/coredump/core.*
 
       # For debugging purposes (provides an SSH connection to the runner)

@@ -1067,9 +1067,7 @@ class GatewayClient:
             if not args.dhchap_key:
                 self.cli.parser.error(f"DH-HMAC-CHAP controller keys can not be used without DH-HMAC-CHAP keys")
 
-        for i in range(len(args.host_nqn)):
-            one_host_nqn = args.host_nqn[i]
-
+        for one_host_nqn in args.host_nqn:
             if one_host_nqn == "*" and args.psk:
                 self.cli.parser.error(f"PSK key is only allowed for specific hosts")
 
@@ -1360,7 +1358,8 @@ class GatewayClient:
                                             anagrpid=args.load_balancing_group,
                                             create_image=args.rbd_create_image,
                                             size=img_size,
-                                            force=args.force)
+                                            force=args.force,
+                                            no_auto_visible=args.no_auto_visible)
         try:
             ret = self.stub.namespace_add(req)
         except Exception as ex:
@@ -1547,6 +1546,15 @@ class GatewayClient:
                         lb_group = "<n/a>"
                     else:
                         lb_group = str(ns.load_balancing_group)
+                    if ns.no_auto_visible:
+                        if len(ns.hosts) > 0:
+                            for hst in ns.hosts:
+                                visibility = break_string(hst, ":", 2) + "\n"
+                        else:
+                            visibility = "Selective"
+                    else:
+                        visibility = "All Hosts"
+
                     namespaces_list.append([ns.nsid,
                                             break_string(ns.bdev_name, "-", 2),
                                             ns.rbd_pool_name,
@@ -1555,6 +1563,7 @@ class GatewayClient:
                                             self.format_size(ns.block_size),
                                             break_string(ns.uuid, "-", 3),
                                             lb_group,
+                                            visibility,
                                             self.get_qos_limit_str_value(ns.rw_ios_per_second),
                                             self.get_qos_limit_str_value(ns.rw_mbytes_per_second),
                                             self.get_qos_limit_str_value(ns.r_mbytes_per_second),
@@ -1567,7 +1576,7 @@ class GatewayClient:
                         table_format = "plain"
                     namespaces_out = tabulate(namespaces_list,
                                       headers = ["NSID", "Bdev\nName", "RBD\nPool", "RBD\nImage",
-                                                 "Image\nSize", "Block\nSize", "UUID", "Load\nBalancing\nGroup",
+                                                 "Image\nSize", "Block\nSize", "UUID", "Load\nBalancing\nGroup", "Visibility",
                                                  "R/W IOs\nper\nsecond", "R/W MBs\nper\nsecond",
                                                  "Read MBs\nper\nsecond", "Write MBs\nper\nsecond"],
                                       tablefmt=table_format)
@@ -1809,6 +1818,98 @@ class GatewayClient:
 
         return ret.status
 
+    def ns_add_host(self, args):
+        """Adds a host to a namespace."""
+
+        rc = 0
+        ret_list = []
+        out_func, err_func = self.get_output_functions(args)
+
+        if args.nsid <= 0:
+            self.cli.parser.error("nsid value must be positive")
+
+        for one_host_nqn in args.host_nqn:
+            try:
+                add_host_req = pb2.namespace_add_host_req(subsystem_nqn=args.subsystem, nsid=args.nsid, host_nqn=one_host_nqn)
+                ret = self.stub.namespace_add_host(add_host_req)
+            except Exception as ex:
+                ret = pb2.req_status(status = errno.EINVAL, error_message = f"Failure adding host to namespace:\n{ex}")
+
+            if not rc:
+                rc = ret.status
+
+            if args.format == "text" or args.format == "plain":
+                if ret.status == 0:
+                    out_func(f"Adding host {one_host_nqn} to namespace {args.nsid} on {args.subsystem}: Successful")
+                else:
+                    err_func(f"{ret.error_message}")
+            elif args.format == "json" or args.format == "yaml":
+                ret_str = json_format.MessageToJson(
+                            ret,
+                            indent=4,
+                            including_default_value_fields=True,
+                            preserving_proto_field_name=True)
+                if args.format == "json":
+                    out_func(f"{ret_str}")
+                elif args.format == "yaml":
+                    obj = json.loads(ret_str)
+                    out_func(yaml.dump(obj))
+            elif args.format == "python":
+                ret_list.append(ret)
+            else:
+                assert False
+
+        if args.format == "python":
+            return ret_list
+
+        return rc
+
+    def ns_del_host(self, args):
+        """Deletes a host from a namespace."""
+
+        rc = 0
+        ret_list = []
+        out_func, err_func = self.get_output_functions(args)
+
+        if args.nsid <= 0:
+            self.cli.parser.error("nsid value must be positive")
+
+        for one_host_nqn in args.host_nqn:
+            try:
+                del_host_req = pb2.namespace_delete_host_req(subsystem_nqn=args.subsystem, nsid=args.nsid, host_nqn=one_host_nqn)
+                ret = self.stub.namespace_delete_host(del_host_req)
+            except Exception as ex:
+                ret = pb2.req_status(status = errno.EINVAL, error_message = f"Failure deleting host from namespace:\n{ex}")
+
+            if not rc:
+                rc = ret.status
+
+            if args.format == "text" or args.format == "plain":
+                if ret.status == 0:
+                    out_func(f"Deleting host {args.host_nqn} from namespace {args.nsid} on {args.subsystem}: Successful")
+                else:
+                    err_func(f"{ret.error_message}")
+            elif args.format == "json" or args.format == "yaml":
+                ret_str = json_format.MessageToJson(
+                            ret,
+                            indent=4,
+                            including_default_value_fields=True,
+                            preserving_proto_field_name=True)
+                if args.format == "json":
+                    out_func(f"{ret_str}")
+                elif args.format == "yaml":
+                    obj = json.loads(ret_str)
+                    out_func(yaml.dump(obj))
+            elif args.format == "python":
+                ret_list.append(ret)
+            else:
+                assert False
+
+        if args.format == "python":
+            return ret_list
+
+        return rc
+
     ns_common_args = [
         argument("--subsystem", "-n", help="Subsystem NQN", required=True),
     ]
@@ -1821,7 +1922,8 @@ class GatewayClient:
         argument("--block-size", "-s", help="Block size", type=int),
         argument("--load-balancing-group", "-l", help="Load balancing group", type=int, default=0),
         argument("--size", help="Size in bytes or specified unit (K, KB, M, MB, G, GB, T, TB, P, PB)"),
-        argument("--force", help="Create a namespace even its image is already used by another namespace", action='store_true', required=False),
+        argument("--force", help="Create a namespace even when its image is already used by another namespace", action='store_true', required=False),
+        argument("--no-auto-visible", help="Make the namespace visible only to specific hosts", action='store_true', required=False),
     ]
     ns_del_args_list = ns_common_args + [
         argument("--nsid", help="Namespace ID", type=int, required=True),
@@ -1848,6 +1950,14 @@ class GatewayClient:
         argument("--r-megabytes-per-second", help="Read megabytes per second limit, 0 means unlimited", type=int),
         argument("--w-megabytes-per-second", help="Write megabytes per second limit, 0 means unlimited", type=int),
     ]
+    ns_add_host_args_list = ns_common_args + [
+        argument("--nsid", help="Namespace ID", type=int, required=True),
+        argument("--host-nqn", "-t", help="Host NQN list", nargs="+", required=True),
+    ]
+    ns_del_host_args_list = ns_common_args + [
+        argument("--nsid", help="Namespace ID", type=int, required=True),
+        argument("--host-nqn", "-t", help="Host NQN list", nargs="+", required=True),
+    ]
     ns_actions = []
     ns_actions.append({"name" : "add", "args" : ns_add_args_list, "help" : "Create a namespace"})
     ns_actions.append({"name" : "del", "args" : ns_del_args_list, "help" : "Delete a namespace"})
@@ -1856,6 +1966,8 @@ class GatewayClient:
     ns_actions.append({"name" : "get_io_stats", "args" : ns_get_io_stats_args_list, "help" : "Get I/O stats for a namespace"})
     ns_actions.append({"name" : "change_load_balancing_group", "args" : ns_change_load_balancing_group_args_list, "help" : "Change load balancing group for a namespace"})
     ns_actions.append({"name" : "set_qos", "args" : ns_set_qos_args_list, "help" : "Set QOS limits for a namespace"})
+    ns_actions.append({"name" : "add_host", "args" : ns_add_host_args_list, "help" : "Add a host to a namespace"})
+    ns_actions.append({"name" : "del_host", "args" : ns_del_host_args_list, "help" : "Delete a host from a namespace"})
     ns_choices = get_actions(ns_actions)
     @cli.cmd(ns_actions, ["ns"])
     def namespace(self, args):
@@ -1874,6 +1986,10 @@ class GatewayClient:
             return self.ns_change_load_balancing_group(args)
         elif args.action == "set_qos":
             return self.ns_set_qos(args)
+        elif args.action == "add_host":
+            return self.ns_add_host(args)
+        elif args.action == "del_host":
+            return self.ns_del_host(args)
         if not args.action:
             self.cli.parser.error(f"missing action for namespace command (choose from {GatewayClient.ns_choices})")
 
