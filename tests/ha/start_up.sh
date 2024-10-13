@@ -28,6 +28,13 @@ while true; do
   fi
 done
 echo ✅ ceph is healthy
+
+echo ℹ️  Increase debug logs level
+docker compose exec -T ceph ceph config get mon.a
+docker compose exec -T ceph ceph tell mon.a config set debug_mon 20/20
+docker compose exec -T ceph ceph tell mon.a config set debug_ms 1/1
+docker compose exec -T ceph ceph config get mon.a
+
 echo ℹ️  Running processes of services
 docker compose top
 
