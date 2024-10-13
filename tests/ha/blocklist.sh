@@ -1,7 +1,7 @@
 source .env
 
 verify_blocklist() {
-  stopped_gw_name = $1
+  stopped_gw_name=$1
   NODE_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' $stopped_gw_name)
   BLOCKLIST=$(docker compose exec -T ceph ceph osd blocklist ls)
   
