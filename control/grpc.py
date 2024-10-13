@@ -148,6 +148,9 @@ class NamespaceInfo:
     def host_count(self):
         return len(self.host_list)
 
+    def set_ana_group_id(self, anagrpid):
+        self.anagrpid = anagrpid
+
 class NamespacesLocalList:
     EMPTY_NAMESPACE = NamespaceInfo(None, None, None, 0, False)
 
@@ -1421,6 +1424,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
             self.logger.error(errmsg)
             return pb2.req_status(status=errno.ENODEV, error_message=errmsg)
 
+        find_ret = self.subsystem_nsid_bdev_and_uuid.find_namespace(request.subsystem_nqn, request.nsid)
+
         omap_lock = self.omap_lock.get_omap_lock_to_use(context)
         with omap_lock:
             ns_entry = None
@@ -1453,6 +1458,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     transit_anagrpid=0
                 )
                 self.logger.debug(f"nvmf_subsystem_set_ns_ana_group: {ret}")
+                if not find_ret.empty():
+                    find_ret.set_ana_group_id(request.anagrpid)
             except Exception as ex:
                 errmsg = f"{change_lb_group_failure_prefix}:\n{ex}"
                 resp = self.parse_json_exeption(ex)
