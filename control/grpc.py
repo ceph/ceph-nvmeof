@@ -48,6 +48,8 @@ from .cephutils import CephUtils
 CNTLID_RANGE_SIZE = 2040
 DEFAULT_MODEL_NUMBER = "Ceph bdev Controller"
 
+MAX_POSSIBLE_ANA_GRPS = 100
+MONITOR_POLLING_RATE_SEC = 2 #monitor polls gw each 2 seconds
 class BdevStatus:
     def __init__(self, status, error_message, bdev_name = ""):
         self.status = status
@@ -252,6 +254,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         config.display_environment_info(self.logger)
         self.ceph_utils = ceph_utils
         self.ceph_utils.fetch_and_display_ceph_version()
+        self.count = 0
         requested_hugepages_val = os.getenv("HUGEPAGES", "")
         if not requested_hugepages_val:
             self.logger.warning("Can't get requested huge pages count")
@@ -315,6 +318,15 @@ class GatewayService(pb2_grpc.GatewayServicer):
         self.max_namespaces_with_netmask = self.config.getint_with_default("gateway", "max_namespaces_with_netmask", 1000)
         self.gateway_pool = self.config.get_with_default("ceph", "pool", "")
         self.ana_map = defaultdict(dict)
+        self.ana_grp_state = {}
+        self.ana_grp_ns_load = {}
+        self.rebalance_period_sec              = self.config.getint_with_default("gateway",  "rebalance_period_sec", 40)
+        self.rebalance_max_ns_to_change_lb_grp = self.config.getint_with_default("gateway", "max_ns_to_change_lb_grp", 10)
+        self.subsystem_nsid_anagrp = defaultdict(dict)
+
+        for i in range(MAX_POSSIBLE_ANA_GRPS):
+            self.ana_grp_ns_load[i] = 0
+            self.ana_grp_state[i] = pb2.ana_state.INACCESSIBLE
         self.cluster_nonce = {}
         self.bdev_cluster = {}
         self.bdev_params  = {}
@@ -1161,7 +1173,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 no_auto_visible=no_auto_visible,
             )
             self.subsystem_nsid_bdev_and_uuid.add_namespace(subsystem_nqn, nsid, bdev_name, uuid, anagrpid, no_auto_visible)
+            self.subsystem_nsid_anagrp[subsystem_nqn][nsid] = anagrpid
             self.logger.debug(f"subsystem_add_ns: {nsid}")
+            self.ana_grp_ns_load[anagrpid] += 1
         except Exception as ex:
             self.logger.exception(add_namespace_error_prefix)
             errmsg = f"{add_namespace_error_prefix}:\n{ex}"
@@ -1202,6 +1216,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
             nqn = nas.nqn
             for gs in nas.states:
                 self.ana_map[nqn][gs.grp_id]  = gs.state
+                self.ana_grp_state[gs.grp_id]  = gs.state
 
             # If this is not set the subsystem was not created yet
             if not nqn in self.subsys_max_ns:
@@ -1257,26 +1272,96 @@ class GatewayService(pb2_grpc.GatewayServicer):
     def choose_anagrpid_for_namespace(self, nsid) ->int:
         grps_list = self.ceph_utils.get_number_created_gateways(self.gateway_pool, self.gateway_group)
         for ana_grp in grps_list:
-            if not self.clusters[ana_grp]: # still no namespaces in this ana-group - probably the new GW  added
+            if self.ana_grp_ns_load[ana_grp] == 0: # still no namespaces in this ana-group - probably the new GW  added
                 self.logger.info(f"New GW created: chosen ana group {ana_grp} for ns {nsid} ")
                 return ana_grp
-        #not found ana_grp .To calulate it.  Find minimum loaded ana_grp cluster
-        ana_load = {}
         min_load = 2000
         chosen_ana_group = 0
-        for ana_grp in self.clusters:
-            if ana_grp in grps_list: #to take into consideration only valid groups
-                ana_load[ana_grp] = 0;
-                for name in self.clusters[ana_grp]:
-                    ana_load[ana_grp] += self.clusters[ana_grp][name] # accumulate the total load per ana group for all valid ana_grp clusters
-        for ana_grp in ana_load :
-            self.logger.info(f" ana group {ana_grp} load =  {ana_load[ana_grp]}  ")
-            if ana_load[ana_grp] <=  min_load:
-                min_load = ana_load[ana_grp]
-                chosen_ana_group = ana_grp
-                self.logger.info(f" ana group {ana_grp} load =  {ana_load[ana_grp]} set as min {min_load} ")
+        for ana_grp in self.ana_grp_ns_load:
+            if ana_grp in grps_list:
+                self.logger.info(f" ana group {ana_grp} load =  {self.ana_grp_ns_load[ana_grp]}  ")
+                if self.ana_grp_ns_load[ana_grp] <=  min_load:
+                    min_load = self.ana_grp_ns_load[ana_grp]
+                    chosen_ana_group = ana_grp
+                    self.logger.info(f" ana group {ana_grp} load =  {self.ana_grp_ns_load[ana_grp]} set as min {min_load} ")
         self.logger.info(f"Found min loaded cluster: chosen ana group {chosen_ana_group} for ns {nsid} ")
         return chosen_ana_group
+
+    def find_min_loaded_group(self, grp_list)->int:
+        min_load = 2000
+        chosen_ana_group = 0
+        for ana_grp in self.ana_grp_ns_load :
+            if  ana_grp  in grp_list :
+                  if self.ana_grp_ns_load[ana_grp] <=  min_load:
+                      min_load = self.ana_grp_ns_load[ana_grp]
+                      chosen_ana_group = ana_grp
+        return chosen_ana_group
+
+    def find_target_ns_per_group(self, grp_list):
+        total_num_ns = 0
+        num_valid_grps = 0
+        target = 0
+        for ana_grp in grp_list:
+            num_valid_grps += 1
+        for ana_grp in self.ana_grp_ns_load :
+             total_num_ns += self.ana_grp_ns_load[ana_grp]
+        target = total_num_ns/num_valid_grps
+        self.logger.info(f"Total namespaces {total_num_ns} number valid groups {num_valid_grps} target = {target}")
+        return num_valid_grps, target
+
+    def rebalance_logic(self):
+        self.logger.info(f"Called rebalance logic")
+        grps_list = self.ceph_utils.get_number_created_gateways(self.gateway_pool, self.gateway_group)
+
+        for ana_grp in self.ana_grp_state:
+            if self.ana_grp_state[ana_grp] == pb2.ana_state.OPTIMIZED :
+                if ana_grp not in grps_list:
+                    self.logger.info(f"Found optimized ana group {ana_grp} belong to group of deleted GW num ms in group {self.ana_grp_ns_load[ana_grp]} - Start NS rebalance")
+                    #rebalance up to 15 namespaces from "ana_grp" to min loaded ana_grp -> check ana_load[ana_grp]
+                    num = self.rebalance_max_ns_to_change_lb_grp if self.ana_grp_ns_load[ana_grp] >= self.rebalance_max_ns_to_change_lb_grp else  self.ana_grp_ns_load[ana_grp]
+                    if num > 0 :
+                        min_ana_grp = self.find_min_loaded_group(grps_list)
+                        self.ns_rebalance(ana_grp, min_ana_grp, num)
+                    else :
+                        self.logger.info(f" warning:  empty  group {ana_grp} of Deleting GW still appears Optimized")
+                    return
+                else :
+                    #rebalance only if this ana grp is more  loaded
+                    num_valid_grps, target = self.find_target_ns_per_group(grps_list)
+                    if  self.ana_grp_ns_load[ana_grp] > target :
+                        min_ana_grp = self.find_min_loaded_group(grps_list)
+                        self.logger.info(f"My load {self.ana_grp_ns_load[ana_grp]}  min load {min_ana_grp}")
+                        if self.ana_grp_ns_load[ana_grp] >= (self.ana_grp_ns_load[min_ana_grp] + 2 * self.rebalance_max_ns_to_change_lb_grp):
+                             self.logger.info(f" found destination ana group {min_ana_grp} load =  {self.ana_grp_ns_load[min_ana_grp]} for source ana {ana_grp} Start NS rebalance")
+                             num_2_move = self.rebalance_max_ns_to_change_lb_grp/(num_valid_grps -1)  if num_valid_grps > 1 else self.rebalance_max_ns_to_change_lb_grp
+                             if num_2_move == 0 :num_2_move = 1
+                             self.ns_rebalance(ana_grp, min_ana_grp, num_2_move)
+        return
+
+    def ns_rebalance(self, ana_id, dest_ana_id, num) ->int:
+        now = time.time()
+        num_rebalanced = 0
+        self.logger.info(f"== rebalance started == for  anagrp {ana_id} destination anagrp {dest_ana_id} num ns {num} time {now} ")
+        self.logger.info(f"Doing loop on {ana_id}  map; subsystem_nsid_anagrp:")
+        for subsys, inner_dict in self.subsystem_nsid_anagrp.items():
+            for  ns_key, ana_value in inner_dict.items():
+                self.logger.info(f"nsid: {ns_key} ana_val: {ana_value}")
+                if ana_value == ana_id :
+                    self.logger.info(f"nsid {ns_key} for nqn {subsys} to rebalance:")
+                    nsid = ns_key
+                    #bdev_name = self.subsystem_nsid_bdev[subsys][nsid]
+                    #assert bdev_name, f"Can't find bdev for subsystem {subsys}, namespace {nsid}"
+                    #self.logger.info(f"nsid for change_load_balancing  :{nsid}, {subsys}, pool_name: {self.bdev_params[bdev_name]['pool_name']}, rbd_name: {self.bdev_params[bdev_name]['image_name']}, block_size: {self.bdev_params[bdev_name]['block_size']}, uuid:{self.bdev_params[bdev_name]['uuid']}, anagrpid:{ana_id}")
+                    self.logger.info(f"nsid for change_load_balancing  :{nsid}, {subsys},  anagrpid:{ana_id}")
+                    
+                    change_lb_group_req = pb2.namespace_change_load_balancing_group_req(subsystem_nqn=subsys, nsid= nsid, anagrpid=dest_ana_id, auto_lb_logic=True)
+                    ret = self.namespace_change_load_balancing_group(change_lb_group_req, "context")
+                    self.logger.info(f" ret namespace_change_load_balancing_group  {ret}")
+                    num_rebalanced += 1
+                    if num_rebalanced >= num :
+                        self.logger.info(f"== Completed rebalance in {time.time() - now } sec for {num} namespaces from anagrp {ana_id} to {dest_ana_id} ")
+                        return 0
+        return 0
 
     def namespace_add_safe(self, request, context):
         """Adds a namespace to a subsystem."""
@@ -1413,7 +1498,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         grps_list = []
         peer_msg = self.get_peer_message(context)
         change_lb_group_failure_prefix = f"Failure changing load balancing group for namespace with NSID {request.nsid} in {request.subsystem_nqn}"
-        self.logger.info(f"Received request to change load balancing group for namespace with NSID {request.nsid} in {request.subsystem_nqn} to {request.anagrpid}, context: {context}{peer_msg}")
+        self.logger.info(f"Received auto {request.auto_lb_logic} request to change load balancing group  for namespace with NSID {request.nsid} in {request.subsystem_nqn} to {request.anagrpid}, context: {context}{peer_msg}")
 
         if not request.subsystem_nqn:
             errmsg = f"Failure changing load balancing group for namespace, missing subsystem NQN"
@@ -1449,13 +1534,14 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     errmsg = f"{change_lb_group_failure_prefix}: Can't find entry for namespace {request.nsid} in {request.subsystem_nqn}"
                     self.logger.error(errmsg)
                     return pb2.req_status(status=errno.ENOENT, error_message=errmsg)
-                anagrp = ns_entry["anagrpid"]
-                gw_id = self.ceph_utils.get_gw_id_owner_ana_group(self.gateway_pool, self.gateway_group, anagrp)
-                self.logger.debug(f"ANA group of ns#{request.nsid} - {anagrp} is owned by gateway {gw_id}, self.name is {self.gateway_name}")
-                if self.gateway_name != gw_id:
-                    errmsg = f"ANA group of ns#{request.nsid} - {anagrp} is owned by gateway {gw_id} so try this command from it, this gateway name is {self.gateway_name}"
-                    self.logger.error(errmsg)
-                    return pb2.req_status(status=errno.ENODEV, error_message=errmsg)
+                if request.auto_lb_logic == False :
+                    anagrp = ns_entry["anagrpid"]
+                    gw_id = self.ceph_utils.get_gw_id_owner_ana_group(self.gateway_pool, self.gateway_group, anagrp)
+                    self.logger.debug(f"ANA group of ns#{request.nsid} - {anagrp} is owned by gateway {gw_id}, self.name is {self.gateway_name}")
+                    if self.gateway_name != gw_id:
+                        errmsg = f"ANA group of ns#{request.nsid} - {anagrp} is owned by gateway {gw_id} so try this command from it, this gateway name is {self.gateway_name}"
+                        self.logger.error(errmsg)
+                        return pb2.req_status(status=errno.ENODEV, error_message=errmsg)
 
             try:
                 ret = rpc_nvmf.nvmf_subsystem_set_ns_ana_group(
@@ -1505,6 +1591,16 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     self.logger.exception(errmsg)
                     errmsg = f"{errmsg}:\n{ex}"
                     return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
+
+            for subsys, inner_dict in self.subsystem_nsid_anagrp.items():
+                for  ns_key, ana_value in inner_dict.items():
+                     if ns_key == request.nsid and subsys == request.subsystem_nqn :
+                        self.ana_grp_ns_load[ana_value] -= 1   #decrease loading of previous "old" ana group
+                        self.logger.debug(f"updated load in grp {ana_value} = {self.ana_grp_ns_load[ana_value]} ")
+                        break
+            self.ana_grp_ns_load[request.anagrpid] += 1
+            self.logger.debug(f"updated load in grp {request.anagrpid} = {self.ana_grp_ns_load[request.anagrpid]} ")
+            self.subsystem_nsid_anagrp[request.subsystem_nqn][request.nsid] = request.anagrpid
 
         return pb2.req_status(status=0, error_message=os.strerror(0))
 
@@ -1564,6 +1660,11 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 nsid=nsid,
             )
             self.logger.debug(f"remove_namespace {nsid}: {ret}")
+            for subsys, inner_dict in self.subsystem_nsid_anagrp.items():
+                for  ns_key, ana_value in inner_dict.items():
+                    if ns_key == nsid:
+                        self.ana_grp_ns_load[ana_value] -= 1
+                        break
         except Exception as ex:
             self.logger.exception(namespace_failure_prefix)
             errmsg = f"{namespace_failure_prefix}:\n{ex}"
@@ -3159,6 +3260,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
         return pb2.subsystems_info(subsystems=subsystems)
 
     def get_subsystems(self, request, context):
+
+        self.count += 1
+        if( (self.rebalance_period_sec > 0) and self.count % (self.rebalance_period_sec/MONITOR_POLLING_RATE_SEC)  == 0 ):
+           self.rebalance_logic()
         with self.spdk_rpc_subsystems_lock:
             return self.get_subsystems_safe(request, context)
 

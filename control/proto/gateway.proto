@@ -159,6 +159,7 @@ message namespace_change_load_balancing_group_req {
 	uint32 nsid = 2;
 	optional string OBSOLETE_uuid = 3;
 	int32 anagrpid = 4;
+        optional bool auto_lb_logic = 5;
 }
 
 message namespace_delete_req {
