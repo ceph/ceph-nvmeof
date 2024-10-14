@@ -18,6 +18,7 @@ image4 = "mytestdevimage4"
 image5 = "mytestdevimage5"
 image6 = "mytestdevimage6"
 image7 = "mytestdevimage7"
+image8 = "mytestdevimage8"
 pool = "rbd"
 subsystem = "nqn.2016-06.io.spdk:cnode1"
 subsystem2 = "nqn.2016-06.io.spdk:cnode2"
@@ -53,7 +54,7 @@ def gateway(config):
     addr = config.get("gateway", "addr")
     port = config.getint("gateway", "port")
     config.config["gateway"]["group"] = group_name
-    config.config["gateway"]["max_namespaces_with_netmask"] = "2"
+    config.config["gateway"]["max_namespaces_with_netmask"] = "3"
     config.config["gateway-logs"]["log_level"] = "debug"
     ceph_utils = CephUtils(config)
 
@@ -491,10 +492,8 @@ class TestCreate:
 
     def test_add_too_many_namespaces_with_hosts(self, caplog, gateway):
         caplog.clear()
-        cli(["namespace", "add_host", "--subsystem", subsystem, "--nsid", "9", "--host-nqn", "nqn.2016-06.io.spdk:host11"])
-        assert f"Adding host nqn.2016-06.io.spdk:host11 to namespace 9 on {subsystem}: Successful" in caplog.text
-        cli(["namespace", "add_host", "--subsystem", subsystem, "--nsid", "10", "--host-nqn", "nqn.2016-06.io.spdk:host12"])
-        assert f"Failure adding host nqn.2016-06.io.spdk:host12 to namespace 10 on {subsystem}, maximal number of namespaces with a host list (2) was already reached" in caplog.text
+        cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool, "--rbd-image", image8, "--size", "16MB", "--rbd-create-image", "--no-auto-visible"])
+        assert f"Failure adding namespace to {subsystem}, maximal number of namespaces which are not auto visible (3) was already reached" in caplog.text
 
     def test_list_namespace_with_hosts(self, caplog, gateway):
         caplog.clear()
