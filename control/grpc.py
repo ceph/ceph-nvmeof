@@ -822,6 +822,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
         if not context:
             return ""
 
+        if not hasattr(context, 'peer'):
+            return ""
+
         try:
             peer = context.peer().split(":", 1)
             addr_fam = peer[0].lower()

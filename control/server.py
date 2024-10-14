@@ -414,7 +414,9 @@ class GatewayServer:
 
         # Initialization
         timeout = self.config.getfloat_with_default("spdk", "timeout", 60.0)
-        protocol_log_level = self.config.get_with_default("spdk", "log_level", "WARNING")
+        protocol_log_level = self.config.get_with_default("spdk", "protocol_log_level", None)
+        if not protocol_log_level or not protocol_log_level.strip():
+            protocol_log_level = self.config.get_with_default("spdk", "log_level", "WARNING")
         if not protocol_log_level or not protocol_log_level.strip():
             protocol_log_level = "WARNING"
         else:
