@@ -1120,14 +1120,14 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         nsid_msg = ""
         if nsid:
-            nsid_msg = f" using NSID {nsid} "
+            nsid_msg = f" using NSID {nsid}"
 
         if not subsystem_nqn:
             errmsg = f"Failure adding namespace, missing subsystem NQN"
             self.logger.error(f"{errmsg}")
             return pb2.nsid_status(status=errno.EINVAL, error_message = errmsg)
 
-        add_namespace_error_prefix = f"Failure adding namespace{nsid_msg}to {subsystem_nqn}"
+        add_namespace_error_prefix = f"Failure adding namespace{nsid_msg} to {subsystem_nqn}"
 
         peer_msg = self.get_peer_message(context)
         self.logger.info(f"Received request to add {bdev_name} to {subsystem_nqn} with ANA group id {anagrpid}{nsid_msg}, no_auto_visible: {no_auto_visible}, context: {context}{peer_msg}")
@@ -1141,6 +1141,11 @@ class GatewayService(pb2_grpc.GatewayServicer):
             errmsg = f"{add_namespace_error_prefix}: Can't add namespaces to a discovery subsystem"
             self.logger.error(errmsg)
             return pb2.nsid_status(status=errno.EINVAL, error_message=errmsg)
+
+        if self.subsystem_nsid_bdev_and_uuid.get_namespace_count(subsystem_nqn, True, 0) >= self.max_namespaces_with_netmask:
+            errmsg = f"Failure adding namespace{nsid_msg} to {subsystem_nqn}, maximal number of namespaces which are not auto visible ({self.max_namespaces_with_netmask}) was already reached"
+            self.logger.error(f"{errmsg}")
+            return pb2.req_status(status=errno.E2BIG, error_message=errmsg)
 
         try:
             nsid = rpc_nvmf.nvmf_subsystem_add_ns(
@@ -2053,11 +2058,6 @@ class GatewayService(pb2_grpc.GatewayServicer):
             errmsg = f"Failure adding host to namespace {request.nsid} on {request.subsystem_nqn}, host NQN can't be a discovery NQN"
             self.logger.error(f"{errmsg}")
             return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
-
-        if self.subsystem_nsid_bdev_and_uuid.get_namespace_count(request.subsystem_nqn, True, 1) >= self.max_namespaces_with_netmask:
-            errmsg = f"Failure adding host {request.host_nqn} to namespace {request.nsid} on {request.subsystem_nqn}, maximal number of namespaces with a host list ({self.max_namespaces_with_netmask}) was already reached"
-            self.logger.error(f"{errmsg}")
-            return pb2.req_status(status=errno.E2BIG, error_message=errmsg)
 
         find_ret = self.subsystem_nsid_bdev_and_uuid.find_namespace(request.subsystem_nqn, request.nsid)
         if not find_ret.empty():
