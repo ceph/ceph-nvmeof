@@ -1557,8 +1557,7 @@ class GatewayClient:
 
                     namespaces_list.append([ns.nsid,
                                             break_string(ns.bdev_name, "-", 2),
-                                            ns.rbd_pool_name,
-                                            ns.rbd_image_name,
+                                            f"{ns.rbd_pool_name}/{ns.rbd_image_name}",
                                             self.format_size(ns.rbd_image_size),
                                             self.format_size(ns.block_size),
                                             break_string(ns.uuid, "-", 3),
@@ -1575,7 +1574,7 @@ class GatewayClient:
                     else:
                         table_format = "plain"
                     namespaces_out = tabulate(namespaces_list,
-                                      headers = ["NSID", "Bdev\nName", "RBD\nPool", "RBD\nImage",
+                                      headers = ["NSID", "Bdev\nName", "RBD\nImage",
                                                  "Image\nSize", "Block\nSize", "UUID", "Load\nBalancing\nGroup", "Visibility",
                                                  "R/W IOs\nper\nsecond", "R/W MBs\nper\nsecond",
                                                  "Read MBs\nper\nsecond", "Write MBs\nper\nsecond"],
