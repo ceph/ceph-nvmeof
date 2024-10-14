@@ -302,44 +302,6 @@ class GatewayService(pb2_grpc.GatewayServicer):
         config.display_environment_info(self.logger)
         self.ceph_utils = ceph_utils
         self.ceph_utils.fetch_and_display_ceph_version()
-        requested_hugepages_val = os.getenv("HUGEPAGES", "")
-        if not requested_hugepages_val:
-            self.logger.warning("Can't get requested huge pages count")
-        else:
-            requested_hugepages_val = requested_hugepages_val.strip()
-            try:
-                requested_hugepages_val = int(requested_hugepages_val)
-                self.logger.info(f"Requested huge pages count is {requested_hugepages_val}")
-            except ValueError:
-                self.logger.warning(f"Requested huge pages count value {requested_hugepages_val} is not numeric")
-                requested_hugepages_val = None
-        hugepages_file = os.getenv("HUGEPAGES_DIR", "")
-        if not hugepages_file:
-            hugepages_file = "/sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages"
-            self.logger.warning("No huge pages file defined, will use /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages")
-        else:
-            hugepages_file = hugepages_file.strip()
-        if os.access(hugepages_file, os.F_OK):
-            try:
-                hugepages_val = ""
-                with open(hugepages_file) as f:
-                    hugepages_val = f.readline()
-                hugepages_val = hugepages_val.strip()
-                if hugepages_val:
-                    try:
-                        hugepages_val = int(hugepages_val)
-                        self.logger.info(f"Actual huge pages count is {hugepages_val}")
-                    except ValueError:
-                        self.logger.warning(f"Actual huge pages count value {hugepages_val} is not numeric")
-                        hugepages_val = ""
-                    if requested_hugepages_val and hugepages_val != "" and requested_hugepages_val > hugepages_val:
-                        self.logger.warning(f"The actual huge page count {hugepages_val} is smaller than the requested value of {requested_hugepages_val}")
-                else:
-                    self.logger.warning(f"Can't read actual huge pages count value from {hugepages_file}")
-            except Exception as ex:
-                self.logger.exception(f"Can't read actual huge pages count value from {hugepages_file}")
-        else:
-            self.logger.warning(f"Can't find huge pages file {hugepages_file}")
         self.config = config
         config.dump_config_file(self.logger)
         self.rpc_lock = rpc_lock

@@ -481,6 +481,16 @@ class GatewayServer:
         if spdk_tgt_cmd_extra_args:
             cmd += shlex.split(spdk_tgt_cmd_extra_args)
 
+        # No huge pages configuration controlled by spdk.mem_size conf option
+        spdk_memsize = self.config.getint_with_default("spdk", "mem_size", None)
+        if spdk_memsize:
+            self.logger.info(f"SPDK will not use huge pages, mem size: {spdk_memsize}")
+            cmd += ["--no-huge", "-s", str(spdk_memsize)]
+        else:
+            self.logger.info(f"SPDK will use huge pages, probing...")
+            self.probe_huge_pages()
+
+
         # If not provided in configuration,
         # calculate cpu mask available for spdk reactors
         if not cpumask_set(cmd):
@@ -706,6 +716,47 @@ class GatewayServer:
         except Exception:
             self.logger.exception(f"spdk_get_version failed")
             return False
+
+    def probe_huge_pages(self):
+        """Probe kernel's huge pages confiuguration"""
+        requested_hugepages_val = os.getenv("HUGEPAGES", "")
+        if not requested_hugepages_val:
+            self.logger.warning("Can't get requested huge pages count")
+        else:
+            requested_hugepages_val = requested_hugepages_val.strip()
+            try:
+                requested_hugepages_val = int(requested_hugepages_val)
+                self.logger.info(f"Requested huge pages count is {requested_hugepages_val}")
+            except ValueError:
+                self.logger.warning(f"Requested huge pages count value {requested_hugepages_val} is not numeric")
+                requested_hugepages_val = None
+        hugepages_file = os.getenv("HUGEPAGES_DIR", "")
+        if not hugepages_file:
+            hugepages_file = "/sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages"
+            self.logger.warning("No huge pages file defined, will use /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages")
+        else:
+            hugepages_file = hugepages_file.strip()
+        if os.access(hugepages_file, os.F_OK):
+            try:
+                hugepages_val = ""
+                with open(hugepages_file) as f:
+                    hugepages_val = f.readline()
+                hugepages_val = hugepages_val.strip()
+                if hugepages_val:
+                    try:
+                        hugepages_val = int(hugepages_val)
+                        self.logger.info(f"Actual huge pages count is {hugepages_val}")
+                    except ValueError:
+                        self.logger.warning(f"Actual huge pages count value {hugepages_val} is not numeric")
+                        hugepages_val = ""
+                    if requested_hugepages_val and hugepages_val != "" and requested_hugepages_val > hugepages_val:
+                        self.logger.warning(f"The actual huge page count {hugepages_val} is smaller than the requested value of {requested_hugepages_val}")
+                else:
+                    self.logger.warning(f"Can't read actual huge pages count value from {hugepages_file}")
+            except Exception as ex:
+                self.logger.exception(f"Can't read actual huge pages count value from {hugepages_file}")
+        else:
+            self.logger.warning(f"Can't find huge pages file {hugepages_file}")
 
     def gateway_rpc_caller(self, requests, is_add_req):
         """Passes RPC requests to gateway service."""
