@@ -37,9 +37,6 @@ setup: ## Configure huge-pages (requires sudo/root password)
 	sudo mkdir -p /var/log/ceph
 	sudo chmod 0755 /var/log/ceph
 	sudo bash -c 'echo "|/usr/bin/env tee /tmp/coredump/core.%e.%p.%h.%t" > /proc/sys/kernel/core_pattern'
-	sudo bash -c 'echo $(HUGEPAGES) > $(HUGEPAGES_DIR)'
-	@echo Actual Hugepages allocation: $$(cat $(HUGEPAGES_DIR))
-	@[ $$(cat $(HUGEPAGES_DIR)) -eq $(HUGEPAGES) ]
 
 build pull logs down: SVC ?= ceph spdk bdevperf nvmeof nvmeof-devel nvmeof-cli discovery
 
@@ -61,7 +58,6 @@ up:
 	@$(CURDIR)/tests/ha/start_up.sh $(SCALE)
 
 clean: $(CLEAN) setup  ## Clean-up environment
-clean: override HUGEPAGES = 0
 clean:
 	/usr/bin/rm -f control/proto/gateway_pb2_grpc.py control/proto/gateway_pb2.py control/proto/gateway_pb2.pyi control/proto/monitor_pb2_grpc.py control/proto/monitor_pb2.py control/proto/monitor_pb2.pyi
 

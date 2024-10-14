@@ -177,16 +177,19 @@ ENV BDEVPERF_IO_QUEUE="128"
 # IO Block size
 ENV BDEVPERF_IO_BS="4096"
 
+# memory size in MB for DPDK
+ENV BDEVPERF_MEM_SIZE="4096"
+
 # Type of I/O pattern, see https://spdk.io/doc/bdevperf.html
 # for available types
 ENV BDEVPERF_IO_TYPE="verify"
 
 COPY --from=build /src/build/examples/bdevperf /usr/local/bin/bdevperf
 COPY --from=build /src/examples/bdev/bdevperf/bdevperf.py /usr/libexec/spdk/scripts/bdevperf.py
-RUN echo "#!/bin/sh -x"                                                 > /entrypoint
-RUN echo "bdevperf -z -r \$BDEVPERF_SOCKET \\"                         >> /entrypoint
-RUN echo "         -q \$BDEVPERF_IO_QUEUE -o \$BDEVPERF_IO_BS \\"      >> /entrypoint
-RUN echo "         -w \$BDEVPERF_IO_TYPE -t \$BDEVPERF_TEST_DURATION"  >> /entrypoint
+RUN echo "#!/bin/sh -x"                                                         > /entrypoint
+RUN echo "bdevperf --no-huge -s \$BDEVPERF_MEM_SIZE -z -r \$BDEVPERF_SOCKET \\" >> /entrypoint
+RUN echo "         -q \$BDEVPERF_IO_QUEUE -o \$BDEVPERF_IO_BS \\"               >> /entrypoint
+RUN echo "         -w \$BDEVPERF_IO_TYPE -t \$BDEVPERF_TEST_DURATION"           >> /entrypoint
 RUN chmod 755 /entrypoint
 
 ENTRYPOINT [ "/entrypoint" ]

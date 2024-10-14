@@ -40,14 +40,7 @@ services:
     image: bdevperf
     build:
       target: bdevperf
-    volumes:
-      # sudo bash -c 'echo 2048 > /sys/devices/system/node/node0/hugepages/hugepages-2048kB/nr_hugepages'
-      # https://spdk.io/doc/containers.html
-      # TODO: Pending of https://github.com/spdk/spdk/issues/2973
-      - /dev/hugepages:/dev/hugepages
-      - /dev/vfio/vfio:/dev/vfio/vfio
     cap_add:
-      - SYS_ADMIN # huge-pages
       - CAP_SYS_NICE # RTE
       - SYS_PTRACE # gdb
     ulimits:
@@ -124,23 +117,15 @@ services:
         SPDK_GIT_REPO:
         SPDK_GIT_BRANCH:
         SPDK_GIT_COMMIT:
-        HUGEPAGES:
-        HUGEPAGES_DIR:
         CONTAINER_REGISTRY:
       labels:
         io.ceph.nvmeof:
     volumes:
-      # sudo bash -c 'echo 2048 > /sys/devices/system/node/node0/hugepages/hugepages-2048kB/nr_hugepages'
-      # https://spdk.io/doc/containers.html
-      # TODO: Pending of https://github.com/spdk/spdk/issues/2973
-      - /dev/hugepages:/dev/hugepages
-      - /dev/vfio/vfio:/dev/vfio/vfio
       - $NVMEOF_CONFIG:/src/ceph-nvmeof.conf
       - /tmp/coredump:/tmp/coredump # core dump
       - /var/log/ceph:/var/log/ceph
       - ceph-conf:/etc/ceph:ro
     cap_add:
-      - SYS_ADMIN # huge-pages
       - CAP_SYS_NICE # RTE
       - SYS_PTRACE # gdb
     ulimits:
@@ -244,8 +229,6 @@ services:
         SPDK_GIT_REPO:
         SPDK_GIT_BRANCH:
         SPDK_GIT_COMMIT:
-        HUGEPAGES:
-        HUGEPAGES_DIR:
       labels:
         io.ceph.nvmeof:
     volumes:
