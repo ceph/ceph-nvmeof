@@ -1105,7 +1105,21 @@ class DiscoveryService:
     def start_service(self):
         """Enable listening on the server side."""
 
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        family = socket.AF_INET
+        try:
+            addr_info = socket.getaddrinfo(self.discovery_addr, None, 0, socket.SOCK_STREAM)
+            if len(addr_info) == 1:
+                family = addr_info[0][0]
+            else:
+                self.logger.warning(f"Can't get information for address {self.discovery_addr}")
+                if ":" in self.discovery_addr:
+                    family = socket.AF_INET6
+        except Exception:
+            self.logger.exception(f"error trying to get the info for address {self.discovery_addr}")
+            if ":" in self.discovery_addr:
+                family = socket.AF_INET6
+
+        self.sock = socket.socket(family, socket.SOCK_STREAM)
         self.sock.bind((self.discovery_addr, int(self.discovery_port)))
         self.sock.listen(MAX_CONNECTION)
         self.sock.setblocking(False)

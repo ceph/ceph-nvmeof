@@ -53,10 +53,16 @@ class GatewayUtils:
     DISCOVERY_NQN = "nqn.2014-08.org.nvmexpress.discovery"
 
     # We need to enclose IPv6 addresses in brackets before concatenating a colon and port number to it
-    def escape_address_if_ipv6(addr) -> str:
+    def escape_address_if_ipv6(addr : str) -> str:
         ret_addr = addr
         if ":" in addr and not addr.strip().startswith("["):
             ret_addr = f"[{addr}]"
+        return ret_addr
+
+    def unescape_address_if_ipv6(addr : str, adrfam : str) -> str:
+        ret_addr = addr.strip()
+        if adrfam.lower() == "ipv6":
+            ret_addr = ret_addr.removeprefix("[").removesuffix("]")
         return ret_addr
 
     def is_discovery_nqn(nqn) -> bool:

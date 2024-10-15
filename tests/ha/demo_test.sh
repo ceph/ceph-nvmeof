@@ -78,6 +78,9 @@ function demo_bdevperf_unsecured()
     [[ `echo $conns | jq -r '.connections[0].trtype'` == "TCP" ]]
     [[ `echo $conns | jq -r '.connections[0].connected'` == "true" ]]
     [[ `echo $conns | jq -r '.connections[0].qpairs_count'` == "1" ]]
+    [[ `echo $conns | jq -r '.connections[0].secure'` == "false" ]]
+    [[ `echo $conns | jq -r '.connections[0].use_psk'` == "false" ]]
+    [[ `echo $conns | jq -r '.connections[0].use_dhchap'` == "false" ]]
     [[ `echo $conns | jq -r '.connections[1]'` == "null" ]]
 
     echo "ℹ️  bdevperf perform_tests"
@@ -89,10 +92,64 @@ function demo_bdevperf_unsecured()
     echo "ℹ️  bdevperf detach controller"
     make exec SVC=bdevperf OPTS=-T CMD="$rpc -v -s $BDEVPERF_SOCKET bdev_nvme_detach_controller Nvme0"
 
+    echo "ℹ️  verify empty connection list"
+    conns=$(cephnvmf_func --output stdio --format json connection list --subsystem $NQN)
+    [[ `echo $conns | jq -r '.status'` == "0" ]]
+    [[ `echo $conns | jq -r '.subsystem_nqn'` == "${NQN}" ]]
+    [[ `echo $conns | jq -r '.connections[0]'` == "null" ]]
+
     echo "ℹ️  bdevperf tcp connect ip: $NVMEOF_IP_ADDRESS port: $NVMEOF_IO_PORT nqn: $NQN, host in namespace netmask"
     localhostnqn=`cat /etc/nvme/hostnqn`
     devs=`make exec -s SVC=bdevperf OPTS=-T CMD="$rpc -v -s $BDEVPERF_SOCKET bdev_nvme_attach_controller -b Nvme0 -t tcp -a $NVMEOF_IP_ADDRESS -s $NVMEOF_IO_PORT -f ipv4 -n $NQN -q $localhostnqn -l -1 -o 10"`
     [[ "$devs" == "Nvme0n1 Nvme0n2" ]]
+
+    echo "ℹ️  verify connection list"
+    conns=$(cephnvmf_func --output stdio --format json connection list --subsystem $NQN)
+    [[ `echo $conns | jq -r '.status'` == "0" ]]
+    [[ `echo $conns | jq -r '.subsystem_nqn'` == "${NQN}" ]]
+    [[ `echo $conns | jq -r '.connections[0].nqn'` == "${localhostnqn}" ]]
+    [[ `echo $conns | jq -r '.connections[0].trsvcid'` == "${NVMEOF_IO_PORT}" ]]
+    [[ `echo $conns | jq -r '.connections[0].traddr'` == "${NVMEOF_IP_ADDRESS}" ]]
+    [[ `echo $conns | jq -r '.connections[0].adrfam'` == "ipv4" ]]
+    [[ `echo $conns | jq -r '.connections[0].trtype'` == "TCP" ]]
+    [[ `echo $conns | jq -r '.connections[0].connected'` == "true" ]]
+    [[ `echo $conns | jq -r '.connections[0].qpairs_count'` == "1" ]]
+    [[ `echo $conns | jq -r '.connections[0].secure'` == "false" ]]
+    [[ `echo $conns | jq -r '.connections[0].use_psk'` == "false" ]]
+    [[ `echo $conns | jq -r '.connections[0].use_dhchap'` == "false" ]]
+    [[ `echo $conns | jq -r '.connections[1]'` == "null" ]]
+
+    echo "ℹ️  bdevperf detach controller"
+    make exec SVC=bdevperf OPTS=-T CMD="$rpc -v -s $BDEVPERF_SOCKET bdev_nvme_detach_controller Nvme0"
+
+    echo "ℹ️  bdevperf tcp connect ip: $NVMEOF_IPV6_ADDRESS port: $NVMEOF_IO_PORT nqn: $NQN, using IPv6"
+    make exec -s SVC=bdevperf OPTS=-T CMD="$rpc -v -s $BDEVPERF_SOCKET bdev_nvme_attach_controller -b Nvme1 -t tcp -a $NVMEOF_IPV6_ADDRESS -s $NVMEOF_IO_PORT -f ipv6 -n $NQN -q $localhostnqn -l -1 -o 10"
+
+    echo "ℹ️  verify connection list with IPv6"
+    conns=$(cephnvmf_func --output stdio --format json connection list --subsystem $NQN)
+    echo $conns
+    [[ `echo $conns | jq -r '.status'` == "0" ]]
+    [[ `echo $conns | jq -r '.subsystem_nqn'` == "${NQN}" ]]
+    [[ `echo $conns | jq -r '.connections[0].nqn'` == "${localhostnqn}" ]]
+    [[ `echo $conns | jq -r '.connections[0].trsvcid'` == "${NVMEOF_IO_PORT}" ]]
+    [[ `echo $conns | jq -r '.connections[0].traddr'` == "${NVMEOF_IPV6_ADDRESS}" ]]
+    [[ `echo $conns | jq -r '.connections[0].adrfam'` == "ipv6" ]]
+    [[ `echo $conns | jq -r '.connections[0].trtype'` == "TCP" ]]
+    [[ `echo $conns | jq -r '.connections[0].connected'` == "true" ]]
+    [[ `echo $conns | jq -r '.connections[0].qpairs_count'` == "1" ]]
+    [[ `echo $conns | jq -r '.connections[0].secure'` == "false" ]]
+    [[ `echo $conns | jq -r '.connections[0].use_psk'` == "false" ]]
+    [[ `echo $conns | jq -r '.connections[0].use_dhchap'` == "false" ]]
+    [[ `echo $conns | jq -r '.connections[1]'` == "null" ]]
+
+    echo "ℹ️  bdevperf detach controller"
+    make exec SVC=bdevperf OPTS=-T CMD="$rpc -v -s $BDEVPERF_SOCKET bdev_nvme_detach_controller Nvme1"
+
+    echo "ℹ️  verify empty connection list"
+    conns=$(cephnvmf_func --output stdio --format json connection list --subsystem $NQN)
+    [[ `echo $conns | jq -r '.status'` == "0" ]]
+    [[ `echo $conns | jq -r '.subsystem_nqn'` == "${NQN}" ]]
+    [[ `echo $conns | jq -r '.connections[0]'` == "null" ]]
 
     return $?
 }
