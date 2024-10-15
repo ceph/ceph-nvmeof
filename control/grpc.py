@@ -2755,6 +2755,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                          f" TCP {adrfam} listener for {request.nqn} at"
                          f" {request.traddr}:{request.trsvcid}, secure: {request.secure}, context: {context}{peer_msg}")
 
+        traddr = GatewayUtils.unescape_address_if_ipv6(request.traddr, adrfam)
+
         if GatewayUtils.is_discovery_nqn(request.nqn):
             errmsg=f"{create_listener_error_prefix}: Can't create a listener for a discovery subsystem"
             self.logger.error(f"{errmsg}")
@@ -2773,7 +2775,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         add_listener_args = {}
         add_listener_args["nqn"] = request.nqn
         add_listener_args["trtype"] = "TCP"
-        add_listener_args["traddr"] = request.traddr
+        add_listener_args["traddr"] = traddr
         add_listener_args["trsvcid"] = str(request.trsvcid)
         add_listener_args["adrfam"] = adrfam
         if request.secure:
@@ -2783,13 +2785,13 @@ class GatewayService(pb2_grpc.GatewayServicer):
         with omap_lock:
             try:
                 if request.host_name == self.host_name:
-                    if (adrfam, request.traddr, request.trsvcid, False) in self.subsystem_listeners[request.nqn] or (adrfam, request.traddr, request.trsvcid, True) in self.subsystem_listeners[request.nqn]:
+                    if (adrfam, traddr, request.trsvcid, False) in self.subsystem_listeners[request.nqn] or (adrfam, traddr, request.trsvcid, True) in self.subsystem_listeners[request.nqn]:
                         self.logger.error(f"{request.nqn} already listens on address {request.traddr}:{request.trsvcid}")
                         return pb2.req_status(status=errno.EEXIST,
                                   error_message=f"{create_listener_error_prefix}: Subsystem already listens on this address")
                     ret = rpc_nvmf.nvmf_subsystem_add_listener(self.spdk_rpc_client, **add_listener_args)
                     self.logger.debug(f"create_listener: {ret}")
-                    self.subsystem_listeners[request.nqn].add((adrfam, request.traddr, request.trsvcid, request.secure))
+                    self.subsystem_listeners[request.nqn].add((adrfam, traddr, request.trsvcid, request.secure))
                 else:
                     if context:
                         errmsg=f"{create_listener_error_prefix}: Gateway's host name must match current host ({self.host_name})"
@@ -2822,7 +2824,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                   nqn=request.nqn,
                   ana_state=_ana_state,
                   trtype="TCP",
-                  traddr=request.traddr,
+                  traddr=traddr,
                   trsvcid=str(request.trsvcid),
                   adrfam=adrfam)
                 self.logger.debug(f"create_listener nvmf_subsystem_listener_set_ana_state response {ret=}")
@@ -2840,7 +2842,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                               nqn=request.nqn,
                               ana_state=_ana_state,
                               trtype="TCP",
-                              traddr=request.traddr,
+                              traddr=traddr,
                               trsvcid=str(request.trsvcid),
                               adrfam=adrfam,
                               anagrpid=ana_grp )
@@ -2929,8 +2931,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
         """Deletes a listener from a subsystem at a given IP/Port."""
 
         ret = True
-        traddr = GatewayUtils.escape_address_if_ipv6(request.traddr)
-        delete_listener_error_prefix = f"Listener {traddr}:{request.trsvcid} failed to delete from {request.nqn}"
+        esc_traddr = GatewayUtils.escape_address_if_ipv6(request.traddr)
+        delete_listener_error_prefix = f"Listener {esc_traddr}:{request.trsvcid} failed to delete from {request.nqn}"
 
         adrfam = GatewayEnumUtils.get_key_from_value(pb2.AddressFamily, request.adrfam)
         if adrfam == None:
@@ -2938,13 +2940,15 @@ class GatewayService(pb2_grpc.GatewayServicer):
             self.logger.error(errmsg)
             return pb2.req_status(status=errno.ENOKEY, error_message=errmsg)
 
+        traddr = GatewayUtils.unescape_address_if_ipv6(request.traddr, adrfam)
+
         peer_msg = self.get_peer_message(context)
         force_msg = " forcefully" if request.force else ""
         host_msg = "all hosts" if request.host_name == "*" else f"host {request.host_name}"
 
         self.logger.info(f"Received request to delete TCP listener of {host_msg}"
                          f" for subsystem {request.nqn} at"
-                         f" {traddr}:{request.trsvcid}{force_msg}, context: {context}{peer_msg}")
+                         f" {esc_traddr}:{request.trsvcid}{force_msg}, context: {context}{peer_msg}")
 
         if request.host_name == "*" and not request.force:
             errmsg=f"{delete_listener_error_prefix}. Must use the \"--force\" parameter when setting the host name to \"*\"."
@@ -2966,11 +2970,11 @@ class GatewayService(pb2_grpc.GatewayServicer):
             for conn in list_conn_ret.connections:
                 if not conn.connected:
                     continue
-                if conn.traddr != request.traddr:
+                if conn.traddr != traddr:
                     continue
                 if conn.trsvcid != request.trsvcid:
                     continue
-                errmsg=f"{delete_listener_error_prefix} due to active connections for {request.traddr}:{request.trsvcid}. Deleting the listener terminates active connections. You can continue to delete the listener by adding the `--force` parameter."
+                errmsg=f"{delete_listener_error_prefix} due to active connections for {esc_traddr}:{request.trsvcid}. Deleting the listener terminates active connections. You can continue to delete the listener by adding the `--force` parameter."
                 self.logger.error(errmsg)
                 return pb2.req_status(status=errno.ENOTEMPTY, error_message=errmsg)
 
@@ -2982,16 +2986,16 @@ class GatewayService(pb2_grpc.GatewayServicer):
                         self.spdk_rpc_client,
                         nqn=request.nqn,
                         trtype="TCP",
-                        traddr=request.traddr,
+                        traddr=traddr,
                         trsvcid=str(request.trsvcid),
                         adrfam=adrfam,
                     )
                     self.logger.debug(f"delete_listener: {ret}")
                     if request.nqn in self.subsystem_listeners:
-                        if (adrfam, request.traddr, request.trsvcid, False) in self.subsystem_listeners[request.nqn]:
-                            self.subsystem_listeners[request.nqn].remove((adrfam, request.traddr, request.trsvcid, False))
-                        if (adrfam, request.traddr, request.trsvcid, True) in self.subsystem_listeners[request.nqn]:
-                            self.subsystem_listeners[request.nqn].remove((adrfam, request.traddr, request.trsvcid, True))
+                        if (adrfam, traddr, request.trsvcid, False) in self.subsystem_listeners[request.nqn]:
+                            self.subsystem_listeners[request.nqn].remove((adrfam, traddr, request.trsvcid, False))
+                        if (adrfam, traddr, request.trsvcid, True) in self.subsystem_listeners[request.nqn]:
+                            self.subsystem_listeners[request.nqn].remove((adrfam, traddr, request.trsvcid, True))
                 else:
                     errmsg=f"{delete_listener_error_prefix}. Gateway's host name must match current host ({self.host_name}). You can continue to delete the listener by adding the `--force` parameter."
                     self.logger.error(f"{errmsg}")
@@ -3002,7 +3006,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 if request.host_name == self.host_name:
                     errmsg = f"{delete_listener_error_prefix}:\n{ex}"
                     self.remove_listener_from_state(request.nqn, request.host_name,
-                                                    request.traddr, request.trsvcid, context)
+                                                    traddr, request.trsvcid, context)
                     resp = self.parse_json_exeption(ex)
                     status = errno.EINVAL
                     if resp:
@@ -3015,11 +3019,11 @@ class GatewayService(pb2_grpc.GatewayServicer):
             if not ret:
                 self.logger.error(delete_listener_error_prefix)
                 self.remove_listener_from_state(request.nqn, request.host_name,
-                                                request.traddr, request.trsvcid, context)
+                                                traddr, request.trsvcid, context)
                 return pb2.req_status(status=errno.EINVAL, error_message=delete_listener_error_prefix)
 
             return self.remove_listener_from_state(request.nqn, request.host_name,
-                                                   request.traddr, request.trsvcid, context)
+                                                   traddr, request.trsvcid, context)
 
     def delete_listener(self, request, context=None):
         return self.execute_grpc_function(self.delete_listener_safe, request, context)
