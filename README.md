@@ -292,16 +292,6 @@ server_cert = ./server.crt
 client_cert = ./client.crt
 ```
 
-### Huge-Pages
-
-[DPDK requires hugepages](https://doc.dpdk.org/guides/linux_gsg/sys_reqs.html#linux-gsg-hugepages) to be set up:
-
-```bash
-sh -c 'echo 4096 > /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages'
-```
-
-This is automatically done in the `make setup` step. The amount of hugepages can be configured with `make setup HUGEPAGES=512`.
-
 ## Development
 
 ### Set-up

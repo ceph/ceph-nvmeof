@@ -390,7 +390,8 @@ class GatewayServer:
         self.logger.info(f"SPDK Socket: {self.spdk_rpc_socket_path}")
         spdk_tgt_cmd_extra_args = self.config.get_with_default(
             "spdk", "tgt_cmd_extra_args", "")
-        cmd = [spdk_tgt_path, "-u", "-r", self.spdk_rpc_socket_path]
+        spdk_memsize = self.config.getint_with_default("spdk", "mem_size", 4096)
+        cmd = [spdk_tgt_path, "-u", "--no-huge", "-s", str(spdk_memsize), "-r", self.spdk_rpc_socket_path]
 
         # Add extra args from the conf file
         if spdk_tgt_cmd_extra_args:

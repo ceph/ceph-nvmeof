@@ -135,15 +135,13 @@ jobs:
       matrix:
         test: ["cli", "cli_change_lb", "state", "multi_gateway", "server", "grpc", "omap_lock", "log_files", "nsid", "psk", "dhchap"]
     runs-on: ubuntu-latest
-    env:
-      HUGEPAGES: 512  # for multi gateway test, approx 256 per gateway instance
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup huge pages
+      - name: Setup
         run: |
-          make setup HUGEPAGES=$HUGEPAGES
+          make setup
 
       - name: Download container images
         uses: actions/download-artifact@v4
@@ -253,14 +251,12 @@ jobs:
       matrix:
         security_protocol: ["unsecured", "psk", "dhchap"]
     runs-on: ubuntu-latest
-    env:
-      HUGEPAGES: 512
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup huge-pages
-        run: make setup HUGEPAGES=$HUGEPAGES
+      - name: Setup
+        run: make setup
 
       - name: Download container images
         uses: actions/download-artifact@v4
@@ -358,15 +354,13 @@ jobs:
       matrix:
         integration: ["container", "embedded"]
     runs-on: ubuntu-latest
-    env:
-      HUGEPAGES: 768  # 3 spdk instances
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup huge-pages
-        run: make setup HUGEPAGES=$HUGEPAGES
+      - name: Setup
+        run: make setup
 
       - name: Download container images
         uses: actions/download-artifact@v4
@@ -540,15 +534,13 @@ jobs:
       matrix:
         test: ["sanity", "ns_lb_change", "no_subsystems", "state_transitions", "state_transitions_both_gws", "state_transitions_loop", "state_transitions_rand_loop", "late_registration", "late_registration_loop", "4gws", "4gws_loop", "4gws_create_delete", "4gws_create_delete_loop", "namespaces", "namespaces_loop", "mtls", "notify", "ceph_status", "blocklist"]
     runs-on: ubuntu-latest
-    env:
-      HUGEPAGES: 1024  # 4 spdk instances
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup huge-pages
-        run: make setup HUGEPAGES=$HUGEPAGES
+      - name: Setup
+        run: make setup
 
       - name: Download container images
         uses: actions/download-artifact@v4
