@@ -92,6 +92,8 @@ class GatewayServer:
         self.gw_logger_object = GatewayLogger(self.config)
         self.logger = self.gw_logger_object.logger
         self.spdk_process = None
+        self.spdk_log_file = None
+        self.spdk_log_file_path = None
         self.gateway_rpc = None
         self.server = None
         self.discovery_pid = None
@@ -129,6 +131,17 @@ class GatewayServer:
 
         if self.spdk_process:
             self._stop_spdk()
+
+        if self.spdk_log_file:
+            try:
+                close(self.spdk_log_file)
+            except Exception:
+                pass
+            self.spdk_log_file = None
+
+        if self.spdk_log_file_path:
+            GatewayLogger.compress_file(self.spdk_log_file_path, f"{self.spdk_log_file_path}.gz")
+            self.spdk_log_file_path = None
 
         if self.server:
             if logger:
@@ -403,11 +416,45 @@ class GatewayServer:
             self.logger.info(f"SPDK autodetecting cpu_mask: {cpu_mask}")
             cmd += shlex.split(cpu_mask)
 
+        self.spdk_log_file = None
+        self.spdk_log_file_path = None
+        log_stderr = None
+        log_file_dir = self.config.get_with_default("spdk", "log_file_dir", None)
+        if log_file_dir and log_file_dir.strip():
+            log_file_dir = log_file_dir.strip()
+            try:
+                os.makedirs(log_file_dir, 0o755, True)
+            except Exception:
+                pass
+            if not log_file_dir.endswith("/"):
+                log_file_dir += "/"
+            self.spdk_log_file_path = f"{log_file_dir}spdk-{self.name}.log"
+            try:
+                os.remove(f"{self.spdk_log_file_path}.bak")
+            except Exception:
+                pass
+            try:
+                os.remove(f"{self.spdk_log_file_path}.gz.bak")
+            except Exception:
+                pass
+            try:
+                os.rename(self.spdk_log_file_path, f"{self.spdk_log_file_path}.bak")
+            except Exception:
+                pass
+            try:
+                os.rename(f"{log_file_path}.gz", f"{self.spdk_log_file_path}.gz.bak")
+            except Exception:
+                pass
+            try:
+                self.spdk_log_file = open(self.spdk_log_file_path, "wt")
+                log_stderr = subprocess.STDOUT
+            except Exception:
+                pass
         self.logger.info(f"Starting {' '.join(cmd)}")
         try:
             # start spdk process
             time.sleep(2)      # this is a temporary hack, we have a timing issue here. Once we solve it the sleep will ve removed
-            self.spdk_process = subprocess.Popen(cmd)
+            self.spdk_process = subprocess.Popen(cmd, stdout=self.spdk_log_file, stderr=log_stderr)
         except Exception:
             self.logger.exception(f"Unable to start SPDK")
             raise
@@ -424,6 +471,8 @@ class GatewayServer:
         # connect timeout: spdk client retries 5 times per sec
         conn_retries = int(timeout * 5)
         self.logger.info(f"SPDK process id: {self.spdk_process.pid}")
+        if self.spdk_log_file and self.spdk_log_file_path:
+            self.logger.info(f"SPDK log file is {self.spdk_log_file_path}")
         self.logger.info(
             f"Attempting to initialize SPDK: rpc_socket: {self.spdk_rpc_socket_path},"
             f" conn_retries: {conn_retries}, timeout: {timeout}, log level: {protocol_log_level}"
@@ -504,6 +553,15 @@ class GatewayServer:
         timeout = self.config.getfloat_with_default("spdk", "timeout", 60.0)
         self._stop_subprocess(self.spdk_process, timeout)
         self.spdk_process = None
+        if self.spdk_log_file:
+            try:
+                close(self.spdk_log_file)
+            except Exception:
+                pass
+            self.spdk_log_file = None
+        if self.spdk_log_file_path:
+            GatewayLogger.compress_file(self.spdk_log_file_path, f"{self.spdk_log_file_path}.gz")
+            self.spdk_log_file_path = None
 
         # Clean spdk rpc socket
         if self.spdk_rpc_socket_path and os.path.exists(self.spdk_rpc_socket_path):
