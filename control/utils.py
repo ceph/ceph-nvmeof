@@ -244,7 +244,7 @@ class GatewayLogger:
                 max_log_file_size = 0
                 max_log_files_count = 0
             try:
-                os.makedirs(self.log_directory, 0o777, True)
+                os.makedirs(self.log_directory, 0o755, True)
                 logdir_ok = True
                 self.handler = logging.handlers.RotatingFileHandler(self.log_directory + "/" + GatewayLogger.NVME_LOG_FILE_NAME,
                                                  maxBytes = max_log_file_size * 1024 * 1024,
