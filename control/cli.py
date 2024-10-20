@@ -58,15 +58,6 @@ class ErrorCatchingArgumentParser(argparse.ArgumentParser):
         self.logger = logging.getLogger(__name__)
         super(ErrorCatchingArgumentParser, self).__init__(*args, **kwargs)
 
-    def exit(self, status = 0, message = None):
-        if status != 0:
-            if message:
-                self.logger.error(message)
-        else:
-            if message:
-                self.logger.info(message)
-        exit(status)
-
     def error(self, message):
         self.print_usage()
         if message:

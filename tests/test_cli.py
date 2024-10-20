@@ -36,6 +36,7 @@ host_name = socket.gethostname()
 addr = "127.0.0.1"
 addr_ipv6 = "::1"
 server_addr_ipv6 = "2001:db8::3"
+server_refused_port = 5517
 listener_list = [["-a", addr, "-s", "5001", "-f", "ipv4"], ["-a", addr, "-s", "5002"]]
 listener_list_no_port = [["-a", addr]]
 listener_list_invalid_adrfam = [["-a", addr, "-s", "5013", "--adrfam", "JUNK"]]
@@ -84,6 +85,11 @@ class TestGet:
         caplog.clear()
         cli(["--server-address", server_addr_ipv6, "subsystem", "list"])
         assert "No subsystems" in caplog.text
+
+    def test_get_subsystems_connection_refused(self, caplog, gateway):
+        with pytest.raises(SystemExit) as exc_info:
+            cli(["--server-port", str(server_refused_port), "get_subsystems"])
+        assert exc_info.value.code == 2  # Verify SystemExit was raised with code 2
 
     def test_get_gateway_info(self, caplog, gateway):
         gw, stub = gateway
