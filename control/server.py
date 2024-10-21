@@ -92,6 +92,8 @@ class GatewayServer:
         self.gw_logger_object = GatewayLogger(self.config)
         self.logger = self.gw_logger_object.logger
         self.spdk_process = None
+        self.spdk_log_file = None
+        self.spdk_log_file_path = None
         self.gateway_rpc = None
         self.server = None
         self.discovery_pid = None
@@ -102,6 +104,8 @@ class GatewayServer:
         self.rpc_lock = threading.Lock()
         self.group_id = 0
         self.monitor_client = '/usr/bin/ceph-nvmeof-monitor-client'
+        self.monitor_client_log_file = None
+        self.monitor_client_log_file_path = None
         self.omap_state = None
         self.omap_lock = None
 
@@ -129,6 +133,28 @@ class GatewayServer:
 
         if self.spdk_process:
             self._stop_spdk()
+
+        if self.spdk_log_file:
+            try:
+                close(self.spdk_log_file)
+            except Exception:
+                pass
+            self.spdk_log_file = None
+
+        if self.spdk_log_file_path:
+            GatewayLogger.compress_file(self.spdk_log_file_path, f"{self.spdk_log_file_path}.gz")
+            self.spdk_log_file_path = None
+
+        if self.monitor_client_log_file:
+            try:
+                close(self.monitor_client_log_file)
+            except Exception:
+                pass
+            self.monitor_client_log_file = None
+
+        if self.monitor_client_log_file_path:
+            GatewayLogger.compress_file(self.monitor_client_log_file_path, f"{self.monitor_client_log_file_path}.gz")
+            self.monitor_client_log_file_path = None
 
         if self.server:
             if logger:
@@ -272,11 +298,26 @@ class GatewayServer:
                 "--server-cert", self.config.get("mtls", "server_cert"),
                 "--client-key", self.config.get("mtls", "client_key"),
                 "--client-cert", self.config.get("mtls", "client_cert") ]
+
+        self.monitor_client_log_file = None
+        self.monitor_client_log_file_path = None
+        log_stderr = None
+        log_file_dir = self.config.get_with_default("monitor", "log_file_dir", None)
+        self.monitor_client_log_file_path = self.handle_process_output_file(log_file_dir, "monitor-client")
+        if self.monitor_client_log_file_path:
+            try:
+                self.monitor_client_log_file = open(self.monitor_client_log_file_path, "wt")
+                log_stderr = subprocess.STDOUT
+            except Exception:
+                pass
+
         self.logger.info(f"Starting {' '.join(cmd)}")
         try:
             # start monitor client process
-            self.monitor_client_process = subprocess.Popen(cmd)
+            self.monitor_client_process = subprocess.Popen(cmd, stdout=self.monitor_client_log_file, stderr=log_stderr)
             self.logger.info(f"monitor client process id: {self.monitor_client_process.pid}")
+            if self.monitor_client_log_file and self.monitor_client_log_file_path:
+                self.logger.info(f"Monitor log file is {self.monitor_client_log_file_path}")
             # wait for monitor notification of the group id
             self._wait_for_group_id()
         except Exception:
@@ -365,6 +406,36 @@ class GatewayServer:
 
         return server
 
+    def handle_process_output_file(self, log_file_dir, prefix):
+        if not log_file_dir or not log_file_dir.strip():
+            return None
+
+        try:
+            os.makedirs(log_file_dir, 0o755, True)
+        except Exception:
+            return None
+
+        if not log_file_dir.endswith("/"):
+            log_file_dir += "/"
+        log_file_path = f"{log_file_dir}{prefix}-{self.name}.log"
+
+        log_files = [f"{log_file_path}{suffix}" for suffix in ['.bak', '.gz.bak']]
+        for log_file in log_files:
+            try:
+                os.remove(log_file)
+            except Exception:
+                pass
+        try:
+            os.rename(log_file_path, f"{log_file_path}.bak")
+        except FileNotFoundError:
+            pass
+        try:
+            os.rename(f"{log_file_path}.gz", f"{log_file_path}.gz.bak")
+        except FileNotFoundError:
+            pass
+
+        return log_file_path
+
     def _start_spdk(self, omap_state):
         """Starts SPDK process."""
 
@@ -403,11 +474,22 @@ class GatewayServer:
             self.logger.info(f"SPDK autodetecting cpu_mask: {cpu_mask}")
             cmd += shlex.split(cpu_mask)
 
+        self.spdk_log_file = None
+        self.spdk_log_file_path = None
+        log_stderr = None
+        log_file_dir = self.config.get_with_default("spdk", "log_file_dir", None)
+        self.spdk_log_file_path = self.handle_process_output_file(log_file_dir, "spdk")
+        if self.spdk_log_file_path:
+            try:
+                self.spdk_log_file = open(self.spdk_log_file_path, "wt")
+                log_stderr = subprocess.STDOUT
+            except Exception:
+                pass
         self.logger.info(f"Starting {' '.join(cmd)}")
         try:
             # start spdk process
             time.sleep(2)      # this is a temporary hack, we have a timing issue here. Once we solve it the sleep will ve removed
-            self.spdk_process = subprocess.Popen(cmd)
+            self.spdk_process = subprocess.Popen(cmd, stdout=self.spdk_log_file, stderr=log_stderr)
         except Exception:
             self.logger.exception(f"Unable to start SPDK")
             raise
@@ -424,6 +506,8 @@ class GatewayServer:
         # connect timeout: spdk client retries 5 times per sec
         conn_retries = int(timeout * 5)
         self.logger.info(f"SPDK process id: {self.spdk_process.pid}")
+        if self.spdk_log_file and self.spdk_log_file_path:
+            self.logger.info(f"SPDK log file is {self.spdk_log_file_path}")
         self.logger.info(
             f"Attempting to initialize SPDK: rpc_socket: {self.spdk_rpc_socket_path},"
             f" conn_retries: {conn_retries}, timeout: {timeout}, log level: {protocol_log_level}"
@@ -497,6 +581,15 @@ class GatewayServer:
         timeout = self.config.getfloat_with_default("monitor", "timeout", 1.0)
         self._stop_subprocess(self.monitor_client_process, timeout)
         self.monitor_client_process = None
+        if self.monitor_client_log_file:
+            try:
+                close(self.monitor_client_log_file)
+            except Exception:
+                pass
+            self.monitor_client_log_file = None
+        if self.monitor_client_log_file_path:
+            GatewayLogger.compress_file(self.monitor_client_log_file_path, f"{self.monitor_client_log_file_path}.gz")
+            self.monitor_client_log_file_path = None
 
     def _stop_spdk(self):
         """Stops SPDK process."""
@@ -504,6 +597,15 @@ class GatewayServer:
         timeout = self.config.getfloat_with_default("spdk", "timeout", 60.0)
         self._stop_subprocess(self.spdk_process, timeout)
         self.spdk_process = None
+        if self.spdk_log_file:
+            try:
+                close(self.spdk_log_file)
+            except Exception:
+                pass
+            self.spdk_log_file = None
+        if self.spdk_log_file_path:
+            GatewayLogger.compress_file(self.spdk_log_file_path, f"{self.spdk_log_file_path}.gz")
+            self.spdk_log_file_path = None
 
         # Clean spdk rpc socket
         if self.spdk_rpc_socket_path and os.path.exists(self.spdk_rpc_socket_path):
