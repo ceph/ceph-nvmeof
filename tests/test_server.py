@@ -2,6 +2,7 @@ import copy
 import pytest
 import time
 import re
+import signal
 import os
 import unittest
 from control.server import GatewayServer
@@ -12,13 +13,13 @@ class TestServer(unittest.TestCase):
         self.config = config
 
     def validate_exception(self, e):
-        pattern = r'Gateway subprocess terminated pid=(\d+) exit_code=(\d+)'
+        pattern = r'Gateway subprocess terminated pid=(\d+) exit_code=(-?\d+)'
         m = re.match(pattern, e.code)
         assert(m)
         pid = int(m.group(1))
         code = int(m.group(2))
         assert(pid > 0)
-        assert(code == 1)
+        assert(code)
 
     def assert_no_core_files(self, directory_path):
         assert(os.path.exists(directory_path) and os.path.isdir(directory_path))
@@ -47,6 +48,25 @@ class TestServer(unittest.TestCase):
         # exited context, sub processes should terminate gracefully
         time.sleep(10) # let it dump
         self.assert_no_core_files("/tmp/coredump")
+
+    def test_monc_abort(self):
+        """Tests monitor client sub process abort."""
+        config_monc_abort = copy.deepcopy(self.config)
+
+        with self.assertRaises(SystemExit) as cm:
+            with GatewayServer(config_monc_abort) as gateway:
+                gateway.set_group_id(0)
+                gateway.serve()
+
+                # Give the gateway some time to start
+                time.sleep(2)
+
+                # Send SIGABRT (abort signal) to the monitor client process
+                assert(gateway.monitor_client_process)
+                gateway.monitor_client_process.send_signal(signal.SIGABRT)
+                gateway.keep_alive()
+
+        self.validate_exception(cm.exception)
 
     def test_spdk_multi_gateway_exception(self):
         """Tests spdk sub process exiting with error, in multi gateway configuration."""

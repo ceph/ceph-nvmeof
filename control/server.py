@@ -146,6 +146,7 @@ class GatewayServer:
         if logger:
             logger.info("Exiting the gateway process.")
         gw_logger.compress_final_log_file(gw_name)
+        self.logger.exception("Check if GatewayServer exception occurred:")
 
     def set_group_id(self, id: int):
         self.logger.info(f"Gateway {self.name} group {id=}")
