@@ -8,13 +8,9 @@
 #
 
 import argparse
-import signal
 from .server import GatewayServer
 from .config import GatewayConfig
 from .utils import GatewayLogger
-
-def sigterm_handler(signum, frame):
-    raise SystemExit(f"Gateway process terminated")
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(prog="python3 -m control",
@@ -32,10 +28,6 @@ if __name__ == '__main__':
     gw_logger = GatewayLogger(config)
     config.display_environment_info(gw_logger.logger)
     config.dump_config_file(gw_logger.logger)
-    try:
-        with GatewayServer(config) as gateway:
-            signal.signal(signal.SIGTERM, sigterm_handler)
-            gateway.serve()
-            gateway.keep_alive()
-    except SystemExit:
-        pass
+    with GatewayServer(config) as gateway:
+        gateway.serve()
+        gateway.keep_alive()
