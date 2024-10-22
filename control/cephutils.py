@@ -24,6 +24,7 @@ class CephUtils:
         self.ceph_conf = config.get_with_default("ceph", "config_file", "/etc/ceph/ceph.conf")
         self.rados_id = config.get_with_default("ceph", "id", "")
         self.anagroup_list = []
+        self.rebalance_supported = False
         self.last_sent = time.time()
 
     def execute_ceph_monitor_command(self, cmd):
@@ -50,6 +51,9 @@ class CephUtils:
               break
         return gw_id
 
+    def is_rebalance_supported(self):
+        return  self.rebalance_supported
+
     def get_number_created_gateways(self, pool, group):
         now = time.time()
         if (now - self.last_sent) < 10 and self.anagroup_list :
@@ -64,6 +68,11 @@ class CephUtils:
                 rply = self.execute_ceph_monitor_command(str)
                 self.logger.debug(f"reply \"{rply}\"")
                 conv_str = rply[1].decode()
+                pos = conv_str.find('"LB"')
+                if pos != -1:
+                    self.rebalance_supported = True
+                else :
+                    self.rebalance_supported = False
                 pos = conv_str.find("[")
                 if pos != -1:
                     new_str = conv_str[pos + len("[") :]
