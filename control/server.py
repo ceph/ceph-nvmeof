@@ -36,6 +36,12 @@ from .utils import GatewayUtils
 from .cephutils import CephUtils
 from .prometheus import start_exporter
 
+def sigterm_handler(signum, frame):
+    """Handle SIGTERM, runs when a gateway is terminated gracefully."""
+    logger = GatewayLogger().logger
+    logger.info(f"GatewayServer: SIGTERM received {signum=}")
+    raise SystemExit(0)
+
 def sigchld_handler(signum, frame):
     """Handle SIGCHLD, runs when a child process, like the spdk, terminates."""
     logger = GatewayLogger().logger
@@ -204,6 +210,9 @@ class GatewayServer:
 
         # install SIGCHLD handler
         signal.signal(signal.SIGCHLD, sigchld_handler)
+
+        # install SIGTERM handler
+        signal.signal(signal.SIGTERM, sigterm_handler)
 
         # Start monitor client
         self._start_monitor_client()
