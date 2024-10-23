@@ -795,10 +795,10 @@ class GatewayStateHandler:
         with self.update_is_active_lock:
             prefix_list = [
                 GatewayState.SUBSYSTEM_PREFIX,
+                GatewayState.LISTENER_PREFIX,
                 GatewayState.NAMESPACE_PREFIX, GatewayState.HOST_PREFIX,
                 GatewayState.NAMESPACE_QOS_PREFIX,
                 GatewayState.NAMESPACE_HOST_PREFIX,
-                GatewayState.LISTENER_PREFIX,
             ]
 
             # Get version and state from OMAP
@@ -893,6 +893,7 @@ class GatewayStateHandler:
             for prefix in prefix_list:
                 if key.startswith(prefix):
                     grouped_state_update[prefix][key] = val
+                    break
         return grouped_state_update
 
     def _update_call_rpc(self, grouped_state_update, is_add_req, prefix_list):
