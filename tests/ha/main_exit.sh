@@ -26,11 +26,16 @@ background_task() {
   docker compose top
 
   echo ℹ️  Send nvme-gw create for all gateways
+  GW_NAME=''
   GW_GROUP=''
   i=1 # a single gw index
-  GW_NAME=$(docker ps --format '{{.ID}}\t{{.Names}}' | grep -v discovery | awk '$2 ~ /nvmeof/ && $2 ~ /'$i'/ {print $1}')
+  while [ ! -n "$GW_NAME" ]; do
+    sleep 1
+    GW_NAME=$(docker ps --format '{{.ID}}\t{{.Names}}' | grep -v discovery | awk '$2 ~ /nvmeof/ && $2 ~ /'$i'/ {print $1}')
+  done
   echo  📫 nvme-gw create gateway: \'$GW_NAME\' pool: \'$POOL\', group: \'$GW_GROUP\'
   docker compose exec -T ceph ceph nvme-gw create $GW_NAME $POOL "$GW_GROUP"
+  docker compose exec -T ceph ceph nvme-gw show $POOL "$GW_GROUP"
 
   echo ℹ️  Wait for gateway to be ready
   while true; do
@@ -43,12 +48,10 @@ background_task() {
       continue
     fi
     GW_IP="$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$GW_NAME")"
-    if docker compose run --rm nvmeof-cli $CLI_TLS_ARGS --server-address $GW_IP --server-port 5500 get_subsystems 2>&1 | grep -i failed; then
+    if ! docker compose run --rm nvmeof-cli $CLI_TLS_ARGS --server-address $GW_IP --server-port 5500 get_subsystems; then
       echo "Container $i $GW_NAME $GW_IP no subsystems. Waiting..."
       continue
     fi
-    echo "Container $i $GW_NAME $GW_IP subsystems:"
-    docker compose run --rm nvmeof-cli $CLI_TLS_ARGS --server-address $GW_IP --server-port 5500 get_subsystems
     break
   done
 
