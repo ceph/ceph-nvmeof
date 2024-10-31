@@ -1195,6 +1195,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         state = self.gateway_state.local.get_state()
         inaccessible_ana_groups = {}
         optimized_ana_groups = set()
+        wait_osdmap_rpc_performed = False
         # Iterate over nqn_ana_states in ana_info
         for nas in ana_info.states:
 
@@ -1224,10 +1225,14 @@ class GatewayService(pb2_grpc.GatewayServicer):
                         # part of bocklist logic
                         if gs.state == pb2.ana_state.OPTIMIZED:
                             if grp_id not in optimized_ana_groups:
-                                for cluster in self.clusters[grp_id]:
-                                    if not rpc_bdev.bdev_rbd_wait_for_latest_osdmap(self.spdk_rpc_client, name=cluster):
-                                        raise Exception(f"bdev_rbd_wait_for_latest_osdmap({cluster=}) error")
-                                    self.logger.debug(f"set_ana_state bdev_rbd_wait_for_latest_osdmap {cluster=}")
+                                if wait_osdmap_rpc_performed == False: #perfored RPC calls to all clusters of the gateway
+                                    #for cluster in self.clusters:
+                                    for grp_id_it in self.clusters:
+                                         for cluster in self.clusters[grp_id_it]:
+                                            self.logger.debug(f"set_ana_state bdev_rbd_wait_for_latest_osdmap {cluster=}")
+                                            if not rpc_bdev.bdev_rbd_wait_for_latest_osdmap(self.spdk_rpc_client, name=cluster):
+                                                raise Exception(f"bdev_rbd_wait_for_latest_osdmap({cluster=}) error")
+                                    wait_osdmap_rpc_performed = True
                                 optimized_ana_groups.add(grp_id)
 
                         self.logger.debug(f"set_ana_state nvmf_subsystem_listener_set_ana_state {nqn=} {listener=} {ana_state=} {grp_id=}")
