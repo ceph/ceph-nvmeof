@@ -20,7 +20,7 @@ import time
 import hashlib
 import tempfile
 from pathlib import Path
-from typing import Callable
+from typing import Iterator, Callable
 from collections import defaultdict
 import logging
 import shutil
@@ -207,19 +207,12 @@ class NamespacesLocalList:
 
         return ns_count
 
-    def get_namespaces_using_ana_group_id(self, nqn, anagrpid):
-        ns_list = []
-        if nqn not in self.namespace_list:
-            return ns_list
-
-        for nsid in self.namespace_list[nqn]:
-            ns = self.namespace_list[nqn][nsid]
-            if ns.empty():
-                continue
-            if ns.anagrpid == anagrpid:
-                ns_list.append(ns)
-
-        return ns_list
+    def get_namespace_infos_for_anagrpid(self, nqn: str, anagrpid: int) -> Iterator[NamespaceInfo]:
+        """Yield NamespaceInfo instances for a given nqn and anagrpid."""
+        if nqn in self.namespace_list:
+            for ns_info in self.namespace_list[nqn].values():
+                if ns_info.anagrpid == anagrpid:
+                    yield ns_info
 
 class GatewayService(pb2_grpc.GatewayServicer):
     """Implements gateway service interface.
@@ -1194,7 +1187,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         state = self.gateway_state.local.get_state()
         inaccessible_ana_groups = {}
-        optimized_ana_groups = set()
+        awaited_cluster_contexts = set()
         # Iterate over nqn_ana_states in ana_info
         for nas in ana_info.states:
 
@@ -1221,14 +1214,23 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     try:
                         # Need to wait for the latest OSD map, for each RADOS
                         # cluster context before becoming optimized,
-                        # part of bocklist logic
+                        # part of blocklist logic
                         if gs.state == pb2.ana_state.OPTIMIZED:
-                            if grp_id not in optimized_ana_groups:
-                                for cluster in self.clusters[grp_id]:
-                                    if not rpc_bdev.bdev_rbd_wait_for_latest_osdmap(self.spdk_rpc_client, name=cluster):
-                                        raise Exception(f"bdev_rbd_wait_for_latest_osdmap({cluster=}) error")
-                                    self.logger.debug(f"set_ana_state bdev_rbd_wait_for_latest_osdmap {cluster=}")
-                                optimized_ana_groups.add(grp_id)
+                            # Go over the namespaces belonging to the ana group
+                            for ns_info in self.subsystem_nsid_bdev_and_uuid.get_namespace_infos_for_anagrpid(nqn, grp_id):
+                                # get the cluster name for this namespace
+                                with self.shared_state_lock:
+                                    cluster = self.bdev_cluster[ns_info.bdev]
+                                if not cluster:
+                                    raise Exception(f"can not find cluster context name for bdev {ns_info.bdev}")
+
+                                if cluster in awaited_cluster_contexts:
+                                    # this cluster context was already awaited
+                                    continue
+                                if not rpc_bdev.bdev_rbd_wait_for_latest_osdmap(self.spdk_rpc_client, name=cluster):
+                                    raise Exception(f"bdev_rbd_wait_for_latest_osdmap({cluster=}) error")
+                                self.logger.debug(f"set_ana_state bdev_rbd_wait_for_latest_osdmap {cluster=}")
+                                awaited_cluster_contexts.add(cluster)
 
                         self.logger.debug(f"set_ana_state nvmf_subsystem_listener_set_ana_state {nqn=} {listener=} {ana_state=} {grp_id=}")
                         (adrfam, traddr, trsvcid, secure) = listener
