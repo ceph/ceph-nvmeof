@@ -674,7 +674,8 @@ class GatewayClient:
                                         serial_number=args.serial_number,
                                         max_namespaces=args.max_namespaces,
                                         enable_ha=True,
-                                        no_group_append=args.no_group_append)
+                                        no_group_append=args.no_group_append,
+                                        dhchap_key=args.dhchap_key)
         try:
             ret = self.stub.create_subsystem(req)
         except Exception as ex:
@@ -770,8 +771,9 @@ class GatewayClient:
                         err_func("Failure listing subsystem with serial number {args.serial_number}: Got serial number {s.serial_number} instead")
                         return errno.ENODEV
                     ctrls_id = f"{s.min_cntlid}-{s.max_cntlid}"
-                    ha_str = "enabled" if s.enable_ha else "disabled"
-                    one_subsys = [s.subtype, s.nqn, ha_str, s.serial_number, ctrls_id, s.namespace_count, s.max_namespaces]
+                    has_dhchap = "Yes" if s.has_dhchap_key else "No"
+                    allow_any = "Yes" if s.allow_any_host else "No"
+                    one_subsys = [s.subtype, s.nqn, s.serial_number, ctrls_id, s.namespace_count, s.max_namespaces, allow_any, has_dhchap]
                     subsys_list.append(one_subsys)
                 if len(subsys_list) > 0:
                     if args.format == "text":
@@ -779,8 +781,8 @@ class GatewayClient:
                     else:
                         table_format = "plain"
                     subsys_out = tabulate(subsys_list,
-                                      headers = ["Subtype", "NQN", "HA State", "Serial\nNumber", "Controller IDs",
-                                                 "Namespace\nCount", "Max\nNamespaces"],
+                                      headers = ["Subtype", "NQN", "Serial\nNumber", "Controller IDs",
+                                                 "Namespace\nCount", "Max\nNamespaces", "Allow\nAny Host", "DHCHAP\nKey"],
                                       tablefmt=table_format)
                     prefix = "Subsystems"
                     if args.subsystem:
@@ -815,11 +817,48 @@ class GatewayClient:
 
         return subsystems.status
 
+    def subsystem_change_key(self, args):
+        """Change subsystem's inband authentication key."""
+
+        rc = 0
+        out_func, err_func = self.get_output_functions(args)
+
+        req = pb2.change_subsystem_key_req(subsystem_nqn=args.subsystem, dhchap_key=args.dhchap_key)
+        try:
+            ret = self.stub.change_subsystem_key(req)
+        except Exception as ex:
+            errmsg = f"Failure changing key for subsystem {args.subsystem}"
+            ret = pb2.req_status(status = errno.EINVAL, error_message = f"{errmsg}:\n{ex}")
+
+        if args.format == "text" or args.format == "plain":
+            if ret.status == 0:
+                out_func(f"Changing key for subsystem {args.subsystem}: Successful")
+            else:
+                err_func(f"{ret.error_message}")
+        elif args.format == "json" or args.format == "yaml":
+            ret_str = json_format.MessageToJson(
+                        ret,
+                        indent=4,
+                        including_default_value_fields=True,
+                        preserving_proto_field_name=True)
+            if args.format == "json":
+                out_func(f"{ret_str}")
+            elif args.format == "yaml":
+                obj = json.loads(ret_str)
+                out_func(yaml.dump(obj))
+        elif args.format == "python":
+            return ret
+        else:
+            assert False
+
+        return ret.status
+
     subsys_add_args = [
         argument("--subsystem", "-n", help="Subsystem NQN", required=True),
         argument("--serial-number", "-s", help="Serial number", required=False),
         argument("--max-namespaces", "-m", help="Maximum number of namespaces", type=int, required=False),
         argument("--no-group-append", help="Do not append gateway group name to the NQN", action='store_true', required=False),
+        argument("--dhchap-key", "-k", help="Subsystem DH-HMAC-CHAP key", required=False),
     ]
     subsys_del_args = [
         argument("--subsystem", "-n", help="Subsystem NQN", required=True),
@@ -829,10 +868,15 @@ class GatewayClient:
         argument("--subsystem", "-n", help="Subsystem NQN", required=False),
         argument("--serial-number", "-s", help="Serial number", required=False),
     ]
+    subsys_change_key_args = [
+        argument("--subsystem", "-n", help="Subsystem NQN", required=True),
+        argument("--dhchap-key", "-k", help="Subsystem DH-HMAC-CHAP key", required=False),
+    ]
     subsystem_actions = []
     subsystem_actions.append({"name" : "add", "args" : subsys_add_args, "help" : "Create a subsystem"})
     subsystem_actions.append({"name" : "del", "args" : subsys_del_args, "help" : "Delete a subsystem"})
     subsystem_actions.append({"name" : "list", "args" : subsys_list_args, "help" : "List subsystems"})
+    subsystem_actions.append({"name" : "change_key", "args" : subsys_change_key_args, "help" : "Change subsystem key"})
     subsystem_choices = get_actions(subsystem_actions)
     @cli.cmd(subsystem_actions)
     def subsystem(self, args):
@@ -843,6 +887,8 @@ class GatewayClient:
             return self.subsystem_del(args)
         elif args.action == "list":
             return self.subsystem_list(args)
+        elif args.action == "change_key":
+            return self.subsystem_change_key(args)
         if not args.action:
             self.cli.parser.error(f"missing action for subsystem command (choose from {GatewayClient.subsystem_choices})")
 
@@ -1061,10 +1107,6 @@ class GatewayClient:
             if len(args.host_nqn) > 1:
                 self.cli.parser.error(f"Can't have more than one host NQN when DH-HMAC-CHAP keys are used")
 
-        if args.dhchap_ctrlr_key:
-            if not args.dhchap_key:
-                self.cli.parser.error(f"DH-HMAC-CHAP controller keys can not be used without DH-HMAC-CHAP keys")
-
         for one_host_nqn in args.host_nqn:
             if one_host_nqn == "*" and args.psk:
                 self.cli.parser.error(f"PSK key is only allowed for specific hosts")
@@ -1073,7 +1115,7 @@ class GatewayClient:
                 self.cli.parser.error(f"DH-HMAC-CHAP key is only allowed for specific hosts")
 
             req = pb2.add_host_req(subsystem_nqn=args.subsystem, host_nqn=one_host_nqn,
-                                   psk=args.psk, dhchap_key=args.dhchap_key, dhchap_ctrlr_key=args.dhchap_ctrlr_key)
+                                   psk=args.psk, dhchap_key=args.dhchap_key, force=args.force)
             try:
                 ret = self.stub.add_host(req)
             except Exception as ex:
@@ -1165,7 +1207,7 @@ class GatewayClient:
 
         return rc
 
-    def host_change_keys(self, args):
+    def host_change_key(self, args):
         """Change host's inband authentication keys."""
 
         rc = 0
@@ -1174,21 +1216,17 @@ class GatewayClient:
         if args.host_nqn == "*":
             self.cli.parser.error(f"Can't change keys for host NQN '*', please use a real NQN")
 
-        if args.dhchap_ctrlr_key:
-            if not args.dhchap_key:
-                self.cli.parser.error(f"DH-HMAC-CHAP controller keys can not be used without DH-HMAC-CHAP keys")
-
-        req = pb2.change_host_keys_req(subsystem_nqn=args.subsystem, host_nqn=args.host_nqn,
-                                       dhchap_key=args.dhchap_key, dhchap_ctrlr_key=args.dhchap_ctrlr_key)
+        req = pb2.change_host_key_req(subsystem_nqn=args.subsystem, host_nqn=args.host_nqn,
+                                      dhchap_key=args.dhchap_key, force=args.force)
         try:
-            ret = self.stub.change_host_keys(req)
+            ret = self.stub.change_host_key(req)
         except Exception as ex:
-            errmsg = f"Failure changing keys for host {args.host_nqn} on subsystem {args.subsystem}"
+            errmsg = f"Failure changing key for host {args.host_nqn} on subsystem {args.subsystem}"
             ret = pb2.req_status(status = errno.EINVAL, error_message = f"{errmsg}:\n{ex}")
 
         if args.format == "text" or args.format == "plain":
             if ret.status == 0:
-                out_func(f"Changing keys for host {args.host_nqn} on subsystem {args.subsystem}: Successful")
+                out_func(f"Changing key for host {args.host_nqn} on subsystem {args.subsystem}: Successful")
             else:
                 err_func(f"{ret.error_message}")
         elif args.format == "json" or args.format == "yaml":
@@ -1267,23 +1305,23 @@ class GatewayClient:
         argument("--host-nqn", "-t", help="Host NQN list", nargs="+", required=True),
         argument("--psk", "-p", help="Hosts PSK key", required=False),
         argument("--dhchap-key", "-k", help="Host DH-HMAC-CHAP key", required=False),
-        argument("--dhchap-ctrlr-key", "-c", help="Host DH-HMAC-CHAP controller key", required=False),
+        argument("--force", help="Add a host having a DH-HMAC-CHAP key even if the subsystem has no key", action='store_true', required=False),
     ]
     host_del_args = host_common_args + [
         argument("--host-nqn", "-t", help="Host NQN list", nargs="+", required=True),
     ]
     host_list_args = host_common_args + [
     ]
-    host_change_keys_args = host_common_args + [
+    host_change_key_args = host_common_args + [
         argument("--host-nqn", "-t", help="Host NQN", required=True),
         argument("--dhchap-key", "-k", help="Host DH-HMAC-CHAP key", required=False),
-        argument("--dhchap-ctrlr-key", "-c", help="Host DH-HMAC-CHAP controller key", required=False),
+        argument("--force", help="Set a DH-HMAC-CHAP key to the host even if the subsystem has no key", action='store_true', required=False),
     ]
     host_actions = []
     host_actions.append({"name" : "add", "args" : host_add_args, "help" : "Add host access to a subsystem"})
     host_actions.append({"name" : "del", "args" : host_del_args, "help" : "Remove host access from a subsystem"})
     host_actions.append({"name" : "list", "args" : host_list_args, "help" : "List subsystem's host access"})
-    host_actions.append({"name" : "change_keys", "args" : host_change_keys_args, "help" : "Change host's inband authentication keys"})
+    host_actions.append({"name" : "change_key", "args" : host_change_key_args, "help" : "Change host's inband authentication keys"})
     host_choices = get_actions(host_actions)
     @cli.cmd(host_actions)
     def host(self, args):
@@ -1294,8 +1332,8 @@ class GatewayClient:
             return self.host_del(args)
         elif args.action == "list":
             return self.host_list(args)
-        elif args.action == "change_keys":
-            return self.host_change_keys(args)
+        elif args.action == "change_key":
+            return self.host_change_key(args)
         if not args.action:
             self.cli.parser.error(f"missing action for host command (choose from {GatewayClient.host_choices})")
 

@@ -73,7 +73,7 @@ def two_gateways(config):
         gatewayA.server.stop(grace=1)
         gatewayB.server.stop(grace=1)
 
-def test_change_host_keys(caplog, two_gateways):
+def test_change_host_key(caplog, two_gateways):
     gatewayA, stubA, gatewayB, stubB = two_gateways
     gwA = gatewayA.gateway_rpc
     gwB = gatewayB.gateway_rpc
@@ -84,21 +84,21 @@ def test_change_host_keys(caplog, two_gateways):
     cli(["--server-port", "5501", "host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn1])
     assert f"Adding host {hostnqn1} to {subsystem}: Successful" in caplog.text
     caplog.clear()
-    cli(["--server-port", "5501", "host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn2, "--dhchap-key", key1])
+    cli(["--server-port", "5501", "host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn2, "--dhchap-key", key1, "--force"])
     assert f"Adding host {hostnqn2} to {subsystem}: Successful" in caplog.text
     caplog.clear()
-    cli(["--server-port", "5501", "host", "change_keys", "--subsystem", subsystem, "--host-nqn", hostnqn1, "--dhchap-key", key2])
-    assert f"Changing keys for host {hostnqn1} on subsystem {subsystem}: Successful" in caplog.text
+    cli(["--server-port", "5501", "host", "change_key", "--subsystem", subsystem, "--host-nqn", hostnqn1, "--dhchap-key", key2, "--force"])
+    assert f"Changing key for host {hostnqn1} on subsystem {subsystem}: Successful" in caplog.text
     time.sleep(15)
-    assert f"Received request to change inband authentication keys for host {hostnqn1} on subsystem {subsystem}, dhchap: {key2}, dhchap controller: , context: <grpc._server" in caplog.text
-    assert f"Received request to change inband authentication keys for host {hostnqn1} on subsystem {subsystem}, dhchap: {key2}, dhchap controller: , context: None" in caplog.text
+    assert f"Received request to change inband authentication key for host {hostnqn1} on subsystem {subsystem}, dhchap: {key2}, force: True, context: <grpc._server" in caplog.text
+    assert f"Received request to change inband authentication key for host {hostnqn1} on subsystem {subsystem}, dhchap: {key2}, force: True, context: None" in caplog.text
     assert f"Received request to remove host {hostnqn1} access from {subsystem}" not in caplog.text
     assert f"Received request to add host {hostnqn1} to {subsystem}" not in caplog.text
     caplog.clear()
-    cli(["--server-port", "5501", "host", "change_keys", "--subsystem", subsystem, "--host-nqn", hostnqn2, "--dhchap-key", key3])
+    cli(["--server-port", "5501", "host", "change_key", "--subsystem", subsystem, "--host-nqn", hostnqn2, "--dhchap-key", key3, "--force"])
     time.sleep(15)
-    assert f"Received request to change inband authentication keys for host {hostnqn2} on subsystem {subsystem}, dhchap: {key3}, dhchap controller: , context: <grpc._server" in caplog.text
-    assert f"Received request to change inband authentication keys for host {hostnqn2} on subsystem {subsystem}, dhchap: {key3}, dhchap controller: , context: None" in caplog.text
+    assert f"Received request to change inband authentication key for host {hostnqn2} on subsystem {subsystem}, dhchap: {key3}, force: True, context: <grpc._server" in caplog.text
+    assert f"Received request to change inband authentication key for host {hostnqn2} on subsystem {subsystem}, dhchap: {key3}, force: True, context: None" in caplog.text
     assert f"Received request to remove host {hostnqn2} access from {subsystem}" not in caplog.text
     assert f"Received request to add host {hostnqn2} to {subsystem}" not in caplog.text
 
@@ -109,22 +109,22 @@ def test_change_key_with_psk(caplog, two_gateways):
     cli(["--server-port", "5501", "host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn3, "--psk", hostpsk1])
     assert f"Adding host {hostnqn3} to {subsystem}: Successful" in caplog.text
     caplog.clear()
-    cli(["--server-port", "5501", "host", "change_keys", "--subsystem", subsystem, "--host-nqn", hostnqn3, "--dhchap-key", key4])
-    assert f"Changing keys for host {hostnqn3} on subsystem {subsystem}: Successful" in caplog.text
+    cli(["--server-port", "5501", "host", "change_key", "--subsystem", subsystem, "--host-nqn", hostnqn3, "--dhchap-key", key4, "--force"])
+    assert f"Changing key for host {hostnqn3} on subsystem {subsystem}: Successful" in caplog.text
 
 def test_change_key_host_not_exist(caplog, two_gateways):
     gatewayA, stubA, gatewayB, stubB = two_gateways
     gwA = gatewayA.gateway_rpc
     caplog.clear()
-    cli(["--server-port", "5501", "host", "change_keys", "--subsystem", subsystem, "--host-nqn", hostnqn4, "--dhchap-key", "junk"])
-    assert f"Failure changing keys for host {hostnqn4} on subsystem {subsystem}: Can't find host on subsystem" in caplog.text
+    cli(["--server-port", "5501", "host", "change_key", "--subsystem", subsystem, "--host-nqn", hostnqn4, "--dhchap-key", "junk", "--force"])
+    assert f"Failure changing DH-HMAC-CHAP key for host {hostnqn4} on subsystem {subsystem}: Can't find host on subsystem" in caplog.text
 
 def test_change_key_host_on_discovery(caplog, two_gateways):
     gatewayA, stubA, gatewayB, stubB = two_gateways
     gwA = gatewayA.gateway_rpc
     caplog.clear()
-    cli(["--server-port", "5501", "host", "change_keys", "--subsystem", subsystem, "--host-nqn", discovery_nqn, "--dhchap-key", "junk"])
-    assert f"Failure changing keys for host {discovery_nqn} on subsystem {subsystem}: Can't use a discovery NQN as host's" in caplog.text
+    cli(["--server-port", "5501", "host", "change_key", "--subsystem", subsystem, "--host-nqn", discovery_nqn, "--dhchap-key", "junk", "--force"])
+    assert f"Failure changing DH-HMAC-CHAP key for host {discovery_nqn} on subsystem {subsystem}: Can't use a discovery NQN as host's" in caplog.text
     caplog.clear()
-    cli(["--server-port", "5501", "host", "change_keys", "--subsystem", subsystem, "--host-nqn", "bad_nqn", "--dhchap-key", "junk"])
-    assert f"Failure changing keys for host bad_nqn on subsystem {subsystem}: Invalid host NQN" in caplog.text
+    cli(["--server-port", "5501", "host", "change_key", "--subsystem", subsystem, "--host-nqn", "bad_nqn", "--dhchap-key", "junk", "--force"])
+    assert f"Failure changing DH-HMAC-CHAP key for host bad_nqn on subsystem {subsystem}: Invalid host NQN" in caplog.text

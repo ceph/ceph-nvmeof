@@ -67,47 +67,60 @@ class SubsystemHostAuth:
 
     def __init__(self):
         self.subsys_allow_any_hosts = defaultdict(dict)
-        self.host_has_psk = defaultdict(dict)
-        self.host_has_dhchap = defaultdict(dict)
+        self.subsys_dhchap_key = defaultdict(dict)
+        self.host_dhchap_key = defaultdict(dict)
+        self.host_psk_key = defaultdict(dict)
 
     def clean_subsystem(self, subsys):
-        self.host_has_psk.pop(subsys, None)
-        self.host_has_dhchap.pop(subsys, None)
+        self.host_psk_key.pop(subsys, None)
+        self.host_dhchap_key.pop(subsys, None)
         self.subsys_allow_any_hosts.pop(subsys, None)
+        self.subsys_dhchap_key.pop(subsys, None)
 
-    def add_psk_host(self, subsys, host):
-        self.host_has_psk[subsys][host] = True
+    def add_psk_host(self, subsys, host, key):
+        if key:
+            self.host_psk_key[subsys][host] = key
 
     def remove_psk_host(self, subsys, host):
-        if subsys in self.host_has_psk:
-            self.host_has_psk[subsys].pop(host, None)
-            if len(self.host_has_psk[subsys]) == 0:
-                self.host_has_psk.pop(subsys, None)    # last host was removed from subsystem
+        if subsys in self.host_psk_key:
+            self.host_psk_key[subsys].pop(host, None)
+            if len(self.host_psk_key[subsys]) == 0:
+                self.host_psk_key.pop(subsys, None)    # last host was removed from subsystem
 
-    def is_psk_host(self, subsys, host = None) -> bool:
-        if subsys in self.host_has_psk:
-            if not host:
-                return len(self.host_has_psk[subsys]) != 0
-            if host in self.host_has_psk[subsys]:
-                return True
-        return False
+    def is_psk_host(self, subsys, host) -> bool:
+        key = self.get_host_psk_key(subsys, host)
+        return True if key else False
 
-    def add_dhchap_host(self, subsys, host):
-        self.host_has_dhchap[subsys][host] = True
+    def get_host_psk_key(self, subsys, host) -> str:
+        key = None
+        if subsys in self.host_psk_key and host in self.host_psk_key[subsys]:
+            key = self.host_psk_key[subsys][host]
+        return key
+
+    def add_dhchap_host(self, subsys, host, key):
+        if key:
+            self.host_dhchap_key[subsys][host] = key
 
     def remove_dhchap_host(self, subsys, host):
-        if subsys in self.host_has_dhchap:
-            self.host_has_dhchap[subsys].pop(host, None)
-            if len(self.host_has_dhchap[subsys]) == 0:
-                self.host_has_dhchap.pop(subsys, None)    # last host was removed from subsystem
+        if subsys in self.host_dhchap_key:
+            self.host_dhchap_key[subsys].pop(host, None)
+            if len(self.host_dhchap_key[subsys]) == 0:
+                self.host_dhchap_key.pop(subsys, None)    # last host was removed from subsystem
 
-    def is_dhchap_host(self, subsys, host = None) -> bool:
-        if subsys in self.host_has_dhchap:
-            if not host:
-                return len(self.host_has_dhchap[subsys]) != 0
-            if host in self.host_has_dhchap[subsys]:
-                return True
-        return False
+    def is_dhchap_host(self, subsys, host) -> bool:
+        key = self.get_host_dhchap_key(subsys, host)
+        return True if key else False
+
+    def get_host_dhchap_key(self, subsys, host) -> str:
+        key = None
+        if subsys in self.host_dhchap_key and host in self.host_dhchap_key[subsys]:
+            key = self.host_dhchap_key[subsys][host]
+        return key
+
+    def get_hosts_with_dhchap_key(self, subsys):
+        if subsys in self.host_dhchap_key:
+            return self.host_dhchap_key[subsys]
+        return {}
 
     def allow_any_host(self, subsys):
         self.subsys_allow_any_hosts[subsys] = True
@@ -117,6 +130,23 @@ class SubsystemHostAuth:
 
     def is_any_host_allowed(self, subsys) -> bool:
         return subsys in self.subsys_allow_any_hosts
+
+    def add_dhchap_key_to_subsystem(self, subsys, key):
+        if key:
+            self.subsys_dhchap_key[subsys] = key
+
+    def remove_dhchap_key_from_subsystem(self, subsys):
+        self.subsys_dhchap_key.pop(subsys, None)
+
+    def does_subsystem_have_dhchap_key(self, subsys) -> bool:
+        key = self.get_subsystem_dhchap_key(subsys)
+        return True if key else False
+
+    def get_subsystem_dhchap_key(self, subsys) -> str:
+        key = None
+        if subsys in self.subsys_dhchap_key:
+            key = self.subsys_dhchap_key[subsys]
+        return key
 
 class NamespaceInfo:
     def __init__(self, nsid, bdev, uuid, anagrpid, no_auto_visible):
@@ -843,7 +873,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         peer_msg = self.get_peer_message(context)
 
         self.logger.info(
-            f"Received request to create subsystem {request.subsystem_nqn}, enable_ha: {request.enable_ha}, max_namespaces: {request.max_namespaces}, no group append: {request.no_group_append}, context: {context}{peer_msg}")
+            f"Received request to create subsystem {request.subsystem_nqn}, enable_ha: {request.enable_ha}, max_namespaces: {request.max_namespaces}, no group append: {request.no_group_append}, dhchap_key: {request.dhchap_key}, context: {context}{peer_msg}")
 
         if not request.enable_ha:
             errmsg = f"{create_subsystem_error_prefix}: HA must be enabled for subsystems"
@@ -920,6 +950,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     ana_reporting = True,
                 )
                 self.subsys_max_ns[request.subsystem_nqn] = request.max_namespaces if request.max_namespaces else 32
+                if request.dhchap_key:
+                    self.host_info.add_dhchap_key_to_subsystem(request.subsystem_nqn, request.dhchap_key)
                 self.logger.debug(f"create_subsystem {request.subsystem_nqn}: {ret}")
             except Exception as ex:
                 self.logger.exception(create_subsystem_error_prefix)
@@ -2210,6 +2242,21 @@ class GatewayService(pb2_grpc.GatewayServicer):
             return True
         return False
 
+    def get_subsystem_hosts(self, subsys_nqn):
+        hosts = []
+        state = self.gateway_state.local.get_state()
+        host_key_prefix = GatewayState.build_host_key(subsys_nqn, None)
+        for key, val in state.items():
+            if key.startswith(host_key_prefix):
+                try:
+                    host = json.loads(val)
+                    host_nqn = host["host_nqn"]
+                    hosts.append(host_nqn)
+                except Exception:
+                    self.logger.exception(f"Error parsing {val}")
+                    pass
+        return hosts
+
     def _create_dhchap_key_files(self, subsystem_nqn, host_nqn, dhchap_key, dhchap_ctrlr_key, err_prefix):
         assert dhchap_key, "DH-HMAC-CHAP key value can't be empty"
         dhchap_file = None
@@ -2272,6 +2319,12 @@ class GatewayService(pb2_grpc.GatewayServicer):
         """Adds a host to a subsystem."""
 
         peer_msg = self.get_peer_message(context)
+        if request.host_nqn == "*":
+            self.logger.info(f"Received request to allow any host access for {request.subsystem_nqn}, context: {context}{peer_msg}")
+        else:
+            self.logger.info(
+                f"Received request to add host {request.host_nqn} to {request.subsystem_nqn}, psk: {request.psk}, dhchap: {request.dhchap_key}, force: {request.force}, context: {context}{peer_msg}")
+
         all_host_failure_prefix=f"Failure allowing open host access to {request.subsystem_nqn}"
         host_failure_prefix=f"Failure adding host {request.host_nqn} to {request.subsystem_nqn}"
 
@@ -2282,6 +2335,11 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         if not GatewayState.is_key_element_valid(request.subsystem_nqn):
             errmsg = f"{host_failure_prefix}: Invalid subsystem NQN \"{request.subsystem_nqn}\", contains invalid characters"
+            self.logger.error(f"{errmsg}")
+            return pb2.req_status(status = errno.EINVAL, error_message = errmsg)
+
+        if request.host_nqn == "*" and self.host_info.does_subsystem_have_dhchap_key(request.subsystem_nqn):
+            errmsg=f"{all_host_failure_prefix}: Can't allow any host access on a subsystem having a DH-HMAC-CHAP key"
             self.logger.error(f"{errmsg}")
             return pb2.req_status(status = errno.EINVAL, error_message = errmsg)
 
@@ -2306,19 +2364,34 @@ class GatewayService(pb2_grpc.GatewayServicer):
             return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
 
         if request.psk and request.host_nqn == "*":
-            errmsg=f"{host_failure_prefix}: PSK is only allowed for specific hosts"
+            errmsg=f"{all_host_failure_prefix}: PSK is only allowed for specific hosts"
             self.logger.error(f"{errmsg}")
             return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
 
         if request.dhchap_key and request.host_nqn == "*":
-            errmsg=f"{host_failure_prefix}: DH-HMAC-CHAP key is only allowed for specific hosts"
+            errmsg=f"{all_host_failure_prefix}: DH-HMAC-CHAP key is only allowed for specific hosts"
             self.logger.error(f"{errmsg}")
             return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
 
-        if request.dhchap_ctrlr_key and not request.dhchap_key:
-            errmsg=f"{host_failure_prefix}: DH-HMAC-CHAP controller key can only be used with a DH-HMAC-CHAP key"
-            self.logger.error(f"{errmsg}")
-            return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
+        if request.dhchap_key and not self.host_info.does_subsystem_have_dhchap_key(request.subsystem_nqn):
+            if request.force:
+                self.logger.warning(f"Host {request.host_nqn} has a DH-HMAC-CHAP key but subsystem {request.subsystem_nqn} has no key, will continue as '--force' was used")
+            else:
+                errmsg=f"{host_failure_prefix}: Host has a DH-HMAC-CHAP key but the subsystem has none, use '--force' in order to add the host"
+                self.logger.error(f"{errmsg}")
+                return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
+
+        if request.host_nqn == "*":
+            secure = False
+            try:
+                for listener in self.subsystem_listeners[request.subsystem_nqn]:
+                    (_, _, _, secure) = listener
+                    if secure:
+                        errmsg=f"{all_host_failure_prefix}: Can't allow any host on a subsystem with secure listeners"
+                        self.logger.error(f"{errmsg}")
+                        return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
+            except Exception:
+                pass
 
         host_already_exist = self.matching_host_exists(context, request.subsystem_nqn, request.host_nqn)
         if host_already_exist:
@@ -2330,6 +2403,15 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 errmsg = f"{host_failure_prefix}: Host is already added"
                 self.logger.error(f"{errmsg}")
                 return pb2.req_status(status=errno.EEXIST, error_message=errmsg)
+
+        dhchap_ctrlr_key = self.host_info.get_subsystem_dhchap_key(request.subsystem_nqn)
+        if dhchap_ctrlr_key:
+            self.logger.info(f"Got DHCHAP key {dhchap_ctrlr_key} for subsystem {request.subsystem_nqn}")
+
+        if dhchap_ctrlr_key and not request.dhchap_key:
+            errmsg=f"{host_failure_prefix}: Host must have a DH-HMAC-CHAP key if the subsystem has one"
+            self.logger.error(f"{errmsg}")
+            return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
 
         psk_file = None
         psk_key_name = None
@@ -2358,7 +2440,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
              dhchap_ctrlr_file,
              dhchap_ctrlr_key_name) = self._create_dhchap_key_files(
                                                           request.subsystem_nqn, request.host_nqn,
-                                                          request.dhchap_key, request.dhchap_ctrlr_key, host_failure_prefix)
+                                                          request.dhchap_key, dhchap_ctrlr_key, host_failure_prefix)
             if key_files_status != 0:
                 if psk_file:
                     self.remove_host_psk_file(request.subsystem_nqn, request.host_nqn)
@@ -2368,7 +2450,6 @@ class GatewayService(pb2_grpc.GatewayServicer):
         with omap_lock:
             try:
                 if request.host_nqn == "*":  # Allow any host access to subsystem
-                    self.logger.info(f"Received request to allow any host access for {request.subsystem_nqn}, context: {context}{peer_msg}")
                     ret = rpc_nvmf.nvmf_subsystem_allow_any_host(
                         self.spdk_rpc_client,
                         nqn=request.subsystem_nqn,
@@ -2377,8 +2458,6 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     self.logger.debug(f"add_host *: {ret}")
                     self.host_info.allow_any_host(request.subsystem_nqn)
                 else:  # Allow single host access to subsystem
-                    self.logger.info(
-                        f"Received request to add host {request.host_nqn} to {request.subsystem_nqn}, psk: {request.psk}, dhchap: {request.dhchap_key}, dhchap controller: {request.dhchap_ctrlr_key}, context: {context}{peer_msg}")
                     self._add_key_to_keyring("PSK", psk_file, psk_key_name)
                     self._add_key_to_keyring("DH-HMAC-CHAP", dhchap_file, dhchap_key_name)
                     self._add_key_to_keyring("DH-HMAC-CHAP controller", dhchap_ctrlr_file, dhchap_ctrlr_key_name)
@@ -2392,14 +2471,14 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     )
                     self.logger.debug(f"add_host {request.host_nqn}: {ret}")
                     if psk_file:
-                        self.host_info.add_psk_host(request.subsystem_nqn, request.host_nqn)
+                        self.host_info.add_psk_host(request.subsystem_nqn, request.host_nqn, request.psk)
                         self.remove_host_psk_file(request.subsystem_nqn, request.host_nqn)
                         try:
                             rpc_keyring.keyring_file_remove_key(self.spdk_rpc_client, psk_key_name)
                         except Exception:
                             pass
                     if dhchap_file:
-                        self.host_info.add_dhchap_host(request.subsystem_nqn, request.host_nqn)
+                        self.host_info.add_dhchap_host(request.subsystem_nqn, request.host_nqn, request.dhchap_key)
             except Exception as ex:
                 if request.host_nqn == "*":
                     self.logger.exception(all_host_failure_prefix)
@@ -2557,13 +2636,13 @@ class GatewayService(pb2_grpc.GatewayServicer):
     def remove_host(self, request, context=None):
         return self.execute_grpc_function(self.remove_host_safe, request, context)
 
-    def change_host_keys_safe(self, request, context):
-        """Changes host's inband authentication keys."""
+    def change_host_key_safe(self, request, context):
+        """Changes host's inband authentication key."""
 
         peer_msg = self.get_peer_message(context)
-        failure_prefix=f"Failure changing keys for host {request.host_nqn} on subsystem {request.subsystem_nqn}"
+        failure_prefix=f"Failure changing DH-HMAC-CHAP key for host {request.host_nqn} on subsystem {request.subsystem_nqn}"
         self.logger.info(
-            f"Received request to change inband authentication keys for host {request.host_nqn} on subsystem {request.subsystem_nqn}, dhchap: {request.dhchap_key}, dhchap controller: {request.dhchap_ctrlr_key}, context: {context}{peer_msg}")
+            f"Received request to change inband authentication key for host {request.host_nqn} on subsystem {request.subsystem_nqn}, dhchap: {request.dhchap_key}, force: {request.force}, context: {context}{peer_msg}")
 
         if request.host_nqn == "*":
             errmsg=f"{failure_prefix}: Host NQN can't be '*'"
@@ -2581,21 +2660,41 @@ class GatewayService(pb2_grpc.GatewayServicer):
             return pb2.req_status(status = errno.EINVAL, error_message = errmsg)
 
         if self.verify_nqns:
+            rc = GatewayUtils.is_valid_nqn(request.subsystem_nqn)
+            if rc[0] != 0:
+                errmsg = f"{failure_prefix}: {rc[1]}"
+                self.logger.error(f"{errmsg}")
+                return pb2.req_status(status = rc[0], error_message = errmsg)
+
             rc = GatewayUtils.is_valid_nqn(request.host_nqn)
             if rc[0] != 0:
                 errmsg = f"{failure_prefix}: {rc[1]}"
                 self.logger.error(f"{errmsg}")
                 return pb2.req_status(status = rc[0], error_message = errmsg)
 
+        if GatewayUtils.is_discovery_nqn(request.subsystem_nqn):
+            errmsg=f"{failure_prefix}: Can't use a discovery NQN as subsystem's"
+            self.logger.error(f"{errmsg}")
+            return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
+
         if GatewayUtils.is_discovery_nqn(request.host_nqn):
             errmsg=f"{failure_prefix}: Can't use a discovery NQN as host's"
             self.logger.error(f"{errmsg}")
             return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
 
-        if request.dhchap_ctrlr_key and not request.dhchap_key:
-            errmsg=f"{failure_prefix}: DH-HMAC-CHAP controller key can only be used with a DH-HMAC-CHAP key"
+        dhchap_ctrlr_key = self.host_info.get_subsystem_dhchap_key(request.subsystem_nqn)
+        if dhchap_ctrlr_key and not request.dhchap_key:
+            errmsg=f"{failure_prefix}: Host must have a DH-HMAC-CHAP key if the subsystem has one"
             self.logger.error(f"{errmsg}")
             return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
+
+        if request.dhchap_key and not dhchap_ctrlr_key:
+            if request.force:
+                self.logger.warning(f"Host {request.host_nqn} has a DH-HMAC-CHAP key but subsystem {request.subsystem_nqn} has no key, will continue as '--force' was used")
+            else:
+                errmsg=f"{failure_prefix}: Host has a DH-HMAC-CHAP key but the subsystem has none, use '--force' in order to change the host key"
+                self.logger.error(f"{errmsg}")
+                return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
 
         host_already_exist = self.matching_host_exists(context, request.subsystem_nqn, request.host_nqn)
         if not host_already_exist and context:
@@ -2615,32 +2714,16 @@ class GatewayService(pb2_grpc.GatewayServicer):
              dhchap_ctrlr_file,
              dhchap_ctrlr_key_name) = self._create_dhchap_key_files(
                                                           request.subsystem_nqn, request.host_nqn,
-                                                          request.dhchap_key, request.dhchap_ctrlr_key, failure_prefix)
+                                                          request.dhchap_key, dhchap_ctrlr_key, failure_prefix)
 
             if key_files_status != 0:
                 return pb2.req_status(status=key_files_status, error_message=key_file_errmsg)
 
         omap_lock = self.omap_lock.get_omap_lock_to_use(context)
         with omap_lock:
-            host_entry = None
             host_psk = None
             if context:
-                # notice that the local state might not be up to date in case we're in the middle of update() but as the
-                # context is not None, we are not in an update(), the omap lock made sure that we got here with an updated local state
-                state = self.gateway_state.local.get_state()
-                host_key = GatewayState.build_host_key(request.subsystem_nqn, request.host_nqn)
-                try:
-                    state_host = state[host_key]
-                    host_entry = json.loads(state_host)
-                except Exception as ex:
-                    errmsg = f"{failure_prefix}: Can't find entry for host {request.host_nqn} in {request.subsystem_nqn}"
-                    self.logger.error(errmsg)
-                    return pb2.req_status(status=errno.ENOENT, error_message=errmsg)
-
-                try:
-                    host_psk = host_entry["psk"]
-                except Exception:
-                    pass
+                host_psk = self.host_info.get_host_psk_key(request.subsystem_nqn, request.host_nqn)
 
             try:
                 self._add_key_to_keyring("DH-HMAC-CHAP", dhchap_file, dhchap_key_name)
@@ -2670,35 +2753,34 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
 
             if dhchap_key_name:
-                self.host_info.add_dhchap_host(request.subsystem_nqn, request.host_nqn)
+                self.host_info.add_dhchap_host(request.subsystem_nqn, request.host_nqn, request.dhchap_key)
             else:
                 self.host_info.remove_dhchap_host(request.subsystem_nqn, request.host_nqn)
                 self.remove_all_host_key_files(request.subsystem_nqn, request.host_nqn)
                 self.remove_all_host_keys_from_keyring(request.subsystem_nqn, request.host_nqn)
 
             if context:
-                assert host_entry, "Host entry is None for non-update call"
                 # Update gateway state
                 try:
                     add_req = pb2.add_host_req(subsystem_nqn=request.subsystem_nqn,
                                                host_nqn=request.host_nqn,
                                                psk=host_psk,
                                                dhchap_key=request.dhchap_key,
-                                               dhchap_ctrlr_key=request.dhchap_ctrlr_key)
+                                               force=request.force)
                     json_req = json_format.MessageToJson(
                         add_req, preserving_proto_field_name=True, including_default_value_fields=True)
                     self.gateway_state.add_host(request.subsystem_nqn, request.host_nqn, json_req)
                 except Exception as ex:
-                    errmsg = f"Error persisting host changet keys for host {request.host_nqn} in {request.subsystem_nqn}"
+                    errmsg = f"Error persisting host change key for host {request.host_nqn} in {request.subsystem_nqn}"
                     self.logger.exception(errmsg)
                     errmsg = f"{errmsg}:\n{ex}"
                     return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
 
         return pb2.req_status(status=0, error_message=os.strerror(0))
 
-    def change_host_keys(self, request, context=None):
-        """Changes host's inband authentication keys."""
-        return self.execute_grpc_function(self.change_host_keys_safe, request, context)
+    def change_host_key(self, request, context=None):
+        """Changes host's inband authentication key."""
+        return self.execute_grpc_function(self.change_host_key_safe, request, context)
 
     def list_hosts_safe(self, request, context):
         """List hosts."""
@@ -3278,9 +3360,11 @@ class GatewayService(pb2_grpc.GatewayServicer):
                         self.subsystem_nsid_bdev_and_uuid.remove_namespace(s["nqn"])
                     s["namespace_count"] = ns_count
                     s["enable_ha"] = True
+                    s["has_dhchap_key"] = self.host_info.does_subsystem_have_dhchap_key(s["nqn"])
                 else:
                     s["namespace_count"] = 0
                     s["enable_ha"] = False
+                    s["has_dhchap_key"] = False
                 # Parse the JSON dictionary into the protobuf message
                 subsystem = pb2.subsystem_cli()
                 json_format.Parse(json.dumps(s), subsystem, ignore_unknown_fields=True)
@@ -3307,6 +3391,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         for s in ret:
             try:
+                s["has_dhchap_key"] = self.host_info.does_subsystem_have_dhchap_key(s["nqn"])
                 ns_key = "namespaces"
                 if ns_key in s:
                     for n in s[ns_key]:
@@ -3333,6 +3418,107 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
     def list_subsystems(self, request, context=None):
         return self.execute_grpc_function(self.list_subsystems_safe, request, context)
+
+    def change_subsystem_key_safe(self, request, context):
+        """Change subsystem key."""
+        peer_msg = self.get_peer_message(context)
+        failure_prefix=f"Failure changing DH-HMAC-CHAP key for subsystem {request.subsystem_nqn}"
+        self.logger.info(
+            f"Received request to change inband authentication key for subsystem {request.subsystem_nqn}, dhchap: {request.dhchap_key}, context: {context}{peer_msg}")
+
+        if not GatewayState.is_key_element_valid(request.subsystem_nqn):
+            errmsg = f"{failure_prefix}: Invalid subsystem NQN \"{request.subsystem_nqn}\", contains invalid characters"
+            self.logger.error(f"{errmsg}")
+            return pb2.req_status(status = errno.EINVAL, error_message = errmsg)
+
+        if self.verify_nqns:
+            rc = GatewayUtils.is_valid_nqn(request.subsystem_nqn)
+            if rc[0] != 0:
+                errmsg = f"{failure_prefix}: {rc[1]}"
+                self.logger.error(f"{errmsg}")
+                return pb2.req_status(status = rc[0], error_message = errmsg)
+
+        if GatewayUtils.is_discovery_nqn(request.subsystem_nqn):
+            errmsg = f"{failure_prefix}: Can't change DH-HMAC-CHAP key for a discovery subsystem"
+            self.logger.error(f"{errmsg}")
+            return pb2.req_status(status = errno.EINVAL, error_message = errmsg)
+
+        omap_lock = self.omap_lock.get_omap_lock_to_use(context)
+        with omap_lock:
+            subsys_entry = None
+            if context:
+                # notice that the local state might not be up to date in case we're in the middle of update() but as the
+                # context is not None, we are not in an update(), the omap lock made sure that we got here with an updated local state
+                state = self.gateway_state.local.get_state()
+                if request.dhchap_key:
+                    # We set the subsystem key, this requires that all hosts have keys too
+                    host_key_prefix = GatewayState.build_host_key(request.subsystem_nqn, None)
+                    for key, val in state.items():
+                        if not key.startswith(host_key_prefix):
+                            continue
+                        sub_nqn, host_nqn = self.gateway_state.break_host_key(key)
+                        if not sub_nqn:
+                            errmsg = f"{failure_prefix}: Can't get subsystem NQN from host key {key}"
+                            self.logger.error(errmsg)
+                            return pb2.req_status(status=errno.ENOENT, error_message=errmsg)
+                        if not host_nqn:
+                            errmsg = f"{failure_prefix}: Can't get host NQN from host key {key}"
+                            self.logger.error(errmsg)
+                            return pb2.req_status(status=errno.ENOENT, error_message=errmsg)
+                        assert sub_nqn == request.subsystem_nqn, f"Subsystem NQN {sub_nqn}, taken from host key {key}, should be equal to {request.subsystem_nqn}"
+                        if not self.host_info.is_dhchap_host(request.subsystem_nqn, host_nqn):
+                            errmsg = f"{failure_prefix}: Can't set a subsystem DH-HMAC-CHAP key when it has hosts with no key, like host {host_nqn}"
+                            self.logger.error(f"{errmsg}")
+                            return pb2.req_status(status = errno.EINVAL, error_message = errmsg)
+
+                subsys_key = GatewayState.build_subsystem_key(request.subsystem_nqn)
+                try:
+                    state_subsys = state[subsys_key]
+                    subsys_entry = json.loads(state_subsys)
+                except Exception as ex:
+                    errmsg = f"{failure_prefix}: Can't find entry for subsystem {request.subsystem_nqn}"
+                    self.logger.error(errmsg)
+                    return pb2.req_status(status=errno.ENOENT, error_message=errmsg)
+
+                assert subsys_entry, f"Can't find entry for subsystem {request.subsystem_nqn}"
+                try:
+                    create_req = pb2.create_subsystem_req(subsystem_nqn=request.subsystem_nqn,
+                                                    serial_number=subsys_entry["serial_number"],
+                                                    max_namespaces=subsys_entry["max_namespaces"],
+                                                    enable_ha=subsys_entry["enable_ha"],
+                                                    no_group_append=subsys_entry["no_group_append"],
+                                                    dhchap_key=request.dhchap_key)
+                    json_req = json_format.MessageToJson(
+                        create_req, preserving_proto_field_name=True, including_default_value_fields=True)
+                    self.gateway_state.add_subsystem(request.subsystem_nqn, json_req)
+                except Exception as ex:
+                    errmsg = f"Error persisting subsystem key change for {request.subsystem_nqn}"
+                    self.logger.exception(errmsg)
+                    errmsg = f"{errmsg}:\n{ex}"
+                    return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
+
+        hosts = self.host_info.get_hosts_with_dhchap_key(request.subsystem_nqn).copy()
+        # We need to change the subsystem key before calling the host change key functions, so the new subsystem key will be used
+        # As we change the list now, we have to use a copy having the old values
+        if request.dhchap_key:
+            self.host_info.add_dhchap_key_to_subsystem(request.subsystem_nqn, request.dhchap_key)
+        else:
+            self.host_info.remove_dhchap_key_from_subsystem(request.subsystem_nqn)
+        for hnqn in hosts.keys():
+            change_req = pb2.change_host_key_req(subsystem_nqn=request.subsystem_nqn,
+                                                 host_nqn=hnqn,
+                                                 dhchap_key=hosts[hnqn])
+            try:
+                self.change_host_key_safe(change_req, context)
+            except Excpetion:
+                pass
+
+
+        return pb2.req_status(status=0, error_message=os.strerror(0))
+
+    def change_subsystem_key(self, request, context=None):
+        """Change subsystem key."""
+        return self.execute_grpc_function(self.change_subsystem_key_safe, request, context)
 
     def get_spdk_nvmf_log_flags_and_level_safe(self, request, context):
         """Gets spdk nvmf log flags, log level and log print level"""

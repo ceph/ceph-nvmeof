@@ -42,6 +42,9 @@ service Gateway {
 	// Deletes a subsystem
 	rpc delete_subsystem(delete_subsystem_req) returns(req_status) {}
 
+	// Changes subsystem key
+	rpc change_subsystem_key(change_subsystem_key_req) returns(req_status) {}
+
 	// List namespaces
 	rpc list_namespaces(list_namespaces_req) returns(namespaces_info) {}
 
@@ -73,7 +76,7 @@ service Gateway {
 	rpc remove_host(remove_host_req) returns (req_status) {}
 
 	// Changes a host inband authentication keys
-	rpc change_host_keys(change_host_keys_req) returns (req_status) {}
+	rpc change_host_key(change_host_key_req) returns (req_status) {}
 
 	// List hosts
 	rpc list_hosts(list_hosts_req) returns(hosts_info) {}
@@ -188,11 +191,17 @@ message create_subsystem_req {
 	optional uint32 max_namespaces = 3;
 	bool enable_ha = 4;
 	optional bool no_group_append = 5;
+	optional string dhchap_key = 6;
 }
 
 message delete_subsystem_req {
 	string subsystem_nqn = 1;
 	optional bool force = 2;
+}
+
+message change_subsystem_key_req {
+	string subsystem_nqn = 1;
+	optional string dhchap_key = 2;
 }
 
 message list_namespaces_req {
@@ -206,14 +215,14 @@ message add_host_req {
 	string host_nqn = 2;
 	optional string psk = 3;
 	optional string dhchap_key = 4;
-	optional string dhchap_ctrlr_key = 5;
+	optional bool force = 5;
 }
 
-message change_host_keys_req {
+message change_host_key_req {
 	string subsystem_nqn = 1;
 	string host_nqn = 2;
 	optional string dhchap_key = 3;
-	optional string dhchap_ctrlr_key = 4;
+	optional bool force = 4;
 }
 
 message remove_host_req {
@@ -347,6 +356,7 @@ message subsystem {
         optional uint32 min_cntlid = 9;
         optional uint32 max_cntlid = 10;
         repeated namespace namespaces = 11;
+        optional bool has_dhchap_key = 12;
 }
 
 message listen_address {
@@ -386,6 +396,8 @@ message subsystem_cli {
 	uint32 namespace_count = 7;
 	string subtype = 8;
 	uint32 max_namespaces = 9;
+	optional bool has_dhchap_key = 10;
+        optional bool allow_any_host = 11;
 }
 
 message gateway_info {

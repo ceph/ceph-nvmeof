@@ -172,7 +172,7 @@ def test_allow_any_host_with_psk(caplog, gateway):
 
 def test_psk_with_dhchap(caplog, gateway):
     caplog.clear()
-    cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn10, "--psk", hostpsk1, "--dhchap-key", hostdhchap1])
+    cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn10, "--psk", hostpsk1, "--dhchap-key", hostdhchap1, "--force"])
     assert f"Adding host {hostnqn10} to {subsystem}: Successful" in caplog.text
 
 def test_list_listeners(caplog, gateway):

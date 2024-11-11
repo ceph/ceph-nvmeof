@@ -30,8 +30,9 @@ class GatewayState(ABC):
     OMAP_KEY_DELIMITER = "_"
     NAMESPACE_PREFIX = "namespace" + OMAP_KEY_DELIMITER
     SUBSYSTEM_PREFIX = "subsystem" + OMAP_KEY_DELIMITER
+    SUBSYSTEM_KEY_PREFIX = "key-subsystem" + OMAP_KEY_DELIMITER
     HOST_PREFIX = "host" + OMAP_KEY_DELIMITER
-    HOST_KEYS_PREFIX = "keys-host" + OMAP_KEY_DELIMITER
+    HOST_KEY_PREFIX = "key-host" + OMAP_KEY_DELIMITER
     LISTENER_PREFIX = "listener" + OMAP_KEY_DELIMITER
     NAMESPACE_QOS_PREFIX = "qos" + OMAP_KEY_DELIMITER
     NAMESPACE_LB_GROUP_PREFIX = "lbgroup" + OMAP_KEY_DELIMITER
@@ -78,11 +79,14 @@ class GatewayState(ABC):
             key += GatewayState.OMAP_KEY_DELIMITER + host_nqn
         return key
 
-    def build_host_keys_key(subsystem_nqn: str, host_nqn: str) -> str:
-        key = GatewayState.HOST_KEYS_PREFIX + subsystem_nqn
+    def build_host_key_key(subsystem_nqn: str, host_nqn: str) -> str:
+        key = GatewayState.HOST_KEY_PREFIX + subsystem_nqn
         if host_nqn is not None:
             key += GatewayState.OMAP_KEY_DELIMITER + host_nqn
         return key
+
+    def build_subsystem_key_key(subsystem_nqn: str) -> str:
+        return GatewayState.SUBSYSTEM_KEY_PREFIX + subsystem_nqn
 
     def build_partial_listener_key(subsystem_nqn: str, host: str) -> str:
         key = GatewayState.LISTENER_PREFIX + subsystem_nqn
@@ -735,6 +739,7 @@ class GatewayStateHandler:
             notify_event.clear()
 
     def namespace_only_lb_group_id_changed(self, old_val, new_val):
+        # If only the lb group id field has changed we can use change_lb_group request instead of re-adding the namespace
         old_req = None
         new_req = None
         try:
@@ -757,7 +762,8 @@ class GatewayStateHandler:
             return (False, None)
         return (True, new_req.anagrpid)
 
-    def host_only_keys_changed(self, old_val, new_val):
+    def host_only_key_changed(self, old_val, new_val):
+        # If only the dhchap key and force fields have changed we can use change_key request instead of re-adding the host
         old_req = None
         new_req = None
         try:
@@ -777,18 +783,45 @@ class GatewayStateHandler:
         # Because of Json formatting of empty fields we might get a difference here, so just use the same values for empty
         if not old_req.dhchap_key:
             old_req.dhchap_key = ""
-        if not old_req.dhchap_ctrlr_key:
-            old_req.dhchap_ctrlr_key = ""
         if not new_req.dhchap_key:
             new_req.dhchap_key = ""
-        if not new_req.dhchap_ctrlr_key:
-            new_req.dhchap_ctrlr_key = ""
+        if not new_req.force:
+            new_req.force = False
         old_req.dhchap_key = new_req.dhchap_key
-        old_req.dhchap_ctrlr_key = new_req.dhchap_ctrlr_key
+        old_req.force = new_req.force
         if old_req != new_req:
             # Something besides the keys is different
             return (False, None, None)
-        return (True, new_req.dhchap_key, new_req.dhchap_ctrlr_key)
+        return (True, new_req.dhchap_key, new_req.force)
+
+    def subsystem_only_key_changed(self, old_val, new_val):
+        # If only the dhchap key field has changed we can use change_key request instead of re-adding the subsystem
+        old_req = None
+        new_req = None
+        try:
+            old_req = json_format.Parse(old_val, pb2.create_subsystem_req(), ignore_unknown_fields=True )
+        except Exception as ex:
+            self.logger.exception(f"Got exception parsing {old_val}")
+            return (False, None)
+        try:
+            new_req = json_format.Parse(new_val, pb2.create_subsystem_req(), ignore_unknown_fields=True)
+        except Exception as ex:
+            self.logger.exeption(f"Got exception parsing {new_val}")
+            return (False, None)
+        if not old_req or not new_req:
+            self.logger.debug(f"Failed to parse requests, old: {old_val} -> {old_req}, new: {new_val} -> {new_req}")
+            return (False, None)
+        assert old_req != new_req, f"Something was wrong we shouldn't get identical old and new values ({old_req})"
+        # Because of Json formatting of empty fields we might get a difference here, so just use the same values for empty
+        if not old_req.dhchap_key:
+            old_req.dhchap_key = ""
+        if not new_req.dhchap_key:
+            new_req.dhchap_key = ""
+        old_req.dhchap_key = new_req.dhchap_key
+        if old_req != new_req:
+            # Something besides the keys is different
+            return (False, None)
+        return (True, new_req.dhchap_key)
 
     def break_namespace_key(self, ns_key: str):
         if not ns_key.startswith(GatewayState.NAMESPACE_PREFIX):
@@ -830,6 +863,21 @@ class GatewayStateHandler:
         host_nqn = key_parts[1]
 
         return (subsys_nqn, host_nqn)
+
+    def break_subsystem_key(self, subsys_key: str):
+        if not subsys_key.startswith(GatewayState.SUBSYSTEM_PREFIX):
+            self.logger.warning(f"Invalid subsystem key \"{subsys_key}\", can't find key")
+            return None
+        key_parts = subsys_key.split(GatewayState.OMAP_KEY_DELIMITER)
+        if len(key_parts) != 2:
+            self.logger.warning(f"Invalid subsystem key \"{subsys_key}\", can't find key")
+            return None
+        if not GatewayUtils.is_valid_nqn(key_parts[1]):
+            self.logger.warning(f"Invalid subsystem NQN \"{key_parts[0]}\" found for subsystem key \"{subsys_key}\", can't find key")
+            return None
+        subsys_nqn = key_parts[1]
+
+        return subsys_nqn
 
     def get_str_from_bytes(val):
         val_str = val.decode() if type(val) == type(b'') else val
@@ -888,9 +936,11 @@ class GatewayStateHandler:
 
                 # Handle namespace changes in which only the load balancing group id was changed
                 only_lb_group_changed = []
-                only_keys_changed = []
+                only_host_key_changed = []
+                only_subsystem_key_changed = []
                 ns_prefix = GatewayState.build_namespace_key("nqn", None)
                 host_prefix = GatewayState.build_host_key("nqn", None)
+                subsystem_prefix = GatewayState.build_subsystem_key("nqn")
                 for key in changed.keys():
                     if key.startswith(ns_prefix):
                         try:
@@ -899,20 +949,30 @@ class GatewayStateHandler:
                             if should_process:
                                 assert new_lb_grp_id, "Shouldn't get here with an empty lb group id"
                                 self.logger.debug(f"Found {key} where only the load balancing group id has changed. The new group id is {new_lb_grp_id}")
-                                only_lb_group_changed.insert(0, (key, new_lb_grp_id))
+                                only_lb_group_changed.append((key, new_lb_grp_id))
                         except Exception as ex:
                             self.logger.warning("Got exception checking namespace for load balancing group id change")
                     elif key.startswith(host_prefix):
                         try:
                             (should_process,
                              new_dhchap_key,
-                             new_dhchap_ctrl_key) = self.host_only_keys_changed(local_state_dict[key], omap_state_dict[key])
+                             new_force) = self.host_only_key_changed(local_state_dict[key], omap_state_dict[key])
                             if should_process:
                                 assert new_dhchap_key, "Shouldn't get here with an empty dhchap key"
-                                self.logger.debug(f"Found {key} where only the keys have changed. The new dhchap key is {new_dhchap_key}, the new dhchap controller key is {new_dhchap_ctrl_key}")
-                                only_keys_changed.insert(0, (key, new_dhchap_key, new_dhchap_ctrl_key))
+                                self.logger.debug(f"Found {key} where only the key has changed. The new DHCHAP key is {new_dhchap_key}, force: {new_force}")
+                                only_host_key_changed.append((key, new_dhchap_key, new_force))
                         except Exception as ex:
-                            self.logger.warning("Got exception checking host for keys change")
+                            self.logger.warning("Got exception checking host for key change")
+                    elif key.startswith(subsystem_prefix):
+                        try:
+                            (should_process,
+                             new_dhchap_key) = self.subsystem_only_key_changed(local_state_dict[key], omap_state_dict[key])
+                            if should_process:
+                                assert new_dhchap_key, "Shouldn't get here with an empty dhchap key"
+                                self.logger.debug(f"Found {key} where only the key has changed. The new DHCHAP key is {new_dhchap_key}")
+                                only_subsystem_key_changed.append((key, new_dhchap_key))
+                        except Exception as ex:
+                            self.logger.warning("Got exception checking subsystem for key change")
 
                 for ns_key, new_lb_grp in only_lb_group_changed:
                     ns_nqn = None
@@ -933,7 +993,7 @@ class GatewayStateHandler:
                         except Exception as ex:
                             self.logger.error(f"Exception formatting change namespace load balancing group request:\n{ex}")
 
-                for host_key, new_dhchap_key, new_dhchap_ctrl_key in only_keys_changed:
+                for host_key, new_dhchap_key, new_force in only_host_key_changed:
                     subsys_nqn = None
                     host_nqn = None
                     try:
@@ -946,22 +1006,41 @@ class GatewayStateHandler:
                         continue
                     if subsys_nqn and host_nqn:
                         try:
-                            host_keys_key = GatewayState.build_host_keys_key(subsys_nqn, host_nqn)
-                            req = pb2.change_host_keys_req(subsystem_nqn=subsys_nqn, host_nqn=host_nqn,
+                            host_key_key = GatewayState.build_host_key_key(subsys_nqn, host_nqn)
+                            req = pb2.change_host_key_req(subsystem_nqn=subsys_nqn, host_nqn=host_nqn,
                                                                                 dhchap_key=new_dhchap_key,
-                                                                                dhchap_ctrlr_key=new_dhchap_ctrl_key)
+                                                                                force=new_force)
                             json_req = json_format.MessageToJson(req, preserving_proto_field_name=True,
                                                                  including_default_value_fields=True)
-                            added[host_keys_key] = json_req
+                            added[host_key_key] = json_req
                         except Exception as ex:
-                            self.logger.error(f"Exception formatting change host keys request:\n{ex}")
+                            self.logger.error(f"Exception formatting change host key request:\n{ex}")
 
-                if len(only_lb_group_changed) > 0 or len(only_keys_changed) > 0:
+                for subsys_key, new_dhchap_key in only_subsystem_key_changed:
+                    subsys_nqn = None
+                    try:
+                        changed.pop(subsys_key)
+                        subsys_nqn = self.break_subsystem_key(subsys_key)
+                    except Exception as ex:
+                        self.logger.error(f"Exception removing {subsys_key} from {changed}:\n{ex}")
+                    if subsys_nqn:
+                        try:
+                            subsys_key_key = GatewayState.build_subsystem_key_key(subsys_nqn)
+                            req = pb2.change_subsystem_key_req(subsystem_nqn=subsys_nqn, dhchap_key=new_dhchap_key)
+                            json_req = json_format.MessageToJson(req, preserving_proto_field_name=True,
+                                                                 including_default_value_fields=True)
+                            added[subsys_key_key] = json_req
+                        except Exception as ex:
+                            self.logger.error(f"Exception formatting change subsystem key request:\n{ex}")
+
+                if len(only_lb_group_changed) > 0 or len(only_host_key_changed) > 0 or len(only_subsystem_key_changed) > 0:
                     grouped_changed = self._group_by_prefix(changed, prefix_list)
+                    if len(only_subsystem_key_changed) > 0:
+                        prefix_list += [GatewayState.SUBSYSTEM_KEY_PREFIX]
                     if len(only_lb_group_changed) > 0:
                         prefix_list += [GatewayState.NAMESPACE_LB_GROUP_PREFIX]
-                    if len(only_keys_changed) > 0:
-                        prefix_list += [GatewayState.HOST_KEYS_PREFIX]
+                    if len(only_host_key_changed) > 0:
+                        prefix_list += [GatewayState.HOST_KEY_PREFIX]
                     grouped_added = self._group_by_prefix(added, prefix_list)
 
                 # Find OMAP removals

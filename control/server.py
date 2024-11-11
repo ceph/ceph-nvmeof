@@ -760,7 +760,11 @@ class GatewayServer:
                 else:
                     req = json_format.Parse(val, pb2.namespace_delete_host_req(), ignore_unknown_fields=True)
                     self.gateway_rpc.namespace_delete_host(req)
-            elif key.startswith(GatewayState.HOST_KEYS_PREFIX):
+            elif key.startswith(GatewayState.HOST_KEY_PREFIX):
                 if is_add_req:
-                    req = json_format.Parse(val, pb2.change_host_keys_req(), ignore_unknown_fields=True)
-                    self.gateway_rpc.change_host_keys(req)
+                    req = json_format.Parse(val, pb2.change_host_key_req(), ignore_unknown_fields=True)
+                    self.gateway_rpc.change_host_key(req)
+            elif key.startswith(GatewayState.SUBSYSTEM_KEY_PREFIX):
+                if is_add_req:
+                    req = json_format.Parse(val, pb2.change_subsystem_key_req(), ignore_unknown_fields=True)
+                    self.gateway_rpc.change_subsystem_key(req)
