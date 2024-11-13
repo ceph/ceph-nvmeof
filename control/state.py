@@ -744,12 +744,12 @@ class GatewayStateHandler:
         new_req = None
         try:
             old_req = json_format.Parse(old_val, pb2.namespace_add_req(), ignore_unknown_fields=True)
-        except Exception as ex:
+        except json_format.ParseError:
             self.logger.exception(f"Got exception parsing {old_val}")
             return (False, None)
         try:
             new_req = json_format.Parse(new_val, pb2.namespace_add_req(), ignore_unknown_fields=True)
-        except Exception as ex:
+        except json_format.ParseError:
             self.logger.exeption(f"Got exception parsing {new_val}")
             return (False, None)
         if not old_req or not new_req:
@@ -768,12 +768,12 @@ class GatewayStateHandler:
         new_req = None
         try:
             old_req = json_format.Parse(old_val, pb2.add_host_req(), ignore_unknown_fields=True )
-        except Exception as ex:
+        except json_format.ParseError:
             self.logger.exception(f"Got exception parsing {old_val}")
             return (False, None)
         try:
             new_req = json_format.Parse(new_val, pb2.add_host_req(), ignore_unknown_fields=True)
-        except Exception as ex:
+        except json_format.ParseError:
             self.logger.exeption(f"Got exception parsing {new_val}")
             return (False, None)
         if not old_req or not new_req:
@@ -797,12 +797,12 @@ class GatewayStateHandler:
         new_req = None
         try:
             old_req = json_format.Parse(old_val, pb2.create_subsystem_req(), ignore_unknown_fields=True )
-        except Exception as ex:
+        except json_format.ParseError:
             self.logger.exception(f"Got exception parsing {old_val}")
             return (False, None)
         try:
             new_req = json_format.Parse(new_val, pb2.create_subsystem_req(), ignore_unknown_fields=True)
-        except Exception as ex:
+        except json_format.ParseError:
             self.logger.exeption(f"Got exception parsing {new_val}")
             return (False, None)
         if not old_req or not new_req:
@@ -835,8 +835,8 @@ class GatewayStateHandler:
         nqn = key_parts[0]
         try:
             nsid = int(key_parts[1])
-        except Exception as ex:
-            self.logger.warning(f"Invalid NSID \"{key_parts[1]}\" found for namespace key \"{ns_key}\", can't find key parts")
+        except ValueError:
+            self.logger.exception(f"Invalid NSID \"{key_parts[1]}\" found for namespace key \"{ns_key}\", can't find key parts")
             return (None, None)
 
         return (nqn, nsid)
