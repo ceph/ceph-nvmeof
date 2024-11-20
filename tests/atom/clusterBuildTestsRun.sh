@@ -1,5 +1,11 @@
 #!/bin/bash
 
+# if a command fails (returns a non-zero exit code), terminate immediately
+# the exit code will be the same as the exit code of the failed command.
+# see https://github.com/ceph/ceph-nvmeof/actions/runs/11928539421/job/33246031083
+set -e
+
+
 VERSION=$1
 if [ "$2" = "latest" ]; then
     CEPH_SHA=$(curl -s https://shaman.ceph.com/api/repos/ceph/main/latest/centos/9/ | jq -r ".[] | select(.archs[] == \"$(uname -m)\" and .status == \"ready\") | .sha1")
@@ -34,25 +40,13 @@ sudo ls -lta /root/.ssh/atom_backup/artifact/multiIBMCloudServers_m6
 # Cloning atom repo
 cd $RUNNER_FILDER
 git clone git@github.ibm.com:NVME-Over-Fiber/ceph-nvmeof-atom.git
-if [ $? -ne 0 ]; then
-    echo "Error: Failed to clone the atom repository."
-    exit 1
-fi
 
 # Switch to given SHA
 cd ceph-nvmeof-atom
 git checkout $ATOM_SHA
-if [ $? -ne 0 ]; then
-    echo "Error: Failed to checkout the specified SHA."
-    exit 1
-fi
 
 # Build atom images based on the cloned repo
 docker build -t nvmeof_atom:$ATOM_SHA .
-if [ $? -ne 0 ]; then
-    echo "Error: Failed to build Docker image."
-    exit 1
-fi
 
 # Atom test script run
 #   Description of the uncleared flags with their default values
