@@ -70,46 +70,74 @@ if [ "$5" != "nightly" ]; then
     sudo docker run \
         -v /root/.ssh:/root/.ssh \
         nvmeof_atom:"$ATOM_SHA" \
-        python3 cephnvme_atom.py \
-        nvmeof \
-        quay.ceph.io/ceph-ci/ceph:"$CEPH_SHA" \
-        quay.io/ceph/nvmeof:"$VERSION" \
-        quay.io/ceph/nvmeof-cli:"$VERSION" \
-        None None None None None None 1 1 4 1 1 2 4 1024 2 2 200M 0 1 20 10 1 \
-        --stopNvmeofDaemon \
-        --stopNvmeofSystemctl \
-        --stopMonLeader \
-        --killMonClient \
-        --rmNvmeofDaemon \
-        --redeployGWs \
-        --gitHubActionDeployment \
-        --dontUseMTLS \
-        --skiplbTest \
-        --journalctlToConsole \
-        --dontPowerOffCloudVMs noKey noKey \
-        --multiIBMCloudServers_m6
+        python3 atom.py \
+        --project=nvmeof \
+        --ceph-img=quay.ceph.io/ceph-ci/ceph:"$CEPH_SHA" \
+        --gw-img=quay.io/ceph/nvmeof:"$VERSION" \
+        --cli-img=quay.io/ceph/nvmeof-cli:"$VERSION" \
+        --initiators=1 \
+        --gw-group-num=1 \
+        --gw-num=4 \
+        --gw-to-stop-num=1 \
+        --gw-scale-down-num=1 \
+        --subsystem-num=2 \
+        --ns-num=4 \
+        --subsystem-max-ns-num=1024 \
+        --failover-num=2 \
+        --failover-num-after-upgrade=2 \
+        --rbd-size=200M \
+        --fio-devices-num=1 \
+        --lb-timeout=20 \
+        --config-dbg-mon=10 \
+        --config-dbg-ms=1 \
+        --nvmeof-daemon-stop \
+        --nvmeof-systemctl-stop \
+        --mon-leader-stop \
+        --mon-client-kill \
+        --nvmeof-daemon-remove \
+        --redeploy-gws \
+        --github-action-deployment \
+        --dont-use-mtls \
+        --skip-lb-test \
+        --journalctl-to-console \
+        --dont-power-off-cloud-vms \
+        --env=m6
 else
     sudo docker run \
         -v /root/.ssh:/root/.ssh \
         nvmeof_atom:"$ATOM_SHA" \
-        python3 cephnvme_atom.py \
-        nvmeof \
-        quay.ceph.io/ceph-ci/ceph:"$CEPH_SHA" \
-        quay.io/ceph/nvmeof:"$VERSION" \
-        quay.io/ceph/nvmeof-cli:"$VERSION" \
-        None None None None None None 1 1 4 1 1 10 90 1024 6 2 200M 0 1 20 10 1 \
-        --stopNvmeofDaemon \
-        --stopNvmeofSystemctl \
-        --stopMonLeader \
-        --killMonClient \
-        --rmNvmeofDaemon \
-        --redeployGWs \
-        --gitHubActionDeployment \
-        --dontUseHUGEPAGES \
-        --dontUseMTLS \
-        --skiplbTest \
-        --journalctlToConsole \
-        --dontPowerOffCloudVMs noKey noKey \
-        --multiIBMCloudServers_m6
+        python3 atom.py \
+        --project=nvmeof \
+        --ceph-img=quay.ceph.io/ceph-ci/ceph:"$CEPH_SHA" \
+        --gw-img=quay.io/ceph/nvmeof:"$VERSION" \
+        --cli-img=quay.io/ceph/nvmeof-cli:"$VERSION" \
+        --initiators=1 \
+        --gw-group-num=1 \
+        --gw-num=4 \
+        --gw-to-stop-num=1 \
+        --gw-scale-down-num=1 \
+        --subsystem-num=10 \
+        --ns-num=90 \
+        --subsystem-max-ns-num=1024 \
+        --failover-num=6 \
+        --failover-num-after-upgrade=2 \
+        --rbd-size=200M \
+        --fio-devices-num=1 \
+        --lb-timeout=20 \
+        --config-dbg-mon=10 \
+        --config-dbg-ms=1 \
+        --nvmeof-daemon-stop \
+        --nvmeof-systemctl-stop \
+        --mon-leader-stop \
+        --mon-client-kill \
+        --nvmeof-daemon-remove \
+        --redeploy-gws \
+        --github-action-deployment \
+        --dont-use-mtls \
+        --skip-lb-test \
+        --journalctl-to-console \
+        --dont-power-off-cloud-vms \
+        --dont-use-hugepages \
+        --env=m6
 fi
 set +x
