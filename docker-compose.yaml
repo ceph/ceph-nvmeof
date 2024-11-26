@@ -75,7 +75,12 @@ services:
       ceph osd pool create rbd &&
       sleep infinity'
     healthcheck:
-      test: ceph osd pool stats rbd
+      test: >
+        [ -f /etc/ceph/server.crt ] &&
+        [ -f /etc/ceph/server.key ] &&
+        [ -f /etc/ceph/client.crt ] &&
+        [ -f /etc/ceph/client.key ] &&
+        ceph osd pool stats rbd
       start_period: 6s
       interval: 3s
       retries: 10
