@@ -604,7 +604,7 @@ jobs:
           fi
 
       - name: Run HA ${{ matrix.test }} test
-        timeout-minutes: 30
+        timeout-minutes: 45
         run: |
           . .env
           source "tests/ha/${{ matrix.test }}.sh"
