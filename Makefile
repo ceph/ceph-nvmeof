@@ -51,7 +51,28 @@ build: export SPDK_GIT_BRANCH != git -C spdk name-rev --name-only HEAD
 build: export SPDK_GIT_COMMIT != git rev-parse HEAD:spdk
 build: export BUILD_DATE != date -u +"%Y-%m-%d %H:%M:%S %Z"
 build: export NVMEOF_GIT_MODIFIED_FILES != git status -s | grep -e "^ *M" | sed 's/^ *M //' | xargs
-build: export CEPH_CLUSTER_CEPH_REPO_BASEURL != curl -s https://shaman.ceph.com/api/repos/ceph/$(CEPH_BRANCH)/$(CEPH_SHA)/centos/9/ | jq -r '.[] | select(.status == "ready" and .archs[] == "$(ceph_repo_arch)") | .url'
+
+# Variables
+SHAMAN_FETCH_ATTEMPTS := 3
+
+# Fetch and export CEPH_CLUSTER_CEPH_REPO_BASEURL with retries
+build: export CEPH_CLUSTER_CEPH_REPO_BASEURL != \
+	for i in $$(seq 1 $(SHAMAN_FETCH_ATTEMPTS)); do \
+		>&2 echo "Attempt ($$i): Fetching URL for arch=$(ceph_repo_arch), branch=$(CEPH_BRANCH), sha=$(CEPH_SHA)..."; \
+		url=$$(curl -s https://shaman.ceph.com/api/repos/ceph/$(CEPH_BRANCH)/$(CEPH_SHA)/centos/9/ | jq -r '.[] | select(.status == "ready" and .archs[] == "$(ceph_repo_arch)") | .url'); \
+		if [ -n "$$url" ]; then \
+			>&2 echo "Success: Retrieved URL for arch=$(ceph_repo_arch), branch=$(CEPH_BRANCH), sha=$(CEPH_SHA): $$url"; \
+			echo "$$url"; \
+			break; \
+		fi; \
+		>&2 echo "Retrying... Failed attempt ($$i) for arch=$(ceph_repo_arch), branch=$(CEPH_BRANCH), sha=$(CEPH_SHA)"; \
+		sleep 2; \
+	done; \
+	if [ -z "$$url" ]; then \
+		>&2 echo "Failure: Unable to retrieve a valid URL for arch=$(ceph_repo_arch), branch=$(CEPH_BRANCH), sha=$(CEPH_SHA) after $(SHAMAN_FETCH_ATTEMPTS) attempts"; \
+		exit 1; \
+	fi
+
 build: export TARGET_PLATFORM := $(TARGET_PLATFORM)
 build: export SPDK_TARGET_ARCH := $(SPDK_TARGET_ARCH)
 build: export SPDK_MAKEFLAGS := $(SPDK_MAKEFLAGS)
