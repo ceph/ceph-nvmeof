@@ -133,7 +133,8 @@ validate_all_active() {
 NUM_SUBSYSTEMS=2
 NUM_GATEWAYS=4
 FAILING_GATEWAYS=2
-NUM_OPTIMIZED=1
+NUM_OPTIMIZED_FAILOVER=2
+NUM_OPTIMIZED_REBALANCE=1
 #
 # Step 1 validate all gateways are optimized for one of ANA group
 # and all groups are unique
@@ -156,11 +157,14 @@ for i in $(seq 0 $(expr $FAILING_GATEWAYS - 1)); do
   echo  📫 nvme-gw delete gateway: \'$gw_name\' pool: \'$POOL\', group: \'\' \(empty string\)
   docker compose exec -T ceph ceph nvme-gw delete $gw_name $POOL ''
 done
-sleep 100 # wait for scale down rebalance complete
+
 docker ps
 
-# expect remaining gws to have 1 optimized groups each because
-# due to scale down rebalance 2 deleted gws and 2 ANA groups were removed from the monitor's database
+# array to track PIDs of all top-level background tasks
+pids=()
+
+# expect remaining gws to have two optimized groups each initially
+# till rebalance kicks and we should expect a single optimized group
 for i in $(seq 4); do
   found=0
   for j in $(seq 0 $(expr $FAILING_GATEWAYS - 1)); do
@@ -173,13 +177,53 @@ for i in $(seq 4); do
 
   # if gw is a healthy one
   if [ "$found" -eq "0" ]; then
-     echo "ℹ️ Check healthy gw gw=$i"
-     for s in $(seq $NUM_SUBSYSTEMS); do
-       NQN="nqn.2016-06.io.spdk:cnode$s"
-       GW_OPTIMIZED=$(expect_optimized "$(gw_name $i)" "$NUM_OPTIMIZED" "$NQN")
-     done
+    echo "ℹ️ Check healthy gw gw=$i"
+
+    (
+      subsystem_pids=() # Array to track PIDs for subsystem checks
+      subsystem_info=() # Array to track subsystem identifiers
+      for s in $(seq $NUM_SUBSYSTEMS); do
+        (
+          NQN="nqn.2016-06.io.spdk:cnode$s"
+          GW_OPTIMIZED=$(expect_optimized "$(gw_name $i)" "$NUM_OPTIMIZED_FAILOVER" "$NQN")
+          echo "✅ failover gw gw=$i nqn=$NQN"
+          GW_OPTIMIZED=$(expect_optimized "$(gw_name $i)" "$NUM_OPTIMIZED_REBALANCE" "$NQN")
+          echo "✅ rebalance gw gw=$i nqn=$NQN"
+        ) &
+        subsystem_pids+=($!) # Track PID for this subsystem task
+        subsystem_info+=("gw=$i subsystem=$s") # Track subsystem info for logging
+      done
+
+      # wait for all subsystem tasks and check their exit statuses
+      for idx in "${!subsystem_pids[@]}"; do
+        pid=${subsystem_pids[$idx]}
+        info=${subsystem_info[$idx]}
+        wait "$pid" || {
+          echo "❌ subsystem task failed: $info" >&2
+          exit 1 # Fail the parent task for this gateway if any subsystem fails
+        }
+      done
+      echo "✅ failover rebalance gw=$i all subsystems"
+    ) &
+    pids+=($!) # track PID for this gateway's checks
   fi
 done
+
+# wait for all top-level gateway tasks and check their exit statuses
+success=true
+for pid in "${pids[@]}"; do
+  wait "$pid" || {
+    echo "❌ gateway task failed." >&2
+    success=false
+  }
+done
+
+if $success; then
+  echo "✅ all gateway and subsystem checks completed successfully."
+else
+  echo "❌ one or more gateway tasks failed." >&2
+  exit 1
+fi
   
 #
 # Step 3 failback
