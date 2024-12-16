@@ -294,13 +294,20 @@ client_cert = ./client.crt
 
 ### Huge-Pages
 
-[DPDK requires hugepages](https://doc.dpdk.org/guides/linux_gsg/sys_reqs.html#linux-gsg-hugepages) to be set up:
+[DPDK uses by default hugepages](https://doc.dpdk.org/guides/linux_gsg/sys_reqs.html#linux-gsg-hugepages) to be set up:
 
 ```bash
 sh -c 'echo 4096 > /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages'
 ```
 
 This is automatically done in the `make setup` step. The amount of hugepages can be configured with `make setup HUGEPAGES=512`.
+
+ℹ️ **Info:** To eliminate the dependency on huge pages, set [mem_size=4096](https://github.com/ceph/ceph-nvmeof/blob/bf83ae504e77358944c8a0150d390cf66086fa2b/tests/ceph-nvmeof.no-huge.conf#L68) (memory size in megabytes) in the spdk section of the ceph-nvmeof.conf file. See the [example](https://github.com/ceph/ceph-nvmeof/blob/devel/tests/ceph-nvmeof.no-huge.conf) configuration file for reference.
+
+```ini
+[spdk]
+mem_size=4096
+```
 
 ## Development
 
