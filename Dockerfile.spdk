@@ -9,6 +9,7 @@ ARG DNF_OPTS="\
   --setopt=keepcache=1 \
   --setopt=cachedir=/var/cache/dnf \
   "
+ARG ACCEL_CONFIG_SRC="/accel-config"
 
 FROM quay.io/centos/centos:stream9 AS build
 
@@ -19,7 +20,8 @@ ARG SPDK_CEPH_VERSION \
     SPDK_PKGDEP_ARGS \
     SPDK_CONFIGURE_ARGS \
     SPDK_TARGET_ARCH \
-    SPDK_MAKEFLAGS
+    SPDK_MAKEFLAGS \
+    ACCEL_CONFIG_SRC
 
 RUN <<EOF
     echo Log variables
@@ -29,6 +31,7 @@ RUN <<EOF
     echo SPDK_TARGET_ARCH=$SPDK_TARGET_ARCH
     echo SPDK_MAKEFLAGS=$SPDK_MAKEFLAGS
     echo CEPH_CLUSTER_CEPH_REPO_BASEURL=$CEPH_CLUSTER_CEPH_REPO_BASEURL
+    echo ACCEL_CONFIG_SRC=$ACCEL_CONFIG_SRC
     echo ======================================================================
 EOF
 
@@ -84,6 +87,27 @@ RUN \
 RUN \
     --mount=type=cache,target=/var/cache/dnf \
     --mount=type=cache,target=/var/lib/dnf \
+    --mount=type=cache,target=/root/.cache/pip \
+    dnf groupinstall -y "Development Tools" \
+    && dnf install -y autoconf automake libtool pkgconf rpm-build rpmdevtools \
+    && dnf install -y which asciidoc xmlto libuuid-devel json-c-devel zlib-devel openssl-devel \
+    && mkdir -p $ACCEL_CONFIG_SRC \
+    && git clone https://github.com/intel/idxd-config.git $ACCEL_CONFIG_SRC \
+    && pushd $ACCEL_CONFIG_SRC \
+    && ./autogen.sh \
+    && ./configure CFLAGS='-g -O2' --prefix=/usr --sysconfdir=/etc \
+                   --libdir=/usr/lib64 --enable-test=yes \
+                   --disable-docs \
+    && mkdir -p /root/rpmbuild/SOURCES \
+    && make rhel/accfg.spec \
+    && ./rpmbuild.sh \
+    && ls -l /root/rpmbuild/RPMS/$(uname -m) \
+    && rpm -ivh /root/rpmbuild/RPMS/$(uname -m)/accel-config-"*".rpm \
+    && ls -l /usr/include/accel-config/libaccel_config.h
+
+RUN \
+    --mount=type=cache,target=/var/cache/dnf \
+    --mount=type=cache,target=/var/lib/dnf \
     DEPS="no" \
     SPDK_VERSION=${SPDK_VERSION:?} \
     RPM_RELEASE=0 \
@@ -96,6 +120,7 @@ RUN make -C ./examples/bdev/bdevperf
 #------------------------------------------------------------------------------
 FROM registry.access.redhat.com/ubi9/ubi@sha256:66233eebd72bb5baa25190d4f55e1dc3fff3a9b77186c1f91a0abdb274452072 AS rpm-export
 COPY --from=build /root/rpmbuild/rpm /rpm
+COPY --from=build /root/rpmbuild/RPMS /rpm
 
 #------------------------------------------------------------------------------
 FROM registry.access.redhat.com/ubi9/ubi@sha256:66233eebd72bb5baa25190d4f55e1dc3fff3a9b77186c1f91a0abdb274452072 as spdk

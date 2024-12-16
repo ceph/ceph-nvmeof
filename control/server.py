@@ -23,6 +23,7 @@ import spdk.rpc
 import spdk.rpc.client as rpc_client
 import spdk.rpc.nvmf as rpc_nvmf
 import spdk.rpc.iobuf as rpc_iobuf
+import spdk.rpc.dsa as rpc_dsa
 
 from .proto import gateway_pb2 as pb2
 from .proto import gateway_pb2_grpc as pb2_grpc
@@ -34,6 +35,7 @@ from .config import GatewayConfig
 from .utils import GatewayLogger
 from .utils import GatewayUtils
 from .utils import GatewayUtilsCrypto
+from .utils import DsaUtils
 from .cephutils import CephUtils
 from .prometheus import start_exporter
 
@@ -277,6 +279,9 @@ class GatewayServer:
                                       f"gateway-{self.name}")
         self.omap_state = omap_state
         local_state = LocalGatewayState()
+
+        # Accel config
+        self._accel_config()
 
         # install SIGCHLD handler
         signal.signal(signal.SIGCHLD, sigchld_handler)
@@ -543,7 +548,6 @@ class GatewayServer:
 
         # Start target
         self.logger.debug(f"Configuring server {self.name}")
-        waiting_for_rpc = False
         spdk_tgt_path = self.config.get("spdk", "tgt_path")
         self.logger.info(f"SPDK Target Path: {spdk_tgt_path}")
         sockdir = self.config.get_with_default("spdk", "rpc_socket_dir", "/var/tmp/")
@@ -565,16 +569,12 @@ class GatewayServer:
         self.logger.info(f"SPDK Socket: {self.spdk_rpc_socket_path}")
         spdk_tgt_cmd_extra_args = self.config.get_with_default(
             "spdk", "tgt_cmd_extra_args", "")
-        cmd = [spdk_tgt_path, "-u", "-r", self.spdk_rpc_socket_path]
+        cmd = [spdk_tgt_path, "--wait-for-rpc", "-u", "-r", self.spdk_rpc_socket_path]
 
         iobuf_options = self.config.get_with_default("spdk", "iobuf_options", "")
         max_subsystems = self.config.getint_with_default("gateway",
                                                          "max_subsystems",
                                                          GatewayService.MAX_SUBSYSTEMS_DEFAULT)
-        if iobuf_options or max_subsystems > 0:
-            waiting_for_rpc = True
-            cmd += ["--wait-for-rpc"]
-
         # Add extra args from the conf file
         if spdk_tgt_cmd_extra_args:
             cmd += shlex.split(spdk_tgt_cmd_extra_args)
@@ -653,8 +653,8 @@ class GatewayServer:
             if iobuf_options:
                 self._initialize_iobuf_options(iobuf_options)
 
-            if waiting_for_rpc:
-                self._initialize_framework()
+            # Set config and enable dsa accel module offload.
+            self._probe_dsa()
 
             self.spdk_rpc_ping_client = rpc_client.JSONRPCClient(
                 self.spdk_rpc_socket_path,
@@ -670,6 +670,7 @@ class GatewayServer:
                 log_level=protocol_log_level,
                 conn_retries=conn_retries,
             )
+
         except Exception:
             self.logger.exception("Unable to initialize SPDK")
             raise
@@ -831,14 +832,26 @@ class GatewayServer:
             self.logger.exception("IObuf set options returned with error")
             pass
 
-    def _initialize_framework(self):
-        """In case we started SPDK with the "wait for rpc" flag, we need to call this"""
+    def _accel_config(self):
+        # Instantiate DsaUtils and run config
+        if self.config.getboolean_with_default("spdk", "enable_dsa_acceleration", True):
+            dsa_utils = DsaUtils(self.logger)
+            dsa_utils.config()
+        else:
+            self.logger.info("DSA acceleration device configuration is disabled")
 
+    def _probe_dsa(self):
+        """Initializes dsa accel module offload."""
         try:
+            if self.config.getboolean_with_default("spdk", "enable_dsa_acceleration", True):
+                res = rpc_dsa.dsa_scan_accel_module(self.spdk_rpc_client, config_kernel_mode=True)
+                self.logger.debug(f"dsa_scan_accel_module: {res=}")
+            else:
+                self.logger.info("DSA acceleration module scanning is disabled")
             spdk.rpc.framework_start_init(self.spdk_rpc_client)
         except Exception:
-            self.logger.exception("Framework start init returned with error")
-            pass
+            self.logger.exception("Failed to probe dsa accel module offload")
+            raise
 
     def _create_transport(self, trtype):
         """Initializes a transport type."""

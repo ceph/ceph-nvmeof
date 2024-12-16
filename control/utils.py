@@ -21,6 +21,9 @@ from typing import Tuple, List
 from cryptography.fernet import Fernet
 import cryptography.exceptions
 import base64
+import json
+import subprocess
+from pathlib import Path
 
 
 class GatewayEnumUtils:
@@ -662,3 +665,126 @@ class NIC:
             f"ip v4: {','.join(self.ipv4_addresses)}\n"
             f"ip v6: {','.join(self.ipv6_addresses)}\n"
         )
+
+
+class DsaUtils:
+    def __init__(self, logger):
+        self.logger = logger
+
+    def _build_dsa_config(self):
+        pci_id = ("0x8086", "0x0b25")
+        base_path = Path("/sys/bus/pci/devices")
+        json_list = []
+        count = 0
+
+        for dev_path in base_path.iterdir():
+            vendor_file = dev_path / "vendor"
+            device_file = dev_path / "device"
+
+            if not vendor_file.exists() or not device_file.exists():
+                continue
+
+            vendor = vendor_file.read_text().strip()
+            device = device_file.read_text().strip()
+
+            if (vendor, device) == pci_id:
+                dsa_dev = f"dsa{count}"
+                entry = {
+                    "dev": dsa_dev,
+                    "read_buffer_limit": 0,
+                    "groups": [
+                        {
+                            "dev": f"group{count}.0",
+                            "grouped_workqueues": [
+                                {
+                                    "dev": f"wq{count}.0",
+                                    "mode": "dedicated",
+                                    "size": 32,
+                                    "group_id": 0,
+                                    "priority": 10,
+                                    "block_on_fault": 1,
+                                    "max_batch_size": 32,
+                                    "max_transfer_size": 16384,
+                                    "type": "user",
+                                    "driver_name": "user",
+                                    "name": "app1",
+                                    "threshold": 0
+                                }
+                            ],
+                            "grouped_engines": [
+                                {
+                                    "dev": f"engine{count}.0",
+                                    "group_id": 0
+                                }
+                            ]
+                        },
+                        {
+                            "dev": f"group{count}.1",
+                            "grouped_workqueues": [
+                                {
+                                    "dev": f"wq{count}.1",
+                                    "mode": "dedicated",
+                                    "size": 32,
+                                    "group_id": 1,
+                                    "priority": 10,
+                                    "block_on_fault": 1,
+                                    "max_batch_size": 32,
+                                    "max_transfer_size": 2097152,
+                                    "type": "user",
+                                    "driver_name": "user",
+                                    "name": "app2",
+                                    "threshold": 0
+                                }
+                            ],
+                            "grouped_engines": [
+                                {
+                                    "dev": f"engine{count}.1",
+                                    "group_id": 1
+                                }
+                            ]
+                        }
+                    ]
+                }
+                json_list.append(entry)
+                count += 1
+
+        return json_list, count
+
+    def _run_command(self, cmd, label):
+        try:
+            output = subprocess.check_output(cmd, text=True)
+            self.logger.info(f"{label} Output:\n{output}")
+        except subprocess.CalledProcessError:
+            self.logger.exception(f"{label} failed:")
+
+    def config(self):
+        conf_file = "/tmp/dsa_config.json"
+        config_data, count = self._build_dsa_config()
+
+        if count == 0:
+            self.logger.warning("No matching DSA devices found (8086:0b25).")
+            return
+
+        self.logger.info(f"Found {count} matching DSA devices. Loading config.")
+        with open(conf_file, 'w') as f:
+            json.dump(config_data, f, indent=2)
+
+        try:
+            commands = [
+                (["accel-config", "info"], "Before config - info"),
+                (["accel-config", "list"], "Before config - list"),
+                (["accel-config", "load-config", "-c", conf_file, "-e"], "Load config"),
+                (["accel-config", "info"], "After config - info"),
+                (["accel-config", "list"], "After config - list"),
+            ]
+
+            for cmd, label in commands:
+                self._run_command(cmd, label)
+        finally:
+            try:
+                os.remove(conf_file)
+                self.logger.info(f"Removed DSA config file: {conf_file}")
+            except OSError as e:
+                # ENOENT is fine
+                if e.errno != errno.ENOENT:
+                    self.logger.exception(f"Error removing DSA config file {conf_file}")
