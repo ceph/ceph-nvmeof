@@ -70,7 +70,7 @@ EOF
 RUN cat /etc/yum.repos.d/ceph.repo
 
 RUN rpm -vih https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
-RUN rpm --import 'http://download.ceph.com/keys/release.asc'
+RUN rpm --import 'https://download.ceph.com/keys/release.asc'
 RUN curl -O --output-dir /etc/yum.repos.d/ ${CEPH_CLUSTER_EPEL_REPO_URL:?}
 
 RUN --mount=type=cache,target=/var/cache/microdnf \
