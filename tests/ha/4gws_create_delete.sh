@@ -121,40 +121,44 @@ count_namespaces_in_anagrp() {
     echo "$json" | jq ".subsystems[$subsystem_idx].namespaces | map(select(.anagrpid == $ana_group)) | length"
 }
 
+verify_num_namespaces_gw_idx() {
+  g="$1"            # gateway idx
+  GW_NAME=$(gw_name $g)
+  GW_IP=$(gw_ip $g)
+
+  for i in $(seq 20); do
+    echo "verify_num_namespaces $i $GW_NAME $GW_IP"
+    subs=$(docker compose  run --rm nvmeof-cli --server-address $GW_IP --server-port 5500 get_subsystems 2>&1 | sed 's/Get subsystems://')
+
+    # ensure namespaces are evenly distributed across ANA groups.
+    # each subsystem should have at least half of the namespaces if they
+    # were equally divided among the four ANA groups.
+    if [ "$(count_namespaces_in_anagrp "$subs" 0 1)" -lt $MIN_NUM_NAMESPACES_IN_ANA_GROUP -o \
+         "$(count_namespaces_in_anagrp "$subs" 0 2)" -lt $MIN_NUM_NAMESPACES_IN_ANA_GROUP -o \
+         "$(count_namespaces_in_anagrp "$subs" 0 3)" -lt $MIN_NUM_NAMESPACES_IN_ANA_GROUP -o \
+         "$(count_namespaces_in_anagrp "$subs" 0 4)" -lt $MIN_NUM_NAMESPACES_IN_ANA_GROUP -o \
+         "$(count_namespaces_in_anagrp "$subs" 1 1)" -lt $MIN_NUM_NAMESPACES_IN_ANA_GROUP -o \
+         "$(count_namespaces_in_anagrp "$subs" 1 2)" -lt $MIN_NUM_NAMESPACES_IN_ANA_GROUP -o \
+         "$(count_namespaces_in_anagrp "$subs" 1 3)" -lt $MIN_NUM_NAMESPACES_IN_ANA_GROUP -o \
+         "$(count_namespaces_in_anagrp "$subs" 1 4)" -lt $MIN_NUM_NAMESPACES_IN_ANA_GROUP ]; then
+
+        echo "Not ready $i $GW_NAME $GW_IP"
+        sleep 5
+        continue
+    fi
+    echo "✅ verify_num_namespaces ready $i $GW_NAME $GW_IP"
+    return
+  done
+
+  # the loop completed without returning
+  echo "verify_num_namespaces ‼️  Timeout reached for $GW_NAME $GW_IP"
+  exit 1
+}
+
 verify_num_namespaces() {
   # verify initial distribution of namespaces
   for g in $(seq $NUM_GATEWAYS); do
-    for i in $(seq 10); do
-      echo "verify_num_namespaces $i $GW_NAME $GW_IP"
-      GW_NAME=$(gw_name $g)
-      GW_IP=$(gw_ip $g)
-      subs=$(docker compose  run --rm nvmeof-cli --server-address $GW_IP --server-port 5500 get_subsystems 2>&1 | sed 's/Get subsystems://')
-
-      # ensure namespaces are evenly distributed across ANA groups.
-      # each subsystem should have at least half of the namespaces if they
-      # were equally divided among the four ANA groups.
-      if [ "$(count_namespaces_in_anagrp "$subs" 0 1)" -lt $MIN_NUM_NAMESPACES_IN_ANA_GROUP -o \
-           "$(count_namespaces_in_anagrp "$subs" 0 2)" -lt $MIN_NUM_NAMESPACES_IN_ANA_GROUP -o \
-           "$(count_namespaces_in_anagrp "$subs" 0 3)" -lt $MIN_NUM_NAMESPACES_IN_ANA_GROUP -o \
-           "$(count_namespaces_in_anagrp "$subs" 0 4)" -lt $MIN_NUM_NAMESPACES_IN_ANA_GROUP -o \
-           "$(count_namespaces_in_anagrp "$subs" 1 1)" -lt $MIN_NUM_NAMESPACES_IN_ANA_GROUP -o \
-           "$(count_namespaces_in_anagrp "$subs" 1 2)" -lt $MIN_NUM_NAMESPACES_IN_ANA_GROUP -o \
-           "$(count_namespaces_in_anagrp "$subs" 1 3)" -lt $MIN_NUM_NAMESPACES_IN_ANA_GROUP -o \
-           "$(count_namespaces_in_anagrp "$subs" 1 4)" -lt $MIN_NUM_NAMESPACES_IN_ANA_GROUP ]; then
-
-          echo "Not ready $i $GW_NAME $GW_IP"
-          sleep 5
-          continue
-      fi
-      echo "✅ verify_num_namespaces ready $i $GW_NAME $GW_IP"
-      break
-    done
-
-    # Check if the inner loop completed without breaking
-    if [ $i -eq 10 ]; then
-      echo "verify_num_namespaces ‼️  Timeout reached for $GW_NAME $GW_IP"
-      exit 1
-    fi
+    verify_num_namespaces_gw_idx $g
   done
 }
 
