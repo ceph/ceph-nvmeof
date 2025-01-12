@@ -203,7 +203,7 @@ class Rebalance:
                 self.logger.debug(f"ret namespace_change_load_balancing_group  {ret}")
                 num_rebalanced += 1
                 if num_rebalanced >= num:
-                    self.logger.info(f"== Completed rebalance in {time.time() - now } sec for "
+                    self.logger.info(f"== Completed rebalance in {time.time() - now} sec for "
                                      f"{num} namespaces from anagrp {ana_id} to {dest_ana_id} ")
                     return 0
         return 0
