@@ -9,7 +9,7 @@ on:  # yamllint disable rule:truthy
       - '*'
   pull_request:
     branches:
-      - devel
+      - '*'
   schedule:
     - cron: '0 0 * * *'
   workflow_dispatch:
