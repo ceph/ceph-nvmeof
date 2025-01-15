@@ -1203,12 +1203,14 @@ class GatewayService(pb2_grpc.GatewayServicer):
             self.logger.error(errmsg)
             return pb2.req_status(status=errno.ENODEV, error_message=errmsg)
 
-        grps_list = self.ceph_utils.get_number_created_gateways(self.gateway_pool, self.gateway_group)
-        if request.anagrpid not in grps_list:
-            self.logger.debug(f"ANA groups: {grps_list}")
-            errmsg = f"{change_lb_group_failure_prefix}: Load balancing group {request.anagrpid} doesn't exist"
-            self.logger.error(errmsg)
-            return pb2.req_status(status=errno.ENODEV, error_message=errmsg)
+        # below checks are legal only if command is initiated by local cli or is sent from the local rebalance logic.
+        if context:
+            grps_list = self.ceph_utils.get_number_created_gateways(self.gateway_pool, self.gateway_group)
+            if request.anagrpid not in grps_list:
+                self.logger.debug(f"ANA groups: {grps_list}")
+                errmsg = f"{change_lb_group_failure_prefix}: Load balancing group {request.anagrpid} doesn't exist"
+                self.logger.error(errmsg)
+                return pb2.req_status(status=errno.ENODEV, error_message=errmsg)
 
         omap_lock = self.omap_lock.get_omap_lock_to_use(context)
         with omap_lock:
