@@ -104,7 +104,7 @@ else
         --subsystem-num=118 \
         --ns-num=8 \
         --subsystem-max-ns-num=1024 \
-        --failover-num=10 \
+        --failover-num=6 \
         --failover-num-after-upgrade=2 \
         --rbd-size=200M \
         --seed=0 \
@@ -123,6 +123,7 @@ else
         --journalctl-to-console \
         --dont-power-off-cloud-vms \
         --dont-use-hugepages \
+        --concise-output \
         --ibm-cloud-key=nokey \
         --github-nvmeof-token=nokey \
         --env=m6
