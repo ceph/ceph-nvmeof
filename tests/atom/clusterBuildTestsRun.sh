@@ -81,6 +81,7 @@ if [ "$5" != "nightly" ]; then
         --nvmeof-daemon-remove \
         --redeploy-gws \
         --github-action-deployment \
+        --mtls \
         --journalctl-to-console \
         --dont-power-off-cloud-vms \
         --ibm-cloud-key=nokey \
@@ -118,7 +119,6 @@ else
         --nvmeof-daemon-remove \
         --redeploy-gws \
         --github-action-deployment \
-        --mtls \
         --journalctl-to-console \
         --dont-power-off-cloud-vms \
         --dont-use-hugepages \
