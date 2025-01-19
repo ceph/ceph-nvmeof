@@ -205,6 +205,7 @@ message create_listener_req {
 	optional AddressFamily adrfam = 5;
 	optional uint32 trsvcid = 6;
 	optional bool secure = 7;
+	optional bool verify_host_name = 8;
 }
 
 message delete_listener_req {

@@ -689,7 +689,8 @@ class TestCreate:
     @pytest.mark.parametrize("listener", listener_list)
     def test_create_listener(self, caplog, listener, gateway):
         caplog.clear()
-        cli(["listener", "add", "--subsystem", subsystem, "--host-name", host_name] + listener)
+        cli(["listener", "add", "--subsystem", subsystem, "--host-name", host_name,
+             "--verify-host-name"] + listener)
         assert "ipv4" in caplog.text.lower()
         assert f"Adding {subsystem} listener at {listener[1]}:{listener[3]}: Successful" in caplog.text
 
@@ -697,14 +698,17 @@ class TestCreate:
     @pytest.mark.parametrize("listener_ipv6", listener_list_ipv6)
     def test_create_listener_ipv6(self, caplog, listener_ipv6, gateway):
         caplog.clear()
-        cli(["--server-address", server_addr_ipv6, "listener", "add", "--subsystem", subsystem, "--host-name", host_name] + listener_ipv6)
+        cli(["--server-address", server_addr_ipv6, "listener", "add",
+             "--subsystem", subsystem, "--host-name", host_name,
+             "--verify-host-name"] + listener_ipv6)
         assert "ipv6" in caplog.text.lower()
         assert f"Adding {subsystem} listener at [{listener_ipv6[1]}]:{listener_ipv6[3]}: Successful" in caplog.text
 
     @pytest.mark.parametrize("listener", listener_list_no_port)
     def test_create_listener_no_port(self, caplog, listener, gateway):
         caplog.clear()
-        cli(["listener", "add", "--subsystem", subsystem, "--host-name", host_name] + listener)
+        cli(["listener", "add", "--subsystem", subsystem, "--host-name", host_name,
+             "--verify-host-name"] + listener)
         assert "ipv4" in caplog.text.lower()
         assert f"Adding {subsystem} listener at {listener[1]}:4420: Successful" in caplog.text
 
@@ -726,7 +730,8 @@ class TestCreate:
         caplog.clear()
         rc = 0
         try:
-            cli(["listener", "add", "--subsystem", subsystem, "--host-name", host_name] + listener)
+            cli(["listener", "add", "--subsystem", subsystem, "--host-name", host_name,
+                 "--verify-host-name"] + listener)
         except SystemExit as sysex:
             rc = int(str(sysex))
             pass
@@ -738,7 +743,8 @@ class TestCreate:
         caplog.clear()
         rc = 0
         try:
-            cli(["listener", "add", "--subsystem", subsystem, "--host-name", host_name] + listener)
+            cli(["listener", "add", "--subsystem", subsystem, "--host-name", host_name,
+                 "--verify-host-name"] + listener)
         except SystemExit as sysex:
             rc = int(str(sysex))
             pass
@@ -748,15 +754,20 @@ class TestCreate:
     @pytest.mark.parametrize("listener", listener_list_wrong_host)
     def test_create_listener_wrong_hostname(self, caplog, listener, gateway):
         caplog.clear()
-        cli(["listener", "add", "--subsystem", subsystem] + listener)
+        cli(["listener", "add", "--subsystem", subsystem, "--verify-host-name"] + listener)
         assert f"Gateway's host name must match current host ({host_name})" in caplog.text
+        caplog.clear()
+        cli(["listener", "add", "--subsystem", subsystem] + listener)
+        assert f"Adding {subsystem} listener at {addr}:5015: listener will only be active when " \
+               f"appropriate gateway is up" in caplog.text
 
     @pytest.mark.parametrize("listener", listener_list_invalid_adrfam)
     def test_create_listener_invalid_adrfam(self, caplog, listener, gateway):
         caplog.clear()
         rc = 0
         try:
-            cli(["listener", "add", "--subsystem", subsystem, "--host-name", host_name] + listener)
+            cli(["listener", "add", "--subsystem", subsystem, "--host-name", host_name,
+                 "--verify-host-name"] + listener)
         except SystemExit as sysex:
             rc = int(str(sysex))
             pass
@@ -766,7 +777,7 @@ class TestCreate:
     @pytest.mark.parametrize("listener", listener_list_discovery)
     def test_create_listener_on_discovery(self, caplog, listener, gateway):
         caplog.clear()
-        cli(["listener", "add", "--host-name", host_name] + listener)
+        cli(["listener", "add", "--host-name", host_name, "--verify-host-name"] + listener)
         assert "Can't create a listener for a discovery subsystem" in caplog.text
 
 class TestDelete:
@@ -837,7 +848,8 @@ class TestDelete:
     @pytest.mark.parametrize("listener", listener_list)
     def test_delete_listener_using_wild_hostname(self, caplog, listener, gateway):
         caplog.clear()
-        cli(["listener", "add", "--subsystem", subsystem, "--host-name", host_name] + listener)
+        cli(["listener", "add", "--subsystem", subsystem, "--host-name", host_name,
+             "--verify-host-name"] + listener)
         assert "ipv4" in caplog.text.lower()
         assert f"Adding {subsystem} listener at {listener[1]}:{listener[3]}: Successful" in caplog.text
         cli(["--format", "json", "listener", "list", "--subsystem", subsystem])
@@ -948,7 +960,8 @@ class TestCreateWithAna:
     @pytest.mark.parametrize("listener", listener_list)
     def test_create_listener_ana(self, caplog, listener, gateway):
         caplog.clear()
-        cli(["listener", "add", "--subsystem", subsystem, "--host-name", host_name] + listener)
+        cli(["listener", "add", "--subsystem", subsystem, "--host-name", host_name,
+             "--verify-host-name"] + listener)
         assert "ipv4" in caplog.text.lower()
         assert f"Adding {subsystem} listener at {listener[1]}:{listener[3]}: Successful" in caplog.text
 
