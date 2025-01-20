@@ -1102,8 +1102,8 @@ class GatewayStateHandler:
                 # Find OMAP changes
                 same_keys = omap_state_keys & local_state_keys
                 for key in same_keys:
-                    self.logger.info(f"same key: {key}, local: {local_state_dict[key]},"
-                                     f"omap: {omap_state_dict[key]}")
+                    self.logger.debug(f"same key: {key}, local: {local_state_dict[key]},"
+                                      f"omap: {omap_state_dict[key]}")
                 changed = {
                     key: omap_state_dict[key]
                     for key in same_keys

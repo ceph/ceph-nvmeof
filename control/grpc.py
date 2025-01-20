@@ -1684,9 +1684,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
             # If this is not set the subsystem was not created yet
             if nqn not in self.subsys_max_ns:
+                self.logger.info(f"Warning: nqn {nqn} is not in the list subsys_max_ns ")
                 continue
 
-            self.logger.debug(f"Iterate over {nqn=} {self.subsystem_listeners[nqn]=}")
+            self.logger.info(f"Iterate over {nqn=} {self.subsystem_listeners[nqn]=}")
             for listener in self.subsystem_listeners[nqn]:
                 self.logger.debug(f"{listener=}")
 
