@@ -1121,9 +1121,10 @@ class GatewayStateHandler:
                 grouped_added = self._group_by_prefix(added, prefix_list)
                 # Find OMAP changes
                 same_keys = omap_state_keys & local_state_keys
-                for key in same_keys:
-                    self.logger.info(f"same key: {key}, local: {local_state_dict[key]},"
-                                     f"omap: {omap_state_dict[key]}")
+                if ((omap_version - local_version) > 1) and ("discovery" not in self.id_text):
+                    for key in same_keys:
+                        self.logger.info(f"same key: {key}, local: {local_state_dict[key]},"
+                                         f"omap: {omap_state_dict[key]}")
                 changed = {
                     key: omap_state_dict[key]
                     for key in same_keys
