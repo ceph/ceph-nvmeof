@@ -8,7 +8,8 @@ set -e
 
 VERSION=$1
 if [ "$2" = "latest" ]; then
-    CEPH_SHA=$(curl -s https://shaman.ceph.com/api/repos/ceph/main/latest/centos/9/ | jq -r ".[] | select(.archs[] == \"$(uname -m)\" and .status == \"ready\") | .sha1")
+    # CEPH_SHA=$(curl -s https://shaman.ceph.com/api/repos/ceph/main/latest/centos/9/ | jq -r ".[] | select(.archs[] == \"$(uname -m)\" and .status == \"ready\") | .sha1")
+    CEPH_SHA=b5c07ab4f77bffd19c88ef47141176982670de94
 else
     CEPH_SHA=$2
 fi
