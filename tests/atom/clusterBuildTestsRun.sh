@@ -49,7 +49,7 @@ else
     sudo rm -rf /root/.ssh/atom_backup/artifact/multiIBMCloudServers_m7/*
     sudo ls -lta /root/.ssh/atom_backup/artifact/multiIBMCloudServers_m7
     cd $RUNNER_NIGHTLY_FOLDER
-
+fi
 
 # Cloning atom repo
 git clone git@github.ibm.com:NVME-Over-Fiber/ceph-nvmeof-atom.git
