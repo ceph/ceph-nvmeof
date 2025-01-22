@@ -16,29 +16,42 @@ ATOM_SHA=$3
 ACTION_URL=$4
 NIGHTLY=$5
 
-RUNNER_FILDER='/home/cephnvme/actions-runner-ceph'
+RUNNER_FOLDER='/home/cephnvme/actions-runner-ceph'
+BUSY_FILE='/home/cephnvme/busyServer.txt'
+RUNNER_NIGHTLY_FOLDER='/home/cephnvme/actions-runner-ceph-nightly'
+BUSY_NIGHTLY_FILE='/home/cephnvme/busyServerNightly.txt'
 
-# Check if cluster is busy with another run
-while true; do
-    if [ -f "/home/cephnvme/busyServer.txt" ]; then
-        echo "The server is busy with another github action job, please wait..."
-        sleep 90
-    else
-        echo "The server is available for use!"
-        echo $ACTION_URL > /home/cephnvme/busyServer.txt
-        chmod +rx /home/cephnvme/busyServer.txt
-        break
-    fi
-done
+check_cluster_busy() {
+    local busy_file=$1
+    local action_url=$2
 
-# Remove previous run data
+    while true; do
+        if [ -f "$busy_file" ]; then
+            echo "The server is busy with another GitHub Action job, please wait..."
+            sleep 90
+        else
+            echo "The server is available for use!"
+            echo "$action_url" > "$busy_file"
+            chmod +rx "$busy_file"
+            break
+        fi
+    done
+}
+
 hostname
-rm -rf $RUNNER_FILDER/ceph-nvmeof-atom
-sudo rm -rf /root/.ssh/atom_backup/artifact/multiIBMCloudServers_m6/*
-sudo ls -lta /root/.ssh/atom_backup/artifact/multiIBMCloudServers_m6
+if [ "$5" != "nightly" ]; then
+    rm -rf $RUNNER_FOLDER/ceph-nvmeof-atom
+    sudo rm -rf /root/.ssh/atom_backup/artifact/multiIBMCloudServers_m6/*
+    sudo ls -lta /root/.ssh/atom_backup/artifact/multiIBMCloudServers_m6
+    cd $RUNNER_FOLDER
+else
+    rm -rf $RUNNER_NIGHTLY_FOLDER/ceph-nvmeof-atom
+    sudo rm -rf /root/.ssh/atom_backup/artifact/multiIBMCloudServers_m7/*
+    sudo ls -lta /root/.ssh/atom_backup/artifact/multiIBMCloudServers_m7
+    cd $RUNNER_NIGHTLY_FOLDER
+
 
 # Cloning atom repo
-cd $RUNNER_FILDER
 git clone git@github.ibm.com:NVME-Over-Fiber/ceph-nvmeof-atom.git
 
 # Switch to given SHA
@@ -50,6 +63,7 @@ sudo docker build -t nvmeof_atom:$ATOM_SHA .
 
 set -x
 if [ "$5" != "nightly" ]; then
+    check_cluster_busy "$BUSY_FILE" "$ACTION_URL"
     sudo docker run \
         -v /root/.ssh:/root/.ssh \
         nvmeof_atom:"$ATOM_SHA" \
@@ -88,6 +102,7 @@ if [ "$5" != "nightly" ]; then
         --github-nvmeof-token=nokey \
         --env=m6
 else
+    check_cluster_busy "$BUSY_NIGHTLY_FILE" "$ACTION_URL"
     sudo docker run \
         -v /root/.ssh:/root/.ssh \
         nvmeof_atom:"$ATOM_SHA" \
@@ -104,7 +119,7 @@ else
         --subsystem-num=118 \
         --ns-num=8 \
         --subsystem-max-ns-num=1024 \
-        --failover-num=6 \
+        --failover-num=10 \
         --failover-num-after-upgrade=2 \
         --rbd-size=200M \
         --seed=0 \
@@ -125,6 +140,6 @@ else
         --concise-output \
         --ibm-cloud-key=nokey \
         --github-nvmeof-token=nokey \
-        --env=m6
+        --env=m7
 fi
 set +x
