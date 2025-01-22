@@ -665,24 +665,28 @@ jobs:
           pattern: container_images_nvmeof
           merge-multiple: true
 
-      # - name: Cluster build and Atom tests run
-      #   if: always() && github.event_name != 'schedule'
-      #   run: |
-      #     . .env
-      #     ACTION_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-      #     ./tests/atom/clusterBuildTestsRun.sh $NVMEOF_VERSION $CEPH_SHA $ATOM_SHA $ACTION_URL
+      - name: Cluster build and Atom tests run
+        if: always() && github.event_name != 'schedule'
+        run: |
+          . .env
+          ACTION_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          ./tests/atom/clusterBuildTestsRun.sh $NVMEOF_VERSION $CEPH_SHA $ATOM_SHA $ACTION_URL
             
       - name: Cluster build and Atom nightly tests run
-        # if: always() && github.event_name == 'schedule'
+        if: always() && github.event_name == 'schedule'
         run: |
           . .env
           ACTION_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           ./tests/atom/clusterBuildTestsRun.sh $NVMEOF_VERSION $CEPH_SHA $ATOM_SHA $ACTION_URL 'nightly'
 
       - name: Atom artifact build
-        if: always()
+        if: always() && github.event_name != 'schedule'
         run: ./tests/atom/cpArtifactAndCleanup.sh
-  
+
+      - name: Atom artifact build nightly
+        if: always() && github.event_name == 'schedule'
+        run: ./tests/atom/cpArtifactAndCleanup.sh 'nightly'
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
