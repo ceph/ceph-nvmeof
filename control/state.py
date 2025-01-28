@@ -43,44 +43,50 @@ class GatewayState(ABC):
         return True
 
     def build_namespace_key(subsystem_nqn: str, nsid) -> str:
-        key = GatewayState.NAMESPACE_PREFIX + subsystem_nqn
+        key = GatewayState.NAMESPACE_PREFIX + subsystem_nqn + GatewayState.OMAP_KEY_DELIMITER
         if nsid is not None:
-            key += GatewayState.OMAP_KEY_DELIMITER + str(nsid)
+            key += str(nsid)
         return key
 
     def build_namespace_lbgroup_key(subsystem_nqn: str, nsid) -> str:
-        key = GatewayState.NAMESPACE_LB_GROUP_PREFIX + subsystem_nqn
+        key = GatewayState.NAMESPACE_LB_GROUP_PREFIX + subsystem_nqn + \
+            GatewayState.OMAP_KEY_DELIMITER
         if nsid is not None:
-            key += GatewayState.OMAP_KEY_DELIMITER + str(nsid)
+            key += str(nsid)
         return key
 
     def build_namespace_qos_key(subsystem_nqn: str, nsid) -> str:
-        key = GatewayState.NAMESPACE_QOS_PREFIX + subsystem_nqn
+        key = GatewayState.NAMESPACE_QOS_PREFIX + subsystem_nqn + GatewayState.OMAP_KEY_DELIMITER
         if nsid is not None:
-            key += GatewayState.OMAP_KEY_DELIMITER + str(nsid)
+            key += str(nsid)
         return key
 
     def build_subsystem_key(subsystem_nqn: str) -> str:
         return GatewayState.SUBSYSTEM_PREFIX + subsystem_nqn
 
     def build_host_key(subsystem_nqn: str, host_nqn: str) -> str:
-        key = GatewayState.HOST_PREFIX + subsystem_nqn
+        key = GatewayState.HOST_PREFIX + subsystem_nqn + GatewayState.OMAP_KEY_DELIMITER
         if host_nqn is not None:
-            key += GatewayState.OMAP_KEY_DELIMITER + host_nqn
+            key += host_nqn
         return key
 
     def build_partial_listener_key(subsystem_nqn: str, host: str) -> str:
-        key = GatewayState.LISTENER_PREFIX + subsystem_nqn
+        key = GatewayState.LISTENER_PREFIX + subsystem_nqn + GatewayState.OMAP_KEY_DELIMITER
         if host:
-            key += GatewayState.OMAP_KEY_DELIMITER + host
+            key += host + GatewayState.OMAP_KEY_DELIMITER
         return key
 
     def build_listener_key_suffix(host: str, trtype: str, traddr: str, trsvcid: int) -> str:
         if host:
-            return GatewayState.OMAP_KEY_DELIMITER + host + GatewayState.OMAP_KEY_DELIMITER + trtype + GatewayState.OMAP_KEY_DELIMITER + traddr + GatewayState.OMAP_KEY_DELIMITER + str(trsvcid)
+            return host + \
+                GatewayState.OMAP_KEY_DELIMITER + trtype + GatewayState.OMAP_KEY_DELIMITER + \
+                traddr + GatewayState.OMAP_KEY_DELIMITER + str(trsvcid)
         if trtype:
-            return GatewayState.OMAP_KEY_DELIMITER + trtype + GatewayState.OMAP_KEY_DELIMITER + traddr + GatewayState.OMAP_KEY_DELIMITER + str(trsvcid)
-        return GatewayState.OMAP_KEY_DELIMITER + traddr + GatewayState.OMAP_KEY_DELIMITER + str(trsvcid)
+            return trtype + \
+                GatewayState.OMAP_KEY_DELIMITER + traddr + \
+                GatewayState.OMAP_KEY_DELIMITER + str(trsvcid)
+        return traddr + \
+            GatewayState.OMAP_KEY_DELIMITER + str(trsvcid)
 
     def build_listener_key(subsystem_nqn: str, host: str, trtype: str, traddr: str, trsvcid: int) -> str:
         return GatewayState.build_partial_listener_key(subsystem_nqn, host) + GatewayState.build_listener_key_suffix(None, trtype, traddr, str(trsvcid))
@@ -789,19 +795,18 @@ class GatewayStateHandler:
 
                 # Handle namespace changes in which only the load balancing group id was changed
                 only_lb_group_changed = []
-                ns_prefix = GatewayState.build_namespace_key("nqn", None)
                 for key in changed.keys():
-                    if not key.startswith(ns_prefix):
-                        continue
-                    try:
-                        (should_process, new_lb_grp_id) = self.namespace_only_lb_group_id_changed(local_state_dict[key],
-                                                                                                  omap_state_dict[key])
+                    self.logger.info(f"Changed key: {key} local-state: {local_state_dict[key]}"
+                                     f" omap-state: {omap_state_dict[key]}")
+                    if key.startswith(GatewayState.NAMESPACE_PREFIX):
+                        (should_process, new_lb_grp_id) = self.namespace_only_lb_group_id_changed(
+                            local_state_dict[key],
+                            omap_state_dict[key])
                         if should_process:
-                            assert new_lb_grp_id, "Shouldn't get here with en empty lb group id"
-                            self.logger.debug(f"Found {key} where only the load balancing group id has changed. The new group id is {new_lb_grp_id}")
-                            only_lb_group_changed.insert(0, (key, new_lb_grp_id))
-                    except Exception as ex:
-                        self.logger.warning("Got exception checking namespace for load balancing group id change")
+                            assert new_lb_grp_id, "Shouldn't get here with an empty lb group id"
+                            self.logger.info(f"Found {key} where only the load balancing group id "
+                                             f"has changed. The new group id is {new_lb_grp_id}")
+                            only_lb_group_changed.append((key, new_lb_grp_id))
 
                 for ns_key, new_lb_grp in only_lb_group_changed:
                     ns_nqn = None

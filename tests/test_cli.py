@@ -15,11 +15,16 @@ image = "mytestdevimage"
 image2 = "mytestdevimage2"
 image3 = "mytestdevimage3"
 image4 = "mytestdevimage4"
+image20 = "mytestdevimage20"
+image21 = "mytestdevimage21"
+image22 = "mytestdevimage22"
+image23 = "mytestdevimage23"
 pool = "rbd"
 subsystem = "nqn.2016-06.io.spdk:cnode1"
 subsystem2 = "nqn.2016-06.io.spdk:cnode2"
 subsystem3 = "nqn.2016-06.io.spdk:cnode3"
 subsystem4 = "nqn.2016-06.io.spdk:cnode4"
+subsystem10 = "nqn.2016-06.io.spdk:cnode10"
 discovery_nqn = "nqn.2014-08.org.nvmexpress.discovery"
 serial = "Ceph00000000000001"
 uuid = "948878ee-c3b2-4d58-a29b-2cff713fc02d"
@@ -1078,3 +1083,87 @@ class TestSPDKLOg:
             pass
         assert "error: argument --level/-l: invalid choice: 'JUNK'" in caplog.text
         assert rc == 2
+
+
+class TestSubsystemWithIdenticalPrefix:
+    def test_subsystem_with_identical_prefix(self, caplog, gateway):
+        gw, stub = gateway
+        # Make sure one NQN is a prefix of the other
+        assert subsystem10.startswith(subsystem)
+        # Clean old subsystems as we are limited to only 4
+        subs = cli_test(["subsystem", "list"])
+        for s in subs.subsystems:
+            caplog.clear()
+            cli(["subsystem", "del", "--subsystem", s.nqn, "--force"])
+            assert f"Deleting subsystem {s.nqn}: Successful" in caplog.text
+        caplog.clear()
+        cli(["subsystem", "list"])
+        assert "No subsystems" in caplog.text
+        # OK, all clear, now we can add the subsystems where one NQN is a prefix of the other
+        caplog.clear()
+        cli(["subsystem", "add", "--subsystem", subsystem, "--no-group-append"])
+        assert f"Adding subsystem {subsystem}: Successful" in caplog.text
+        caplog.clear()
+        cli(["subsystem", "add", "--subsystem", subsystem10, "--no-group-append"])
+        assert f"Adding subsystem {subsystem10}: Successful" in caplog.text
+        caplog.clear()
+        cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool,
+             "--rbd-image", image20, "--rbd-create-image", "--size", "16MB"])
+        assert f"Adding namespace 1 to {subsystem}: Successful" in caplog.text
+        caplog.clear()
+        cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool,
+             "--rbd-image", image21, "--rbd-create-image", "--size", "16MB"])
+        assert f"Adding namespace 2 to {subsystem}: Successful" in caplog.text
+        caplog.clear()
+        cli(["namespace", "add", "--subsystem", subsystem10, "--rbd-pool", pool,
+             "--rbd-image", image22, "--rbd-create-image", "--size", "16MB"])
+        assert f"Adding namespace 1 to {subsystem10}: Successful" in caplog.text
+        caplog.clear()
+        cli(["namespace", "add", "--subsystem", subsystem10, "--rbd-pool", pool,
+             "--rbd-image", image23, "--rbd-create-image", "--size", "16MB"])
+        assert f"Adding namespace 2 to {subsystem10}: Successful" in caplog.text
+        caplog.clear()
+        cli(["listener", "add", "--subsystem", subsystem, "--host-name", host_name,
+             "--verify-host-name", "-a", addr, "-s", "4440", "-f", "ipv4"])
+        assert f"Adding {subsystem} listener at {addr}:{4440}: Successful" in caplog.text
+        caplog.clear()
+        cli(["listener", "add", "--subsystem", subsystem10, "--host-name", host_name,
+             "--verify-host-name", "-a", addr, "-s", "4450", "-f", "ipv4"])
+        assert f"Adding {subsystem10} listener at {addr}:{4450}: Successful" in caplog.text
+        caplog.clear()
+        cli(["--format", "json", "listener", "list", "--subsystem", subsystem])
+        assert '"trsvcid": 4440,' in caplog.text
+        assert '"trsvcid": 4450,' not in caplog.text
+        caplog.clear()
+        cli(["--format", "json", "listener", "list", "--subsystem", subsystem10])
+        assert '"trsvcid": 4440,' not in caplog.text
+        assert '"trsvcid": 4450,' in caplog.text
+        found = 0
+        found10 = 0
+        state = gw.gateway_state.omap.get_state()
+        for key, val in state.items():
+            if not key.startswith(gw.gateway_state.local.NAMESPACE_PREFIX):
+                continue
+            valstr = val.decode()
+            if f'"subsystem_nqn": "{subsystem}",' in valstr:
+                found += 1
+            elif f'"subsystem_nqn": "{subsystem10}",' in valstr:
+                found10 += 1
+        assert found == 2
+        assert found10 == 2
+        caplog.clear()
+        cli(["subsystem", "del", "--subsystem", subsystem, "--force"])
+        assert f"Deleting subsystem {subsystem}: Successful" in caplog.text
+        found = 0
+        found10 = 0
+        state = gw.gateway_state.omap.get_state()
+        for key, val in state.items():
+            if not key.startswith(gw.gateway_state.local.NAMESPACE_PREFIX):
+                continue
+            valstr = val.decode()
+            if f'"subsystem_nqn": "{subsystem}",' in valstr:
+                found += 1
+            elif f'"subsystem_nqn": "{subsystem10}",' in valstr:
+                found10 += 1
+        assert found == 0
+        assert found10 == 2
