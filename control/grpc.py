@@ -47,6 +47,7 @@ from .utils import NICS
 from .state import GatewayState, GatewayStateHandler, OmapLock
 from .cephutils import CephUtils
 from .rebalance import Rebalance
+from .cluster import get_cluster_allocator
 
 # Assuming max of 32 gateways and protocol min 1 max 65519
 CNTLID_RANGE_SIZE = 2040
@@ -645,7 +646,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         self.bdev_params = {}
         self.subsystem_nsid_bdev_and_uuid = NamespacesLocalList()
         self.subsystem_listeners = defaultdict(set)
-        self._init_cluster_context()
+        self.cluster_allocator = get_cluster_allocator(config, self)
         self.subsys_max_ns = {}
         self.subsys_serial = {}
         self.host_info = SubsystemHostAuth()
@@ -859,79 +860,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         return resp
 
-    def _init_cluster_context(self) -> None:
-        """Init cluster context management variables"""
-        self.clusters = defaultdict(dict)
-        self.bdevs_per_cluster = self.config.getint_with_default("spdk", "bdevs_per_cluster", 32)
-        if self.bdevs_per_cluster < 1:
-            raise Exception(f"invalid configuration: spdk.bdevs_per_cluster_contexts "
-                            f"{self.bdevs_per_cluster} < 1")
-        self.logger.info(f"NVMeoF bdevs per cluster: {self.bdevs_per_cluster}")
-        self.librbd_core_mask = self.config.get_with_default("spdk", "librbd_core_mask", None)
-        self.rados_id = self.config.get_with_default("ceph", "id", "")
-        if self.rados_id == "":
-            self.rados_id = None
-
-    def _get_cluster(self, anagrp: int) -> str:
-        """Returns cluster name, enforcing bdev per cluster context"""
-        cluster_name = None
-        for name in self.clusters[anagrp]:
-            if self.clusters[anagrp][name] < self.bdevs_per_cluster:
-                cluster_name = name
-                break
-
-        if not cluster_name:
-            cluster_name = self._alloc_cluster(anagrp)
-            self.clusters[anagrp][cluster_name] = 1
-        else:
-            self.clusters[anagrp][cluster_name] += 1
-        self.logger.info(f"get_cluster {cluster_name=} number bdevs: "
-                         f"{self.clusters[anagrp][cluster_name]}")
-        return cluster_name
-
-    def _put_cluster(self, name: str) -> None:
-        for anagrp in self.clusters:
-            if name in self.clusters[anagrp]:
-                self.clusters[anagrp][name] -= 1
-                assert self.clusters[anagrp][name] >= 0
-                # free the cluster context if no longer used by any bdev
-                if self.clusters[anagrp][name] == 0:
-                    ret = rpc_bdev.bdev_rbd_unregister_cluster(
-                        self.spdk_rpc_client,
-                        name=name
-                    )
-                    self.logger.info(f"Free cluster {name=} {ret=}")
-                    assert ret
-                    self.clusters[anagrp].pop(name)
-                else:
-                    self.logger.info(f"put_cluster {name=} number bdevs: "
-                                     f"{self.clusters[anagrp][name]}")
-                return
-
-        assert False, f"Cluster {name} is not found"  # we should find the cluster in our state
-
-    def _alloc_cluster_name(self, anagrp: int) -> str:
-        """Allocates a new cluster name for ana group"""
-        x = 0
-        while True:
-            name = f"cluster_context_{anagrp}_{x}"
-            if name not in self.clusters[anagrp]:
-                return name
-            x += 1
-
-    def _alloc_cluster(self, anagrp: int) -> str:
-        """Allocates a new Rados cluster context"""
-        name = self._alloc_cluster_name(anagrp)
-        nonce = rpc_bdev.bdev_rbd_register_cluster(
-            self.spdk_rpc_client,
-            name=name,
-            user_id=self.rados_id,
-            core_mask=self.librbd_core_mask,
-        )
+    def set_cluster_nonce(self, name: str, nonce: str) -> None:
         with self.shared_state_lock:
-            self.logger.info(f"Allocated cluster {name=} {nonce=} {anagrp=}")
+            self.logger.info(f"Allocated cluster {name=} {nonce=}")
             self.cluster_nonce[name] = nonce
-        return name
 
     def _grpc_function_with_lock(self, func, request, context):
         with self.rpc_lock:
@@ -1038,7 +970,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         cluster_name = None
         try:
-            cluster_name = self._get_cluster(anagrp)
+            cluster_name = self.cluster_allocator.get_cluster(anagrp)
             bdev_name = rpc_bdev.bdev_rbd_create(
                 self.spdk_rpc_client,
                 name=name,
@@ -1057,7 +989,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
             self.logger.debug(f"bdev_rbd_create: {bdev_name}, cluster_name {cluster_name}")
         except Exception as ex:
             if cluster_name is not None:
-                self._put_cluster(cluster_name)
+                self.cluster_allocator.put_cluster(cluster_name)
             errmsg = f"bdev_rbd_create {name} failed"
             self.logger.exception(errmsg)
             errmsg = f"{errmsg} with:\n{ex}"
@@ -1161,7 +1093,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
             with self.shared_state_lock:
                 cluster = self.bdev_cluster[bdev_name]
             self.logger.debug(f"to delete_bdev {bdev_name} cluster {cluster} ")
-            self._put_cluster(cluster)
+            self.cluster_allocator.put_cluster(cluster)
             self.logger.debug(f"delete_bdev {bdev_name}: {ret}")
         except Exception as ex:
             errmsg = f"Failure deleting bdev {bdev_name}"

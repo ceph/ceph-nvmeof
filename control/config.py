@@ -28,6 +28,11 @@ class GatewayConfig:
             self.config = configparser.ConfigParser()
             self.config.read_file(f)
 
+    def is_param_defined(self, section, param):
+        if self.config.has_section(section):
+            return self.config.has_option(section, param)
+        return False
+
     def get(self, section, param):
         return self.config.get(section, param)
 

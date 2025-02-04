@@ -324,6 +324,52 @@ This is automatically done in the `make setup` step. The amount of hugepages can
 mem_size=4096
 ```
 
+### Mapping SPDK BDEVs into a CEPH RADOS Cluster Context
+
+NVMEoF namespaces utilize SPDK BDEVs which map into CEPH RADOS client cluster contexts, and the mapping strategy impacts both performance and resource allocation. Multiple BDEVs can be allocated to a single CEPH cluster context, influencing I/O efficiency, cluster scalability, and system overhead. The choice of mapping strategy affects:
+
+- _Cluster context allocation cost_: Creating and maintaining CEPH cluster contexts incurs resource overhead.
+- _I/O bottlenecks_: If too many BDEVs share the same context, contention may degrade performance.
+- _Scalability_: The approach must balance between efficient resource usage and avoiding excessive cluster context creation.
+
+#### Mapping Strategies
+
+##### 1. Legacy ANA Group-Based Mapping
+
+A CEPH cluster context is allocated per ANA group.
+
+The number of BDEVs assigned to each cluster context is controlled by the bdevs_per_cluster configuration parameter. This strategy ensures alignment with ANA group allocation but may lead to uneven distribution across cluster contexts.
+
+```ini
+[spdk]
+bdevs_per_cluster = 32
+```
+
+##### 2. Flat BDEVs per Cluster Mapping
+
+Ignores ANA groups and directly assigns BDEVs to cluster contexts. The number of BDEVs per cluster context is determined by the flat_bdevs_per_cluster parameter. Offers a more uniform distribution but might not align well with underlying ANA group optimizations.
+
+```ini
+[spdk]
+flat_bdevs_per_cluster = 32
+```
+- [Example configuration](https://github.com/baum/ceph-nvmeof/blob/cluster-allocation/tests/ceph-nvmeof.flat_bdevs_per_cluster.conf)
+
+##### 3. Cluster Pool-Based Mapping
+
+The maximum number of cluster contexts is pre-defined by the cluster_pool_size configuration parameter.
+
+When a new BDEV is created, it is assigned to the cluster context with the fewest BDEVs. This dynamic approach balances workload distribution but may introduce overhead in tracking and rebalancing BDEV allocations.
+
+```ini
+[spdk]
+cluster_pool_size = 32
+```
+- [Example configuration](https://github.com/baum/ceph-nvmeof/blob/cluster-allocation/tests/ceph-nvmeof.cluster_pool.conf)
+
+Choosing the appropriate strategy depends on workload characteristics, expected BDEV-to-cluster context ratios, and system performance goals.
+
+
 ## Development
 
 ### Set-up
