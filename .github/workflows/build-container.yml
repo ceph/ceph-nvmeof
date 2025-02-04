@@ -249,6 +249,17 @@ jobs:
           name: core_pytest_${{ matrix.test }}
           path: /tmp/coredump/core.*
 
+      - name: Copy ceph logs
+        if: success() || failure()
+        run: docker cp  ceph:/ceph/out /tmp/out
+
+      - name: Upload ceph logs
+        if: success() || failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ceph_out_pytest_${{ matrix.test }}
+          path: /tmp/out/*.log
+
       - name: Display logs
         if: success() || failure()
         run: |
@@ -355,6 +366,17 @@ jobs:
       #   uses: mxschmitt/action-tmate@v3
       #   with:
       #     limit-access-to-actor: true
+
+      - name: Copy ceph logs
+        if: success() || failure()
+        run: docker cp  ceph:/ceph/out /tmp/out
+
+      - name: Upload ceph logs
+        if: success() || failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ceph_out_demo_${{ matrix.security_protocol }}
+          path: /tmp/out/*.log
 
       - name: Display logs
         if: success() || failure()
@@ -646,7 +668,7 @@ jobs:
         if: success() || failure()
         uses: actions/upload-artifact@v4
         with:
-          name: ceph_out_${{ matrix.test }}
+          name: ceph_out_ha_${{ matrix.test }}
           path: /tmp/out/*.log
 
       - name: Display logs
