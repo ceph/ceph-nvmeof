@@ -47,6 +47,13 @@ In order to use the "make verify" option to validate the Python source files you
 pip install flake8
 ```
 
+If you don't have pip installed you can [install pip](https://phoenixnap.com/kb/how-to-install-pip-centos-7): 
+
+```
+curl -O https://bootstrap.pypa.io/get-pip.py
+sudo python get-pip.py
+```
+
 If you dont have make installed and encounter the error "make: command not found", you can install it by running the following:
 
 ```
