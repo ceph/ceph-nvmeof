@@ -47,6 +47,12 @@ In order to use the "make verify" option to validate the Python source files you
 pip install flake8
 ```
 
+If you dont have make installed and encounter the error "make: command not found", you can install it by running the following:
+
+```
+yum groupinstall "Development Tools"
+```
+
 ### Steps
 
 To launch a containerized environment with a Ceph cluster and a NVMe-oF gateway (this is not the [prescribed deployment for production purposes](https://docs.ceph.com/en/quincy/install/#recommended-methods), but for testing and development tasks alone):
