@@ -253,6 +253,8 @@ class GatewayServer:
         signal.signal(signal.SIGTERM, sigterm_handler)
 
         # Start monitor client
+        time.sleep(8)
+        # experimental timer, for investigation of redeploy issue
         self._start_monitor_client()
 
         self.ceph_utils = CephUtils(self.config)
