@@ -1107,6 +1107,12 @@ class GatewayStateHandler:
             omap_state_dict = self.omap.get_state()
             omap_version = int(omap_state_dict[self.omap.OMAP_VERSION_KEY])
             local_version = self.omap.get_local_version()
+            if (omap_version - local_version) > 1:
+                time.sleep(0.5)
+                # handle usecase when version number is updated before data written
+                # give time for data to be written
+                omap_state_dict = self.omap.get_state()
+                self.logger.info(f"versions diff: {omap_version - local_version}")
 
             self.logger.info(f"Check local version {local_version} against OMAP version "
                              f"{omap_version} ({self.id_text}).")
@@ -1124,9 +1130,6 @@ class GatewayStateHandler:
                 grouped_added = self._group_by_prefix(added, prefix_list)
                 # Find OMAP changes
                 same_keys = omap_state_keys & local_state_keys
-                for key in same_keys:
-                    self.logger.info(f"same key: {key}, local: {local_state_dict[key]},"
-                                     f"omap: {omap_state_dict[key]}")
                 changed = {
                     key: omap_state_dict[key]
                     for key in same_keys

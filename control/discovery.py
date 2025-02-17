@@ -1157,9 +1157,9 @@ class DiscoveryService:
         gateway_state = GatewayStateHandler(self.config, local_state,
                                             self.omap_state,
                                             self._state_notify_update,
-                                            dummy_crypto, f"discovery-{socket.gethostname()}")
-        gateway_state.start_update()
-
+                                            dummy_crypto,
+                                            f"discovery-{socket.gethostname()}")  # noqa: F841
+        self.logger.debug(f" state {gateway_state}")
         try:
             while True:
                 self.update_log_level()
