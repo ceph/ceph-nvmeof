@@ -189,11 +189,11 @@ class ClusterPoolAllocator(ClusterAllocationStrategy):
     def __init__(self, config: GatewayConfig, gs) -> None:
         """Init cluster context management variables"""
         self._init_common(config, gs)
-        self.pool_size = self.config.getint("spdk", "cluster_pool_size")
+        self.pool_size = self.config.getint("spdk", "cluster_connections")
         if self.pool_size < 1:
             raise Exception(
-                f"invalid configuration: spdk.cluster_pool_size "
-                f"{self.cluster_pool_size} < 1"
+                f"invalid configuration: spdk.cluster_connections "
+                f"{self.cluster_connections} < 1"
             )
         self.gs.logger.info(f"NVMeoF cluster pool size: {self.pool_size}")
         # Initialize cluster names as "cluster_1", "cluster_2", ..., "cluster_n"
@@ -251,7 +251,7 @@ def get_cluster_allocator(config: GatewayConfig, gs) -> ClusterAllocationStrateg
         return AnaGrpBdevsPerCluster(config, gs)
     elif config.is_param_defined("spdk", "flat_bdevs_per_cluster"):
         return FlatBdevsPerCluster(config, gs)
-    elif config.is_param_defined("spdk", "cluster_pool_size"):
+    elif config.is_param_defined("spdk", "cluster_connections"):
         return ClusterPoolAllocator(config, gs)
     else:
         raise ValueError("Unknown cluster allocator in the config")

@@ -383,13 +383,13 @@ flat_bdevs_per_cluster = 32
 
 ##### 3. Cluster Pool-Based Mapping
 
-The maximum number of cluster contexts is pre-defined by the cluster_pool_size configuration parameter.
+The maximum number of cluster contexts is pre-defined by the cluster_connections configuration parameter.
 
 When a new BDEV is created, it is assigned to the cluster context with the fewest BDEVs. This dynamic approach balances workload distribution but may introduce overhead in tracking and rebalancing BDEV allocations.
 
 ```ini
 [spdk]
-cluster_pool_size = 32
+cluster_connections = 32
 ```
 - [Example configuration](https://github.com/baum/ceph-nvmeof/blob/cluster-allocation/tests/ceph-nvmeof.cluster_pool.conf)
 
