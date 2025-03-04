@@ -34,8 +34,8 @@ done
 # Remove previous run data
 hostname
 rm -rf $RUNNER_FILDER/ceph-nvmeof-atom
-sudo rm -rf /root/.ssh/atom_backup/artifact/multiIBMCloudServers_m6/*
-sudo ls -lta /root/.ssh/atom_backup/artifact/multiIBMCloudServers_m6
+sudo rm -rf /root/.ssh/atom_backup/artifact/multiIBMCloudServers_m7/*
+sudo ls -lta /root/.ssh/atom_backup/artifact/multiIBMCloudServers_m7
 
 # Cloning atom repo
 cd $RUNNER_FILDER
@@ -85,5 +85,5 @@ sudo docker run \
     --skip-ns-rebalancing-test \
     --journalctl-to-console \
     --dont-power-off-cloud-vms \
-    --env=m6
+    --env=m7
 set +x
