@@ -16,7 +16,7 @@ ATOM_SHA=$3
 ACTION_URL=$4
 NIGHTLY=$5
 
-RUNNER_FILDER='/home/cephnvme/actions-runner-ceph'
+RUNNER_FILDER='/home/cephnvme/actions-runner-ceph-m7'
 
 # Check if cluster is busy with another run
 while true; do
@@ -34,8 +34,8 @@ done
 # Remove previous run data
 hostname
 rm -rf $RUNNER_FILDER/ceph-nvmeof-atom
-sudo rm -rf /root/.ssh/atom_backup/artifact/multiIBMCloudServers_m6/*
-sudo ls -lta /root/.ssh/atom_backup/artifact/multiIBMCloudServers_m6
+sudo rm -rf /root/.ssh/atom_backup/artifact/multiIBMCloudServers_m7/*
+sudo ls -lta /root/.ssh/atom_backup/artifact/multiIBMCloudServers_m7
 
 # Cloning atom repo
 cd $RUNNER_FILDER
@@ -68,6 +68,8 @@ sudo docker run \
     --failover-num=2 \
     --failover-num-after-upgrade=2 \
     --rbd-size=200M \
+    --seed=0 \
+    --vhosts=4 \
     --fio-devices-num=1 \
     --lb-timeout=20 \
     --config-dbg-mon=10 \
@@ -79,11 +81,11 @@ sudo docker run \
     --nvmeof-daemon-remove \
     --redeploy-gws \
     --github-action-deployment \
-    --skip-di-test \
-    --skip-lb-group-change-test \
-    --skip-block-list-test \
-    --skip-ns-rebalancing-test \
+    --mtls \
     --journalctl-to-console \
     --dont-power-off-cloud-vms \
-    --env=m6
+    --skip-lb-group-change-test \
+    --ibm-cloud-key=nokey \
+    --github-nvmeof-token=nokey \
+    --env=m7
 set +x
