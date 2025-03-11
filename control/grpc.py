@@ -604,7 +604,6 @@ class GatewayService(pb2_grpc.GatewayServicer):
             "gateway",
             "max_namespaces",
             GatewayService.MAX_NAMESPACES_DEFAULT)
-        self.logger.warning(f"Max number of namespaces is {self.max_namespaces}")     
         self.max_namespaces_per_subsystem = self.config.getint_with_default(
             "gateway",
             "max_namespaces_per_subsystem",
