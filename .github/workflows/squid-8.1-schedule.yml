@@ -73,6 +73,7 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
           ref: 'squid_8.1'  # Checkout the squid_8.1 branch
 
       - name: Build container images - ceph
@@ -102,6 +103,7 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
           ref: 'squid_8.1'  # Checkout the squid_8.1 branch
 
       - name: Setup huge pages
@@ -232,6 +234,7 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
           ref: 'squid_8.1'  # Checkout the squid_8.1 branch
 
       - name: Setup huge-pages
@@ -351,6 +354,7 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
           ref: 'squid_8.1'  # Checkout the squid_8.1 branch
 
       - name: Setup huge-pages
@@ -534,6 +538,7 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
           ref: 'squid_8.1'  # Checkout the squid_8.1 branch
 
       - name: Setup huge-pages
@@ -641,6 +646,7 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
           ref: 'squid_8.1'  # Checkout the squid_8.1 branch
 
       - name: Download container images
