@@ -1,21 +1,9 @@
 ---
 # yamllint disable rule:line-length
-name: "CI"
+name: "8.1 Release Nightly Runs"
 on:  # yamllint disable rule:truthy
-  push:
-    tags:
-      - '*'
-    branches:
-      - '*'
-  pull_request:
-    branches:
-      - '*'
   schedule:
     - cron: '0 0 * * *'
-  workflow_dispatch:
-  release:
-    types:
-      - created
 # Credit: https://stackoverflow.com/a/72408109
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -29,6 +17,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
+          ref: 'squid_8.1'  # Checkout the squid_8.1 branch
           submodules: recursive
 
       - name: Install Flake8
@@ -84,6 +73,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: 'squid_8.1'  # Checkout the squid_8.1 branch
 
       - name: Build container images - ceph
         run: make build SVC=ceph
@@ -112,6 +103,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: 'squid_8.1'  # Checkout the squid_8.1 branch
 
       - name: Setup huge pages
         run: |
@@ -227,6 +220,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: 'squid_8.1'  # Checkout the squid_8.1 branch
 
       - name: Setup huge-pages
         run: make setup HUGEPAGES=$HUGEPAGES
@@ -331,6 +326,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: 'squid_8.1'  # Checkout the squid_8.1 branch
 
       - name: Setup huge-pages
         run: make setup HUGEPAGES=$HUGEPAGES
@@ -499,6 +496,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: 'squid_8.1'  # Checkout the squid_8.1 branch
 
       - name: Setup huge-pages
         run: make setup HUGEPAGES=$HUGEPAGES
@@ -583,46 +582,16 @@ jobs:
           make down
           make clean
 
-  atom:
-    needs: [build, build-ceph]
-    if: github.repository == 'ceph/ceph-nvmeof' && github.event_name != 'schedule'
-    runs-on: dailyAtomRunner
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Download container images
-        uses: actions/download-artifact@v4
-        with:
-          pattern: container_images_nvmeof
-          merge-multiple: true
-
-      - name: Cluster build and Atom tests run
-        if: always()
-        run: |
-          . .env
-          ACTION_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          ./tests/atom/clusterBuildTestsRun.sh $NVMEOF_VERSION $CEPH_BRANCH $CEPH_SHA $ATOM_SHA $ACTION_URL
-
-      - name: Atom artifact build
-        if: always()
-        run: ./tests/atom/cpArtifactAndCleanup.sh
-
-      - name: Upload artifact for non-schedule events
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: atom-artifact
-          path: /home/cephnvme/artifact_m7.tar.gz
-
   atom-nightly:
     needs: [build, build-ceph]
-    if: github.repository == 'ceph/ceph-nvmeof' && github.event_name == 'schedule'
+    if: github.repository == 'ceph/ceph-nvmeof'
     runs-on: nightlyAtomRunner
     timeout-minutes: 1440
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: 'squid_8.1'  # Checkout the squid_8.1 branch
 
       - name: Download container images
         uses: actions/download-artifact@v4
@@ -631,7 +600,6 @@ jobs:
           merge-multiple: true
             
       - name: Cluster build and Atom nightly tests run
-        if: always()
         run: |
           . .env
           ACTION_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
@@ -655,65 +623,3 @@ jobs:
         with:
           name: atom-artifact
           path: /home/cephnvme/artifact_m8.tar.gz
-
-  pull-and-run-images:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: setup
-        run: make setup
-
-      - name: Pull Docker images from Quay.io
-        run: |
-          make pull || true  # Continue even if some images fail to pull
-
-      - name: List pulled images
-        run: docker images
-
-      - name: Verify downloaded images
-        run: |
-          . .env
-          REQUIRED_IMAGES=(
-            $QUAY_SPDK:$SPDK_VERSION
-            $QUAY_NVMEOFCLI:$NVMEOF_CLI_VERSION
-            $QUAY_NVMEOF:$NVMEOF_VERSION
-            $QUAY_CEPH:$CEPH_VERSION
-          )
-            
-          echo "Checking which required images are available:"
-          for image in "${REQUIRED_IMAGES[@]}"; do
-            if docker image inspect "$image" > /dev/null 2>&1; then
-              echo "✅ $image is available."
-            else
-              echo "❌ $image is missing."
-              exit 1  # Fail the job
-            fi
-          done
-
-      - name: Run Docker containers
-        run: make up
-
-      - name: Wait for the Gateway to be listening
-        timeout-minutes: 3
-        run: |
-          . .env
-
-          echo using gateway $NVMEOF_IP_ADDRESS port $NVMEOF_GW_PORT
-          until nc -z $NVMEOF_IP_ADDRESS $NVMEOF_GW_PORT; do
-            echo -n .
-            sleep ${{ env.WAIT_INTERVAL_SECS }}
-          done
-        
-      - name: check health
-        run: make ps
-
-      - name: Run demo
-        run: make demo
-      
-      - name: Tear down
-        if: success() || failure()
-        run: |
-          make down
-          make clean
