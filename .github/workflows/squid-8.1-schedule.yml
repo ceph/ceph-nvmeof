@@ -1,19 +1,9 @@
 ---
 # yamllint disable rule:line-length
-name: "CI"
+name: "8.1 Release Nightly Runs"
 on:  # yamllint disable rule:truthy
-  push:
-    tags:
-      - '*'
-    branches:
-      - '*'
-  pull_request:
-    branches:
-      - '*'
-  workflow_dispatch:
-  release:
-    types:
-      - created
+  schedule:
+    - cron: '0 0 * * *'
 # Credit: https://stackoverflow.com/a/72408109
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -27,7 +17,14 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
+          ref: 'squid_8.1'  # Checkout the squid_8.1 branch
           submodules: recursive
+
+      - name: Install Flake8
+        run: pip install flake8
+            
+      - name: Verify Python source files
+        run: make verify
 
       - name: Build container images - spdk
         run: make build SVC="spdk" SPDK_TARGET_ARCH=x86-64-v2
@@ -47,6 +44,7 @@ jobs:
           docker save $QUAY_NVMEOF:$NVMEOF_VERSION > nvmeof.tar
           docker save $QUAY_NVMEOFCLI:$NVMEOF_VERSION > nvmeof-cli.tar
           docker save bdevperf > bdevperf.tar
+          docker save $QUAY_SPDK:$SPDK_VERSION > spdk.tar
 
       - name: Upload bdevperf container image
         uses: actions/upload-artifact@v4
@@ -63,11 +61,20 @@ jobs:
             nvmeof.tar
             nvmeof-cli.tar
 
+      - name: Upload spdk container image
+        uses: actions/upload-artifact@v4
+        with:
+          name: container_image_spdk
+          path: |
+            spdk.tar
+
   build-ceph:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: 'squid_8.1'  # Checkout the squid_8.1 branch
 
       - name: Build container images - ceph
         run: make build SVC=ceph
@@ -89,13 +96,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        test: ["cli", "cli_change_lb", "state", "multi_gateway", "server", "grpc", "omap_lock", "old_omap", "log_files", "nsid", "psk"]
+        test: ["cli", "cli_change_lb", "cli_change_keys", "cli_change_ns_visibility", "cli_trash_rbd", "state", "multi_gateway", "server", "grpc", "omap_lock", "log_files", "nsid", "psk", "dhchap", "subsys_grp_name_append", "max_subsystems"]
     runs-on: ubuntu-latest
     env:
       HUGEPAGES: 512  # for multi gateway test, approx 256 per gateway instance
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: 'squid_8.1'  # Checkout the squid_8.1 branch
 
       - name: Setup huge pages
         run: |
@@ -201,12 +210,18 @@ jobs:
 
   demo:
     needs: [build, build-ceph]
+    strategy:
+      fail-fast: false
+      matrix:
+        security_protocol: ["unsecured", "psk", "dhchap"]
     runs-on: ubuntu-latest
     env:
       HUGEPAGES: 512
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: 'squid_8.1'  # Checkout the squid_8.1 branch
 
       - name: Setup huge-pages
         run: make setup HUGEPAGES=$HUGEPAGES
@@ -248,9 +263,9 @@ jobs:
         if: success() || failure()
         run: make top
 
-      - name: Test
+      - name: Test ${{ matrix.security_protocol }}
         run: |
-          make demo OPTS=-T
+          ./tests/ha/demo_test.sh test_${{ matrix.security_protocol }}
 
       - name: List resources
         run: |
@@ -258,53 +273,18 @@ jobs:
           shopt -s expand_aliases
           eval $(make alias)
           cephnvmf subsystem list
-          subs=$(cephnvmf --output stdio --format json subsystem list | grep nqn | sed 's/"nqn": "//' | sed 's/",$//')
+          subs=$(cephnvmf --output stdio --format json subsystem list | jq -r '.subsystems[].nqn')
           for sub in $subs
           do
               cephnvmf namespace list --subsystem $sub
               cephnvmf listener list --subsystem $sub
               cephnvmf host list --subsystem $sub
           done
+          cephnvmf namespace list
 
       - name: Run bdevperf
         run: |
-          # see https://spdk.io/doc/nvmf_multipath_howto.html
-          shopt -s expand_aliases
-          eval $(make alias)
-          . .env
-          set -x
-          echo -n "ℹ️  Starting bdevperf container"
-          docker compose up -d bdevperf
-          sleep 10
-          echo "ℹ️  bdevperf start up logs"
-          make logs SVC=bdevperf
-          eval $(make run SVC=bdevperf OPTS="--entrypoint=env" | grep BDEVPERF_SOCKET | tr -d '\n\r' )
-
-          rpc="/usr/libexec/spdk/scripts/rpc.py"
-          echo "ℹ️  bdevperf bdev_nvme_set_options"
-          make exec SVC=bdevperf OPTS=-T CMD="$rpc -v -s $BDEVPERF_SOCKET bdev_nvme_set_options -r -1"
-          echo "ℹ️  bdevperf tcp connect ip: $NVMEOF_IP_ADDRESS port: $NVMEOF_IO_PORT nqn: $NQN"
-          make exec SVC=bdevperf OPTS=-T CMD="$rpc -v -s $BDEVPERF_SOCKET bdev_nvme_attach_controller -b Nvme0 -t tcp -a $NVMEOF_IP_ADDRESS -s $NVMEOF_IO_PORT -f ipv4 -n $NQN -q ${NQN}host -l -1 -o 10"
-          echo "ℹ️  verify connection list"
-          conns=$(cephnvmf --output stdio --format json connection list --subsystem $NQN)
-          echo $conns | grep -q '"status": 0'
-          echo $conns | grep -q "\"nqn\": \"${NQN}host\""
-          echo $conns | grep -q "\"trsvcid\": ${NVMEOF_IO_PORT}"
-          echo $conns | grep -q "\"traddr\": \"${NVMEOF_IP_ADDRESS}\""
-          echo $conns | grep -q "\"adrfam\": \"ipv4\""
-          echo $conns | grep -q "\"trtype\": \"TCP\""
-          con_cnt=$(echo $conns | xargs -n 1 | grep traddr | wc -l)
-          if [ $con_cnt -ne 1 ]; then
-              echo "Number of connections ${con_cnt}, expected 1 list: ${conns}"
-              exit 1
-          fi
-          echo $conns | grep -q "\"qpairs_count\": 1"
-          echo $conns | grep -q "\"connected\": true"
-          echo "ℹ️  bdevperf perform_tests"
-          eval $(make run SVC=bdevperf OPTS="--entrypoint=env" | grep BDEVPERF_TEST_DURATION | tr -d '\n\r' )
-          timeout=$(expr $BDEVPERF_TEST_DURATION \* 2)
-          bdevperf="/usr/libexec/spdk/scripts/bdevperf.py"
-          make exec SVC=bdevperf OPTS=-T CMD="$bdevperf -v -t $timeout -s $BDEVPERF_SOCKET perform_tests"
+          ./tests/ha/demo_test.sh bdevperf_${{ matrix.security_protocol }}
 
       # For debugging purposes (provides an SSH connection to the runner)
       # - name: Setup tmate session
@@ -312,158 +292,16 @@ jobs:
       #   with:
       #     limit-access-to-actor: true
 
-      - name: Display logs
+      - name: Copy ceph logs
         if: success() || failure()
-        run: make logs OPTS=''
+        run: docker cp  ceph:/ceph/out /tmp/out
 
-      - name: Tear down
+      - name: Upload ceph logs
         if: success() || failure()
-        run: |
-          make down
-          make clean
-
-  demo-secure:
-    needs: [build, build-ceph]
-    runs-on: ubuntu-latest
-    env:
-      HUGEPAGES: 512
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup huge-pages
-        run: make setup HUGEPAGES=$HUGEPAGES
-
-      - name: Download container images
-        uses: actions/download-artifact@v4
+        uses: actions/upload-artifact@v4
         with:
-          pattern: container_images*
-          merge-multiple: true
-
-      - name: Load container images
-        run: |
-          docker load < nvmeof.tar
-          docker load < nvmeof-cli.tar
-          docker load < ceph.tar
-          docker load < bdevperf.tar
-
-      - name: Start containers
-        timeout-minutes: 3
-        run: |
-          make up
-
-      - name: Wait for the Gateway to be listening
-        timeout-minutes: 3
-        run: |
-          . .env
-
-          echo using gateway $NVMEOF_IP_ADDRESS port $NVMEOF_GW_PORT
-          until nc -z $NVMEOF_IP_ADDRESS $NVMEOF_GW_PORT; do
-            echo -n .
-            sleep ${{ env.WAIT_INTERVAL_SECS }}
-          done
-
-      - name: List containers
-        if: success() || failure()
-        run: make ps
-
-      - name: List processes
-        if: success() || failure()
-        run: make top
-
-      - name: Test
-        run: |
-          . .env
-          port2=`expr ${NVMEOF_IO_PORT} + 10`
-          make demosecure OPTS=-T HOSTNQN="${NQN}host" HOSTNQN2="${NQN}host2" NVMEOF_IO_PORT2=${port2}
-
-      - name: List resources
-        run: |
-          # https://github.com/actions/toolkit/issues/766
-          shopt -s expand_aliases
-          eval $(make alias)
-          cephnvmf get_subsystems
-          cephnvmf subsystem list
-          subs=$(cephnvmf --output stdio --format json subsystem list | grep nqn | sed 's/"nqn": "//' | sed 's/",$//')
-          for sub in $subs
-          do
-              cephnvmf namespace list --subsystem $sub
-              cephnvmf listener list --subsystem $sub
-              cephnvmf host list --subsystem $sub
-          done
-
-      - name: Run bdevperf
-        run: |
-          # see https://spdk.io/doc/nvmf_multipath_howto.html
-          shopt -s expand_aliases
-          eval $(make alias)
-          . .env
-          set -x
-          echo -n "ℹ️  Starting bdevperf container"
-          docker compose up -d bdevperf
-          sleep 10
-          echo "ℹ️  bdevperf start up logs"
-          make logs SVC=bdevperf
-          eval $(make run SVC=bdevperf OPTS="--entrypoint=env" | grep BDEVPERF_SOCKET | tr -d '\n\r' )
-          psk_path_prefix="/tmp/psk/"
-          psk_path="${psk_path_prefix}${NQN}"
-          mkdir -p ${psk_path}
-          echo -n "NVMeTLSkey-1:01:YzrPElk4OYy1uUERriPwiiyEJE/+J5ckYpLB+5NHMsR2iBuT:" > ${psk_path}/${NQN}host
-          chmod 600 ${psk_path}/${NQN}host
-          docker cp ${psk_path_prefix} ${BDEVPERF_CONTAINER_NAME}:${psk_path_prefix}
-
-          rpc="/usr/libexec/spdk/scripts/rpc.py"
-          port2=`expr ${NVMEOF_IO_PORT} + 10`
-          echo "ℹ️  bdevperf bdev_nvme_set_options"
-          make exec SVC=bdevperf OPTS=-T CMD="$rpc -v -s $BDEVPERF_SOCKET bdev_nvme_set_options -r -1"
-          echo "ℹ️  bdevperf tcp connect ip: $NVMEOF_IP_ADDRESS port: $NVMEOF_IO_PORT nqn: $NQN"
-          make exec SVC=bdevperf OPTS=-T CMD="$rpc -v -s $BDEVPERF_SOCKET bdev_nvme_attach_controller -b Nvme0 -t tcp -a $NVMEOF_IP_ADDRESS -s $NVMEOF_IO_PORT -f ipv4 -n $NQN -q ${NQN}host -l -1 -o 10 --psk ${psk_path}/${NQN}host"
-          echo "ℹ️  verify connection list"
-          conns=$(cephnvmf --output stdio --format json connection list --subsystem $NQN)
-          echo $conns | grep -q '"status": 0'
-          echo $conns | grep -q "\"nqn\": \"${NQN}host\""
-          echo $conns | grep -q "\"trsvcid\": ${NVMEOF_IO_PORT}"
-          echo $conns | grep -q "\"traddr\": \"${NVMEOF_IP_ADDRESS}\""
-          echo $conns | grep -q "\"adrfam\": \"ipv4\""
-          echo $conns | grep -q "\"trtype\": \"TCP\""
-          echo $conns | grep -q "\"qpairs_count\": 1"
-          echo $conns | grep -q "\"connected\": true"
-          echo $conns | grep -q "\"secure\": true"
-          echo $conns | grep -q -v "\"secure\": false"
-          echo $conns | grep -q "\"use_psk\": true"
-          echo $conns | grep -q "\"use_psk\": false"
-          con_cnt=$(echo $conns | xargs -n 2 | grep traddr | grep -v "n/a" | wc -l)
-          if [ $con_cnt -ne 1 ]; then
-              echo "Number of connections ${con_cnt}, expected 1, list: ${conns}"
-              exit 1
-          fi
-          echo "ℹ️  bdevperf tcp connect ip: $NVMEOF_IP_ADDRESS port: ${port2} nqn: ${NQN}host2"
-          make exec SVC=bdevperf OPTS=-T CMD="$rpc -v -s $BDEVPERF_SOCKET bdev_nvme_attach_controller -b Nvme1 -t tcp -a $NVMEOF_IP_ADDRESS -s ${port2} -f ipv4 -n $NQN -q "${NQN}host2" -l -1 -o 10"
-          echo "ℹ️  verify connection list again"
-          conns=$(cephnvmf --output stdio --format json connection list --subsystem $NQN)
-          con_cnt=$(echo $conns | xargs -n 2 | grep traddr | grep -v "n/a" | wc -l)
-          if [ $con_cnt -ne 2 ]; then
-              echo "Number of connections ${con_cnt}, expected 2, list: ${conns}"
-              exit 1
-          fi
-          echo $conns | grep -q "\"nqn\": \"${NQN}host2\""
-          echo $conns | grep -q "\"trsvcid\": ${port2}"
-          echo $conns | grep -q "\"secure\": true"
-          echo $conns | grep -q "\"secure\": false"
-          echo $conns | grep -q "\"use_psk\": true"
-          echo $conns | grep -q "\"use_psk\": false"
-          echo "ℹ️  bdevperf tcp connect ip: $NVMEOF_IP_ADDRESS port: ${port2} nqn: ${NQN}host2"
-          echo "ℹ️  bdevperf perform_tests"
-          eval $(make run SVC=bdevperf OPTS="--entrypoint=env" | grep BDEVPERF_TEST_DURATION | tr -d '\n\r' )
-          timeout=$(expr $BDEVPERF_TEST_DURATION \* 2)
-          bdevperf="/usr/libexec/spdk/scripts/bdevperf.py"
-          make exec SVC=bdevperf OPTS=-T CMD="$bdevperf -v -t $timeout -s $BDEVPERF_SOCKET perform_tests"
-
-      # For debugging purposes (provides an SSH connection to the runner)
-      # - name: Setup tmate session
-      #   uses: mxschmitt/action-tmate@v3
-      #   with:
-      #     limit-access-to-actor: true
+          name: ceph_out_demo_${{ matrix.security_protocol }}
+          path: /tmp/out/*.log
 
       - name: Display logs
         if: success() || failure()
@@ -488,6 +326,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: 'squid_8.1'  # Checkout the squid_8.1 branch
 
       - name: Setup huge-pages
         run: make setup HUGEPAGES=$HUGEPAGES
@@ -648,7 +488,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        test: ["sanity", "ns_lb_change", "state_transitions", "state_transitions_both_gws", "state_transitions_loop", "state_transitions_rand_loop", "late_registration", "late_registration_loop", "4gws", "4gws_loop", "4gws_create_delete", "4gws_create_delete_loop", "namespaces", "namespaces_loop", "mtls", "notify", "ceph_status", "main_exit", "set_qos", "set_qos_2ms"]
+        test: ["sanity", "no_huge", "ns_lb_change", "no_subsystems", "auto_load_balance", "state_transitions", "state_transitions_both_gws", "state_transitions_loop", "state_transitions_rand_loop", "late_registration", "late_registration_loop", "4gws", "4gws_loop", "4gws_create_delete", "4gws_create_delete_loop", "namespaces", "namespaces_loop", "mtls", "notify", "ceph_status", "blocklist", "main_exit", "cluster_pool", "flat_bdev_per_cluster", "set_qos", "set_qos_2ms"]
     runs-on: ubuntu-latest
     env:
       HUGEPAGES: 1024  # 4 spdk instances
@@ -656,6 +496,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: 'squid_8.1'  # Checkout the squid_8.1 branch
 
       - name: Setup huge-pages
         run: make setup HUGEPAGES=$HUGEPAGES
@@ -714,7 +556,7 @@ jobs:
           fi
 
       - name: Run HA ${{ matrix.test }} test
-        timeout-minutes: 30
+        timeout-minutes: 45
         run: |
           . .env
           source "tests/ha/${{ matrix.test }}.sh"
@@ -727,7 +569,7 @@ jobs:
         if: success() || failure()
         uses: actions/upload-artifact@v4
         with:
-          name: ceph_out_${{ matrix.test }}
+          name: ceph_out_ha_${{ matrix.test }}
           path: /tmp/out/*.log
 
       - name: Display logs
@@ -740,96 +582,44 @@ jobs:
           make down
           make clean
 
-  atom:
+  atom-nightly:
     needs: [build, build-ceph]
-    if: github.repository == 'ceph/ceph-nvmeof' && github.event_name != 'schedule'
-    runs-on: dailyAtomRunner
+    if: github.repository == 'ceph/ceph-nvmeof'
+    runs-on: nightlyAtomRunner
+    timeout-minutes: 1440
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: 'squid_8.1'  # Checkout the squid_8.1 branch
 
       - name: Download container images
         uses: actions/download-artifact@v4
         with:
           pattern: container_images_nvmeof
           merge-multiple: true
-
-      - name: Cluster build and Atom tests run
-        if: always()
+            
+      - name: Cluster build and Atom nightly tests run
         run: |
           . .env
           ACTION_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          ./tests/atom/clusterBuildTestsRun.sh $NVMEOF_VERSION $CEPH_BRANCH $CEPH_SHA $ATOM_SHA $ACTION_URL
+          stdbuf -oL -eL ./tests/atom/clusterBuildTestsRun.sh $NVMEOF_VERSION $CEPH_BRANCH $CEPH_SHA $ATOM_SHA $ACTION_URL 'nightly' 2>&1 | tee nightly_nvmeof_console.log
+          exit ${PIPESTATUS[0]}
 
-      - name: Atom artifact build
+      - name: Atom artifact build nightly
         if: always()
-        run: ./tests/atom/cpArtifactAndCleanup.sh
+        run: ./tests/atom/cpArtifactAndCleanup.sh 'nightly'
 
-      - name: Upload artifact for non-schedule events
+      - name: Upload nightly nvmeof console as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-nvmeof-full-console
+          path: nightly_nvmeof_console.log
+
+      - name: Upload artifact for schedule events
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: atom-artifact
-          path: /home/cephnvme/artifact_m7.tar.gz
-
-  pull-and-run-images:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: setup
-        run: make setup
-
-      - name: Pull Docker images from Quay.io
-        run: |
-          make pull || true  # Continue even if some images fail to pull
-
-      - name: List pulled images
-        run: docker images
-
-      - name: Verify downloaded images
-        run: |
-          . .env
-          REQUIRED_IMAGES=(
-            $QUAY_SPDK:$SPDK_VERSION
-            $QUAY_NVMEOFCLI:$NVMEOF_CLI_VERSION
-            $QUAY_NVMEOF:$NVMEOF_VERSION
-            $QUAY_CEPH:$CEPH_VERSION
-          )
-            
-          echo "Checking which required images are available:"
-          for image in "${REQUIRED_IMAGES[@]}"; do
-            if docker image inspect "$image" > /dev/null 2>&1; then
-              echo "✅ $image is available."
-            else
-              echo "❌ $image is missing."
-              exit 1  # Fail the job
-            fi
-          done
-
-      - name: Run Docker containers
-        run: make up
-
-      - name: Wait for the Gateway to be listening
-        timeout-minutes: 3
-        run: |
-          . .env
-
-          echo using gateway $NVMEOF_IP_ADDRESS port $NVMEOF_GW_PORT
-          until nc -z $NVMEOF_IP_ADDRESS $NVMEOF_GW_PORT; do
-            echo -n .
-            sleep ${{ env.WAIT_INTERVAL_SECS }}
-          done
-        
-      - name: check health
-        run: make ps
-
-      - name: Run demo
-        run: make demo
-      
-      - name: Tear down
-        if: success() || failure()
-        run: |
-          make down
-          make clean
+          path: /home/cephnvme/artifact_m8.tar.gz
