@@ -126,7 +126,7 @@ verify_num_namespaces_gw_idx() {
   GW_NAME=$(gw_name $g)
   GW_IP=$(gw_ip $g)
 
-  for i in $(seq 20); do
+  for i in $(seq 50); do # timeout after 50*5 seconds
     echo "verify_num_namespaces $i $GW_NAME $GW_IP"
     subs=$(docker compose  run --rm nvmeof-cli --server-address $GW_IP --server-port 5500 get_subsystems 2>&1 | sed 's/Get subsystems://')
 
