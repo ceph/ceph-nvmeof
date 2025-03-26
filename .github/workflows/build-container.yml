@@ -792,7 +792,6 @@ jobs:
         run: |
           . .env
           REQUIRED_IMAGES=(
-            $QUAY_SPDK:$SPDK_VERSION
             $QUAY_NVMEOFCLI:$NVMEOF_CLI_VERSION
             $QUAY_NVMEOF:$NVMEOF_VERSION
             $QUAY_CEPH:$CEPH_VERSION
