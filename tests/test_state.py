@@ -111,7 +111,6 @@ def test_state_notify_update(config, ioctx, local_state, omap_state):
 
     def _state_notify_update(update, is_add_req):
         nonlocal update_counter
-        nonlocal notify_event
         update_counter += 1
         elapsed = time.time() - start
         assert elapsed < update_interval_sec
@@ -140,7 +139,7 @@ def test_state_notify_update(config, ioctx, local_state, omap_state):
     version = 1
     update_interval_sec = 10
     state = GatewayStateHandler(config, local_state, omap_state,
-                                _state_notify_update, "test")
+                                _state_notify_update, None, "test")
     key = "namespace_test"
     state.update_interval = update_interval_sec
     state.use_notify = True
