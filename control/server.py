@@ -399,6 +399,9 @@ class GatewayServer:
         assert self.discovery_pid is None
         self.discovery_pid = os.fork()
         if self.discovery_pid == 0:
+            self.logger.info("Forked for discovery service, restore default signal handlers")
+            signal.signal(signal.SIGCHLD, signal.SIG_DFL)
+            signal.signal(signal.SIGTERM, signal.SIG_DFL)
             self.logger.info("Starting ceph nvmeof discovery service")
             with DiscoveryService(self.config) as discovery:
                 discovery.start_service()
