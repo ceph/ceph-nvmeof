@@ -69,6 +69,33 @@ class TestServer(unittest.TestCase):
         time.sleep(10)     # let it dump
         self.assert_no_core_files(self.core_dir)
 
+    def test_discovery_exit(self):
+        """Tests discovery service sub process exiting."""
+        test_config = copy.deepcopy(self.config)
+        signals = [signal.SIGABRT, signal.SIGTERM, signal.SIGKILL]
+
+        for sig in signals:
+            with self.assertRaises(SystemExit) as cm:
+                with GatewayServer(test_config) as gateway:
+                    gateway.set_group_id(0)
+                    gateway.serve()
+
+                    # Give the gateway some time to start
+                    time.sleep(2)
+
+                    # Send signal to the discovery service process
+                    assert gateway.discovery_pid
+                    os.kill(gateway.discovery_pid, sig)
+
+                    # Block on running keep alive ping
+                    gateway.keep_alive()
+
+            # Assert error exit code
+            self.validate_exception(cm.exception)
+
+            # Clean up cores
+            self.remove_core_files(self.core_dir)
+
     def test_monc_exit(self):
         """Tests monitor client sub process abort."""
         config_monc_abort = copy.deepcopy(self.config)
