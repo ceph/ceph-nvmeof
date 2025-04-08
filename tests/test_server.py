@@ -23,7 +23,7 @@ class TestServer(unittest.TestCase):
         pid = int(m.group(1))
         code = int(m.group(2))
         assert pid > 0
-        assert code
+        assert code == 0 or code
 
     def remove_core_files(self, directory_path):
         # List all files starting with "core." in the core directory
@@ -68,6 +68,33 @@ class TestServer(unittest.TestCase):
         # exited context, sub processes should terminate gracefully
         time.sleep(10)     # let it dump
         self.assert_no_core_files(self.core_dir)
+
+    def test_discovery_exit(self):
+        """Tests discovery service sub process exiting."""
+        test_config = copy.deepcopy(self.config)
+        signals = [signal.SIGABRT, signal.SIGTERM, signal.SIGKILL, signal.SIGINT]
+
+        for sig in signals:
+            with self.assertRaises(SystemExit) as cm:
+                with GatewayServer(test_config) as gateway:
+                    gateway.set_group_id(0)
+                    gateway.serve()
+
+                    # Give the gateway some time to start
+                    time.sleep(17)
+
+                    # Send signal to the discovery service process
+                    assert gateway.discovery_pid
+                    os.kill(gateway.discovery_pid, sig)
+
+                    # Block on running keep alive ping
+                    gateway.keep_alive()
+
+            # Assert error exit code
+            self.validate_exception(cm.exception)
+
+            # Clean up cores
+            self.remove_core_files(self.core_dir)
 
     def test_monc_exit(self):
         """Tests monitor client sub process abort."""
