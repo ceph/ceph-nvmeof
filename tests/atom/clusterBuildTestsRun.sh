@@ -10,6 +10,7 @@ VERSION=$1
 CEPH_BRANCH=$2
 if [ "$3" = "latest" ]; then
     CEPH_SHA=$(curl -s https://shaman.ceph.com/api/repos/ceph/$CEPH_BRANCH/latest/centos/9/ | jq -r ".[] | select(.archs[] == \"$(uname -m)\" and .status == \"ready\") | .sha1")
+    # CEPH_SHA=9aacbd1de3cb69f178fd13fcf4190465b1d29713
 else
     CEPH_SHA=$3
 fi
