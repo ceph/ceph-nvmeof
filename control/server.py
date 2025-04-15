@@ -773,18 +773,54 @@ class GatewayServer:
                 self.logger.exception(f"An error occurred while removing RPC "
                                       f"socket {self.spdk_rpc_socket_path}")
 
+    def _terminate_discovery(self, pid):
+        def is_running(pid):
+            try:
+                os.kill(pid, 0)
+                return True
+            except ProcessLookupError:
+                return False
+            except PermissionError:
+                self.logger.exception(f"Permission denied when checking status of discovery {pid}")
+                return True
+
+        def wait_for_exit(pid):
+            WAIT_INTERVAL_SEC = 0.1
+            MAX_WAIT_ATTEMPTS = 10
+            for _ in range(MAX_WAIT_ATTEMPTS):
+                if not is_running(pid):
+                    return True
+                time.sleep(WAIT_INTERVAL_SEC)
+            return False
+
+        try:
+            # discovery service selector loop should exit
+            # due to KeyboardInterrupt exception on SIGINT signal
+            signals = [signal.SIGINT, signal.SIGTERM, signal.SIGKILL]
+            for sig in signals:
+                self.logger.info(f"Sending signal {sig.name} to Discovery service process {pid}")
+                os.kill(pid, sig)
+                if wait_for_exit(pid):
+                    return True
+            self.logger.warning(
+                f"Discovery service process {pid} did not exit after all signals."
+            )
+            return False
+
+        except ProcessLookupError:
+            self.logger.info(f"Discovery service process {pid} already exited.")
+            return True
+        except Exception:
+            self.logger.exception(f"Error terminating discovery service process {pid}")
+            return False
+
     def _stop_discovery(self):
         """Stops Discovery service process."""
         assert self.discovery_pid is not None             # should be verified by the caller
 
         self.logger.info("Terminating discovery service...")
-        # discovery service selector loop should exit due to KeyboardInterrupt exception
-        try:
-            os.kill(self.discovery_pid, signal.SIGINT)
-            os.waitpid(self.discovery_pid, os.WNOHANG)
-        except (ChildProcessError, ProcessLookupError):
-            pass          # ignore
-        self.logger.info("Discovery service terminated")
+        if self._terminate_discovery(self.discovery_pid):
+            self.logger.info("Discovery service terminated")
 
         self.discovery_pid = None
 
