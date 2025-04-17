@@ -442,26 +442,9 @@ class GatewayServer:
         self.discovery_pid = os.fork()
         if self.discovery_pid == 0:
             self.logger.info("Starting ceph nvmeof discovery service")
-            # Reset server related fields for the discovery process
-            self.is_gateway_process = False
-            self.spdk_process = None
-            self.monitor_client_process = None
-            self.spdk_log_file = None
-            self.spdk_log_file_path = None
-            self.monitor_client_log_file = None
-            self.monitor_client_log_file_path = None
-            self.omap_state = None
-            self.name = None
+            # disable inherited from gateway signal handlers
             signal.signal(signal.SIGCHLD, signal.SIG_DFL)
             signal.signal(signal.SIGTERM, signal.SIG_DFL)
-            if self.server:
-                self.server.stop(None)
-                self.server = None
-            if self.gateway_rpc:
-                self.gateway_rpc.up_and_running = False
-                self.gateway_rpc = None
-            self.gateway_state = None
-            self.omap_lock = None
             with DiscoveryService(self.config) as discovery:
                 discovery.start_service()
             os._exit(0)
