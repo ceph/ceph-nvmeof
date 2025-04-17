@@ -125,7 +125,6 @@ class GatewayServer:
         self.crypto = None
         self.gateway_state = None
         self.exiting = False
-        self.is_gateway_process = True
         enc_key = None
         enc_key_file = self.config.get_with_default("gateway", "encryption_key", "")
         if enc_key_file:
@@ -167,14 +166,6 @@ class GatewayServer:
         elif isinstance(exc_value, SystemExit) and isinstance(exc_value.code, int):
             normalExit = exc_value.code == 0
 
-        # In case we got here because the discovery exited, do nothing
-        if not self.is_gateway_process:
-            process_name = "discovery"
-            if logger:
-                logger.info(f"Exiting the {process_name} process.")
-            return normalExit
-        else:
-            process_name = "gateway"
         if self.gateway_rpc:
             self.gateway_rpc.up_and_running = False
         if self.gateway_state:
@@ -238,7 +229,7 @@ class GatewayServer:
             self.omap_state = None
 
         if logger:
-            logger.info(f"Exiting the {process_name} process.")
+            logger.info("Exiting the gateway process.")
 
         if gw_logger and gw_name:
             gw_logger.compress_final_log_file(gw_name)
