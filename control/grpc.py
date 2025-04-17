@@ -1520,7 +1520,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         # We found a namespace still using this subsystem and --force wasn't used fail with EBUSY
         if not request.force and len(ns_list) > 0:
             errmsg = f"{delete_subsystem_error_prefix}: Namespace {ns_list[0]} is still using " \
-                     f"the subsystem. Either remove it or use the '--force' command line option"
+                     f"the subsystem. Either remove it or use the \"--force\" command line option"
             self.logger.error(errmsg)
             return pb2.req_status(status=errno.EBUSY, error_message=errmsg)
 
@@ -3038,7 +3038,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         failure_prefix = f"Failure adding host {request.host_nqn} to namespace " \
                          f"{request.nsid} on {request.subsystem_nqn}"
         self.logger.info(f"Received request to add host {request.host_nqn} to namespace "
-                         f"{request.nsid} on {request.subsystem_nqn}, "
+                         f"{request.nsid} on {request.subsystem_nqn}, force: {request.force}, "
                          f"context: {context}{peer_msg}")
 
         if not request.nsid:
@@ -3108,6 +3108,22 @@ class GatewayService(pb2_grpc.GatewayServicer):
                      f"({self.max_hosts_per_namespace}) has already been reached"
             self.logger.error(errmsg)
             return pb2.req_status(status=errno.E2BIG, error_message=errmsg)
+
+        host_allowed = self.host_info.is_any_host_allowed(request.subsystem_nqn)
+        if not host_allowed:
+            host_allowed = self.host_info.does_host_exist(request.subsystem_nqn, request.host_nqn)
+
+        if not host_allowed:
+            if request.force:
+                self.logger.info(f"Host {request.host_nqn} is not allowed to access "
+                                 f"subsystem {request.subsystem_nqn} but it will be added "
+                                 f"to namespace {request.nsid} as the \"--force\" parameter "
+                                 f"was used")
+            else:
+                errmsg = f"{failure_prefix}: Host is not allowed to access the subsystem, " \
+                         f"use the \"--force\" parameter to add the host anyway"
+                self.logger.error(errmsg)
+                return pb2.req_status(status=errno.EACCES, error_message=errmsg)
 
         omap_lock = self.omap_lock.get_omap_lock_to_use(context)
         with omap_lock:
@@ -4519,7 +4535,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 errmsg = f"{delete_listener_error_prefix}: There are active connections for " \
                          f"{esc_traddr}:{request.trsvcid}. Deleting the listener terminates " \
                          f"active connections. You can continue to delete the listener by " \
-                         f"adding the `--force` parameter."
+                         f"adding the \"--force\" parameter."
                 self.logger.error(errmsg)
                 return pb2.req_status(status=errno.ENOTEMPTY, error_message=errmsg)
 
@@ -4560,7 +4576,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 else:
                     errmsg = f"{delete_listener_error_prefix}: Gateway's host name must " \
                              f"match current host ({self.host_name}). You can continue to " \
-                             f"delete the listener by adding the `--force` parameter."
+                             f"delete the listener by adding the \"--force\" parameter."
                     self.logger.error(errmsg)
                     return pb2.req_status(status=errno.ENOENT, error_message=errmsg)
             except Exception as ex:

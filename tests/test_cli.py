@@ -12,7 +12,7 @@ from control.proto import gateway_pb2 as pb2
 from control.proto import gateway_pb2_grpc as pb2_grpc
 import os
 
-image = "mytestdevimage"
+image = "mytestdevimage1"
 image2 = "mytestdevimage2"
 image3 = "mytestdevimage3"
 image4 = "mytestdevimage4"
@@ -35,6 +35,7 @@ image20 = "mytestdevimage20"
 image21 = "mytestdevimage21"
 image22 = "mytestdevimage22"
 image23 = "mytestdevimage23"
+image24 = "mytestdevimage24"
 pool = "rbd"
 subsystem = "nqn.2016-06.io.spdk:cnode1"
 subsystem2 = "nqn.2016-06.io.spdk:cnode2"
@@ -47,6 +48,7 @@ subsystem8 = "nqn.2016-06.io.spdk:cnode8"
 subsystem9 = "nqn.2016-06.io.spdk:cnode9"
 subsystem10 = "nqn.2016-06.io.spdk:cnode10"
 subsystem11 = "nqn.2016-06.io.spdk:cnode11"
+subsystem12 = "nqn.2016-06.io.spdk:cnode12"
 subsystemX = "nqn.2016-06.io.spdk:cnodeX"
 discovery_nqn = "nqn.2014-08.org.nvmexpress.discovery"
 serial = "Ceph00000000000001"
@@ -64,6 +66,7 @@ host8 = "nqn.2016-06.io.spdk:host8"
 host9 = "nqn.2016-06.io.spdk:host9"
 host10 = "nqn.2016-06.io.spdk:host10"
 host11 = "nqn.2016-06.io.spdk:host11"
+host12 = "nqn.2016-06.io.spdk:host12"
 hostxx = "nqn.2016-06.io.spdk:hostXX"
 nsid = "1"
 anagrpid = "1"
@@ -509,7 +512,7 @@ class TestCreate:
         caplog.clear()
         cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool,
              "--rbd-image", image, "--block-size", "1024",
-             "--load-balancing-group", anagrpid, "--force"])
+             "--load-balancing-group", anagrpid, "--rbd-create-image", "--size", "16MB", "--force"])
         assert f"Adding namespace 2 to {subsystem}: Successful" in caplog.text
         caplog.clear()
         cli(["--format", "json", "namespace", "list", "--subsystem", subsystem, "--nsid", nsid])
@@ -614,6 +617,9 @@ class TestCreate:
 
     def test_add_host_to_namespace(self, caplog, gateway):
         caplog.clear()
+        cli(["host", "add", "--subsystem", subsystem, "--host-nqn", host8])
+        assert f"Adding host {host8} to {subsystem}: Successful" in caplog.text
+        caplog.clear()
         cli(["namespace", "add_host", "--subsystem", subsystem, "--nsid", "8", "--host-nqn", host8])
         assert f"Adding host {host8} to namespace 8 on {subsystem}: Successful" in caplog.text
         caplog.clear()
@@ -623,15 +629,15 @@ class TestCreate:
     def test_add_too_many_hosts_to_namespace(self, caplog, gateway):
         caplog.clear()
         cli(["namespace", "add_host", "--subsystem", subsystem, "--nsid", "8",
-             "--host-nqn", host9])
+             "--host-nqn", host9, "--force"])
         assert f"Adding host {host9} to namespace 8 on {subsystem}: Successful" in caplog.text
         caplog.clear()
         cli(["namespace", "add_host", "--subsystem", subsystem, "--nsid", "8",
-             "--host-nqn", host10])
+             "--host-nqn", host10, "--force"])
         assert f"Adding host {host10} to namespace 8 on {subsystem}: Successful" in caplog.text
         caplog.clear()
         cli(["namespace", "add_host", "--subsystem", subsystem, "--nsid", "8",
-             "--host-nqn", host11])
+             "--host-nqn", host11, "--force"])
         assert f"Failure adding host {host11} to namespace 8 on {subsystem}: " \
                f"Maximal host count for namespace (3) has already been reached" in caplog.text
 
@@ -640,6 +646,92 @@ class TestCreate:
         cli(["namespace", "add_host", "--subsystem", subsystem, "--nsid", "8", "--host-nqn", "*"])
         assert f"Failure adding host * to namespace 8 on {subsystem}: " \
                f"Host NQN can't be \"*\"" in caplog.text
+
+    def test_add_host_to_namespace_no_access(self, caplog, gateway):
+        caplog.clear()
+        cli(["subsystem", "add", "--subsystem", subsystem12, "--no-group-append"])
+        assert f"Adding subsystem {subsystem12}: Successful" in caplog.text
+        caplog.clear()
+        cli(["namespace", "add", "--subsystem", subsystem12, "--rbd-pool", pool,
+             "--rbd-image", image24, "--size", "16MB", "--rbd-create-image", "--no-auto-visible"])
+        assert f"Adding namespace 1 to {subsystem12}: Successful" in caplog.text
+        caplog.clear()
+        cli(["--format", "json", "namespace", "list", "--subsystem", subsystem12, "--nsid", "1"])
+        assert '"status": 0' in caplog.text
+        assert f'"subsystem_nqn": "{subsystem12}",' in caplog.text
+        assert '"hosts": []' in caplog.text
+        caplog.clear()
+        cli(["namespace", "add_host", "--subsystem", subsystem12, "--nsid", "1",
+             "--host-nqn", host12])
+        assert f"Failure adding host {host12} to namespace 1 on {subsystem12}: " \
+               f"Host is not allowed to access the subsystem" in caplog.text
+        caplog.clear()
+        cli(["--format", "json", "namespace", "list", "--subsystem", subsystem12, "--nsid", "1"])
+        assert '"status": 0' in caplog.text
+        assert f'"subsystem_nqn": "{subsystem12}",' in caplog.text
+        assert '"hosts": []' in caplog.text
+        assert f'"{host12}"' not in caplog.text
+        caplog.clear()
+        cli(["host", "add", "--subsystem", subsystem12, "--host-nqn", "*"])
+        assert f"Subsystem {subsystem12} will be opened to be accessed from any " \
+               f"host. This might be a security breach" in caplog.text
+        assert f"Allowing open host access to {subsystem12}: Successful" in caplog.text
+        assert f"Open host access to subsystem {subsystem12} might be a " \
+               f"security breach" in caplog.text
+        caplog.clear()
+        cli(["namespace", "add_host", "--subsystem", subsystem12, "--nsid", "1",
+             "--host-nqn", host12])
+        assert f"Adding host {host12} to namespace 1 on {subsystem12}: Successful" in caplog.text
+        caplog.clear()
+        cli(["--format", "json", "namespace", "list", "--subsystem", subsystem12, "--nsid", "1"])
+        assert '"status": 0' in caplog.text
+        assert f'"subsystem_nqn": "{subsystem12}",' in caplog.text
+        assert f'"{host12}"' in caplog.text
+        assert '"hosts": []' not in caplog.text
+        caplog.clear()
+        cli(["namespace", "del_host", "--subsystem", subsystem12, "--nsid", "1",
+             "--host-nqn", host12])
+        assert f"Deleting host {host12} from namespace 1 on {subsystem12}: " \
+               f"Successful" in caplog.text
+        caplog.clear()
+        cli(["--format", "json", "namespace", "list", "--subsystem", subsystem12, "--nsid", "1"])
+        assert '"status": 0' in caplog.text
+        assert f'"subsystem_nqn": "{subsystem12}",' in caplog.text
+        assert f'"{host12}"' not in caplog.text
+        assert '"hosts": []' in caplog.text
+        caplog.clear()
+        cli(["host", "del", "--subsystem", subsystem12, "--host-nqn", "*"])
+        assert f"Disabling open host access to {subsystem12}: Successful" in caplog.text
+        caplog.clear()
+        cli(["namespace", "add_host", "--subsystem", subsystem12, "--nsid", "1",
+             "--host-nqn", host12])
+        assert f"Failure adding host {host12} to namespace 1 on {subsystem12}: " \
+               f"Host is not allowed to access the subsystem" in caplog.text
+        caplog.clear()
+        cli(["--format", "json", "namespace", "list", "--subsystem", subsystem12, "--nsid", "1"])
+        assert '"status": 0' in caplog.text
+        assert f'"subsystem_nqn": "{subsystem12}",' in caplog.text
+        assert '"hosts": []' in caplog.text
+        assert f'"{host12}"' not in caplog.text
+        caplog.clear()
+        cli(["namespace", "add_host", "--subsystem", subsystem12, "--nsid", "1",
+             "--host-nqn", host12, "--force"])
+        assert f"Adding host {host12} to namespace 1 on {subsystem12}: Successful" in caplog.text
+        assert f"Host {host12} is not allowed to access subsystem {subsystem12} but it will " \
+               f"be added to namespace 1 as the \"--force\" parameter " \
+               f"was used" in caplog.text
+        caplog.clear()
+        cli(["--format", "json", "namespace", "list", "--subsystem", subsystem12, "--nsid", "1"])
+        assert '"status": 0' in caplog.text
+        assert f'"subsystem_nqn": "{subsystem12}",' in caplog.text
+        assert f'"{host12}"' in caplog.text
+        assert '"hosts": []' not in caplog.text
+        caplog.clear()
+        cli(["namespace", "del", "--subsystem", subsystem12, "--nsid", "1"])
+        assert f"Deleting namespace 1 from {subsystem12}: Successful" in caplog.text
+        caplog.clear()
+        cli(["subsystem", "del", "--subsystem", subsystem12])
+        assert f"Deleting subsystem {subsystem12}: Successful" in caplog.text
 
     def test_change_namespace_visibility(self, caplog, gateway):
         caplog.clear()
@@ -799,12 +891,6 @@ class TestCreate:
         assert f"Failure adding host junk to namespace 8 on {subsystem}: " \
                f"Invalid host NQN" in caplog.text
 
-    def test_add_host_to_namespace_junk_subsystem(self, caplog, gateway):
-        caplog.clear()
-        cli(["namespace", "add_host", "--subsystem", "junk", "--nsid", "8", "--host-nqn", hostxx])
-        assert f"Failure adding host {hostxx} to namespace 8 on junk: " \
-               f"Can't find subsystem" in caplog.text
-
     def test_add_host_to_namespace_subsystem_not_found(self, caplog, gateway):
         caplog.clear()
         cli(["namespace", "add_host", "--subsystem", subsystemX, "--nsid", "8",
@@ -891,6 +977,15 @@ class TestCreate:
 
     def test_add_namespace_multiple_hosts(self, caplog, gateway):
         caplog.clear()
+        cli(["host", "add", "--subsystem", subsystem, "--host-nqn", host8])
+        assert f"Failure adding host {host8} to {subsystem}: Host is already added" in caplog.text
+        caplog.clear()
+        cli(["host", "add", "--subsystem", subsystem, "--host-nqn", host9])
+        assert f"Adding host {host9} to {subsystem}: Successful" in caplog.text
+        caplog.clear()
+        cli(["host", "add", "--subsystem", subsystem, "--host-nqn", host10])
+        assert f"Adding host {host10} to {subsystem}: Successful" in caplog.text
+        caplog.clear()
         cli(["namespace", "add_host", "--subsystem", subsystem, "--nsid", "9",
              "--host-nqn", host8, host9, host10])
         assert f"Adding host {host8} to namespace 9 on {subsystem}: Successful" in caplog.text
@@ -920,6 +1015,15 @@ class TestCreate:
         assert f'"{host9}"' not in caplog.text
         assert f'"{host10}"' not in caplog.text
         assert '"hosts": []' in caplog.text
+        caplog.clear()
+        cli(["host", "del", "--subsystem", subsystem, "--host-nqn", host8])
+        assert f"Removing host {host8} access from {subsystem}: Successful" in caplog.text
+        caplog.clear()
+        cli(["host", "del", "--subsystem", subsystem, "--host-nqn", host9])
+        assert f"Removing host {host9} access from {subsystem}: Successful" in caplog.text
+        caplog.clear()
+        cli(["host", "del", "--subsystem", subsystem, "--host-nqn", host10])
+        assert f"Removing host {host10} access from {subsystem}: Successful" in caplog.text
 
     def test_list_namespace_with_no_hosts(self, caplog, gateway):
         caplog.clear()
@@ -1484,15 +1588,10 @@ class TestDelete:
 
     def remove_host_list(self, caplog):
         caplog.clear()
-        cli(["host", "del", "--subsystem", subsystem,
-             "--host-nqn", "nqn.2016-06.io.spdk:host5", "nqn.2016-06.io.spdk:host6",
-             "nqn.2016-06.io.spdk:host7"])
-        assert f"Removing host nqn.2016-06.io.spdk:host5 access from {subsystem}: " \
-               f"Successful" in caplog.text
-        assert f"Removing host nqn.2016-06.io.spdk:host6 access from {subsystem}: " \
-               f"Successful" in caplog.text
-        assert f"Removing host nqn.2016-06.io.spdk:host7 access from {subsystem}: " \
-               f"Successful" in caplog.text
+        cli(["host", "del", "--subsystem", subsystem, "--host-nqn", host5, host6, host7])
+        assert f"Removing host {host5} access from {subsystem}: Successful" in caplog.text
+        assert f"Removing host {host6} access from {subsystem}: Successful" in caplog.text
+        assert f"Removing host {host7} access from {subsystem}: Successful" in caplog.text
 
     @pytest.mark.parametrize("listener", listener_list)
     def test_delete_listener_using_wild_hostname_no_force(self, caplog, listener, gateway):

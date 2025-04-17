@@ -86,7 +86,7 @@ def test_create_get_subsys(caplog, config):
         # add host to the first namespace
         caplog.clear()
         cli(["namespace", "add_host", "--subsystem", f"{subsystem_prefix}0",
-             "--nsid", "1", "--host-nqn", f"{host_prefix}0"])
+             "--nsid", "1", "--host-nqn", f"{host_prefix}0", "--force"])
         assert "Failure adding host" not in caplog.text
 
     caplog.clear()
@@ -117,7 +117,7 @@ def test_create_get_subsys(caplog, config):
                f"{subsystem_prefix}0, R/W IOs per second: 2000 " \
                f"Read megabytes per second: 5" in caplog.text
         assert f"Received request to add host {host_prefix}0 to namespace 1 on " \
-               f"{subsystem_prefix}0, context: None" in caplog.text
+               f"{subsystem_prefix}0, force: True, context: None" in caplog.text
         caplog.clear()
         cli(["--format", "plain", "subsystem", "list"])
         assert "Exception" not in caplog.text

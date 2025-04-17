@@ -202,6 +202,7 @@ message namespace_add_host_req {
 	string subsystem_nqn = 1;
 	uint32 nsid = 2;
 	string host_nqn = 3;
+	optional bool force = 4;
 }
 
 message namespace_delete_host_req {

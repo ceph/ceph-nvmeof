@@ -2346,7 +2346,8 @@ class GatewayClient:
             try:
                 add_host_req = pb2.namespace_add_host_req(subsystem_nqn=args.subsystem,
                                                           nsid=args.nsid,
-                                                          host_nqn=one_host_nqn)
+                                                          host_nqn=one_host_nqn,
+                                                          force=args.force)
                 ret = self.stub.namespace_add_host(add_host_req)
             except Exception as ex:
                 ret = pb2.req_status(status=errno.EINVAL,
@@ -2654,6 +2655,10 @@ class GatewayClient:
     ns_add_host_args_list = ns_common_args + [
         argument("--nsid", help="Namespace ID", type=int, required=True),
         argument("--host-nqn", "-t", help="Host NQN list", nargs="+", required=True),
+        argument("--force",
+                 help="Allow adding the host to the namespace even if the host "
+                      "has no access to the subsystem",
+                 action='store_true', required=False),
     ]
     ns_del_host_args_list = ns_common_args + [
         argument("--nsid", help="Namespace ID", type=int, required=True),
