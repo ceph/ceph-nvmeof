@@ -176,6 +176,7 @@ class GatewayServer:
             return normalExit
         else:
             process_name = "gateway"
+            raise Exception("BLA123")
         if self.gateway_rpc:
             self.gateway_rpc.up_and_running = False
         if self.gateway_state:
