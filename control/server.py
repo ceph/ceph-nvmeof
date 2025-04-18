@@ -169,6 +169,7 @@ class GatewayServer:
 
         # In case we got here because the discovery exited, do nothing
         if not self.is_gateway_process:
+            raise Exception("TOMERR")
             process_name = "discovery"
             if logger:
                 logger.info(f"Exiting the {process_name} process.")
