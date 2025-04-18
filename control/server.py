@@ -243,6 +243,8 @@ class GatewayServer:
         if gw_logger and gw_name:
             gw_logger.compress_final_log_file(gw_name)
 
+        for handler in logger.handlers:
+            handler.flush()
         return normalExit
 
     def set_group_id(self, id: int):
