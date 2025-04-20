@@ -39,6 +39,7 @@ from .prometheus import start_exporter
 
 singleton_isntance = None
 
+
 def sigterm_handler(signum, frame):
     """Handle SIGTERM, runs when a gateway is terminated gracefully."""
     logger = GatewayLogger().logger
@@ -62,7 +63,6 @@ def sigchld_handler(signum, frame):
         # eat the exception, in signal handler context
         pass
 
-    exit_code = os.waitstatus_to_exitcode(wait_status)
 
     logger.error(f'TOMER sigchld: {bool(singleton_isntance)}')
     if singleton_isntance:
@@ -89,6 +89,7 @@ def cpumask_set(args):
             return True
 
     return False
+
 
 class GatewayServer:
     """Runs SPDK and receives client requests for the gateway service.
