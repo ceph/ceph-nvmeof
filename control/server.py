@@ -478,7 +478,7 @@ class GatewayServer:
             self.omap_lock = None
             with DiscoveryService(self.config) as discovery:
                 discovery.start_service()
-            os._exit(0)
+            # os._exit(0)
         else:
             self.logger.info(f"Discovery service process id: {self.discovery_pid}")
 
