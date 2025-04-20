@@ -63,7 +63,6 @@ def sigchld_handler(signum, frame):
         # eat the exception, in signal handler context
         pass
 
-
     logger.error(f'TOMER sigchld: {bool(singleton_isntance)}')
     if singleton_isntance:
         singleton_isntance.stop = True
