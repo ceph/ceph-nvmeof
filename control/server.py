@@ -37,12 +37,15 @@ from .utils import GatewayUtilsCrypto
 from .cephutils import CephUtils
 from .prometheus import start_exporter
 
+singleton_isntance = None
 
 def sigterm_handler(signum, frame):
     """Handle SIGTERM, runs when a gateway is terminated gracefully."""
     logger = GatewayLogger().logger
     logger.info(f"GatewayServer: SIGTERM received {signum=}")
-    raise SystemExit(0)
+    if singleton_isntance:
+        singleton_isntance.stop = True
+    # raise SystemExit(0)
 
 
 def sigchld_handler(signum, frame):
@@ -60,8 +63,10 @@ def sigchld_handler(signum, frame):
 
     exit_code = os.waitstatus_to_exitcode(wait_status)
 
-    # GW process should exit now
-    raise SystemExit(f"Gateway subprocess terminated {pid=} {exit_code=}")
+    if singleton_isntance:
+        singleton_isntance.stop = True
+    # # GW process should exit now
+    # raise SystemExit(f"Gateway subprocess terminated {pid=} {exit_code=}")
 
 
 def int_to_bitmask(n):
@@ -83,7 +88,6 @@ def cpumask_set(args):
 
     return False
 
-
 class GatewayServer:
     """Runs SPDK and receives client requests for the gateway service.
 
@@ -102,6 +106,7 @@ class GatewayServer:
     MAX_TIME_TO_WAIT_FOR_GATEWAY_EXIT = 30
 
     def __init__(self, config: GatewayConfig):
+        self.stop = False
         self.config = config
         self.gw_logger_object = GatewayLogger(self.config)
         self.logger = self.gw_logger_object.logger
@@ -149,6 +154,7 @@ class GatewayServer:
         self.system_exit_message_lock = threading.Lock()
         self.gateway_exit_started = threading.Event()
         self.logger.info(f"Starting gateway {self.name}")
+        singleton_isntance = self
 
     def __enter__(self):
         return self
@@ -885,7 +891,7 @@ class GatewayServer:
         else:
             spdk_ping_interval_in_seconds = 0.0
 
-        while True:
+        while not self.stop:
             self.exit_gateway_if_needed()
             if self.gateway_rpc:
                 if self.gateway_rpc.rebalance.rebalance_event.is_set():
