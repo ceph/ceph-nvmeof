@@ -43,6 +43,7 @@ def sigterm_handler(signum, frame):
     """Handle SIGTERM, runs when a gateway is terminated gracefully."""
     logger = GatewayLogger().logger
     logger.info(f"GatewayServer: SIGTERM received {signum=}")
+    logger.error(f'TOMER sigterm: {bool(singleton_isntance)}')
     if singleton_isntance:
         singleton_isntance.stop = True
     # raise SystemExit(0)
@@ -63,6 +64,7 @@ def sigchld_handler(signum, frame):
 
     exit_code = os.waitstatus_to_exitcode(wait_status)
 
+    logger.error(f'TOMER sigchld: {bool(singleton_isntance)}')
     if singleton_isntance:
         singleton_isntance.stop = True
     # # GW process should exit now
@@ -154,6 +156,7 @@ class GatewayServer:
         self.system_exit_message_lock = threading.Lock()
         self.gateway_exit_started = threading.Event()
         self.logger.info(f"Starting gateway {self.name}")
+        global singleton_isntance
         singleton_isntance = self
 
     def __enter__(self):
@@ -914,6 +917,7 @@ class GatewayServer:
                                         f"times, will keep trying")
             else:
                 consecutive_ping_failures = 0
+        self.logger.error('TOMER: after while')
 
     def _ping(self):
         """Confirms communication with SPDK process."""
