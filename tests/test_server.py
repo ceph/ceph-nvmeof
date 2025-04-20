@@ -1,7 +1,6 @@
 import copy
 import pytest
 import time
-import re
 import signal
 import os
 import unittest
