@@ -54,7 +54,7 @@ def sigchld_handler(signum, frame):
     """Handle SIGCHLD, runs when a child process, like the spdk, terminates."""
     logger = GatewayLogger().logger
     logger.error(f"GatewayServer: SIGCHLD received {signum=}")
-
+    pid = None
     try:
         pid, wait_status = os.waitpid(-1, os.WNOHANG)
         logger.error(f"PID of terminated child process is {pid}")
@@ -63,7 +63,7 @@ def sigchld_handler(signum, frame):
         # eat the exception, in signal handler context
         pass
 
-    logger.error(f'TOMER sigchld: {bool(singleton_isntance)}')
+    logger.error(f'TOMER sigchld: {bool(singleton_isntance)} {pid}')
     if singleton_isntance:
         singleton_isntance.stop = True
     # # GW process should exit now
@@ -185,7 +185,8 @@ class GatewayServer:
             return normalExit
         else:
             process_name = "gateway"
-            raise Exception("BLA123")
+            if logger:
+                logger.fatal('GW exit reached')
         if self.gateway_rpc:
             self.gateway_rpc.up_and_running = False
         if self.gateway_state:
