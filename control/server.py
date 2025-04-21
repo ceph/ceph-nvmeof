@@ -436,9 +436,13 @@ class GatewayServer:
             # disable inherited from gateway signal handlers
             signal.signal(signal.SIGCHLD, signal.SIG_DFL)
             signal.signal(signal.SIGTERM, signal.SIG_DFL)
-            with DiscoveryService(self.config) as discovery:
-                discovery.start_service()
-            os._exit(0)
+            try:
+                with DiscoveryService(self.config) as discovery:
+                    discovery.start_service()
+            except Exception:
+                self.logger.exception("Exception occurred while running the discovery service")
+            finally:
+                os._exit(0)
         else:
             self.logger.info(f"Discovery service process id: {self.discovery_pid}")
 
