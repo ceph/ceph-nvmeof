@@ -10,7 +10,8 @@ jobs:
     name: Check Dependencies
     steps:
     # https://github.com/marketplace/actions/pr-dependency-check
-    # Pinned to v1.2.4 SHA-1 for security reasons
-    - uses: gregsdennis/dependencies-action@71c5cc14fab62389a600c0a6e37584dc4916799c
+    # Pinned for security reasons
+    # Approved Github Actions: https://github.com/orgs/ceph/projects/11/views/1
+    - uses: gregsdennis/dependencies-action@f98d55eee1f66e7aaea4a60e71892736ae2548c7
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
