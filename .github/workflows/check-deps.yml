@@ -1,0 +1,16 @@
+# Blocks PR merging if PR description contains "depends on" or "blocked by"
+# pointing to another PR until that PR is merged
+
+name: Check Dependencies
+on: [pull_request]
+
+jobs:
+  check-deps:
+    runs-on: ubuntu-latest
+    name: Check Dependencies
+    steps:
+    # https://github.com/marketplace/actions/pr-dependency-check
+    # Pinned to v1.2.4 SHA-1 for security reasons
+    - uses: gregsdennis/dependencies-action@71c5cc14fab62389a600c0a6e37584dc4916799c
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
