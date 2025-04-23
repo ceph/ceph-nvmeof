@@ -585,7 +585,7 @@ jobs:
 
   atom:
     needs: [build, build-ceph]
-    if: github.repository == 'ceph/ceph-nvmeof' && github.event_name != 'schedule'
+    if: github.repository == 'ceph/ceph-nvmeof' && github.event_name == 'schedule'
     runs-on: dailyAtomRunner
     steps:
       - name: Checkout code
@@ -617,7 +617,7 @@ jobs:
 
   atom-nightly:
     needs: [build, build-ceph]
-    if: github.repository == 'ceph/ceph-nvmeof' && github.event_name == 'schedule'
+    if: github.repository == 'ceph/ceph-nvmeof' && github.event_name != 'schedule'
     runs-on: nightlyAtomRunner
     timeout-minutes: 1440
     steps:
