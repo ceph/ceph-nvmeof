@@ -396,7 +396,7 @@ class DiscoveryService:
         """Reads OMAP and returns dict of all keys and values."""
 
         try:
-            omap_dict = self.omap_state.get_state()
+            omap_dict = self.omap_state.get_state(True)
             return omap_dict
         except Exception:
             self.logger.exception("Failure getting OMAP state for discovery")
