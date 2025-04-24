@@ -141,6 +141,7 @@ else
         --nvmeof-daemon-remove \
         --github-action-deployment \
         --dont-power-off-cloud-vms \
+        --dont-use-hugepages \
         --skip-lb-group-change-test \
         --skip-block-list-test \
         --skip-multi-hosts-conn-test \
