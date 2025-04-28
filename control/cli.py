@@ -1985,7 +1985,6 @@ class GatewayClient:
                                                 preserving_proto_field_name=True)
             if args.format == "json":
                 out_func(ret_str)
->>>>>>> 0c51267 (Allow adding listeners with hostname mismatch.)
             elif args.format == "yaml":
                 obj = json.loads(ret_str)
                 out_func(yaml.dump(obj))
