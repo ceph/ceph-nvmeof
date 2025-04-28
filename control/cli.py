@@ -1024,6 +1024,7 @@ class GatewayClient:
     listener_add_args = listener_common_args + [
         argument("--host-name", "-t", help="Host name", required=True),
         argument("--traddr", "-a", help="NVMe host IP", required=True),
+        argument("--verify-host-name", "-y", help="Fail in case the listener's host name is different than the gateway's", action='store_true', required=False),
         argument("--trsvcid", "-s", help="Port number", type=int, required=False),
         argument("--adrfam", "-f", help="Address family", default="", choices=get_enum_keys_list(pb2.AddressFamily)),
         argument("--secure", help="Use secure channel", action='store_true', required=False),
