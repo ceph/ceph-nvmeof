@@ -114,6 +114,16 @@ class CephUtils:
 
             return self.anagroup_list
 
+    def remove_metadata_key(self, pool_name, image_name, key):
+        with rados.Rados(conffile=self.ceph_conf, rados_id=self.rados_id) as cluster:
+            with cluster.open_ioctx(pool_name) as ioctx:
+                try:
+                    with rbd.Image(ioctx, image_name) as img:
+                        img.metadata_remove(key)
+                except Exception:
+                    self.logger.exception("Failure removing metadata")
+                pass
+
     def fetch_and_display_ceph_version(self):
         try:
             rply = self.execute_ceph_monitor_command('{"prefix":"mon versions"}')
