@@ -1,5 +1,7 @@
 #!/bin/bash
 
+NIGHTLY=$1
+
 process_artifacts() {
     local artifact_dir=$1
     local backup_dir=$2
@@ -21,9 +23,16 @@ process_artifacts() {
     sudo rm -rf "$busy_file"
 }
 
-process_artifacts \
-    "/home/cephnvme/artifact_m7" \
-    "/root/.ssh/atom_backup/artifact/multiIBMCloudServers_m7" \
-    "/home/cephnvme/artifact_m7.tar.gz" \
-    "/home/cephnvme/busyServer.txt"
-
+if [ "$NIGHTLY" != "nightly" ]; then
+    process_artifacts \
+        "/home/cephnvme/artifact_m7" \
+        "/root/.ssh/atom_backup/artifact/multiIBMCloudServers_m7" \
+        "/home/cephnvme/artifact_m7.tar.gz" \
+        "/home/cephnvme/busyServer.txt"
+else
+    process_artifacts \
+        "/home/cephnvme/artifact_m8" \
+        "/root/.ssh/atom_backup/artifact/multiIBMCloudServers_m8" \
+        "/home/cephnvme/artifact_m8.tar.gz" \
+        "/home/cephnvme/busyServerNightly.txt"
+fi
