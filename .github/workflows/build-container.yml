@@ -11,7 +11,7 @@ on:  # yamllint disable rule:truthy
     branches:
       - devel
   schedule:
-    - cron: '0 0 * * *'
+    - cron: '0 21 * * *'
   workflow_dispatch:
   release:
     types:

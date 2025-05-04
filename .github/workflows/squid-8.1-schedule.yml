@@ -3,7 +3,7 @@
 name: "8.1 Release Nightly Runs"
 on:  # yamllint disable rule:truthy
   schedule:
-    - cron: '0 0 * * *'
+    - cron: '0 11 * * *'
 # Credit: https://stackoverflow.com/a/72408109
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -584,7 +584,7 @@ jobs:
 
   atom-nightly:
     needs: [build, build-ceph]
-    if: github.repository == 'ceph/ceph-nvmeof'
+    if: github.repository == 'ceph/ceph-nvmeof' && github.event_name == 'schedule'
     runs-on: nightlyAtomRunner
     timeout-minutes: 1440
     steps:
