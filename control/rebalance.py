@@ -107,12 +107,15 @@ class Rebalance:
     #    index of ANA group that is currently responsible for rebalance
     def rebalance_logic(self, request, context) -> int:
         now = time.time()
+        grps_list = self.ceph_utils.get_number_created_gateways(self.gw_srv.gateway_pool,
+                                                                self.gw_srv.gateway_group, False)
         worker_ana_group = self.ceph_utils.get_rebalance_ana_group()
         self.logger.debug(f"Called rebalance logic: current rebalancing ana "
                           f"group {worker_ana_group}")
+        if worker_ana_group == 0:
+            self.logger.info(f"Auto rebalance is not supported - index {worker_ana_group}")
+            return 1
         ongoing_scale_down_rebalance = False
-        grps_list = self.ceph_utils.get_number_created_gateways(self.gw_srv.gateway_pool,
-                                                                self.gw_srv.gateway_group, False)
         if not self.ceph_utils.is_rebalance_supported():
             self.logger.info("Auto rebalance is not supported with the curent ceph version")
             return 1
@@ -164,6 +167,12 @@ class Rebalance:
                                 self.gw_srv.subsystem_nsid_bdev_and_uuid.get_namespace_count(
                                     nqn, None, 0)
                             target_subs_per_ana = num_ns_in_nqn / num_active_ana_groups
+                            if target_subs_per_ana < 1:
+                                self.logger.info(f"No need to rebalance for nqn {nqn}: "
+                                                 f"num NS {num_ns_in_nqn} num groups "
+                                                 f"{num_active_ana_groups} ")
+                                # cannot rebalance namespaceses belong to this subsystem
+                                continue
                             self.logger.debug(f"loop: nqn {nqn} ana group {ana_grp} load "
                                               f"{self.gw_srv.ana_grp_subs_load[ana_grp][nqn]}, "
                                               f"num-ns in nqn {num_ns_in_nqn}, target_subs_per_ana "
