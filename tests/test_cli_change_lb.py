@@ -157,6 +157,7 @@ def change_one_namespace_lb_group(caplog, subsys, nsid_to_change, new_group):
     assert f"Received manual request to change load balancing group for namespace with ID " \
            f"{nsid_to_change} in {subsys} to {new_group}, context: <grpc._server" in caplog.text
     assert "Received request to delete namespace" not in caplog.text
+    assert "Received request to remove namespace" not in caplog.text
     assert "Received request to add a namespace" not in caplog.text
     assert f"Received manual request to change load balancing group for namespace with ID " \
            f"{nsid_to_change} in {subsys} to {new_group}, context: None" in caplog.text

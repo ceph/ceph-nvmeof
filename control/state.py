@@ -13,6 +13,7 @@ import rados
 import errno
 import os
 import contextlib
+import copy
 from typing import Dict
 from collections import defaultdict
 from abc import ABC, abstractmethod
@@ -1166,98 +1167,59 @@ class GatewayStateHandler:
             notify_event.wait(max(update_time - time.time(), 0))
             notify_event.clear()
 
-    def namespace_only_lb_group_id_changed(self, old_val, new_val):
-        # If only the lb group id field has changed we can use change_lb_group
-        # request instead of re-adding the namespace
-        old_req = None
-        new_req = None
+    def _parse_namespace_req(self, val):
+        req = None
         try:
-            old_req = json_format.Parse(old_val,
-                                        pb2.namespace_add_req(),
-                                        ignore_unknown_fields=True)
+            req = json_format.Parse(val,
+                                    pb2.namespace_add_req(),
+                                    ignore_unknown_fields=True)
         except json_format.ParseError:
-            self.logger.exception(f"Got exception parsing {old_val}")
-            return (False, None)
-        try:
-            new_req = json_format.Parse(new_val,
-                                        pb2.namespace_add_req(),
-                                        ignore_unknown_fields=True)
-        except json_format.ParseError:
-            self.logger.exeption(f"Got exception parsing {new_val}")
-            return (False, None)
-        if not old_req or not new_req:
-            self.logger.debug(f"Failed to parse requests, old: {old_val} -> "
-                              f"{old_req}, new: {new_val} -> {new_req}")
-            return (False, None)
-        assert old_req != new_req, f"Something was wrong we shouldn't get identical " \
-                                   f"old and new values ({old_req})"
-        old_req.anagrpid = new_req.anagrpid
-        if old_req != new_req:
-            # Something besides the group id is different
-            return (False, None)
-        return (True, new_req.anagrpid)
+            self.logger.exception(f"Got exception parsing {val}")
+        return req
 
-    def namespace_only_visibility_changed(self, old_val, new_val):
-        # If only the visibility field has changed we can use change_visibility
-        # request instead of re-adding the namespace
-        old_req = None
-        new_req = None
-        try:
-            old_req = json_format.Parse(old_val,
-                                        pb2.namespace_add_req(),
-                                        ignore_unknown_fields=True)
-        except json_format.ParseError:
-            self.logger.exception(f"Got exception parsing {old_val}")
-            return (False, None)
-        try:
-            new_req = json_format.Parse(new_val,
-                                        pb2.namespace_add_req(),
-                                        ignore_unknown_fields=True)
-        except json_format.ParseError:
-            self.logger.exeption(f"Got exception parsing {new_val}")
-            return (False, None)
-        if not old_req or not new_req:
-            self.logger.debug(f"Failed to parse requests, old: {old_val} -> "
-                              f"{old_req}, new: {new_val} -> {new_req}")
-            return (False, None)
-        assert old_req != new_req, f"Something was wrong we shouldn't get identical " \
-                                   f"old and new values ({old_req})"
-        old_req.no_auto_visible = new_req.no_auto_visible
-        if old_req != new_req:
-            # Something besides the group id is different
-            return (False, None)
-        return (True, not new_req.no_auto_visible)
+    def namespace_need_to_be_re_added(self, old_req, new_req) -> bool:
+        # Ignore the changes we can deal with directly and see if there
+        # are more changes
 
-    def namespace_only_trash_image_changed(self, old_val, new_val):
-        # If only the RBD trash image flag has changed we can use set_rbd_trash_image
+        old = copy.copy(old_req)
+        new = copy.copy(new_req)
+        old.anagrpid = new.anagrpid
+        old.no_auto_visible = new.no_auto_visible
+        old.trash_image = new.trash_image
+        return old != new
+
+    def namespace_lb_group_id_changed(self, old_req, new_req):
+        # If the lb group id field has changed we should use change_lb_group
         # request instead of re-adding the namespace
-        old_req = None
-        new_req = None
-        try:
-            old_req = json_format.Parse(old_val,
-                                        pb2.namespace_add_req(),
-                                        ignore_unknown_fields=True)
-        except json_format.ParseError:
-            self.logger.exception(f"Got exception parsing {old_val}")
-            return (False, None)
-        try:
-            new_req = json_format.Parse(new_val,
-                                        pb2.namespace_add_req(),
-                                        ignore_unknown_fields=True)
-        except json_format.ParseError:
-            self.logger.exeption(f"Got exception parsing {new_val}")
-            return (False, None)
-        if not old_req or not new_req:
-            self.logger.debug(f"Failed to parse requests, old: {old_val} -> "
-                              f"{old_req}, new: {new_val} -> {new_req}")
-            return (False, None)
+
         assert old_req != new_req, f"Something was wrong we shouldn't get identical " \
                                    f"old and new values ({old_req})"
-        old_req.trash_image = new_req.trash_image
-        if old_req != new_req:
-            # Something besides the trash image flag is different
-            return (False, None)
-        return (True, new_req.trash_image)
+        if old_req.anagrpid == new_req.anagrpid:
+            return None
+
+        return new_req.anagrpid
+
+    def namespace_visibility_changed(self, old_req, new_req):
+        # If the visibility field has changed we can use change_visibility
+        # request instead of re-adding the namespace
+
+        assert old_req != new_req, f"Something was wrong we shouldn't get identical " \
+                                   f"old and new values ({old_req})"
+        if old_req.no_auto_visible == new_req.no_auto_visible:
+            return None
+
+        return not new_req.no_auto_visible
+
+    def namespace_trash_image_changed(self, old_req, new_req):
+        # If the RBD trash image flag has changed we can use set_rbd_trash_image
+        # request instead of re-adding the namespace
+
+        assert old_req != new_req, f"Something was wrong we shouldn't get identical " \
+                                   f"old and new values ({old_req})"
+        if old_req.trash_image == new_req.trash_image:
+            return None
+
+        return new_req.trash_image
 
     def host_only_key_changed(self, old_val, new_val):
         # If only the dhchap key has changed we can use change_key request
@@ -1481,40 +1443,41 @@ class GatewayStateHandler:
                 grouped_changed = self._group_by_prefix(changed, prefix_list)
 
                 # Handle some special cases in which we don't need to delete and re-add
-                only_lb_group_changed = []
-                only_visibility_changed = []
-                only_trash_image_changed = []
+                ns_lb_group_changed = []
+                ns_visibility_changed = []
+                ns_trash_image_changed = []
                 only_host_key_changed = []
                 only_subsystem_key_changed = []
                 for key in changed.keys():
                     if key.startswith(GatewayState.NAMESPACE_PREFIX):
-                        (should_process, new_lb_grp_id) = self.namespace_only_lb_group_id_changed(
-                            local_state_dict[key],
-                            omap_state_dict[key])
-                        if should_process:
-                            assert new_lb_grp_id, "Shouldn't get here with an empty lb group id"
-                            self.logger.debug(f"Found {key} where only the load balancing group id "
+                        old_req = self._parse_namespace_req(local_state_dict[key])
+                        if old_req is None:
+                            continue
+                        new_req = self._parse_namespace_req(omap_state_dict[key])
+                        if new_req is None:
+                            continue
+                        if self.namespace_need_to_be_re_added(old_req, new_req):
+                            # a namespace field we don't know to handle has changed
+                            # need to delete and re-add the namespace
+                            continue
+                        new_lb_grp_id = self.namespace_lb_group_id_changed(old_req, new_req)
+                        if new_lb_grp_id is not None:
+                            self.logger.debug(f"Found {key} where the load balancing group id "
                                               f"has changed. The new group id is {new_lb_grp_id}")
-                            only_lb_group_changed.append((key, new_lb_grp_id))
+                            ns_lb_group_changed.append((key, new_lb_grp_id))
 
-                        (should_process,
-                         new_visibility) = self.namespace_only_visibility_changed(
-                            local_state_dict[key],
-                            omap_state_dict[key])
-                        if should_process:
-                            self.logger.debug(f"Found {key} where only the visibility has changed. "
+                        new_visibility = self.namespace_visibility_changed(old_req, new_req)
+                        if new_visibility is not None:
+                            self.logger.debug(f"Found {key} where the visibility has changed. "
                                               f"The new visibility is {new_visibility}")
-                            only_visibility_changed.append((key, new_visibility))
+                            ns_visibility_changed.append((key, new_visibility))
 
-                        (should_process,
-                         new_trash_image) = self.namespace_only_trash_image_changed(
-                            local_state_dict[key],
-                            omap_state_dict[key])
-                        if should_process:
-                            self.logger.debug(f"Found {key} where only the RBD trash image "
+                        new_trash_image = self.namespace_trash_image_changed(old_req, new_req)
+                        if new_trash_image is not None:
+                            self.logger.debug(f"Found {key} where the RBD trash image "
                                               f"flag has changed. "
                                               f"The new flag is {new_trash_image}")
-                            only_trash_image_changed.append((key, new_trash_image))
+                            ns_trash_image_changed.append((key, new_trash_image))
                     elif key.startswith(GatewayState.HOST_PREFIX):
                         (should_process,
                          new_dhchap_key,
@@ -1538,14 +1501,14 @@ class GatewayStateHandler:
                                                                new_dhchap_key,
                                                                new_key_encrypted))
 
-                for ns_key, new_lb_grp in only_lb_group_changed:
+                for ns_key, new_lb_grp in ns_lb_group_changed:
                     ns_nqn = None
                     ns_nsid = None
                     try:
-                        changed.pop(ns_key)
-                        (ns_nqn, ns_nsid) = self.break_namespace_key(ns_key)
+                        changed.pop(ns_key, None)
                     except Exception:
                         self.logger.exception(f"Exception removing {ns_key} from {changed}")
+                    (ns_nqn, ns_nsid) = self.break_namespace_key(ns_key)
                     if ns_nqn and ns_nsid:
                         try:
                             lbgroup_key = GatewayState.build_namespace_lbgroup_key(ns_nqn, ns_nsid)
@@ -1562,14 +1525,14 @@ class GatewayStateHandler:
                             self.logger.exception("Exception formatting change namespace "
                                                   "load balancing group request")
 
-                for ns_key, new_visibility in only_visibility_changed:
+                for ns_key, new_visibility in ns_visibility_changed:
                     ns_nqn = None
                     ns_nsid = None
                     try:
-                        changed.pop(ns_key)
-                        (ns_nqn, ns_nsid) = self.break_namespace_key(ns_key)
+                        changed.pop(ns_key, None)
                     except Exception:
                         self.logger.exception(f"Exception removing {ns_key} from {changed}")
+                    (ns_nqn, ns_nsid) = self.break_namespace_key(ns_key)
                     if ns_nqn and ns_nsid:
                         try:
                             visibility_key = GatewayState.build_namespace_visibility_key(ns_nqn,
@@ -1588,14 +1551,14 @@ class GatewayStateHandler:
                             self.logger.exception("Exception formatting change namespace "
                                                   "visibility request")
 
-                for ns_key, new_trash_image in only_trash_image_changed:
+                for ns_key, new_trash_image in ns_trash_image_changed:
                     ns_nqn = None
                     ns_nsid = None
                     try:
-                        changed.pop(ns_key)
-                        (ns_nqn, ns_nsid) = self.break_namespace_key(ns_key)
+                        changed.pop(ns_key, None)
                     except Exception:
                         self.logger.exception(f"Exception removing {ns_key} from {changed}")
+                    (ns_nqn, ns_nsid) = self.break_namespace_key(ns_key)
                     if ns_nqn and ns_nsid:
                         try:
                             trash_image_key = GatewayState.build_namespace_trash_image_key(ns_nqn,
@@ -1670,18 +1633,18 @@ class GatewayStateHandler:
                             self.logger.exception("Exception formatting change subsystem "
                                                   "key request")
 
-                if len(only_lb_group_changed) > 0 or len(only_host_key_changed) > 0 or \
-                   len(only_subsystem_key_changed) > 0 or len(only_visibility_changed) > 0 or \
-                   len(only_trash_image_changed) > 0:
+                if len(ns_lb_group_changed) > 0 or len(only_host_key_changed) > 0 or \
+                   len(only_subsystem_key_changed) > 0 or len(ns_visibility_changed) > 0 or \
+                   len(ns_trash_image_changed) > 0:
                     grouped_changed = self._group_by_prefix(changed, prefix_list)
 
                     if len(only_subsystem_key_changed) > 0:
                         prefix_list += [GatewayState.SUBSYSTEM_KEY_PREFIX]
-                    if len(only_lb_group_changed) > 0:
+                    if len(ns_lb_group_changed) > 0:
                         prefix_list += [GatewayState.NAMESPACE_LB_GROUP_PREFIX]
-                    if len(only_visibility_changed) > 0:
+                    if len(ns_visibility_changed) > 0:
                         prefix_list += [GatewayState.NAMESPACE_VISIBILITY_PREFIX]
-                    if len(only_trash_image_changed) > 0:
+                    if len(ns_trash_image_changed) > 0:
                         prefix_list += [GatewayState.NAMESPACE_TRASH_IMAGE_PREFIX]
                     if len(only_host_key_changed) > 0:
                         prefix_list += [GatewayState.HOST_KEY_PREFIX]

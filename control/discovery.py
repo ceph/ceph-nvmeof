@@ -112,6 +112,12 @@ class NVMF_TREQ_SECURE_CHANNEL(enum.IntFlag):
     NOT_REQUIRED = 0x2
 
 
+class TCP_SECURITY_TYPE(enum.IntFlag):
+    NONE = 0x0
+    TLS = 0x1
+    TLS13 = 0x2
+
+
 # maximum number of connections
 MAX_CONNECTION = 10240
 
@@ -826,6 +832,8 @@ class DiscoveryService:
                 log_entry.traddr[len(allow_listeners[log_entry_counter]["traddr"]):] = \
                     [c_ubyte(0x20)] * (256 - len(allow_listeners[log_entry_counter]["traddr"]))
 
+                # Security
+                log_entry.tsas[0] = TCP_SECURITY_TYPE.TLS13
                 self_conn.log_page[1024 * (log_entry_counter + 1):
                                    1024 * (log_entry_counter + 2)] = log_entry
                 log_entry_counter += 1
