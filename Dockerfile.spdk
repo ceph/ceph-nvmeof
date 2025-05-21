@@ -106,7 +106,7 @@ ARG SPDK_CEPH_VERSION \
 
 ARG SPDK_CENTOS_BASE="https://mirror.stream.centos.org/9-stream/BaseOS/x86_64/os/Packages/"
 # This would become obsolete as the release rolls out new packages
-ARG SPDK_CENTOS_REPO_VER="9.0-21.el9"
+ARG SPDK_CENTOS_REPO_VER="9.0-28.el9"
 
 ARG SPDK_PKGDEP_ARGS \
     SPDK_CONFIGURE_ARGS \
