@@ -388,6 +388,7 @@ def test_multi_gateway_listener_update(config, image, conn_concurrent, caplog):
     assert f"Received request to create {gwA.host_name} TCP ipv4 listener for " \
            f"{subsystem} at 127.0.0.1:5101" in caplog.text
     assert "create_listener: True" in caplog.text
+    time.sleep(20)
     caplog.clear()
     listenerB_req = pb2.create_listener_req(nqn=subsystem,
                                             host_name=gwB.host_name,

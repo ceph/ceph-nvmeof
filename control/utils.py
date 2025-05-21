@@ -209,6 +209,8 @@ class GatewayUtils:
 class GatewayUtilsCrypto:
     KEY_SIZE = 32
     INVALID_KEY_VALUE = "<invalid>"
+    KEY_START = "-----BEGIN PRIVATE KEY-----"
+    KEY_END = "-----END PRIVATE KEY-----"
 
     def __init__(self, encryption_key: bytes):
         if encryption_key:
@@ -220,16 +222,23 @@ class GatewayUtilsCrypto:
     def read_encryption_key(cls, keyfile: str) -> bytes:
         keyval = ""
         encoded_key = None
+        # a valid key has several lines but cephadm has an issue when exporting
+        # key values and will change newlines to spaces, so handle both cases
         try:
             with open(keyfile) as f:
                 for line in f:
-                    if line.startswith("-----BEGIN PRIVATE KEY-----"):
-                        continue
-                    if line.startswith("-----END PRIVATE KEY-----"):
-                        continue
-                    keyval += line.rstrip('\n')
+                    keyval += line.strip()
         except FileNotFoundError:
             return None
+
+        if not keyval:
+            raise RuntimeError("Invalid encryption key, key is empty")
+
+        if not keyval.startswith(cls.KEY_START):
+            raise RuntimeError("Invalid encryption key, doesn't start with start marker")
+        if not keyval.endswith(cls.KEY_END):
+            raise RuntimeError("Invalid encryption key, doesn't end with end marker")
+        keyval = keyval.removeprefix(cls.KEY_START).removesuffix(cls.KEY_END).replace(" ", "")
 
         keybytes = base64.b64decode(keyval, validate=True)
         if len(keybytes) < cls.KEY_SIZE:

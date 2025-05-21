@@ -480,11 +480,51 @@ function demo_bdevperf_psk()
     fi
     set -e
 
+    echo "ℹ️  use encryption key like it was exported by cephadm"
+    docker exec ${NVMEOF_CONTAINER_NAME} rm -f /var/log/ceph/ex_encryption.key /tmp/create_enckey.sh
+    rm -f /tmp/create_enckey.sh
+    echo "#!/bin/bash" > /tmp/create_enckey.sh
+    echo 'echo -n "-----BEGIN PRIVATE KEY----- MIIBVAIBADANBgkqhkiG9w0BAQEFAASCAT4wggE6AgEAAkEAqg+wrkvj9D47BRVi A4tMOv4aBL6RLBbLEwYuhJSLTG6FagZFNknjRj0y9s5C+J0fktl3XMu9UmyUR1LR 3ojPlwIDAQABAkA2F9ONPVp+4CSJ02lf0zkmMpk4FR28NmvV20uEpHNClggqmjmW zFjGV+KHJ//r17gQD3yh+NvJzX9FlncseluBAiEA3MjrizLw6wjsk80IaGL8oQNd cUlD2wYTW6Gk7JLlFmECIQDFL6Chljk3rBoPl0jASBFHq1FT/Zqgg/z060OWBns4 9wIhAKkd3g7J/nCKbWzpaL9M02YiRbk4/ZkPllRiBQqRmpkBAiAgCx9VYu4lZ+hM RE9kP9HfDa4HshygnRJMUrcG+EKp/QIgR5uDteq1fToI5ZbYOf+KJsVoJOpPrN3b vPKX3JuIds8= -----END PRIVATE KEY-----" > /var/log/ceph/ex_encryption.key' >> /tmp/create_enckey.sh
+    chmod 755 /tmp/create_enckey.sh
+    docker cp /tmp/create_enckey.sh ${NVMEOF_CONTAINER_NAME}:/tmp/
+    docker exec ${NVMEOF_CONTAINER_NAME} /tmp/create_enckey.sh
+    rm -f /tmp/create_enckey.sh
+    sed -i 's#encryption_key = /etc/ceph/encryption.key#encryption_key = /var/log/ceph/ex_encryption.key#' ceph-nvmeof.conf
+    docker restart ${NVMEOF_CONTAINER_NAME}
+    sleep 20
+    cephnvmf_func subsystem add --subsystem ${NQN}7 --no-group-append
+    cephnvmf_func host add --subsystem ${NQN}7 --host-nqn ${NQN}host21 --psk "${PSK_KEY1}"
+    make -s exec SVC=ceph OPTS=-T CMD="rados --pool rbd listomapvals nvmeof.state" | grep "host21"
+    sed -i 's#encryption_key = /var/log/ceph/ex_encryption.key#encryption_key = /etc/ceph/encryption.key#' ceph-nvmeof.conf
+    docker exec ${NVMEOF_CONTAINER_NAME} rm -f /var/log/ceph/ex_encryption.key /tmp/create_enckey.sh
+
     echo "ℹ️  use invalid encryption key"
-    sed -i '/enable_key_encryption/d' ceph-nvmeof.conf
+    docker exec ${NVMEOF_CONTAINER_NAME} rm -f /var/log/ceph/bad_encryption.key /tmp/create_enckey.sh
+    rm -f /tmp/create_enckey.sh
+    echo "#!/bin/bash" > /tmp/create_enckey.sh
+    echo 'echo -n "MIIBVAIBADANBgkqhkiG9w0BAQEFAASCAT4wggE6AgEAAkEAqg+wrkvj9D47BRVi A4tMOv4aBL6RLBbLEwYuhJSLTG6FagZFNknjRj0y9s5C+J0fktl3XMu9UmyUR1LR 3ojPlwIDAQABAkA2F9ONPVp+4CSJ02lf0zkmMpk4FR28NmvV20uEpHNClggqmjmW zFjGV+KHJ//r17gQD3yh+NvJzX9FlncseluBAiEA3MjrizLw6wjsk80IaGL8oQNd cUlD2wYTW6Gk7JLlFmECIQDFL6Chljk3rBoPl0jASBFHq1FT/Zqgg/z060OWBns4 9wIhAKkd3g7J/nCKbWzpaL9M02YiRbk4/ZkPllRiBQqRmpkBAiAgCx9VYu4lZ+hM RE9kP9HfDa4HshygnRJMUrcG+EKp/QIgR5uDteq1fToI5ZbYOf+KJsVoJOpPrN3b vPKX3JuIds8= -----END PRIVATE KEY-----" > /var/log/ceph/bad_encryption.key' >> /tmp/create_enckey.sh
+    chmod 755 /tmp/create_enckey.sh
+    docker cp /tmp/create_enckey.sh ${NVMEOF_CONTAINER_NAME}:/tmp/
+    docker exec ${NVMEOF_CONTAINER_NAME} /tmp/create_enckey.sh
+    rm -f /tmp/create_enckey.sh
+    sed -i 's#encryption_key = /etc/ceph/encryption.key#encryption_key = /var/log/ceph/bad_encryption.key#' ceph-nvmeof.conf
+    docker restart ${NVMEOF_CONTAINER_NAME}
+    sleep 20
+    cephnvmf_func subsystem add --subsystem ${NQN}8 --no-group-append
+    set +e
+        cephnvmf_func host add --subsystem ${NQN}8 --host-nqn ${NQN}host22 --psk "${PSK_KEY1}"
+        if [[ $? -eq 0 ]]; then
+            echo "Add host with PSK key should fail without valid encryption key"
+            exit 1
+        fi
+    set -e
+    make -s exec SVC=ceph OPTS=-T CMD="rados --pool rbd listomapvals nvmeof.state" | grep -q -v "host22"
+    sed -i 's#encryption_key = /var/log/ceph/bad_encryption.key#encryption_key = /etc/ceph/encryption.key#' ceph-nvmeof.conf
+    docker exec ${NVMEOF_CONTAINER_NAME} rm -f /var/log/ceph/baad_encryption.key /tmp/create_enckey.sh
+
+    echo "ℹ️  use missing encryption key"
     sed -i 's#encryption_key = /etc/ceph/encryption.key#encryption_key = /etc/ceph/XXXencryption.key#' ceph-nvmeof.conf
-    container_id=$(docker ps -q -f name=nvmeof)
-    docker restart ${container_id}
+    docker restart ${NVMEOF_CONTAINER_NAME}
     sleep 20
     cephnvmf_func subsystem add --subsystem ${NQN}6 --no-group-append
     set +e
@@ -499,14 +539,12 @@ function demo_bdevperf_psk()
             exit 1
         fi
     set -e
+    sed -i 's#encryption_key = /etc/ceph/XXXencryption.key#encryption_key = /etc/ceph/encryption.key#' ceph-nvmeof.conf
 
     echo "ℹ️  disable key encryption"
     sed -i '/enable_key_encryption/d' ceph-nvmeof.conf
     sed -i '/encryption_key/i enable_key_encryption = False' ceph-nvmeof.conf
-    sed -i '/encryption_key/d' ceph-nvmeof.conf
-    sed -i '#encryption_key#i #encryption_key = /etc/ceph/encryption.key#' ceph-nvmeof.conf
-    container_id=$(docker ps -q -f name=nvmeof)
-    docker restart ${container_id}
+    docker restart ${NVMEOF_CONTAINER_NAME}
     sleep 20
     cephnvmf_func subsystem add --subsystem ${NQN}5 --no-group-append
     cephnvmf_func host add --subsystem ${NQN}5 --host-nqn ${NQN}host17 --psk "${PSK_KEY1}"
@@ -894,8 +932,7 @@ function demo_bdevperf_dhchap()
     echo "ℹ️  use invalid encryption key"
     sed -i '/enable_key_encryption/d' ceph-nvmeof.conf
     sed -i 's#encryption_key = /etc/ceph/encryption.key#encryption_key = /etc/ceph/XXXencryption.key#' ceph-nvmeof.conf
-    container_id=$(docker ps -q -f name=nvmeof)
-    docker restart ${container_id}
+    docker restart ${NVMEOF_CONTAINER_NAME}
     sleep 20
     cephnvmf_func subsystem add --subsystem ${NQN}4 --dhchap-key "${DHCHAP_KEY10}" --no-group-append
     set +e
@@ -916,8 +953,7 @@ function demo_bdevperf_dhchap()
     sed -i '/encryption_key/i enable_key_encryption = False' ceph-nvmeof.conf
     sed -i '/encryption_key/d' ceph-nvmeof.conf
     sed -i '#encryption_key#i #encryption_key = /etc/ceph/encryption.key#' ceph-nvmeof.conf
-    container_id=$(docker ps -q -f name=nvmeof)
-    docker restart ${container_id}
+    docker restart ${NVMEOF_CONTAINER_NAME}
     sleep 20
     cephnvmf_func subsystem add --subsystem ${NQN}3 --dhchap-key "${DHCHAP_KEY10}" --no-group-append
     cephnvmf_func host add --subsystem ${NQN}3 --host-nqn ${NQN}host7 --dhchap-key "${DHCHAP_KEY11}"
