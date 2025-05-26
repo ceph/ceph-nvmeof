@@ -596,12 +596,8 @@ jobs:
         with:
           pattern: container_images_nvmeof
           merge-multiple: true
-          
-      - name: Debug network
-        run: |
-          curl -v https://api.github.com
-          curl -v https://results-receiver.actions.githubusercontent.com
-          env | grep GITHUB
+          retry-max: 20
+          retry-interval: 5000
 
       - name: Cluster build and Atom tests run
         if: always()
