@@ -591,13 +591,22 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Download container images
-        uses: actions/download-artifact@v4
-        with:
-          pattern: container_images_nvmeof
-          merge-multiple: true
-          retry-max: 20
-          retry-interval: 5000
+      - name: Retry artifact download with GH CLI
+        run: |
+          for i in {1..5}; do
+            echo "Attempt $i to download artifacts..."
+            gh run download --pattern "container_images_nvmeof*" && break
+            echo "Download failed. Retrying in $((i * 5))s..."
+            sleep $((i * 5))
+          done
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # - name: Download container images
+      #   uses: actions/download-artifact@v4
+      #   with:
+      #     pattern: container_images_nvmeof
+      #     merge-multiple: true
 
       - name: Cluster build and Atom tests run
         if: always()
