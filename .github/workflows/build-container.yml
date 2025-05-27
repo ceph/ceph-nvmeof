@@ -595,7 +595,7 @@ jobs:
         run: |
           for i in {1..5}; do
             echo "Attempt $i to download artifacts..."
-            gh run download --pattern "container_images_nvmeof*" && break
+            gh run download --pattern "container_images_nvmeof" && break
             echo "Download failed. Retrying in $((i * 5))s..."
             sleep $((i * 5))
           done
@@ -619,12 +619,22 @@ jobs:
         if: always()
         run: ./tests/atom/cpArtifactAndCleanup.sh
 
-      - name: Upload artifact for non-schedule events
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: atom-artifact
-          path: /home/cephnvme/artifact_m7.tar.gz
+      - name: Create release (if needed)
+        run: gh release create temp-artifact-upload --title "Temp Artifact Upload" --notes "Automated"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload file to release
+        run: gh release upload temp-artifact-upload /home/cephnvme/artifact_m7.tar.gz
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # - name: Upload artifact for non-schedule events
+      #   uses: actions/upload-artifact@v4
+      #   if: always()
+      #   with:
+      #     name: atom-artifact
+      #     path: /home/cephnvme/artifact_m7.tar.gz
 
   atom-nightly:
     needs: [build, build-ceph]
