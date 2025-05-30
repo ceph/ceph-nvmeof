@@ -86,7 +86,10 @@ class CephUtils:
                 if pos != -1:
                     data = json.loads(conv_str)
                     self.rebalance_supported = True
-                    self.rebalance_ana_group = data.get("rebalance_ana_group", None)
+                    self.rebalance_ana_group = data.get("rebalance_ana_group", 0)
+                    if self.rebalance_ana_group == 0:
+                        self.logger.info("illegal rebalance ana group  0")
+                        self.rebalance_supported = False
                     self.num_gws = data.get("num gws", None)
                     self.logger.debug(f"Rebalance ana_group: {self.rebalance_ana_group}, "
                                       f"num-gws: {self.num_gws}")
