@@ -20,7 +20,7 @@ $(DOCKER_COMPOSE_COMMANDS):
 pull: ## Download SVC images
 
 build:  ## Build SVC images
-build: DOCKER_COMPOSE_ENV = DOCKER_BUILDKIT=1 COMPOSE_DOCKER_CLI_BUILD=1
+build: DOCKER_COMPOSE_ENV = DOCKER_BUILDKIT=1 COMPOSE_DOCKER_CLI_BUILD=1 COMPOSE_PROFILES=build
 
 push: ## Push nvmeof and nvmeof-cli containers images to quay.io registries
 	@SHORT_VERSION=$(shell echo $(VERSION) | cut -d. -f1-2); \
