@@ -40,6 +40,7 @@ class Rebalance:
 
     def auto_rebalance_task(self, death_event):
         """Periodically calls for auto rebalance."""
+        self.logger.debug(f"Rebalance thread id is {self.auto_rebalance.native_id}")
         while (self.rebalance_period_sec > 0):
             while self.gw_srv.gateway_state.update_is_active_lock.locked():
                 time.sleep(0.5)         # wait until update is over
@@ -227,6 +228,10 @@ class Rebalance:
                                  f"{subsys}, anagrpid: {ana_id}")
                 change_lb_group_req = pb2.namespace_change_load_balancing_group_req(
                     subsystem_nqn=subsys, nsid=nsid, anagrpid=dest_ana_id, auto_lb_logic=True)
+                if not self.gw_srv.up_and_running:
+                    self.logger.warning("SPDK is not up and running!")
+                    return 0
+
                 ret = self.gw_srv.namespace_change_load_balancing_group_safe(change_lb_group_req,
                                                                              context)
                 self.logger.debug(f"ret namespace_change_load_balancing_group  {ret}")
