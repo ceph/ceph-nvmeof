@@ -593,12 +593,17 @@ jobs:
         with:
           ref: 'squid_8.1'  # Checkout the squid_8.1 branch
 
-      - name: Download container images
-        uses: actions/download-artifact@v4
-        with:
-          pattern: container_images_nvmeof
-          merge-multiple: true
-            
+      - name: Container_images_nvmeof folder (tar files) download
+        run: |
+          for i in {1..5}; do
+            echo "Attempt $i to download artifacts..."
+            gh run download --pattern "container_images_nvmeof" && break
+            echo "Download failed. Retrying in $((i * 5))s..."
+            sleep $((i * 5))
+          done
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Cluster build and Atom nightly tests run
         run: |
           . .env
