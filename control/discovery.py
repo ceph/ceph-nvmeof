@@ -401,6 +401,9 @@ class DiscoveryService:
         except BrokenPipeError:
             self.logger.error("client disconnected unexpectedly.")
             return -1
+        except OSError as ex:
+            self.logger.exception(f"got OS error {ex.errno}: {ex.strerror}")
+            return -1
         self.logger.debug("reply initialize connection request.")
         return 0
 
@@ -453,6 +456,9 @@ class DiscoveryService:
             conn.sendall(pdu_reply + connect_reply)
         except BrokenPipeError:
             self.logger.error("client disconnected unexpectedly.")
+            return -1
+        except OSError as ex:
+            self.logger.exception(f"got OS error {ex.errno}: {ex.strerror}")
             return -1
         self.logger.debug("reply connect request.")
         return 0
@@ -519,6 +525,9 @@ class DiscoveryService:
         except BrokenPipeError:
             self.logger.error("client disconnected unexpectedly.")
             return -1
+        except OSError as ex:
+            self.logger.exception(f"got OS error {ex.errno}: {ex.strerror}")
+            return -1
         self.logger.debug("reply property get request.")
         return 0
 
@@ -556,6 +565,9 @@ class DiscoveryService:
             conn.sendall(pdu_reply + property_set)
         except BrokenPipeError:
             self.logger.error("client disconnected unexpectedly.")
+            return -1
+        except OSError as ex:
+            self.logger.exception(f"got OS error {ex.errno}: {ex.strerror}")
             return -1
         self.logger.debug("reply property set request.")
         return 0
@@ -621,6 +633,9 @@ class DiscoveryService:
         except BrokenPipeError:
             self.logger.error("client disconnected unexpectedly.")
             return -1
+        except OSError as ex:
+            self.logger.exception(f"got OS error {ex.errno}: {ex.strerror}")
+            return -1
         self.logger.debug("reply identify request.")
         return 0
 
@@ -658,6 +673,9 @@ class DiscoveryService:
         except BrokenPipeError:
             self.logger.error("client disconnected unexpectedly.")
             return -1
+        except OSError as ex:
+            self.logger.exception(f"got OS error {ex.errno}: {ex.strerror}")
+            return -1
         self.logger.debug("reply set feature request.")
         return 0
 
@@ -693,6 +711,9 @@ class DiscoveryService:
             conn.sendall(pdu_reply + get_feature_reply)
         except BrokenPipeError:
             self.logger.error("client disconnected unexpectedly.")
+            return -1
+        except OSError as ex:
+            self.logger.exception(f"got OS error {ex.errno}: {ex.strerror}")
             return -1
         self.logger.debug("reply get feature request.")
         return 0
@@ -843,6 +864,9 @@ class DiscoveryService:
         except BrokenPipeError:
             self.logger.error("client disconnected unexpectedly.")
             return -1
+        except OSError as ex:
+            self.logger.exception(f"got OS error {ex.errno}: {ex.strerror}")
+            return -1
         self.logger.debug("reply get log page request.")
         return 0
 
@@ -876,6 +900,9 @@ class DiscoveryService:
         except BrokenPipeError:
             self.logger.error("client disconnected unexpectedly.")
             return -1
+        except OSError as ex:
+            self.logger.exception(f"got OS error {ex.errno}: {ex.strerror}")
+            return -1
         self.logger.debug("reply keep alive request.")
         return 0
 
@@ -900,6 +927,9 @@ class DiscoveryService:
             conn.sendall(pdu_reply + not_supported_reply)
         except BrokenPipeError:
             self.logger.error("client disconnected unexpectedly.")
+            return -1
+        except OSError as ex:
+            self.logger.exception(f"got OS error {ex.errno}: {ex.strerror}")
             return -1
         self.logger.warning("reply not supported opcode.")
         return 0
@@ -952,6 +982,9 @@ class DiscoveryService:
                     self.conn_vals[key].connection.sendall(pdu_reply + async_reply)
                 except BrokenPipeError:
                     self.logger.error("client disconnected unexpectedly.")
+                    return
+                except OSError as ex:
+                    self.logger.exception(f"got OS error {ex.errno}: {ex.strerror}")
                     return
                 self.logger.debug("notify and reply async request.")
                 self.conn_vals[key].recv_async = False
