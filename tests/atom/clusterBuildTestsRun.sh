@@ -102,7 +102,6 @@ if [ "$NIGHTLY" != "nightly" ]; then
         --journalctl-to-console \
         --dont-power-off-cloud-vms \
         --skip-lb-group-change-test \
-        --skip-multi-hosts-conn-test \
         --ibm-cloud-key=nokey \
         --github-nvmeof-token=nokey \
         --env=m7
