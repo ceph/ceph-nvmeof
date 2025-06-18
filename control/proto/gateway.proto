@@ -10,6 +10,8 @@
 
 syntax = "proto3";
 
+option go_package = "github.com/ceph/ceph-nvmeof/lib/go/nvmeof";
+
 enum AddressFamily {
 	ipv4 = 0;
 	ipv6 = 1;
