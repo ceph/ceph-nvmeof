@@ -4273,9 +4273,11 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         assert self.rpc_lock.locked(), "RPC is unlocked when calling list_hosts_safe()"
         peer_msg = self.get_peer_message(context)
-        self.logger.info(f"Received request to list hosts for "
-                         f"{request.subsystem}, clear_alerts: {request.clear_alerts}, "
-                         f"context: {context}{peer_msg}")
+        log_level = logging.INFO if context else logging.DEBUG
+        self.logger.log(log_level,
+                        f"Received request to list hosts for "
+                        f"{request.subsystem}, clear_alerts: {request.clear_alerts}, "
+                        f"context: {context}{peer_msg}")
         try:
             ret = rpc_nvmf.nvmf_get_subsystems(self.spdk_rpc_client, nqn=request.subsystem)
             self.logger.debug(f"list_hosts: {ret}")
