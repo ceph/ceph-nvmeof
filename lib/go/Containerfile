@@ -1,0 +1,11 @@
+FROM golang:1.24
+
+ENV MODULE=github.com/ceph/ceph-nvmeof/lib/go/nvmeof
+
+# install tools
+RUN true \
+	&& apt-get update \
+	&& apt install -y protobuf-compiler \
+	&& go install github.com/golang/protobuf/protoc-gen-go@latest \
+	&& go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest \
+	&& true
