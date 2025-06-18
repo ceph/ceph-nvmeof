@@ -9,11 +9,7 @@ set -e
 VERSION=$1
 CEPH_BRANCH=$2
 if [ "$3" = "latest" ]; then
-    if [ "$CEPH_BRANCH" = "main" ]; then
-        CEPH_SHA=$(curl -s https://shaman.ceph.com/api/repos/ceph/$CEPH_BRANCH/135cf5df119da6eded5a0f63cb040242a30d3a0a/centos/9/ | jq -r ".[] | select(.archs[] == \"$(uname -m)\" and .status == \"ready\") | .sha1")
-    else
-        CEPH_SHA=$(curl -s https://shaman.ceph.com/api/repos/ceph/$CEPH_BRANCH/latest/centos/9/ | jq -r ".[] | select(.archs[] == \"$(uname -m)\" and .status == \"ready\") | .sha1")
-    fi
+    CEPH_SHA=$(curl -s https://shaman.ceph.com/api/repos/ceph/$CEPH_BRANCH/latest/centos/9/ | jq -r ".[] | select(.archs[] == \"$(uname -m)\" and .status == \"ready\") | .sha1")
 else
     CEPH_SHA=$3
 fi
