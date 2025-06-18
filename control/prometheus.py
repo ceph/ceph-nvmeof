@@ -214,7 +214,7 @@ class NVMeOFCollector:
         host_map = {}
         for subsys in subsystem_list:
             resp = self.gateway_rpc.list_hosts(pb2.list_hosts_req(subsystem=subsys.nqn,
-                                                                  clear_alerts=True))
+                                                                  clear_alerts=False))
             if resp.status != 0:
                 logger.error(f"Exporter failed to fetch host info for "
                              f"{subsys.nqn}: {resp.error_message}")
