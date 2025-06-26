@@ -117,6 +117,7 @@ class Rebalance:
             self.logger.info(f"Auto rebalance is not supported - index {worker_ana_group}")
             return 1
         ongoing_scale_down_rebalance = False
+        invalid_ana_group = 0
         if not self.ceph_utils.is_rebalance_supported():
             self.logger.info("Auto rebalance is not supported with the curent ceph version")
             return 1
@@ -129,7 +130,7 @@ class Rebalance:
                     self.logger.info(f"Scale-down rebalance is ongoing for ANA group {ana_grp} "
                                      f"current load {self.gw_srv.ana_grp_ns_load[ana_grp]}")
                     self.last_scale_down_ts = now
-                    break
+                    invalid_ana_group = ana_grp
         num_active_ana_groups = len(grps_list)
         for ana_grp in self.gw_srv.ana_grp_state:
             if self.gw_srv.ana_grp_state[ana_grp] == pb2.ana_state.OPTIMIZED:
@@ -203,15 +204,20 @@ class Rebalance:
                                     continue
             if ongoing_scale_down_rebalance and (num_active_ana_groups == self.ceph_utils.num_gws):
                 # this GW feels scale_down condition on ana_grp but no GW in Deleting
-                # state in the current mon.map . Experimental code - just for logs
-                self.logger.info(f"Seems like scale-down deadlock on group {ana_grp}")
+                # state in the current mon.map. So need to change LB group for all NS
+                # related to the invalid group - group that was deleted by GW monitor
+                self.logger.info(f"Detected deleted LB group {invalid_ana_group}")
                 if (self.gw_srv.ana_grp_state[worker_ana_group]) == pb2.ana_state.OPTIMIZED:
                     min_ana_grp, chosen_nqn = self.find_min_loaded_group(grps_list)
-                    if chosen_nqn != "null":
+                    if chosen_nqn != "null" and invalid_ana_group != 0:
                         self.logger.info(f"Start rebalance (deadlock resolving) dest. ana group"
                                          f" {min_ana_grp}, subsystem {chosen_nqn}")
-                        # self.ns_rebalance(context, ana_grp, min_ana_grp, 1, "0")
+                        self.ns_rebalance(context, invalid_ana_group, min_ana_grp, 1, "0")
                         return 0
+                    else:
+                        self.logger.info(f"rebalance (deadlock resolving) is not allowed "
+                                         f" invalid group {invalid_ana_group},"
+                                         f" subsystem {chosen_nqn}")
         return 1
 
     def ns_rebalance(self, context, ana_id, dest_ana_id, num, subs_nqn) -> int:
