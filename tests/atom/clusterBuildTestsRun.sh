@@ -122,7 +122,7 @@ else
         --cli-img=quay.io/ceph/nvmeof-cli:"$VERSION" \
         --initiators=1 \
         --gw-group-num=1 \
-        --gw-num=4 \
+        --gw-num=8 \
         --gw-to-stop-num=1 \
         --gw-scale-down-num=1 \
         --subsystem-num=100 \
