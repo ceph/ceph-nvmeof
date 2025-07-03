@@ -532,6 +532,65 @@ class GatewayClient:
         else:
             assert False
 
+    def gw_get_stats(self, args):
+        """Show NVMf statistics for the gateway"""
+
+        out_func, err_func, _ = self.get_output_functions(args)
+        gw_stats = None
+        try:
+            get_stats_req = pb2.get_gateway_stats_req()
+            gw_stats = self.stub.get_gateway_stats(get_stats_req)
+        except Exception as ex:
+            gw_stats = pb2.gateway_stats_info(status=errno.EINVAL,
+                                              error_message=f"Failure getting gateway's "
+                                                            f"NVMf statistics:\n{ex}")
+
+        if args.format == "text" or args.format == "plain":
+            if gw_stats.status == 0:
+                if args.format == "text":
+                    table_format = "fancy_grid"
+                else:
+                    table_format = "plain"
+                stats_list = []
+                for pg in gw_stats.poll_groups:
+                    transports = ""
+                    for trns in pg.transports:
+                        transports += trns.trtype + ", "
+                    if transports:
+                        transports = transports.removesuffix(", ")
+                    stats_list.append([pg.name, gw_stats.tick_rate,
+                                       pg.admin_qpairs, pg.io_qpairs,
+                                       pg.current_admin_qpairs, pg.current_io_qpairs,
+                                       pg.pending_bdev_io, pg.completed_nvme_io,
+                                       transports])
+                stats_out = tabulate(stats_list,
+                                     headers=["Poll\nGroup", "Tick\nRate",
+                                              "Admin\nQPairs", "IO\nQPairs",
+                                              "Current\nAdmin\nQPairs",
+                                              "Current\nIO\nQPairs",
+                                              "Pending\nBdev\nIO",
+                                              "Completed\nNVMe\nIO",
+                                              "Transports"],
+                                     tablefmt=table_format)
+                out_func(f"NVMf statistics for gateway:\n{stats_out}")
+            else:
+                err_func(f"{gw_stats.error_message}")
+        elif args.format == "json" or args.format == "yaml":
+            ret_str = json_format.MessageToJson(gw_stats, indent=4,
+                                                including_default_value_fields=True,
+                                                preserving_proto_field_name=True)
+            if args.format == "json":
+                out_func(ret_str)
+            elif args.format == "yaml":
+                obj = json.loads(ret_str)
+                out_func(yaml.dump(obj))
+        elif args.format == "python":
+            return gw_stats
+        else:
+            assert False
+
+        return gw_stats.status
+
     def gw_listener_info(self, args):
         """Show gateway's listeners info"""
 
@@ -563,12 +622,14 @@ class GatewayClient:
                                                                  lstnr.listener.adrfam)
                     adrfam = self.format_adrfam(adrfam)
                     secure = "Yes" if lstnr.listener.secure else "No"
+                    active = "Yes" if lstnr.listener.active else "No"
                     ana_states = ana_states.removesuffix("\n")
                     listeners_list.append([lstnr.listener.host_name,
                                            lstnr.listener.trtype,
                                            adrfam,
                                            f"{lstnr.listener.traddr}:{lstnr.listener.trsvcid}",
                                            secure,
+                                           active,
                                            ana_states])
                 if len(listeners_list) > 0:
                     if args.format == "text":
@@ -581,7 +642,8 @@ class GatewayClient:
                                                       "Address Family",
                                                       "Address",
                                                       "Secure",
-                                                      "Load Balancing Group ID/State"],
+                                                      "Active",
+                                                      "Load Balancing\nGroup ID/State"],
                                              tablefmt=table_format)
                     out_func(f"Gateway listeners for {args.subsystem}:\n{listeners_out}")
                 else:
@@ -630,10 +692,13 @@ class GatewayClient:
     gw_actions.append({"name": "listener_info",
                        "args": gw_listener_info_args,
                        "help": "Show listeners information for the gateway"})
+    gw_actions.append({"name": "get_stats",
+                       "args": [],
+                       "help": "Show NVMf statistics for the gateway"})
     gw_choices = get_actions(gw_actions)
 
-    @cli.cmd(gw_actions)
-    def gw(self, args):
+    @cli.cmd(gw_actions, ["gw"])
+    def gateway(self, args):
         """Gateway commands"""
 
         if args.action == "info":
@@ -646,6 +711,8 @@ class GatewayClient:
             return self.gw_set_log_level(args)
         elif args.action == "listener_info":
             return self.gw_listener_info(args)
+        elif args.action == "get_stats":
+            return self.gw_get_stats(args)
         if not args.action:
             self.cli.parser.error(f"missing action for gw command (choose from "
                                   f"{GatewayClient.gw_choices})")
@@ -1281,11 +1348,13 @@ class GatewayClient:
                     adrfam = GatewayEnumUtils.get_key_from_value(pb2.AddressFamily, lstnr.adrfam)
                     adrfam = self.format_adrfam(adrfam)
                     secure = "Yes" if lstnr.secure else "No"
+                    active = "Yes" if lstnr.active else "No"
                     listeners_list.append([lstnr.host_name,
                                            lstnr.trtype,
                                            adrfam,
                                            f"{lstnr.traddr}:{lstnr.trsvcid}",
-                                           secure])
+                                           secure,
+                                           active])
                 if len(listeners_list) > 0:
                     if args.format == "text":
                         table_format = "fancy_grid"
@@ -1296,7 +1365,8 @@ class GatewayClient:
                                                       "Transport",
                                                       "Address Family",
                                                       "Address",
-                                                      "Secure"],
+                                                      "Secure",
+                                                      "Active"],
                                              tablefmt=table_format)
                     out_func(f"Listeners for {args.subsystem}:\n{listeners_out}")
                 else:
@@ -2095,10 +2165,17 @@ class GatewayClient:
                         err_func(f"Failure listing namespace with UUID {args.uuid}: "
                                  f"Got namespace {ns.uuid} instead")
                         return errno.ENODEV
-                    if ns.load_balancing_group == 0:
+                    if not ns.load_balancing_group:
                         lb_group = "<n/a>"
                     else:
                         lb_group = str(ns.load_balancing_group)
+                    if not ns.configured_load_balancing_group:
+                        configured_lb_group = "<n/a>"
+                    else:
+                        configured_lb_group = str(ns.configured_load_balancing_group)
+                        if configured_lb_group != lb_group and args.output != "stdio":
+                            configured_lb_group = "\x1b[7m" + configured_lb_group + "\x1b[27m"
+                    cluster_name = "<n/a>" if not ns.cluster_name else ns.cluster_name
                     if ns.auto_visible:
                         visibility = "All Hosts"
                     else:
@@ -2112,6 +2189,10 @@ class GatewayClient:
                     ro_msg = "Read-Only" if ns.read_only else "Read-Write"
                     trash_msg = "\nTrash on delete" if ns.trash_image else ""
                     auto_resize_msg = "\nDisable auto resize" if ns.disable_auto_resize else ""
+                    verbose_info = []
+                    if args.verbose:
+                        verbose_info = [cluster_name]
+                        lb_group += f" ({configured_lb_group})"
                     namespaces_list.append([subsys_nqn,
                                             ns.nsid,
                                             break_string(ns.bdev_name, "-", 2),
@@ -2125,13 +2206,19 @@ class GatewayClient:
                                             self.get_qos_limit_str_value(ns.rw_ios_per_second),
                                             self.get_qos_limit_str_value(ns.rw_mbytes_per_second),
                                             self.get_qos_limit_str_value(ns.r_mbytes_per_second),
-                                            self.get_qos_limit_str_value(ns.w_mbytes_per_second)])
+                                            self.get_qos_limit_str_value(
+                                                ns.w_mbytes_per_second)] + verbose_info)
 
                 if len(namespaces_list) > 0:
                     if args.format == "text":
                         table_format = "fancy_grid"
                     else:
                         table_format = "plain"
+                    verbose_headers = []
+                    configured_txt = ""
+                    if args.verbose:
+                        verbose_headers = ["Cluster\nName"]
+                        configured_txt = "\n(Configured)"
                     namespaces_out = tabulate(namespaces_list,
                                               headers=["NQN",
                                                        "NSID",
@@ -2141,12 +2228,12 @@ class GatewayClient:
                                                        "Image\nSize",
                                                        "Block\nSize",
                                                        "UUID",
-                                                       "Load\nBalancing\nGroup",
+                                                       "Load\nBalancing\nGroup" + configured_txt,
                                                        "Visibility",
                                                        "R/W IOs\nper\nsecond",
                                                        "R/W MBs\nper\nsecond",
                                                        "Read MBs\nper\nsecond",
-                                                       "Write MBs\nper\nsecond"],
+                                                       "Write MBs\nper\nsecond"] + verbose_headers,
                                               tablefmt=table_format)
                     if args.nsid:
                         prefix = f"Namespace {args.nsid} in"

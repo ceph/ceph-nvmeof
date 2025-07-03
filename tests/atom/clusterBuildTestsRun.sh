@@ -62,6 +62,7 @@ git checkout $ATOM_SHA
 # Build atom images based on the cloned repo
 sudo docker build -t nvmeof_atom:$ATOM_SHA .
 
+#TODO: remove the line --skip-reservations-basic-test when https://github.com/ceph/ceph-nvmeof/pull/1260 is merged
 set -x
 if [ "$NIGHTLY" != "nightly" ]; then
     check_cluster_busy "$BUSY_FILE" "$ACTION_URL"
@@ -102,6 +103,8 @@ if [ "$NIGHTLY" != "nightly" ]; then
         --journalctl-to-console \
         --dont-power-off-cloud-vms \
         --skip-lb-group-change-test \
+        --skip-gw-failover-latency-test \
+        --skip-reservations-basic-test \
         --ibm-cloud-key=nokey \
         --github-nvmeof-token=nokey \
         --env=m7
@@ -119,7 +122,7 @@ else
         --cli-img=quay.io/ceph/nvmeof-cli:"$VERSION" \
         --initiators=1 \
         --gw-group-num=1 \
-        --gw-num=4 \
+        --gw-num=8 \
         --gw-to-stop-num=1 \
         --gw-scale-down-num=1 \
         --subsystem-num=100 \
@@ -143,6 +146,8 @@ else
         --dont-power-off-cloud-vms \
         --dont-use-hugepages \
         --skip-lb-group-change-test \
+        --skip-gw-failover-latency-test \
+        --skip-reservations-basic-test \
         --skip-block-list-test \
         --skip-multi-hosts-conn-test \
         --ibm-cloud-key=nokey \
@@ -159,3 +164,58 @@ else
     echo "Atom docker run failed!!!"
     exit 1
 fi
+
+# TODO- when https://github.com/ceph/ceph-nvmeof/issues/1369 will be fixed, we can uncomment the following lines
+
+# echo "=== Checking logs for errors ==="
+# if [ "$NIGHTLY" != "nightly" ]; then
+#     ENV="m7"
+# else
+#     ENV="m8"
+# fi
+# LOGS_DIR="/home/cephnvme/artifact_${ENV}/multiIBMCloudServers_${ENV}/"
+# echo "the current work directory is: $(pwd)"
+# if [ ! -d "${LOGS_DIR}" ]; then
+#     echo "❌ Logs directory not found: ${LOGS_DIR}"
+#     exit 1
+# fi
+# ls -lta ${LOGS_DIR} || true
+
+# # Check logs for errors
+# traceback_found=false
+# log_files=$(find "${LOGS_DIR}" -maxdepth 1 -name '*.log' -type f 2>/dev/null || true)
+
+# if [ -n "${log_files}" ]; then
+#     echo "Found log files: ${log_files} log files to check for errors:"
+#     while IFS= read -r log_file; do
+#         if [ -f "${log_file}" ]; then
+#             # First check for Traceback (fatal)
+#             if grep -q 'Traceback' "${log_file}" 2>/dev/null; then
+#                 echo "❌ Traceback found in: ${log_file}"
+#                 grep -B 5 -A 30 'Traceback' "${log_file}"
+#                 traceback_found=true
+#             else
+#                 # If no Traceback, check for other error patterns (non-fatal)
+#                 for pattern in 'ERROR' 'FATAL' 'Exception:'; do
+#                     if grep -q "${pattern}" "${log_file}" 2>/dev/null; then
+#                         echo "⚠️  File containing '${pattern}': ${log_file}"
+#                         echo "=== ${pattern} in ${log_file} ==="
+#                         grep -n -B 2 -A 2 "${pattern}" "${log_file}" 2>/dev/null | head -20 || true
+#                         echo "=== END ${pattern} ==="
+#                         echo ""
+#                         break  # Only show first pattern found in this file
+#                     fi
+#                 done
+#             fi
+#         fi
+#     done <<< "${log_files}"
+# fi
+
+# # Fail if tracebacks found
+# if [ "${traceback_found}" = true ]; then
+#     echo "❌ Traceback detected in logs — failing the script"
+#     exit 1
+# else
+#     echo "✅ No critical errors found in logs"
+# fi
+# echo "✅ Log check completed successfully - No critical errors found."

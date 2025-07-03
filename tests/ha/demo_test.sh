@@ -24,7 +24,7 @@ function demo_test_psk()
     make demosecurepsk OPTS=-T HOSTNQN="${NQN}host" HOSTNQN2="${NQN}host2" HOSTNQN3="${NQN}host3" NVMEOF_IO_PORT2=${port2} PSKKEY2=${PSK_KEY3}
 
     echo "ℹ️  verify PSK key files removal"
-    psk_key_list=`make -s exec SVC=nvmeof OPTS=-T CMD="/usr/local/bin/spdk_rpc -s /var/tmp/spdk.sock keyring_get_keys"`
+    psk_key_list=`make -s exec SVC=nvmeof OPTS=-T CMD="/usr/local/bin/spdk-rpc -s /var/tmp/spdk.sock keyring_get_keys"`
     [[ `echo $psk_key_list | jq -r '.[0].removed'` == "true" ]]
     [[ `echo $psk_key_list | jq -r '.[1].removed'` == "true" ]]
     [[ `echo $psk_key_list | jq -r '.[2].removed'` == "null" ]]
@@ -286,24 +286,25 @@ function demo_bdevperf_unsecured()
     [[ `cat /tmp/gw_listeners.txt | jq -r '.gw_listeners[0].listener.traddr'` == "2001:db8::3" ]]
     [[ `cat /tmp/gw_listeners.txt | jq -r '.gw_listeners[0].listener.trsvcid'` == "4420" ]]
     [[ `cat /tmp/gw_listeners.txt | jq -r '.gw_listeners[0].listener.secure'` == "false" ]]
+    [[ `cat /tmp/gw_listeners.txt | jq -r '.gw_listeners[0].listener.active'` == "true" ]]
     [[ `cat /tmp/gw_listeners.txt | jq -r '.gw_listeners[1].listener.trtype'` == "TCP" ]]
     [[ `cat /tmp/gw_listeners.txt | jq -r '.gw_listeners[1].listener.adrfam'` == "ipv4" ]]
     [[ `cat /tmp/gw_listeners.txt | jq -r '.gw_listeners[1].listener.traddr'` == "0.0.0.0" ]]
     [[ `cat /tmp/gw_listeners.txt | jq -r '.gw_listeners[1].listener.trsvcid'` == "4430" ]]
     [[ `cat /tmp/gw_listeners.txt | jq -r '.gw_listeners[1].listener.secure'` == "false" ]]
+    [[ `cat /tmp/gw_listeners.txt | jq -r '.gw_listeners[1].listener.active'` == "true" ]]
     [[ `cat /tmp/gw_listeners.txt | jq -r '.gw_listeners[2].listener.trtype'` == "TCP" ]]
     [[ `cat /tmp/gw_listeners.txt | jq -r '.gw_listeners[2].listener.adrfam'` == "ipv4" ]]
     [[ `cat /tmp/gw_listeners.txt | jq -r '.gw_listeners[2].listener.traddr'` == "192.168.13.3" ]]
     [[ `cat /tmp/gw_listeners.txt | jq -r '.gw_listeners[2].listener.trsvcid'` == "4420" ]]
     [[ `cat /tmp/gw_listeners.txt | jq -r '.gw_listeners[2].listener.secure'` == "false" ]]
+    [[ `cat /tmp/gw_listeners.txt | jq -r '.gw_listeners[2].listener.active'` == "true" ]]
     [[ `cat /tmp/gw_listeners.txt | jq -r '.gw_listeners[3]'` == "null" ]]
     hostname0=`cat /tmp/gw_listeners.txt | jq -r '.gw_listeners[0].listener.host_name'`
     hostname1=`cat /tmp/gw_listeners.txt | jq -r '.gw_listeners[1].listener.host_name'`
     hostname2=`cat /tmp/gw_listeners.txt | jq -r '.gw_listeners[2].listener.host_name'`
     [[ "$hostname0" == "$hostname1" ]]
     [[ "$hostname0" == "$hostname2" ]]
-    [[ `cat /tmp/gw_listeners.txt | jq -r '.gw_listeners[0].lb_states[0].grp_id'` == "1" ]]
-    [[ `cat /tmp/gw_listeners.txt | jq -r '.gw_listeners[0].lb_states[0].state'` == "OPTIMIZED" ]]
     for lsnr in 0 1 2
     do
         [[ `cat /tmp/gw_listeners.txt | jq -r ".gw_listeners[${lsnr}].lb_states[0].grp_id"` == "1" ]]
@@ -314,6 +315,7 @@ function demo_bdevperf_unsecured()
             [[ `cat /tmp/gw_listeners.txt | jq -r ".gw_listeners[${lsnr}].lb_states[${i}].grp_id"` == "${grp}" ]]
             [[ `cat /tmp/gw_listeners.txt | jq -r ".gw_listeners[${lsnr}].lb_states[${i}].state"` == "INACCESSIBLE" ]]
         done
+        [[ `cat /tmp/gw_listeners.txt | jq -r ".gw_listeners[${lsnr}].lb_states[16]"` == "null" ]]
     done
 
     cat /tmp/listeners.txt
@@ -323,16 +325,19 @@ function demo_bdevperf_unsecured()
     [[ `cat /tmp/listeners.txt | jq -r '.listeners[0].traddr'` == "192.168.13.3" ]]
     [[ `cat /tmp/listeners.txt | jq -r '.listeners[0].trsvcid'` == "4420" ]]
     [[ `cat /tmp/listeners.txt | jq -r '.listeners[0].secure'` == "false" ]]
+    [[ `cat /tmp/listeners.txt | jq -r '.listeners[0].active'` == "true" ]]
     [[ `cat /tmp/listeners.txt | jq -r '.listeners[1].trtype'` == "TCP" ]]
     [[ `cat /tmp/listeners.txt | jq -r '.listeners[1].adrfam'` == "ipv4" ]]
     [[ `cat /tmp/listeners.txt | jq -r '.listeners[1].traddr'` == "0.0.0.0" ]]
     [[ `cat /tmp/listeners.txt | jq -r '.listeners[1].trsvcid'` == "4430" ]]
     [[ `cat /tmp/listeners.txt | jq -r '.listeners[1].secure'` == "false" ]]
+    [[ `cat /tmp/listeners.txt | jq -r '.listeners[1].active'` == "true" ]]
     [[ `cat /tmp/listeners.txt | jq -r '.listeners[2].trtype'` == "TCP" ]]
     [[ `cat /tmp/listeners.txt | jq -r '.listeners[2].adrfam'` == "ipv6" ]]
     [[ `cat /tmp/listeners.txt | jq -r '.listeners[2].traddr'` == "[2001:db8::3]" ]]
     [[ `cat /tmp/listeners.txt | jq -r '.listeners[2].trsvcid'` == "4420" ]]
     [[ `cat /tmp/listeners.txt | jq -r '.listeners[2].secure'` == "false" ]]
+    [[ `cat /tmp/listeners.txt | jq -r '.listeners[2].active'` == "false" ]]
     [[ `cat /tmp/listeners.txt | jq -r '.listeners[3]'` == "null" ]]
     hostname20=`cat /tmp/listeners.txt | jq -r '.listeners[0].host_name'`
     hostname21=`cat /tmp/listeners.txt | jq -r '.listeners[1].host_name'`
@@ -345,12 +350,12 @@ function demo_bdevperf_unsecured()
     rm -f /tmp/listeners.txt
     cephnvmf_func --output stdio --format plain gw listener_info --subsystem $NQN > /tmp/gw_listeners.txt
     cat /tmp/gw_listeners.txt
-    grep "TCP          IPv6              2001:db8::3:4420   No        1: Optimized" /tmp/gw_listeners.txt
-    grep "TCP          IPv4              0.0.0.0:4430       No        1: Optimized" /tmp/gw_listeners.txt
-    grep "TCP          IPv4              192.168.13.3:4420  No        1: Optimized" /tmp/gw_listeners.txt
+    grep "TCP          IPv6              2001:db8::3:4420   No        Yes       1: Optimized" /tmp/gw_listeners.txt
+    grep "TCP          IPv4              0.0.0.0:4430       No        Yes       1: Optimized" /tmp/gw_listeners.txt
+    grep "TCP          IPv4              192.168.13.3:4420  No        Yes       1: Optimized" /tmp/gw_listeners.txt
 
     set +e
-    tail -n +3 /tmp/gw_listeners.txt | grep -v "Optimized"
+    tail -n +4 /tmp/gw_listeners.txt | grep -v "Optimized"
     if [[ $? -eq 0 ]]; then
         echo "Should only get optimized load balancing states"
         exit 1
@@ -788,7 +793,7 @@ function demo_bdevperf_dhchap()
     [[ "${controllers}" == "[]" ]]
 
     echo "ℹ️  keep keys before change"
-    dhchap_key_list_pre_change=`make -s exec SVC=nvmeof OPTS=-T CMD="/usr/local/bin/spdk_rpc -s /var/tmp/spdk.sock keyring_get_keys"`
+    dhchap_key_list_pre_change=`make -s exec SVC=nvmeof OPTS=-T CMD="/usr/local/bin/spdk-rpc -s /var/tmp/spdk.sock keyring_get_keys"`
     path1_pre=`echo ${dhchap_key_list_pre_change} | jq -r '.[0].path'`
     path2_pre=`echo ${dhchap_key_list_pre_change} | jq -r '.[1].path'`
     path3_pre=`echo ${dhchap_key_list_pre_change} | jq -r '.[2].path'`
@@ -980,7 +985,7 @@ function demo_bdevperf_dhchap()
     [[ `echo $conns3 | jq -r '.connections[4]'` == "null" ]]
 
     echo "ℹ️  verify DHCHAP key files removal"
-    dhchap_key_list=`make -s exec SVC=nvmeof OPTS=-T CMD="/usr/local/bin/spdk_rpc -s /var/tmp/spdk.sock keyring_get_keys"`
+    dhchap_key_list=`make -s exec SVC=nvmeof OPTS=-T CMD="/usr/local/bin/spdk-rpc -s /var/tmp/spdk.sock keyring_get_keys"`
     path1=`echo ${dhchap_key_list} | jq -r '.[0].path'`
     path2=`echo ${dhchap_key_list} | jq -r '.[1].path'`
     path3=`echo ${dhchap_key_list} | jq -r '.[2].path'`
@@ -1062,7 +1067,7 @@ function demo_bdevperf_dhchap()
     make exec SVC=nvmeof OPTS=-T CMD="test ! -d ${subsys_dir}"
     cephnvmf_func subsystem del --subsystem ${NQN}2 --force
     make exec SVC=nvmeof OPTS=-T CMD="test ! -d ${subsys2_dir}"
-    dhchap_key_list=`make -s exec SVC=nvmeof OPTS=-T CMD="/usr/local/bin/spdk_rpc -s /var/tmp/spdk.sock keyring_get_keys"`
+    dhchap_key_list=`make -s exec SVC=nvmeof OPTS=-T CMD="/usr/local/bin/spdk-rpc -s /var/tmp/spdk.sock keyring_get_keys"`
     [[ `echo $dhchap_key_list | jq -r '.[0]'` == "null" ]]
 
     echo "ℹ️  use invalid encryption key"

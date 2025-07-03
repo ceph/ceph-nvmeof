@@ -23,6 +23,7 @@ class CephUtils:
     # if these values are changed we need to update SPDK as well
     METADATA_KEY_AUTO_RESIZE = "NVME_GATEWAY_AUTO_RESIZE"
     METADATA_VALUE_NO_AUTO_RESIZE = "no"
+    METADATA_KEY_IMAGE_ID = "NVME_IMAGE_IDENTIFICATION"
 
     def __init__(self, config):
         self.logger = GatewayLogger(config).logger
@@ -136,6 +137,8 @@ class CephUtils:
         return fsid
 
     def pool_exists(self, pool) -> bool:
+        if not pool:
+            return False
         try:
             with rados.Rados(conffile=self.ceph_conf, rados_id=self.rados_id) as cluster:
                 if cluster.pool_exists(pool):
@@ -278,6 +281,10 @@ class CephUtils:
         return False
 
     def does_image_exist(self, pool_name: str, image_name: str) -> bool:
+        if not pool_name:
+            return False
+        if not image_name:
+            return False
         try:
             self.get_image_size(pool_name, image_name)
             return True
@@ -289,7 +296,9 @@ class CephUtils:
 
     def set_image_metadata(self, pool: str, image_name: str, key: str, value: str) -> None:
         if not self.pool_exists(pool):
-            raise rbd.ImageNotFound(f"Pool {pool} doesn't exist", errno=errno.ENODEV)
+            raise rbd.ImageNotFound(f"Pool {pool} doesn't exist", errno=errno.ENOENT)
+        if not self.does_image_exist(pool, image_name):
+            raise rbd.ImageNotFound(f"Image {pool}/{image_name} doesn't exist", errno=errno.ENOENT)
 
         with rados.Rados(conffile=self.ceph_conf, rados_id=self.rados_id) as cluster:
             with cluster.open_ioctx(pool) as ioctx:
@@ -344,9 +353,9 @@ class CephUtils:
                     raise rbd.ImageNotFound(f"Image {pool}/{image_name} doesn't exist",
                                             errno=errno.ENODEV)
                 except KeyError:
-                    self.logger.exception(f"No metadata {key} for image "
-                                          f"{pool}/{image_name}")
-                    raise
+                    self.logger.info(f"No metadata {key} for image "
+                                     f"{pool}/{image_name}, no need to remove")
+                    pass
                 except Exception:
                     self.logger.exception(f"Error while trying to remove metadata {key} of image "
                                           f"{pool}/{image_name}")

@@ -25,6 +25,9 @@ calc_written_bytes_in_sec()
 }
 
 
+echo "ℹ️  get initial NVMf statistics"
+cephnvmf gateway get_stats
+
 cephnvmf subsystem add --subsystem $NQN --no-group-append
 cephnvmf namespace add -n $NQN --rbd-pool rbd --rbd-image ${IMG_NAME} --rbd-create-image --size 10MB --read-only
 cephnvmf listener add --subsystem $NQN --host-name $GW_NAME --traddr $GW_IP --trsvcid 4420 --verify-host-name
@@ -82,5 +85,10 @@ fi
 sleep 60
 set -e
 
+echo "ℹ️  get final NVMf statistics"
+cephnvmf gateway get_stats
+
+echo "ℹ️  delete subsystem"
 cephnvmf subsystem del --subsystem $NQN --force
+
 exit 0

@@ -554,6 +554,78 @@ class NamespacesLocalList:
         return ns_list
 
 
+class ImageIdentification:
+    DELIMITER = GatewayState.OMAP_KEY_DELIMITER
+
+    def __init__(self, group_name, subsys, uuid):
+        group_name_to_use = None
+        if group_name is not None:
+            group_name_to_use = group_name.replace(ImageIdentification.DELIMITER, "-")
+        self.group_name = group_name_to_use
+        self.subsys = subsys
+        self.uuid = uuid
+
+    def __str__(self):
+        return f"{self.group_name}{ImageIdentification.DELIMITER}{self.subsys}" \
+               f"{ImageIdentification.DELIMITER}{self.uuid}"
+
+    def empty(self) -> bool:
+        if self.group_name is not None:
+            return False
+        if self.subsys is not None:
+            return False
+        if self.uuid is not None:
+            return False
+        return True
+
+    def is_same_group(self, group_name: str) -> bool:
+        if group_name is None:
+            return self.group_name is None
+        if not group_name:
+            return not self.group_name
+        group_name_to_use = group_name.replace(ImageIdentification.DELIMITER, "-")
+        return group_name_to_use == self.group_name
+
+    def is_same_uuid(self, uuid: str) -> bool:
+        if uuid is None:
+            return self.uuid is None
+        if not uuid:
+            return not self.uuid
+        return uuid == self.uuid
+
+    def is_same_image_id(self, img_id) -> bool:
+        if self.group_name != img_id.group_name:
+            return False
+        if self.subsys != img_id.subsys:
+            return False
+        if self.uuid != img_id.uuid:
+            return False
+        return True
+
+    @classmethod
+    def parse(cls, img_ids: str) -> list:
+        parts = img_ids.split(ImageIdentification.DELIMITER)
+        ids_list = []
+        while parts:
+            group_name, subsys, uuid = parts[:3]
+            ids_list.append(ImageIdentification(group_name, subsys, uuid))
+            parts = parts[3:]
+
+        return ids_list
+
+    @classmethod
+    def list2string(cls, img_ids: list) -> str:
+        if not img_ids:
+            return ""
+
+        result = ""
+        for one_img in img_ids:
+            result += f"{one_img}, "
+
+        result = "[" + result.removesuffix(", ") + "]"
+        return result
+
+
 class GatewayService(pb2_grpc.GatewayServicer):
     """Implements gateway service interface.
 
@@ -999,6 +1071,89 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                   error_message="Shutting down server")
 
         return rc
+
+    def get_image_identification(self, rbd_pool: str, rbd_image: str) -> list[ImageIdentification]:
+        image_id_metadata = None
+        if not self.ceph_utils.does_image_exist(rbd_pool, rbd_image):
+            self.logger.debug(f"Image {rbd_pool}/{rbd_image} not found")
+            return []
+        try:
+            image_id_metadata = self.ceph_utils.get_image_metadata(
+                rbd_pool, rbd_image, CephUtils.METADATA_KEY_IMAGE_ID)
+        except KeyError:
+            pass
+        except Exception:
+            self.logger.exception(f"Error getting image identification for image "
+                                  f"{rbd_pool}/{rbd_image}")
+        if not image_id_metadata:
+            return []
+
+        try:
+            img_ids_list = ImageIdentification.parse(image_id_metadata)
+        except Exception:
+            self.logger.exception(f"Error parsing {image_id_metadata}")
+            return []
+
+        self.logger.debug(f"Found image ids {ImageIdentification.list2string(img_ids_list)} "
+                          f"for {rbd_pool}/{rbd_image}")
+
+        return img_ids_list
+
+    def set_image_identification(self, rbd_pool: str, rbd_image: str, img_id: ImageIdentification):
+        assert img_id, "Can't set an empty image id"
+
+        img_id_value = ""
+        img_ids_list = self.get_image_identification(rbd_pool, rbd_image)
+        for one_id in img_ids_list:
+            if one_id.is_same_image_id(img_id):
+                self.logger.debug(f"Image id {img_id} already included in "
+                                  f"{ImageIdentification.list2string(img_ids_list)}")
+                return
+            img_id_value += f"{one_id}{ImageIdentification.DELIMITER}"
+
+        img_id_value += f"{img_id}"
+
+        try:
+            self.ceph_utils.set_image_metadata(rbd_pool, rbd_image,
+                                               CephUtils.METADATA_KEY_IMAGE_ID,
+                                               img_id_value)
+            self.logger.debug(f"set image id {img_id_value} for {rbd_pool}/{rbd_image}")
+        except Exception:
+            self.logger.exception(f"Error setting image identification {img_id_value} for "
+                                  f"{rbd_pool}{rbd_image}")
+
+    def delete_image_identification(self, rbd_pool: str,
+                                    rbd_image: str, img_id: ImageIdentification):
+        assert img_id, "Can't delete an empty image id"
+
+        img_id_value = ""
+        img_ids_list = self.get_image_identification(rbd_pool, rbd_image)
+        for one_id in img_ids_list:
+            if one_id.is_same_image_id(img_id):
+                self.logger.debug(f"Image id {img_id} was found in "
+                                  f"{ImageIdentification.list2string(img_ids_list)}")
+                continue
+            img_id_value += f"{one_id}{ImageIdentification.DELIMITER}"
+
+        img_id_value = img_id_value.removesuffix(ImageIdentification.DELIMITER)
+
+        if not img_id_value:
+            try:
+                self.ceph_utils.remove_image_metadata(rbd_pool, rbd_image,
+                                                      CephUtils.METADATA_KEY_IMAGE_ID)
+                self.logger.debug(f"remove all image ids for {rbd_pool}/{rbd_image}")
+            except Exception:
+                self.logger.exception(f"Error removing image identifications for "
+                                      f"{rbd_pool}/{rbd_image}")
+        else:
+            try:
+                self.ceph_utils.set_image_metadata(rbd_pool, rbd_image,
+                                                   CephUtils.METADATA_KEY_IMAGE_ID,
+                                                   img_id_value)
+                self.logger.debug(f"set image id {img_id_value} for {rbd_pool}/{rbd_image}")
+            except Exception:
+                self.logger.exception(f"Error setting image identification {img_id_value} for "
+                                      f"{rbd_pool}{rbd_image}")
 
     def create_bdev(self, anagrp: int, name, uuid, rbd_pool_name, rbd_image_name,
                     block_size, create_image, trash_image, rbd_image_size, disable_auto_resize,
@@ -1631,11 +1786,27 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 self.logger.warning(f"Will continue deleting {request.subsystem_nqn} anyway")
         return self.execute_grpc_function(self.delete_subsystem_safe, request, context)
 
-    def check_if_image_used(self, pool_name, image_name):
+    def check_if_image_used(self, pool_name, image_name, uuid):
         """Check if image is used by any other namespace."""
 
         errmsg = ""
         nqn = None
+
+        img_ids_list = self.get_image_identification(pool_name, image_name)
+        for img_id in img_ids_list:
+            if not img_id.empty():
+                if not img_id.is_same_group(self.gateway_group):
+                    grp_txt = f", group {img_id.group_name}" if img_id.group_name else ""
+                    errmsg = f"RBD image {pool_name}/{image_name} is already used by a namespace " \
+                             f"in subsystem {img_id.subsys}{grp_txt}"
+                    return errmsg, img_id.subsys
+                if not img_id.is_same_uuid(uuid):
+                    uuid_txt = f"with UUID {img_id.uuid} " if img_id.uuid else ""
+                    errmsg = f"RBD image {pool_name}/{image_name} is already used by a namespace " \
+                             f"{uuid_txt}" \
+                             f"in subsystem {img_id.subsys}, group {img_id.group_name}"
+                    return errmsg, img_id.subsys
+
         state = self.gateway_state.local.get_state()
         for key, val in state.items():
             if not key.startswith(self.gateway_state.local.NAMESPACE_PREFIX):
@@ -1851,7 +2022,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
                         self.logger.debug(f"set_ana_state nvmf_subsystem_listener_set_ana_state "
                                           f"{nqn=} {listener=} {ana_state=} {grp_id=}")
-                        (adrfam, traddr, trsvcid, secure) = listener
+                        (adrfam, traddr, trsvcid, secure, active) = listener
+                        if not active:
+                            continue
                         ret = rpc_nvmf.nvmf_subsystem_listener_set_ana_state(
                             self.spdk_rpc_client,
                             nqn=nqn,
@@ -1932,7 +2105,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
         with omap_lock:
             if context:
                 errmsg, ns_nqn = self.check_if_image_used(request.rbd_pool_name,
-                                                          request.rbd_image_name)
+                                                          request.rbd_image_name,
+                                                          request.uuid)
                 if errmsg and ns_nqn:
                     if request.force:
                         self.logger.warning(f"{errmsg}, will continue as the \"force\" "
@@ -2038,6 +2212,13 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     if ret_bdev.trash_image:
                         self.delete_rbd_image(ret_bdev.rbd_pool, ret_bdev.rbd_image_name)
                     return pb2.nsid_status(status=errno.EINVAL, error_message=errmsg)
+
+            img_id = ImageIdentification(self.gateway_group,
+                                         request.subsystem_nqn,
+                                         request.uuid)
+            self.set_image_identification(request.rbd_pool_name,
+                                          request.rbd_image_name,
+                                          img_id)
 
         return pb2.nsid_status(status=0, error_message=os.strerror(0), nsid=ret_ns.nsid)
 
@@ -2209,6 +2390,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
             ns["read_only"]
         except KeyError:
             ns["read_only"] = False
+        try:
+            ns["force"]
+        except KeyError:
+            ns["force"] = False
 
     def namespace_change_load_balancing_group(self, request, context=None):
         """Changes a namespace load balancing group."""
@@ -2643,7 +2828,6 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 subsystem_nqn, nsid)
             self.ana_grp_ns_load[anagrpid] -= 1
             self.ana_grp_subs_load[anagrpid][subsystem_nqn] -= 1
-
         except Exception as ex:
             self.logger.exception(namespace_failure_prefix)
             errmsg = f"{namespace_failure_prefix}:\n{ex}"
@@ -2752,10 +2936,18 @@ class GatewayService(pb2_grpc.GatewayServicer):
                         pass
                     find_ret = self.subsystem_nsid_bdev_and_uuid.find_namespace(subsys_nqn,
                                                                                 nsid)
+                    lb_group_configured = 0
+                    cluster_name = None
                     if find_ret.empty():
                         self.logger.warning(f"Can't find info of namesapce {nsid} in "
-                                            f"{subsys_nqn}. Visibility status "
+                                            f"{subsys_nqn}. Some fields value "
                                             f"will be inaccurate")
+                    else:
+                        lb_group_configured = find_ret.anagrpid
+                        try:
+                            cluster_name = self.bdev_cluster[find_ret.bdev]
+                        except KeyError:
+                            cluster_name = None
 
                     one_ns = pb2.namespace_cli(nsid=nsid,
                                                bdev_name=bdev_name,
@@ -2765,7 +2957,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                                hosts=find_ret.host_list,
                                                ns_subsystem_nqn=subsys_nqn,
                                                trash_image=find_ret.trash_image,
-                                               read_only=find_ret.read_only)
+                                               read_only=find_ret.read_only,
+                                               configured_load_balancing_group=lb_group_configured,
+                                               cluster_name=cluster_name)
                     with self.rpc_lock:
                         ns_bdev = self.get_bdev_info(bdev_name)
                     if ns_bdev is None:
@@ -3254,18 +3448,24 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 return ret
 
             self.remove_namespace_from_state(request.subsystem_nqn, request.nsid, context)
-            self.subsystem_nsid_bdev_and_uuid.remove_namespace(request.subsystem_nqn, request.nsid)
-            if bdev_name:
-                ret_del = self.delete_bdev(bdev_name, peer_msg=peer_msg)
-                if ret_del.status != 0:
-                    errmsg = f"Failure deleting namespace {request.nsid} from " \
-                             f"{request.subsystem_nqn}: {ret_del.error_message}"
-                    self.logger.error(errmsg)
-                    if find_ret.trash_image:
-                        self.delete_rbd_image(rbd_pool, rbd_image_name)
-                    return pb2.nsid_status(status=ret_del.status, error_message=errmsg)
-            if find_ret.trash_image:
-                self.delete_rbd_image(rbd_pool, rbd_image_name)
+
+        self.delete_image_identification(find_ret.pool, find_ret.image,
+                                         ImageIdentification(self.gateway_group,
+                                                             request.subsystem_nqn,
+                                                             find_ret.uuid))
+        self.subsystem_nsid_bdev_and_uuid.remove_namespace(request.subsystem_nqn, request.nsid)
+        if bdev_name:
+            ret_del = self.delete_bdev(bdev_name, peer_msg=peer_msg)
+            if ret_del.status != 0:
+                errmsg = f"Failure deleting namespace {request.nsid} from " \
+                         f"{request.subsystem_nqn}: {ret_del.error_message}"
+                self.logger.error(errmsg)
+                if find_ret.trash_image:
+                    self.delete_rbd_image(rbd_pool, rbd_image_name)
+                return pb2.nsid_status(status=ret_del.status, error_message=errmsg)
+
+        if find_ret.trash_image:
+            self.delete_rbd_image(rbd_pool, rbd_image_name)
 
         return pb2.req_status(status=0, error_message=os.strerror(0))
 
@@ -3640,6 +3840,13 @@ class GatewayService(pb2_grpc.GatewayServicer):
             self.logger.error(errmsg)
             return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
 
+        # If this is not set the subsystem was not created yet
+        if request.subsystem_nqn not in self.subsys_serial:
+            pref = all_host_failure_prefix if request.host_nqn == "*" else host_failure_prefix
+            errmsg = f"{pref}: can't find subsystem {request.subsystem_nqn}"
+            self.logger.error(errmsg)
+            return pb2.req_status(status=errno.ENOENT, error_message=errmsg)
+
         if request.host_nqn == "*":
             if self.host_info.does_subsystem_have_dhchap_key(request.subsystem_nqn):
                 errmsg = f"{all_host_failure_prefix}: Can't allow any host access " \
@@ -3717,7 +3924,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
             secure = False
             try:
                 for listener in self.subsystem_listeners[request.subsystem_nqn]:
-                    (_, _, _, secure) = listener
+                    (_, _, _, secure, _) = listener
                     if secure:
                         errmsg = f"{all_host_failure_prefix}: Can't allow open host access " \
                                  f"on a subsystem with secure listeners"
@@ -4486,9 +4693,11 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 dhchap = self.host_info.is_dhchap_host(subsystem, hostnqn)
 
                 if subsystem in self.subsystem_listeners:
-                    lstnr = (adrfam, traddr, trsvcid, True)
-                    if lstnr in self.subsystem_listeners[subsystem]:
-                        secure = True
+                    for active in [False, True]:
+                        lstnr = (adrfam, traddr, trsvcid, True, active)
+                        if lstnr in self.subsystem_listeners[subsystem]:
+                            secure = True
+                            break
 
                 if not trtype:
                     trtype = "TCP"
@@ -4618,12 +4827,13 @@ class GatewayService(pb2_grpc.GatewayServicer):
             if request.host_name == self.host_name:
                 try:
                     for secure in [False, True]:
-                        lstnr = (adrfam, traddr, request.trsvcid, secure)
-                        if lstnr in self.subsystem_listeners[request.nqn]:
-                            errmsg = f"{create_listener_error_prefix}: Subsystem already " \
-                                     f"listens on address {request.traddr}:{request.trsvcid}"
-                            self.logger.error(errmsg)
-                            return pb2.req_status(status=errno.EEXIST, error_message=errmsg)
+                        for active in [False, True]:
+                            lstnr = (adrfam, traddr, request.trsvcid, secure, active)
+                            if lstnr in self.subsystem_listeners[request.nqn]:
+                                errmsg = f"{create_listener_error_prefix}: Subsystem already " \
+                                         f"listens on address {request.traddr}:{request.trsvcid}"
+                                self.logger.error(errmsg)
+                                return pb2.req_status(status=errno.EEXIST, error_message=errmsg)
 
                     if self.verify_listener_ip:
                         nics = NICS(self.logger, True)
@@ -4639,9 +4849,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     ret = rpc_nvmf.nvmf_subsystem_add_listener(self.spdk_rpc_client,
                                                                **add_listener_args)
                     self.logger.debug(f"create_listener: {ret}")
-                    self.subsystem_listeners[request.nqn].add((adrfam, traddr,
-                                                               request.trsvcid, request.secure))
-                    listener_created = True
+                    listener_created = ret
                 except Exception as ex:
                     self.logger.exception(create_listener_error_prefix)
                     errmsg = f"{create_listener_error_prefix}:\n{ex}"
@@ -4663,6 +4871,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 return pb2.req_status(status=errno.EINVAL,
                                       error_message=create_listener_error_prefix)
 
+            self.subsystem_listeners[request.nqn].add((adrfam, traddr,
+                                                       request.trsvcid, request.secure,
+                                                       request.host_name == self.host_name))
             if listener_created:
                 try:
                     self.logger.debug(f"create_listener nvmf_subsystem_listener_set_ana_state "
@@ -4859,36 +5070,39 @@ class GatewayService(pb2_grpc.GatewayServicer):
         with omap_lock:
             try:
                 is_there = False
+                is_active = False
                 if request.nqn in self.subsystem_listeners:
                     for secur in [False, True]:
-                        lstnr = (adrfam, traddr, request.trsvcid, secur)
-                        if lstnr in self.subsystem_listeners[request.nqn]:
-                            is_there = True
+                        if is_there:
                             break
+                        for active in [False, True]:
+                            lstnr = (adrfam, traddr, request.trsvcid, secur, active)
+                            if lstnr in self.subsystem_listeners[request.nqn]:
+                                is_there = True
+                                is_active = active
+                                break
                 if not is_there:
                     errmsg = f"{delete_listener_error_prefix}: Listener not found"
                     self.logger.error(errmsg)
                     return pb2.req_status(status=errno.ENOENT, error_message=errmsg)
 
                 if request.host_name == self.host_name or request.force:
-                    ret = rpc_nvmf.nvmf_subsystem_remove_listener(
-                        self.spdk_rpc_client,
-                        nqn=request.nqn,
-                        trtype="TCP",
-                        traddr=traddr,
-                        trsvcid=str(request.trsvcid),
-                        adrfam=adrfam,
-                    )
-                    self.logger.debug(f"delete_listener: {ret}")
+                    if is_active:
+                        ret = rpc_nvmf.nvmf_subsystem_remove_listener(
+                            self.spdk_rpc_client,
+                            nqn=request.nqn,
+                            trtype="TCP",
+                            traddr=traddr,
+                            trsvcid=str(request.trsvcid),
+                            adrfam=adrfam,
+                        )
+                        self.logger.debug(f"delete_listener: {ret}")
                     if request.nqn in self.subsystem_listeners:
-                        if (adrfam, traddr, request.trsvcid,
-                                False) in self.subsystem_listeners[request.nqn]:
-                            self.subsystem_listeners[request.nqn].remove((adrfam, traddr,
-                                                                          request.trsvcid, False))
-                        if (adrfam, traddr, request.trsvcid,
-                                True) in self.subsystem_listeners[request.nqn]:
-                            self.subsystem_listeners[request.nqn].remove((adrfam, traddr,
-                                                                          request.trsvcid, True))
+                        for secur in [False, True]:
+                            for active in [False, True]:
+                                lstnr = (adrfam, traddr, request.trsvcid, secur, active)
+                                if lstnr in self.subsystem_listeners[request.nqn]:
+                                    self.subsystem_listeners[request.nqn].remove(lstnr)
                 else:
                     errmsg = f"{delete_listener_error_prefix}: Gateway's host name must " \
                              f"match current host ({self.host_name}). You can continue to " \
@@ -4956,12 +5170,26 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     secure = False
                     if "secure" in listener:
                         secure = listener["secure"]
+                    active = False
+                    if request.subsystem in self.subsystem_listeners:
+                        lookfor = (listener["adrfam"].lower(), listener["traddr"],
+                                   int(listener["trsvcid"]), secure, False)
+                        if lookfor in self.subsystem_listeners[request.subsystem]:
+                            active = False
+                        else:
+                            lookfor = (listener["adrfam"].lower(), listener["traddr"],
+                                       int(listener["trsvcid"]), secure, True)
+                            if lookfor in self.subsystem_listeners[request.subsystem]:
+                                active = True
+                            else:
+                                self.logger.warning(f"Can't find listener "
+                                                    f"{listener} in local list")
                     one_listener = pb2.listener_info(host_name=listener["host_name"],
                                                      trtype="TCP",
                                                      adrfam=listener["adrfam"],
                                                      traddr=listener["traddr"],
                                                      trsvcid=listener["trsvcid"],
-                                                     secure=secure)
+                                                     secure=secure, active=active)
                     listeners.append(one_listener)
                 except Exception:
                     self.logger.exception(f"Got exception while parsing {val}")
@@ -5008,20 +5236,32 @@ class GatewayService(pb2_grpc.GatewayServicer):
         gw_listeners = []
         for lstnr in ret:
             try:
-                secure = False
+                is_secure = False
+                is_active = False
+                found = False
                 if request.subsystem_nqn in self.subsystem_listeners:
-                    local_lstnr = (lstnr["address"]["adrfam"].lower(),
-                                   lstnr["address"]["traddr"],
-                                   int(lstnr["address"]["trsvcid"]),
-                                   True)
-                    if local_lstnr in self.subsystem_listeners[request.subsystem_nqn]:
-                        secure = True
+                    for secure in [False, True]:
+                        if found:
+                            break
+                        for active in [False, True]:
+                            local_lstnr = (lstnr["address"]["adrfam"].lower(),
+                                           lstnr["address"]["traddr"],
+                                           int(lstnr["address"]["trsvcid"]),
+                                           secure,
+                                           active)
+                            if local_lstnr in self.subsystem_listeners[request.subsystem_nqn]:
+                                found = True
+                                is_secure = secure
+                                is_active = active
+                                break
+                if not found:
+                    self.logger.warning(f"Can't find listener {lstnr} in local list")
                 lstnr_part = pb2.listener_info(host_name=self.host_name,
                                                trtype=lstnr["address"]["trtype"].upper(),
                                                adrfam=lstnr["address"]["adrfam"].lower(),
                                                traddr=lstnr["address"]["traddr"],
                                                trsvcid=int(lstnr["address"]["trsvcid"]),
-                                               secure=secure)
+                                               secure=is_secure, active=is_active)
             except Exception:
                 self.logger.exception(f"Error getting address from {lstnr}")
                 continue
@@ -5542,6 +5782,58 @@ class GatewayService(pb2_grpc.GatewayServicer):
         """Get gateway's info"""
 
         return self.execute_grpc_function(self.get_gateway_info_safe, request, context)
+
+    def get_gateway_stats_safe(self, request, context=None):
+        """Get gateway's NVMf statistics"""
+
+        assert self.rpc_lock.locked(), "RPC is unlocked when calling get_gateway_stats_safe()"
+        error_prefix = "Failure getting gateway's NVMf statistics"
+        peer_msg = self.get_peer_message(context)
+        self.logger.info(f"Received request to get gateway's NVMf statistics{peer_msg}")
+        try:
+            gw_stats = rpc_nvmf.nvmf_get_stats(self.spdk_rpc_client)
+            self.logger.debug(f"nvmf_get_stats: {gw_stats}")
+        except Exception as ex:
+            self.logger.exception(error_prefix)
+            errmsg = f"{error_prefix}:\n{ex}"
+            resp = self.parse_json_exeption(ex)
+            status = errno.EINVAL
+            if resp:
+                status = resp["code"]
+                errmsg = f"{error_prefix}: {resp['message']}"
+            return pb2.gateway_stats_info(status=status, error_message=errmsg)
+
+        gw_stats_info = None
+        try:
+            tick_rate = gw_stats["tick_rate"]
+            poll_groups = []
+            for poll_grp in gw_stats["poll_groups"]:
+                transports = []
+                for trns in poll_grp["transports"]:
+                    transports.append(pb2.poll_group_transport_info(trtype=trns["trtype"]))
+                pg = pb2.poll_group_info(name=poll_grp["name"],
+                                         admin_qpairs=poll_grp["admin_qpairs"],
+                                         io_qpairs=poll_grp["io_qpairs"],
+                                         current_admin_qpairs=poll_grp["current_admin_qpairs"],
+                                         current_io_qpairs=poll_grp["current_io_qpairs"],
+                                         pending_bdev_io=poll_grp["pending_bdev_io"],
+                                         completed_nvme_io=poll_grp["completed_nvme_io"],
+                                         transports=transports)
+                poll_groups.append(pg)
+            gw_stats_info = pb2.gateway_stats_info(status=0, error_message=os.strerror(0),
+                                                   tick_rate=tick_rate,
+                                                   poll_groups=poll_groups)
+        except KeyError:
+            self.logger.exception(f"Error parsing {gw_stats}")
+            errmsg = f"{error_prefix}: Error parsing"
+            return pb2.gateway_stats_info(status=errno.ENOKEY, error_message=errmsg)
+
+        return gw_stats_info
+
+    def get_gateway_stats(self, request, context=None):
+        """Get gateway's NVMf statistics"""
+
+        return self.execute_grpc_function(self.get_gateway_stats_safe, request, context)
 
     def get_gateway_log_level(self, request, context=None):
         """Get gateway's log level"""

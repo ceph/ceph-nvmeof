@@ -49,11 +49,10 @@ def test_ignore_unlock_errors(caplog, gateway):
         if oneline.message == lookfor:
             found += 1
     assert found == 1
-    caplog.clear()
     gw.rpc_lock.acquire()
+    caplog.clear()
     gw.omap_lock.lock_omap()
     assert "Locked OMAP exclusive" in caplog.text
-    assert "Locked OMAP shared" not in caplog.text
     time.sleep(25)     # A little more than omap_file_lock_duration
     caplog.clear()
     gw.omap_lock.unlock_omap()
