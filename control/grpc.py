@@ -1917,6 +1917,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 anagrpid=anagrpid,
                 uuid=uuid,
                 no_auto_visible=not auto_visible,
+                ptpl_file="PTPL",
             )
             self.subsystem_nsid_bdev_and_uuid.add_namespace(subsystem_nqn, nsid,
                                                             bdev_name, uuid,
@@ -2080,6 +2081,16 @@ class GatewayService(pb2_grpc.GatewayServicer):
             request.trash_image = False
 
         if context:
+            self.logger.info(f"Created NS uuid: {request.uuid} pool: {request.rbd_pool_name}, "
+                             f"image: {request.rbd_image_name}")
+            try:
+                self.ceph_utils.remove_image_metadata(request.rbd_pool_name,
+                                                      request.rbd_image_name,
+                                                      "reservation_key")
+            except Exception:
+                self.logger.exception(f"Got exception while trying to delete reservation_key "
+                                      f"from the image {request.rbd_image_name} ")
+
             grps_list = self.ceph_utils.get_number_created_gateways(self.gateway_pool,
                                                                     self.gateway_group)
             min_load, anagrp = \
