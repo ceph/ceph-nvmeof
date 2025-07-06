@@ -178,7 +178,7 @@ The same configuration can also be manually run:
 1. Create a listener so that NVMe initiators can connect to:
 
     ```bash
-    cephnvmf listener add ---subsystem nqn.2016-06.io.spdk:cnode1 --host-name host_name_found_above -a gateway_addr -s 4420 --verify-host-name
+    cephnvmf listener add --subsystem nqn.2016-06.io.spdk:cnode1 --host-name host_name_found_above -a gateway_addr -s 4420 --verify-host-name
     ```
 
 1. Define which hosts can connect:
