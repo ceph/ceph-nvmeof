@@ -701,7 +701,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
     KEYS_DIR = "/var/tmp"
     MAX_SUBSYSTEMS_DEFAULT = 128
     MAX_NAMESPACES_DEFAULT = 4096
-    MAX_NAMESPACES_PER_SUBSYSTEM_DEFAULT = 256
+    MAX_NAMESPACES_PER_SUBSYSTEM_DEFAULT = 512
     MAX_HOSTS_PER_SUBSYS_DEFAULT = 128
     MAX_HOSTS_DEFAULT = 2048
     # notification name should be the same as in spdk/lib/nvmf/ctrlr.c
