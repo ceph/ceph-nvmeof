@@ -700,7 +700,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
     DHCHAP_CONTROLLER_PREFIX = "dhchap_ctrlr"
     KEYS_DIR = "/var/tmp"
     MAX_SUBSYSTEMS_DEFAULT = 128
-    MAX_NAMESPACES_DEFAULT = 2048
+    MAX_NAMESPACES_DEFAULT = 4096
     MAX_NAMESPACES_PER_SUBSYSTEM_DEFAULT = 256
     MAX_HOSTS_PER_SUBSYS_DEFAULT = 128
     MAX_HOSTS_DEFAULT = 2048
@@ -982,10 +982,28 @@ class GatewayService(pb2_grpc.GatewayServicer):
     def remove_key_from_keyring(self, key_type: str, subsysnqn: str, hostnqn: str) -> None:
         key_name = GatewayService.construct_key_name_for_keyring(subsysnqn, hostnqn, key_type)
         assert self.rpc_lock.locked(), "RPC is unlocked when calling keyring_file_remove_key()"
+        key_list = []
         try:
-            rpc_keyring.keyring_file_remove_key(self.spdk_rpc_client, key_name)
+            key_list = rpc_keyring.keyring_get_keys(self.spdk_rpc_client)
         except Exception:
-            pass
+            self.logger.exception("Can't list keyring keys")
+            key_list = []
+
+        key_exists = False
+        for one_key in key_list:
+            try:
+                if one_key["name"] == key_name:
+                    key_exists = True
+                    break
+            except Exception:
+                pass
+
+        if key_exists:
+            try:
+                rpc_keyring.keyring_file_remove_key(self.spdk_rpc_client, key_name)
+            except Exception:
+                self.logger.exception(f"Can't remove key {key_name}")
+                pass
 
     def remove_psk_key_from_keyring(self, subsysnqn: str, hostnqn: str) -> None:
         self.remove_key_from_keyring(self.PSK_PREFIX, subsysnqn, hostnqn)
@@ -1031,6 +1049,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 try:
                     rpc_keyring.keyring_file_remove_key(self.spdk_rpc_client, key_name)
                 except Exception:
+                    self.logger.exception(f"Can't remove key {key_name}")
                     pass
 
     @staticmethod
@@ -3868,7 +3887,12 @@ class GatewayService(pb2_grpc.GatewayServicer):
         if not keyname or not filename:
             return
         assert self.rpc_lock.locked(), "RPC is unlocked when calling _add_key_to_keyring()"
-        keys = rpc_keyring.keyring_get_keys(self.spdk_rpc_client)
+        keys = []
+        try:
+            keys = rpc_keyring.keyring_get_keys(self.spdk_rpc_client)
+        except Exception:
+            self.logger.exception("Can't list keyring keys")
+            keys = []
         old_filename = None
         for one_key in keys:
             try:
@@ -3882,18 +3906,20 @@ class GatewayService(pb2_grpc.GatewayServicer):
             try:
                 os.remove(old_filename)
             except Exception:
+                self.logger.exception(f"Can't remove file {old_filename}")
                 pass
-
-        try:
-            rpc_keyring.keyring_file_remove_key(self.spdk_rpc_client, keyname)
-        except Exception:
-            pass
+            try:
+                rpc_keyring.keyring_file_remove_key(self.spdk_rpc_client, keyname)
+            except Exception:
+                self.logger.exception(f"Can't remove {keytype} key {keyname}")
+                pass
 
         try:
             ret = rpc_keyring.keyring_file_add_key(self.spdk_rpc_client, keyname, filename)
             self.logger.debug(f"keyring_file_add_key {keyname} and file {filename}: {ret}")
             self.logger.info(f"Added {keytype} key {keyname} to keyring")
         except Exception:
+            self.logger.exception(f"Can't add {keytype} key {keyname} to keyring")
             pass
 
     def add_host_safe(self, request, context):
@@ -4151,11 +4177,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                         self.host_info.add_psk_host(request.subsystem_nqn,
                                                     request.host_nqn, request.psk)
                         self.remove_host_psk_file(request.subsystem_nqn, request.host_nqn)
-                        try:
-                            rpc_keyring.keyring_file_remove_key(self.spdk_rpc_client,
-                                                                psk_key_name)
-                        except Exception:
-                            pass
+                        self.remove_psk_key_from_keyring(request.subsystem_nqn, request.host_nqn)
                     if dhchap_file:
                         self.host_info.add_dhchap_host(request.subsystem_nqn,
                                                        request.host_nqn, request.dhchap_key)
