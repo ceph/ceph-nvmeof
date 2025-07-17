@@ -125,8 +125,8 @@ else
         --gw-num=8 \
         --gw-to-stop-num=1 \
         --gw-scale-down-num=1 \
-        --subsystem-num=100 \
-        --ns-num=6 \
+        --subsystem-num=103 \
+        --ns-num=8 \
         --subsystem-max-ns-num=2048 \
         --failover-num=10 \
         --failover-num-after-upgrade=2 \
