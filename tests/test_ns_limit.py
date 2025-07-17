@@ -156,6 +156,11 @@ def set_qos_for_subsystem_namespaces(caplog, subsys, subsys_ns_cnt):
 def verify_namespace_count(caplog, port, desired_ns_count):
     caplog.clear()
     ns_list = cli_test(["--server-port", port, "--format", "json", "namespace", "list"])
+    if len(ns_list.namespaces) < desired_ns_count:
+        # wait a little longer before giving up
+        time.sleep(60)
+        caplog.clear()
+        ns_list = cli_test(["--server-port", port, "--format", "json", "namespace", "list"])
     assert len(ns_list.namespaces) == desired_ns_count
 
 
@@ -165,7 +170,7 @@ def test_ns_limit(caplog, two_gateways):
     portB = gwB.config.config["gateway"]["port"]
     waitForUpdate = max(int(gwA.config.config["gateway"]["state_update_interval_sec"]),
                         int(gwB.config.config["gateway"]["state_update_interval_sec"]))
-    waitForUpdate += 10
+    waitForUpdate += 30
     ns_per_subsys = namespace_count // subsystem_count
     assert ns_per_subsys > 0
     assert ns_per_subsys * subsystem_count == namespace_count

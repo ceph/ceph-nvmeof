@@ -975,7 +975,8 @@ def test_encryption_disabled(caplog, gateway_encryption_disabled):
     assert f"create_subsystem {subsystem3}: True" in caplog.text
     time.sleep(15)
     lookfor = f"Received request to create subsystem {subsystem3}, enable_ha: True, " \
-              f"max_namespaces: 256, no group append: True, context: None"
+              f"max_namespaces: {gw_encryption_disabled.MAX_NAMESPACES_PER_SUBSYSTEM_DEFAULT}" \
+              f", no group append: True, context: None"
     assert lookfor in caplog.text
     pos = caplog.text.find(lookfor)
     assert pos >= 0

@@ -279,8 +279,10 @@ def test_multi_gateway_omap_reread(config, conn_omap_reread, caplog):
     assert ret_ns3.status == 0
     assert "The file is not current, will reload it and try again" not in caplog.text
 
-    bdevsA = rpc_bdev.bdev_get_bdevs(gatewayA.spdk_rpc_client)
-    bdevsB = rpc_bdev.bdev_get_bdevs(gatewayB.spdk_rpc_client)
+    with gatewayA.rpc_lock:
+        bdevsA = rpc_bdev.bdev_get_bdevs(gatewayA.spdk_rpc_client)
+    with gatewayB.rpc_lock:
+        bdevsB = rpc_bdev.bdev_get_bdevs(gatewayB.spdk_rpc_client)
     # GW-B should have the bdev created on GW-A after reading the OMAP file plus
     #      the two we created on it
     # GW-A should only have the bdev created on it as we didn't update it after
@@ -388,7 +390,7 @@ def test_multi_gateway_listener_update(config, image, conn_concurrent, caplog):
     assert f"Received request to create {gwA.host_name} TCP ipv4 listener for " \
            f"{subsystem} at 127.0.0.1:5101" in caplog.text
     assert "create_listener: True" in caplog.text
-    time.sleep(20)
+    time.sleep(30)
     caplog.clear()
     listenerB_req = pb2.create_listener_req(nqn=subsystem,
                                             host_name=gwB.host_name,

@@ -103,7 +103,8 @@ def verify_namespaces_using_get_subsystems(caplog, gw_port, subsys, first_nsid, 
 
 def verify_namespaces_using_spdk_get_subsystems(caplog, gw, subsys, first_nsid, last_nsid, grp):
     caplog.clear()
-    subsys_info = rpc_nvmf.nvmf_get_subsystems(gw.gateway_rpc.spdk_rpc_client)
+    with gw.rpc_lock:
+        subsys_info = rpc_nvmf.nvmf_get_subsystems(gw.gateway_rpc.spdk_rpc_client)
     assert len(subsys_info) == 1
     assert subsys_info[0]["nqn"] == subsys
     assert len(subsys_info[0]["namespaces"]) >= last_nsid

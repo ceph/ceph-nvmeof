@@ -189,11 +189,12 @@ class TestGet:
         assert f"CLI version: {cli_ver}" in caplog.text
         caplog.clear()
         spdk_ver = None
-        try:
-            spdk_ver = spdk_get_version(gw.spdk_rpc_client)
-            spdk_ver = spdk_ver["version"]
-        except Exception:
-            spdk_ver = None
+        with gw.rpc_lock:
+            try:
+                spdk_ver = spdk_get_version(gw.spdk_rpc_client)
+                spdk_ver = spdk_ver["version"]
+            except Exception:
+                spdk_ver = None
         if not spdk_ver:
             spdk_ver = os.getenv("NVMEOF_SPDK_VERSION")
         gw_info = cli_test(["gw", "info"])
@@ -1750,7 +1751,8 @@ class TestDelete:
         bdev_name = ns_list.namespaces[0].bdev_name
         assert bdev_name
         bdev_found = False
-        bdev_list = rpc_bdev.bdev_get_bdevs(gw.spdk_rpc_client)
+        with gw.rpc_lock:
+            bdev_list = rpc_bdev.bdev_get_bdevs(gw.spdk_rpc_client)
         for b in bdev_list:
             try:
                 if bdev_name == b["name"]:
@@ -1771,7 +1773,8 @@ class TestDelete:
         cli(["namespace", "del", "--subsystem", subsystem, "--nsid", "6"])
         assert f"Deleting namespace 6 from {subsystem}: Successful" in caplog.text
         bdev_found = False
-        bdev_list = rpc_bdev.bdev_get_bdevs(gw.spdk_rpc_client)
+        with gw.rpc_lock:
+            bdev_list = rpc_bdev.bdev_get_bdevs(gw.spdk_rpc_client)
         for b in bdev_list:
             try:
                 if bdev_name == b["name"]:

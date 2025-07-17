@@ -265,7 +265,17 @@ class GatewayServer:
 
         if self.config.getboolean_with_default("gateway", "enable_prometheus_exporter", True):
             self.logger.info("Prometheus endpoint is enabled")
-            start_exporter(self.spdk_rpc_client, self.config, self.gateway_rpc, self.logger)
+
+            def delayed_start():
+                delay = self.config.getint_with_default("gateway", "prometheus_startup_delay", 240)
+                if delay > 0:
+                    self.logger.info(f"Delaying Prometheus startup by {delay} seconds...")
+                    stop_event = threading.Event()
+                    stop_event.wait(timeout=delay)
+                start_exporter(self.spdk_rpc_client, self.config, self.gateway_rpc, self.logger)
+
+            threading.Thread(target=delayed_start, daemon=True).start()
+            self.logger.info("Prometheus startup scheduled in background")
         else:
             self.logger.info("Prometheus endpoint is disabled. To enable, set the config "
                              "option 'enable_prometheus_exporter = True'")
