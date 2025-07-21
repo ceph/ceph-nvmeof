@@ -822,6 +822,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         self.spdk_version = None
         self.spdk_qos_timeslice = self.config.getint_with_default("spdk",
                                                                   "qos_timeslice_in_usecs", None)
+        self.force_tls = self.config.getboolean_with_default("gateway", "force_tls", False)
         spdk_notifications_interval = self.config.getint_with_default("spdk",
                                                                       "notifications_interval",
                                                                       60)
@@ -4004,6 +4005,11 @@ class GatewayService(pb2_grpc.GatewayServicer):
             self.logger.error(errmsg)
             return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
 
+        if self.force_tls and request.host_nqn != "*" and not request.psk:
+            errmsg = f"{host_failure_prefix}: host must have a PSK key"
+            self.logger.error(errmsg)
+            return pb2.req_status(status=errno.ENOKEY, error_message=errmsg)
+
         if not context:
             if request.dhchap_key == GatewayUtilsCrypto.INVALID_KEY_VALUE:
                 errmsg = f"{host_failure_prefix}: No valid DH-HMAC-CHAP key was found for host"
@@ -4913,6 +4919,11 @@ class GatewayService(pb2_grpc.GatewayServicer):
         if request.secure and self.host_info.is_any_host_allowed(request.nqn):
             errmsg = f"{create_listener_error_prefix}: Secure channel is only allowed " \
                      f"for subsystems in which \"allow any host\" is off"
+            self.logger.error(errmsg)
+            return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
+
+        if self.force_tls and not request.secure:
+            errmsg = f"{create_listener_error_prefix}: Secure channel must be used"
             self.logger.error(errmsg)
             return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
 
