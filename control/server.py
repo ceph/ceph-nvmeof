@@ -25,6 +25,7 @@ import spdk.rpc.nvmf as rpc_nvmf
 import spdk.rpc.iobuf as rpc_iobuf
 import spdk.rpc.dsa as rpc_dsa
 import spdk.rpc.sock as rpc_sock
+import spdk.rpc.bdev as rpc_bdev_rbd
 
 from .proto import gateway_pb2 as pb2
 from .proto import gateway_pb2_grpc as pb2_grpc
@@ -672,6 +673,9 @@ class GatewayServer:
             # Set SSL tickets for ssl sock implemtation
             self._set_num_ssl_tickets(0)
 
+            # Initialize RBD CRC32C configuration
+            self._initialize_rbd_crc32c()
+
             # Set config and enable dsa accel module offload.
             self._probe_dsa()
 
@@ -864,6 +868,19 @@ class GatewayServer:
         except Exception:
             self.logger.exception("sock_impl_set_options returned with error")
             pass
+
+    def _initialize_rbd_crc32c(self):
+        """Initialize RBD CRC32C configuration."""
+
+        rbd_with_crc32c = self.config.getboolean_with_default("spdk", "rbd_with_crc32c", False)
+        self.logger.debug(f"initialize_rbd_crc32c: rbd_with_crc32c: {rbd_with_crc32c}")
+
+        try:
+            rpc_bdev_rbd.bdev_rbd_set_with_crc32c(self.spdk_rpc_client, enable=rbd_with_crc32c)
+            self.logger.info(f"Set RBD CRC32C usage to: {rbd_with_crc32c}")
+        except Exception:
+            self.logger.exception("Failed to set RBD CRC32C configuration")
+            raise
 
     def _accel_config(self):
         # Instantiate DsaUtils and run config
