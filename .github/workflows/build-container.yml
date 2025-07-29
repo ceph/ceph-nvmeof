@@ -609,19 +609,25 @@ jobs:
         run: |
           . .env
           ACTION_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          ./tests/atom/clusterBuildTestsRun.sh $NVMEOF_VERSION $CEPH_BRANCH $CEPH_SHA $ATOM_SHA $ACTION_URL
+          ./tests/atom/clusterBuildTestsRun.sh $NVMEOF_VERSION $CEPH_BRANCH $CEPH_SHA $ATOM_SHA $ACTION_URL 2>&1 | tee atom_nvmeof_console.log
 
       - name: Atom artifact build
         if: always()
         run: ./tests/atom/cpArtifactAndCleanup.sh
 
-      # TODO: investigating upluad to artifact issue
-      # - name: Upload artifact for non-schedule events
-      #   uses: actions/upload-artifact@v4
-      #   if: always()
-      #   with:
-      #     name: atom-artifact
-      #     path: /home/cephnvme/artifact_m7.tar.gz
+      - name: Upload nvmeof console as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: atom-nvmeof-full-console
+          path: atom_nvmeof_console.log
+
+      - name: Upload artifact for non-schedule events
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: atom-artifact
+          path: /home/cephnvme/artifact_m7.tar.gz
 
   atom-nightly:
     needs: [build, build-ceph]
@@ -648,27 +654,26 @@ jobs:
         run: |
           . .env
           ACTION_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          stdbuf -oL -eL ./tests/atom/clusterBuildTestsRun.sh $NVMEOF_VERSION $CEPH_BRANCH $CEPH_SHA $ATOM_SHA $ACTION_URL 'nightly' 2>&1 | tee nightly_nvmeof_console.log
+          stdbuf -oL -eL ./tests/atom/clusterBuildTestsRun.sh $NVMEOF_VERSION $CEPH_BRANCH $CEPH_SHA $ATOM_SHA $ACTION_URL 'nightly' 2>&1 | tee atom_nightly_nvmeof_console.log
           exit ${PIPESTATUS[0]}
 
       - name: Atom artifact build nightly
         if: always()
         run: ./tests/atom/cpArtifactAndCleanup.sh 'nightly'
 
-      # TODO: investigating upluad to artifact issue
-      # - name: Upload nightly nvmeof console as artifact
-      #   if: always()
-      #   uses: actions/upload-artifact@v4
-      #   with:
-      #     name: nightly-nvmeof-full-console
-      #     path: nightly_nvmeof_console.log
+      - name: Upload nightly nvmeof console as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: atom-nightly-nvmeof-full-console
+          path: atom_nightly_nvmeof_console.log
 
-      # - name: Upload artifact for schedule events
-      #   uses: actions/upload-artifact@v4
-      #   if: always()
-      #   with:
-      #     name: atom-artifact
-      #     path: /home/cephnvme/artifact_m8.tar.gz
+      - name: Upload artifact for schedule events
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: atom-artifact
+          path: /home/cephnvme/artifact_m8.tar.gz
 
   push-images-to-ceph-registry:
     if: github.event_name == 'release'

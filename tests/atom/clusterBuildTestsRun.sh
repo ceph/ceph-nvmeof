@@ -152,6 +152,7 @@ else
         --skip-multi-hosts-conn-test \
         --ibm-cloud-key=nokey \
         --github-nvmeof-token=nokey \
+        --encryption-key \
         --env=m8
     DOCKER_EXIT_STATUS=$?
 fi
