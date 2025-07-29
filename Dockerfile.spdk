@@ -73,7 +73,6 @@ RUN \
     && dnf install $DNF_OPTS -y \
         rpm-build \
         git-core \
-    && rpm -vih https://buildlogs.centos.org/centos/9-stream/storage/x86_64/ceph-quincy/Packages/t/thrift-0.14.0-7.el9s.x86_64.rpm \
     && scripts/pkgdep.sh $SPDK_PKGDEP_ARGS \
     && dnf $DNF_OPTS update -y
 
@@ -153,7 +152,6 @@ RUN \
     --mount=type=cache,target=/var/lib/dnf \
     rpm -vih $SPDK_CENTOS_BASE/centos-stream-repos-$SPDK_CENTOS_REPO_VER.noarch.rpm \
              $SPDK_CENTOS_BASE/centos-gpg-keys-$SPDK_CENTOS_REPO_VER.noarch.rpm \
-    && rpm -vih https://buildlogs.centos.org/centos/9-stream/storage/x86_64/ceph-quincy/Packages/t/thrift-0.14.0-7.el9s.x86_64.rpm \
     && dnf $DNF_OPTS install -y /rpm/$(uname -m)/*.rpm \
     && dnf $DNF_OPTS update -y
 
