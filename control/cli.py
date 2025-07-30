@@ -536,6 +536,51 @@ class GatewayClient:
         else:
             assert False
 
+    def gw_get_thread_stats(self, args):
+        """Show NVMf thread statistics for the gateway"""
+
+        out_func, err_func, _ = self.get_output_functions(args)
+        thread_stats = None
+        try:
+            get_thread_stats_req = pb2.get_thread_stats_req()
+            thread_stats = self.stub.get_thread_stats(get_thread_stats_req)
+        except Exception as ex:
+            err_msg = f"Failure getting gateway's NVMf thread statistics:\n{ex}"
+            thread_stats = pb2.thread_stats_info(status=errno.EINVAL,
+                                                 error_message=err_msg)
+        if args.format == "text" or args.format == "plain":
+            if thread_stats.status == 0:
+                if args.format == "text":
+                    table_format = "fancy_grid"
+                else:
+                    table_format = "plain"
+                stats_list = []
+                tick_rate = thread_stats.tick_rate
+                for thread in thread_stats.threads:
+                    stats_list.append([thread.name, thread.busy, thread.idle])
+                stats_out = tabulate(stats_list,
+                                     headers=["Name", "Busy", "Idle"],
+                                     tablefmt=table_format)
+                out_func(f"NVMf thread statistics for gateway (tick: "
+                         f"{tick_rate}):\n{stats_out}")
+            else:
+                err_func(f"{thread_stats.error_message}")
+        elif args.format == "json" or args.format == "yaml":
+            ret_str = json_format.MessageToJson(thread_stats, indent=4,
+                                                including_default_value_fields=True,
+                                                preserving_proto_field_name=True)
+            if args.format == "json":
+                out_func(ret_str)
+            elif args.format == "yaml":
+                obj = json.loads(ret_str)
+                out_func(yaml.dump(obj))
+        elif args.format == "python":
+            return thread_stats
+        else:
+            assert False
+
+        return thread_stats.status
+
     def gw_get_stats(self, args):
         """Show NVMf statistics for the gateway"""
 
@@ -699,6 +744,9 @@ class GatewayClient:
     gw_actions.append({"name": "listener_info",
                        "args": gw_listener_info_args,
                        "help": "Show listeners information for the gateway"})
+    gw_actions.append({"name": "get_thread_stats",
+                       "args": [],
+                       "help": "Show NVMf thread statistics for the gateway"})
     gw_actions.append({"name": "get_stats",
                        "args": [],
                        "help": "Show NVMf statistics for the gateway"})
@@ -720,6 +768,8 @@ class GatewayClient:
             return self.gw_listener_info(args)
         elif args.action == "get_stats":
             return self.gw_get_stats(args)
+        elif args.action == "get_thread_stats":
+            return self.gw_get_thread_stats(args)
         if not args.action:
             self.cli.parser.error(f"missing action for gw command (choose from "
                                   f"{GatewayClient.gw_choices})")

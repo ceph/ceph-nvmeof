@@ -6937,6 +6937,42 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         return self.execute_grpc_function(self.get_gateway_stats_safe, request, context)
 
+    def get_thread_stats_safe(self, request, context=None):
+        """Get SPDK thread stats"""
+
+        assert self.rpc_lock.locked(), "RPC is unlocked when calling get_thread_stats_safe()"
+        error_prefix = "Failure getting SPDK thread statistics"
+        peer_msg = self.get_peer_message(context)
+        self.logger.info(f"Received request to get spdk thread stats {peer_msg}")
+        try:
+            thread_stats = self.spdk_rpc_client.thread_get_stats()
+            self.logger.debug(f"thread_get_stats: {thread_stats}")
+            threads = []
+            for spdk_thread in thread_stats.get("threads", []):
+                thread = pb2.spdk_thread_info(
+                    name=spdk_thread.get("name"),
+                    busy=spdk_thread.get("busy"),
+                    idle=spdk_thread.get("idle"),
+                )
+                threads.append(thread)
+            return pb2.thread_stats_info(
+                status=0, error_message=os.strerror(0),
+                threads=threads, tick_rate=thread_stats.get("tick_rate", 0))
+        except Exception as ex:
+            self.logger.exception(error_prefix)
+            errmsg = f"{error_prefix}:\n{ex}"
+            resp = self.parse_json_exeption(ex)
+            status = errno.EINVAL
+            if resp:
+                status = resp["code"]
+                errmsg = f"{error_prefix}: {resp['message']}"
+            return pb2.thread_stats_info(status=status, error_message=errmsg)
+
+    def get_thread_stats(self, request, context=None):
+        """Get spdk thread statistics"""
+
+        return self.execute_grpc_function(self.get_thread_stats_safe, request, context)
+
     def get_gateway_log_level(self, request, context=None):
         """Get gateway's log level"""
 

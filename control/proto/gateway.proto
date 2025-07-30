@@ -145,6 +145,9 @@ service Gateway {
 
 	// Gets gateway's stats
 	rpc get_gateway_stats(get_gateway_stats_req) returns (gateway_stats_info) {}
+
+	// Gets spdk thread stats
+	rpc get_thread_stats(get_thread_stats_req) returns (thread_stats_info) {}
 }
 
 // Request messages
@@ -381,6 +384,9 @@ message show_gateway_listeners_info_req {
 message get_gateway_stats_req {
 }
 
+message get_thread_stats_req {
+}
+
 // From https://nvmexpress.org/wp-content/uploads/NVM-Express-1_4-2019.06.10-Ratified.pdf page 138
 // Asymmetric Namespace Access state for all namespaces in this ANA
 // Group when accessed through this controller.
@@ -547,6 +553,19 @@ message gateway_stats_info {
 	string error_message = 2;
 	uint64 tick_rate = 3;
 	repeated poll_group_info poll_groups = 4;
+}
+
+message thread_stats_info {
+	int32 status = 1;
+	string error_message = 2;
+    repeated spdk_thread_info threads = 3;
+	uint64 tick_rate = 4;
+}
+
+message spdk_thread_info {
+	string name = 1;
+	uint64 busy = 2;
+	uint64 idle = 3;
 }
 
 message listener_info {
