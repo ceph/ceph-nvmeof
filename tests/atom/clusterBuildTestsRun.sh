@@ -81,7 +81,7 @@ if [ "$NIGHTLY" != "nightly" ]; then
         --gw-scale-down-num=1 \
         --subsystem-num=2 \
         --ns-num=4 \
-        --subsystem-max-ns-num=1024 \
+        --subsystem-max-ns-num=2048 \
         --failover-num=2 \
         --failover-num-after-upgrade=2 \
         --rbd-size=200M \
@@ -102,6 +102,7 @@ if [ "$NIGHTLY" != "nightly" ]; then
         --journalctl-to-console \
         --dont-power-off-cloud-vms \
         --skip-lb-group-change-test \
+        --skip-gw-failover-latency-test \
         --skip-reservations-basic-test \
         --ibm-cloud-key=nokey \
         --github-nvmeof-token=nokey \
@@ -125,7 +126,7 @@ else
         --gw-scale-down-num=1 \
         --subsystem-num=4 \
         --ns-num=230 \
-        --subsystem-max-ns-num=1024 \
+        --subsystem-max-ns-num=2048 \
         --failover-num=10 \
         --failover-num-after-upgrade=2 \
         --rbd-size=200M \
