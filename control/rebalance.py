@@ -179,20 +179,13 @@ class Rebalance:
                                                   f"nqn {nqn} ")
                                 min_load, min_ana_grp = \
                                     self.find_min_loaded_group_in_subsys(nqn, grps_list)
-                                # min group less loaded or equal to target
-                                le_target = \
-                                    (self.gw_srv.ana_grp_subs_load[min_ana_grp][nqn] + 1) <= \
+
+                                my_eq_more = (self.gw_srv.ana_grp_subs_load[ana_grp][nqn] - 1) >= \
+                                             (self.gw_srv.ana_grp_subs_load[min_ana_grp][nqn] + 1)
+
+                                still_more = (self.gw_srv.ana_grp_subs_load[ana_grp][nqn] - 1) >= \
                                     target_subs_per_ana
-                                # min group fits rebalance in case target < 1
-                                load_less = (target_subs_per_ana < 1) and \
-                                            (self.gw_srv.ana_grp_subs_load[ana_grp][nqn] > 1) and \
-                                            (self.gw_srv.ana_grp_subs_load[min_ana_grp][nqn] == 0)
-
-                                # groups would be  equally loaded after rebalance
-                                load_eq = (self.gw_srv.ana_grp_subs_load[ana_grp][nqn] - 1) == \
-                                          (self.gw_srv.ana_grp_subs_load[min_ana_grp][nqn] + 1)
-
-                                if le_target or load_eq or load_less:
+                                if (my_eq_more and still_more):
                                     self.logger.info(f"Start rebalance (regular) in subsystem "
                                                      f"{nqn}, dest ana {min_ana_grp}, dest ana "
                                                      f"load per subs {min_load}")
