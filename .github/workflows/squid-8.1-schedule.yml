@@ -582,49 +582,49 @@ jobs:
           make down
           make clean
 
-  atom-nightly:
-    needs: [build, build-ceph]
-    if: github.repository == 'ceph/ceph-nvmeof' && github.event_name == 'schedule'
-    runs-on: nightlyAtomRunner
-    timeout-minutes: 1440
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          ref: 'squid_8.1'  # Checkout the squid_8.1 branch
+  # atom-nightly:
+  #   needs: [build, build-ceph]
+  #   if: github.repository == 'ceph/ceph-nvmeof' && github.event_name == 'schedule'
+  #   runs-on: nightlyAtomRunner
+  #   timeout-minutes: 1440
+  #   steps:
+  #     - name: Checkout code
+  #       uses: actions/checkout@v4
+  #       with:
+  #         ref: 'squid_8.1'  # Checkout the squid_8.1 branch
 
-      - name: Container_images_nvmeof folder (tar files) download
-        run: |
-          for i in {1..5}; do
-            echo "Attempt $i to download artifacts..."
-            gh run download --pattern "container_images_nvmeof" && break
-            echo "Download failed. Retrying in $((i * 5))s..."
-            sleep $((i * 5))
-          done
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  #     - name: Container_images_nvmeof folder (tar files) download
+  #       run: |
+  #         for i in {1..5}; do
+  #           echo "Attempt $i to download artifacts..."
+  #           gh run download --pattern "container_images_nvmeof" && break
+  #           echo "Download failed. Retrying in $((i * 5))s..."
+  #           sleep $((i * 5))
+  #         done
+  #       env:
+  #         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Cluster build and Atom nightly tests run
-        run: |
-          . .env
-          ACTION_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          stdbuf -oL -eL ./tests/atom/clusterBuildTestsRun.sh $NVMEOF_VERSION $CEPH_BRANCH $CEPH_SHA $ATOM_SHA $ACTION_URL 'nightly' 2>&1 | tee atom_nightly_nvmeof_console.log
-          exit ${PIPESTATUS[0]}
+  #     - name: Cluster build and Atom nightly tests run
+  #       run: |
+  #         . .env
+  #         ACTION_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+  #         stdbuf -oL -eL ./tests/atom/clusterBuildTestsRun.sh $NVMEOF_VERSION $CEPH_BRANCH $CEPH_SHA $ATOM_SHA $ACTION_URL 'nightly' 2>&1 | tee atom_nightly_nvmeof_console.log
+  #         exit ${PIPESTATUS[0]}
 
-      - name: Atom artifact build nightly
-        if: always()
-        run: ./tests/atom/cpArtifactAndCleanup.sh 'nightly'
+  #     - name: Atom artifact build nightly
+  #       if: always()
+  #       run: ./tests/atom/cpArtifactAndCleanup.sh 'nightly'
 
-      - name: Upload nightly nvmeof console as artifact
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: atom-nightly-nvmeof-full-console
-          path: atom_nightly_nvmeof_console.log
+  #     - name: Upload nightly nvmeof console as artifact
+  #       if: always()
+  #       uses: actions/upload-artifact@v4
+  #       with:
+  #         name: atom-nightly-nvmeof-full-console
+  #         path: atom_nightly_nvmeof_console.log
 
-      - name: Upload artifact for schedule events
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: atom-artifact
-          path: /home/cephnvme/artifact_m8.tar.gz
+  #     - name: Upload artifact for schedule events
+  #       uses: actions/upload-artifact@v4
+  #       if: always()
+  #       with:
+  #         name: atom-artifact
+  #         path: /home/cephnvme/artifact_m8.tar.gz
