@@ -493,7 +493,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        test: ["sanity", "no_huge", "ns_lb_change", "no_subsystems", "auto_load_balance", "state_transitions", "state_transitions_both_gws", "state_transitions_loop", "state_transitions_rand_loop", "late_registration", "late_registration_loop", "4gws", "4gws_loop", "4gws_create_delete", "4gws_create_delete_loop", "namespaces", "namespaces_loop", "mtls", "notify", "ceph_status", "blocklist", "main_exit", "listener_hostname", "cluster_pool", "flat_bdev_per_cluster", "set_qos", "set_qos_2ms", "rbd_qos", "auto_resize", "ns_read_only", "reuse_image", "image_shrink"]
+        test: ["sanity", "no_huge", "ns_lb_change", "no_subsystems", "auto_load_balance", "state_transitions", "state_transitions_both_gws", "state_transitions_loop", "state_transitions_rand_loop", "late_registration", "late_registration_loop", "connect_panic", "4gws", "4gws_loop", "4gws_create_delete", "4gws_create_delete_loop", "namespaces", "namespaces_loop", "mtls", "notify", "ceph_status", "blocklist", "main_exit", "listener_hostname", "cluster_pool", "flat_bdev_per_cluster", "set_qos", "set_qos_2ms", "rbd_qos", "auto_resize", "ns_read_only", "reuse_image", "image_shrink"]
     runs-on: ubuntu-latest
     env:
       HUGEPAGES: 1024  # 4 spdk instances
