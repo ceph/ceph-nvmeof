@@ -4,7 +4,7 @@ SCALE=2
 echo CLI_TLS_ARGS $CLI_TLS_ARGS
 # Check if argument is provided
 if [ $# -ge 1 ]; then
-    # Check if argument is an integer larger or equal than 1
+    # Check if argument is an integer greater than or equal to 1
     if [ "$1" -eq "$1" ] 2>/dev/null && [ "$1" -ge 1 ]; then
         # Set variable to the provided argument
         SCALE="$1"
