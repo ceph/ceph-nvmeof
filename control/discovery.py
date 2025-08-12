@@ -336,10 +336,7 @@ class DiscoveryService:
         self.gw_logger_object = GatewayLogger(config)
         self.logger = self.gw_logger_object.logger
 
-        gateway_group = self.config.get_with_default("gateway", "group", "")
-        self.omap_name = f"nvmeof.{gateway_group}.state" \
-            if gateway_group else "nvmeof.state"
-        self.logger.info(f"log pages info from omap: {self.omap_name}")
+        self.logger.info(f"log pages info from omap: {self.omap_state.omap_name}")
 
         self.discovery_addr = self.config.get_with_default("discovery", "addr", "0.0.0.0")
         self.discovery_port = self.config.get_with_default("discovery", "port", "8009")
