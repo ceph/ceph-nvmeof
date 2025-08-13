@@ -349,7 +349,7 @@ class OmapLock:
         # the flag shouldn't make a difference. There might be case in which for some reason
         # we take too long to handle something and the RBD unlocked the lock in the middle
         # of the processing. The deafult is to abort the gateway in such case. If we looked
-        # into the case and decidd there was no problem, or we want to continue anyway we
+        # into the case and decided there was no problem, or we want to continue anyway we
         # can either increase the duration of the lock (omap_file_lock_duration) or set this
         # flag to False, which will cause the gateway to just display an error message and
         # continue. We might also get an error on read unlock for some unknown reason,
