@@ -183,9 +183,7 @@ class Rebalance:
                                 my_eq_more = (self.gw_srv.ana_grp_subs_load[ana_grp][nqn] - 1) >= \
                                              (self.gw_srv.ana_grp_subs_load[min_ana_grp][nqn] + 1)
 
-                                still_more = (self.gw_srv.ana_grp_subs_load[ana_grp][nqn] - 1) >= \
-                                    target_subs_per_ana
-                                if (my_eq_more and still_more):
+                                if my_eq_more:
                                     self.logger.info(f"Start rebalance (regular) in subsystem "
                                                      f"{nqn}, dest ana {min_ana_grp}, dest ana "
                                                      f"load per subs {min_load}")
