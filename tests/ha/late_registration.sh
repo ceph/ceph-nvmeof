@@ -66,13 +66,11 @@ verify_ana_groups() {
 }
 
 random_sleep() {
-    # Generate a random number between 0 and 25 seconds
-    # This ensures the sleep is safely below typical monitor connect timeout (30+ seconds)
-    # while still providing enough randomness for late registration testing
-    seconds=$(( RANDOM % 26 ))
+    # Generate a random number between 0 and 59
+    seconds=$(( RANDOM % 60 ))
 
     # Sleep for the random number of seconds
-    echo "Sleeping for $seconds secs (random delay capped below monitor connect timeout)"
+    echo "Sleeping for $seconds secs"
     sleep "$seconds"
 }
 
