@@ -12,13 +12,13 @@ import time
 import threading
 import inspect
 import types
+import math
 import spdk.rpc as rpc
 
 from .proto import gateway_pb2 as pb2
 from prometheus_client.core import REGISTRY, GaugeMetricFamily
 from prometheus_client.core import CounterMetricFamily, InfoMetricFamily
 from prometheus_client import start_http_server, GC_COLLECTOR
-from typing import NamedTuple
 from functools import wraps
 from .utils import NICS
 
@@ -26,12 +26,6 @@ COLLECTION_ELAPSED_WARNING = 0.8   # Percentage of the refresh interval before a
 REGISTRY.unregister(GC_COLLECTOR)  # Turn off garbage collector metrics
 
 logger = None
-
-
-class RBD(NamedTuple):
-    pool: str
-    namespace: str
-    image: str
 
 
 def ttl(method):
@@ -147,21 +141,33 @@ class NVMeOFCollector:
         self.gw_config = config
         _bdev_pools = config.get_with_default('gateway', 'prometheus_bdev_pools', '')
         self.bdev_pools = _bdev_pools.split(',') if _bdev_pools else []
-        self.interval = config.getint_with_default('gateway', 'prometheus_stats_interval', 10)
+        self.interval = config.getint_with_default('gateway',
+                                                   'prometheus_stats_interval',
+                                                   10)
+        self.original_interval = self.interval
+        self.slow_cycles_count = 0
+        self.fast_cycles_count = 0
+        self.slow_down_factor = config.getfloat_with_default(
+            'gateway',
+            'prometheus_frequency_slow_down_factor',
+            3.0)
+        self.cycles_to_adjust_speed = config.getint_with_default(
+            'gateway',
+            'prometheus_cycles_to_adjust_speed',
+            3)
+
         self.lock = threading.Lock()
         self.hostname = os.getenv('NODE_NAME') or os.getenv('HOSTNAME')
 
         # gw metadata is static, so fetch the data only at startup
-        self.gw_metadata = self._get_gw_metadata()  # proto.gateway_pb2.gateway_info
+        self.gw_metadata, self.group = self._get_gw_metadata()  # proto.gateway_pb2.gateway_info
 
         self.bdev_info = []
         self.bdev_io_stats = {}
         self.spdk_thread_stats = {}
         self.subsystems = []
-        self.subsystems_cli = {}
         self.connections = {}
         self.hosts = {}
-        self.listeners = {}
         self.method_timings = {}
 
         # Cache for connection map
@@ -192,9 +198,20 @@ class NVMeOFCollector:
         # Since empty values result in a missing label, when the group name is not
         # defined _null_ is used to ensure any promql queries will always work against
         # a valid label.
-        if not metadata.group:
-            metadata.group = "_null_"
-        return metadata
+        metadata_group = None
+        try:
+            metadata_group = metadata.group
+        except AttributeError:
+            logger.exception("metadata.group is not defined")
+            metadata_group = None
+
+        if not metadata_group:
+            metadata_group = self.gateway_rpc.gateway_group
+
+        if not metadata_group:
+            metadata_group = "_null_"
+
+        return (metadata, metadata_group)
 
     @timer
     def _get_bdev_info(self):
@@ -225,16 +242,6 @@ class NVMeOFCollector:
         """Fetch aggregated subsystem information"""
         subsystems_info = self.gateway_rpc.get_subsystems(pb2.get_subsystems_req(), None)
         return subsystems_info.subsystems
-
-    @timer
-    def _list_subsystems(self):
-        """Fetch abbreviated subsystem information used by the CLI"""
-        resp = self.gateway_rpc.list_subsystems(pb2.list_subsystems_req())
-        if resp.status != 0:
-            logger.error(f"Exporter failed to execute list_subsystems: {resp.error_message}")
-            return {}
-
-        return {subsys.nqn: subsys for subsys in resp.subsystems}
 
     def _get_connection_map(self, subsystem_list):
         """Fetch connection information for all defined subsystems"""
@@ -272,8 +279,6 @@ class NVMeOFCollector:
         logger.debug("Done with _get_spdk_thread_stats()")
         self.subsystems = self._get_subsystems()
         logger.debug("Done with _get_subsystems()")
-        self.subsystems_cli = self._list_subsystems()
-        logger.debug("Done with _list_subsystems()")
         self.connections = self._get_connection_map(self.subsystems)
         logger.debug("Done with _get_connection_map()")
         self.hosts = self._get_host_map(self.subsystems)
@@ -286,7 +291,6 @@ class NVMeOFCollector:
         logger.debug(f"_get_bdev_io_stats(): {t.get('_get_bdev_io_stats', 0):.2f}s")
         logger.debug(f"_get_spdk_thread_stats(): {t.get('_get_spdk_thread_stats', 0):.2f}s")
         logger.debug(f"_get_subsystems(): {t.get('_get_subsystems', 0):.2f}s")
-        logger.debug(f"_list_subsystems(): {t.get('_list_subsystems', 0):.2f}s")
         logger.debug(f"_get_connection_map(): {t.get('_get_connection_map', 0):.2f}s")
         logger.debug(f"_get_host_map(): {t.get('_get_host_map', 0):.2f}s")
 
@@ -297,20 +301,53 @@ class NVMeOFCollector:
         This method is called when the client receives a scrape request from the
         Prometheus Server.
         """
-        bdev_lookup = {}
+        bdev_lookup = set()
 
-        logger.debug("Collecting stats from the SPDK")
+        logger.debug(f"Collecting stats from the SPDK. Interval is {self.interval} seconds")
         self._get_data()
         self._log_timings()
         elapsed = sum(self.method_timings.values())
         if elapsed > self.interval:
             logger.error(f"Stats refresh time {elapsed:.3f} > interval time of "
-                         f"{self.interval} secs")
+                         f"{self.interval} seconds")
         elif elapsed > self.interval * COLLECTION_ELAPSED_WARNING:
             logger.warning(f"Stats refresh of {elapsed:.2f}s is close to exceeding "
-                           f"the interval {self.interval} secs")
+                           f"the interval {self.interval} seconds")
         else:
-            logger.debug(f"Stats refresh completed in {elapsed:.3f} secs.")
+            logger.debug(f"Stats refresh completed in {elapsed:.3f} seconds. "
+                         f"Interval is {self.interval} seconds")
+
+        if self.slow_down_factor > 0:
+            factor_elapsed = int(math.ceil(elapsed * self.slow_down_factor))
+            if factor_elapsed > self.interval:
+                self.slow_cycles_count += 1
+                self.fast_cycles_count = 0
+                if self.slow_cycles_count >= self.cycles_to_adjust_speed:
+                    logger.debug(f"Will increase interval after {self.slow_cycles_count} "
+                                 f"slow cycles. Old interval: {self.interval}, "
+                                 f"elapsed: {elapsed:.3f}, factored: {factor_elapsed} "
+                                 f"({elapsed * self.slow_down_factor:.3f})")
+                    self.interval = factor_elapsed
+                    self.slow_cycles_count = 0
+                    logger.warning(f"Stats refresh time, {elapsed:.3f} seconds, takes too much "
+                                   f"of the interval. "
+                                   f"Increase interval to {self.interval} seconds.")
+            elif factor_elapsed < self.interval - 5:
+                self.slow_cycles_count = 0
+                self.fast_cycles_count += 1
+                if self.fast_cycles_count >= self.cycles_to_adjust_speed:
+                    if self.interval > self.original_interval:
+                        logger.debug(f"Will decrease interval after {self.fast_cycles_count} "
+                                     f"fast cycles. Old interval: {self.interval}, "
+                                     f"elapsed: {elapsed:.3f}, factored: {factor_elapsed} "
+                                     f"({elapsed * self.slow_down_factor:.3f})")
+                        self.fast_cycles_count = 0
+                        self.interval = max(factor_elapsed, self.original_interval)
+                        logger.info(f"Stats refresh time, {elapsed:.3f} seconds, is down. "
+                                    f"Decrease interval to {self.interval} seconds.")
+            else:
+                self.slow_cycles_count = 0
+                self.fast_cycles_count = 0
 
         gateway_info = InfoMetricFamily(
             f"{self.metric_prefix}_gateway",
@@ -322,7 +359,7 @@ class NVMeOFCollector:
                 'port': self.gw_metadata.port,
                 'name': self.gw_metadata.name,
                 'hostname': self.hostname,
-                'group': self.gw_metadata.group,
+                'group': self.group,
                 'load_balancing_group': str(self.gw_metadata.load_balancing_group),
             })
         yield gateway_info
@@ -351,7 +388,7 @@ class NVMeOFCollector:
                 if rbd_pool not in self.bdev_pools:
                     continue
 
-            bdev_lookup[bdev_name] = RBD(rbd_pool, rbd_namespace, rbd_image)
+            bdev_lookup.add(bdev_name)
             bdev_metadata.add_metric([
                 bdev_name,
                 rbd_pool,
@@ -473,8 +510,6 @@ class NVMeOFCollector:
             if not nqn or "discovery" in nqn:
                 continue
             subsys_is_open = "yes" if subsys.allow_any_host else "no"
-            subsys_cli_data = self.subsystems_cli.get(nqn)
-            ha_enabled = "yes" if subsys_cli_data.enable_ha else "no"
 
             # extract any listen addresses from the subsystem
             for listener in subsys.listen_addresses:
@@ -484,7 +519,7 @@ class NVMeOFCollector:
                     listener_map[listener.traddr] = [nqn]
 
             subsystem_metadata.add_metric([nqn, subsys.serial_number, subsys.model_number,
-                                           subsys_is_open, ha_enabled, self.gw_metadata.group], 1)
+                                           subsys_is_open, "yes", self.group], 1)
             subsystem_listeners.add_metric([nqn], len(subsys.listen_addresses))
             subsystem_host_count.add_metric([nqn], len(subsys.hosts))
             subsystem_namespace_count.add_metric([nqn], len(subsys.namespaces))
