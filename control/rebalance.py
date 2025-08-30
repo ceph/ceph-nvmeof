@@ -84,6 +84,7 @@ class Rebalance:
     def find_min_loaded_group_in_subsys(self, nqn, grp_list) -> int:
         min_load = Rebalance.INVALID_LOAD_BALANCING_GROUP
         chosen_ana_group = 0
+        min_groups = set()
         for ana_grp in grp_list:
             if self.gw_srv.ana_grp_ns_load[ana_grp] == 0:
                 self.gw_srv.ana_grp_subs_load[ana_grp][nqn] = 0
@@ -91,14 +92,28 @@ class Rebalance:
         for ana_grp in self.gw_srv.ana_grp_subs_load:
             if ana_grp in grp_list:
                 if nqn in self.gw_srv.ana_grp_subs_load[ana_grp]:
-                    if self.gw_srv.ana_grp_subs_load[ana_grp][nqn] <= min_load:
+                    if self.gw_srv.ana_grp_subs_load[ana_grp][nqn] < min_load:
                         min_load = self.gw_srv.ana_grp_subs_load[ana_grp][nqn]
-                        chosen_ana_group = ana_grp
+                        min_groups = {ana_grp}
+                    elif self.gw_srv.ana_grp_subs_load[ana_grp][nqn] == min_load:
+                        min_groups.add(ana_grp)
                 else:            # still  no load on this ana and subs
-                    chosen_ana_group = ana_grp
-                    self.gw_srv.ana_grp_subs_load[chosen_ana_group][nqn] = 0
-                    min_load = 0
-                    break
+                    self.gw_srv.ana_grp_subs_load[ana_grp][nqn] = 0
+                    if self.gw_srv.ana_grp_subs_load[ana_grp][nqn] < min_load:
+                        min_load = 0
+                        min_groups = {ana_grp}
+                    elif self.gw_srv.ana_grp_subs_load[ana_grp][nqn] == min_load:
+                        min_groups.add(ana_grp)
+        min_load = Rebalance.INVALID_LOAD_BALANCING_GROUP
+        for ana_grp in min_groups:
+            # chose the minimum loaded ana group from the ana groups in min_groups set
+            self.logger.debug(f"pass min_grops set: ana_grp {ana_grp} "
+                              f"load {self.gw_srv.ana_grp_ns_load[ana_grp]}")
+            # find minimum loaded self.gw_srv.ana_grp_ns_load
+            if self.gw_srv.ana_grp_ns_load[ana_grp] < min_load:
+                min_load = self.gw_srv.ana_grp_ns_load[ana_grp]
+                self.logger.debug(f"chosen ana_grp {ana_grp}, min load = {min_load}")
+                chosen_ana_group = ana_grp
         return min_load, chosen_ana_group
 
     # 1. Not allowed to perform regular rebalance when scale_down rebalance is ongoing
