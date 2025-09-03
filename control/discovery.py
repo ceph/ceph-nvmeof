@@ -1070,8 +1070,8 @@ class DiscoveryService:
                     self_conn.recv_buffer += message
                 else:
                     return
-            except BlockingIOError:
-                self.logger.error("recived data failed.")
+            except OSError as ex:
+                self.logger.error(f"Recived data failed. {ex.errno}: {ex.strerror}")
 
             while True:
                 if len(self_conn.recv_buffer) < 8:
