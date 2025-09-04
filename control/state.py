@@ -434,6 +434,48 @@ class OmapLock:
             raise RuntimeError(f"Unable to lock OMAP file after reloading "
                                f"{self.omap_file_update_reloads} times, exiting")
 
+    def omap_lockers_count(self) -> int:
+        lockers_info = None
+        try:
+            lockers_info = self.omap_state.ioctx.list_lockers(self.omap_state.omap_name,
+                                                              OmapLock.OMAP_FILE_LOCK_NAME)
+        except AttributeError:
+            self.logger.warning("list_lockers() is not implemented in this version")
+            return 0
+        except Exception:
+            self.logger.exception("error in list_lockers()")
+            return 0
+
+        self.logger.debug(f"lockers_info for {self.omap_state.omap_name} "
+                          f"{OmapLock.OMAP_FILE_LOCK_NAME}: {lockers_info}, "
+                          f"id: {self.omap_state.id_text}")
+        assert lockers_info, "Return value from list_lockers() shouldn't be empty"
+
+        tag = None
+        exclusive = False
+        lockers = []
+        try:
+            tag = lockers_info["tag"]
+            exclusive = lockers_info["exclusive"]
+            lockers = lockers_info["lockers"]
+        except Exception:
+            self.logger.exception(f"error parsing list_lockers() result: {lockers_info}")
+        if exclusive and len(lockers) > 1:
+            self.logger.error(f"We shouldn't have {len(lockers)} exclusive "
+                              f"locks at the same time")
+        if exclusive:
+            if tag:
+                self.logger.warning(f"We got a \"{tag}\" tag for the "
+                                    f"{OmapLock.EXCLUSIVE_LOCK_NAME} "
+                                    f"lock and not an empty one")
+        else:
+            if tag and tag != self.OMAP_FILE_LOCK_TAG:
+                self.logger.warning(f"We got a \"{tag}\" tag for the "
+                                    f"{OmapLock.SHARED_LOCK_NAME} "
+                                    f"lock instead of {OmapLock.OMAP_FILE_LOCK_TAG}")
+
+        return len(lockers)
+
     def lock_omap(self, verify_versions=True, lock_exclusive=True, cookie_suffix=None):
         got_lock = False
         if lock_exclusive:

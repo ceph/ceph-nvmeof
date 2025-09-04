@@ -126,6 +126,16 @@ class CephUtils:
             self.logger.exception("Failure fetching Ceph version")
             pass
 
+    def fetch_ceph_fsid(self) -> str:
+        fsid = None
+        try:
+            with rados.Rados(conffile=self.ceph_conf, rados_id=self.rados_id) as cluster:
+                fsid = cluster.get_fsid()
+        except Exception:
+            self.logger.exception("Failure fetching Ceph FSID")
+
+        return fsid
+
     def pool_exists(self, pool) -> bool:
         if not pool:
             return False
