@@ -113,6 +113,10 @@ def conn_lock_twice(config, request):
     addr = configA.get("gateway", "addr")
     portA = configA.getint("gateway", "port")
     portB = configB.getint("gateway", "port")
+    configA.config["gateway"]["rebalance_period_sec"] = "0"
+    configB.config["gateway"]["rebalance_period_sec"] = "0"
+    configA.config["gateway"]["wait_period_for_pending_lock"] = "0"
+    configB.config["gateway"]["wait_period_for_pending_lock"] = "0"
     ceph_utils = CephUtils(config)
     # Start servers
     with GatewayServer(configA) as gatewayA, GatewayServer(configB) as gatewayB:
@@ -331,7 +335,7 @@ def test_multi_gateway_concurrent_changes(config, image, conn_concurrent, caplog
            f"{subsystem_prefix}0 at 127.0.0.1:5001" in caplog.text
     assert "create_listener: True" in caplog.text
 
-    timeout = 30  # Maximum time to wait (in seconds)
+    timeout = 60  # Maximum time to wait (in seconds)
     start_time = time.time()
     expected_warning_other_gw = f"Listener not created as gateway's host name {gwB.host_name} " \
                                 f"differs from requested host {gwA.host_name}"
@@ -390,7 +394,7 @@ def test_multi_gateway_listener_update(config, image, conn_concurrent, caplog):
     assert f"Received request to create {gwA.host_name} TCP ipv4 listener for " \
            f"{subsystem} at 127.0.0.1:5101" in caplog.text
     assert "create_listener: True" in caplog.text
-    time.sleep(30)
+    time.sleep(45)
     caplog.clear()
     listenerB_req = pb2.create_listener_req(nqn=subsystem,
                                             host_name=gwB.host_name,

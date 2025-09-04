@@ -20,6 +20,7 @@ from abc import ABC, abstractmethod
 from .utils import GatewayLogger
 from .utils import GatewayUtils
 from .utils import GatewayUtilsCrypto
+from .cephutils import CephUtils
 from google.protobuf import json_format
 from .proto import gateway_pb2 as pb2
 
@@ -300,9 +301,12 @@ class ReleasedLock:
 
 class OmapLock:
     OMAP_FILE_LOCK_NAME = "omap_file_lock"
+    OMAP_FILE_LOCK_TAG = "nvme_gateway_omap_lock"
     OMAP_FILE_LOCK_COOKIE_PREFIX = "omap_file_cookie"
     EXCLUSIVE_LOCK_NAME = "exclusive"
     SHARED_LOCK_NAME = "shared"
+    LOCK_PENDING_ATTR = "write_lock_pending"
+    LOCK_PENDING_DELIM = b'|'
 
     changes_lock = threading.Lock()
     no_read_lock_warning_displayed = False
@@ -327,6 +331,10 @@ class OmapLock:
             "gateway",
             "omap_file_update_reloads",
             10)
+        self.omap_file_update_attempts = self.omap_state.config.getint_with_default(
+            "gateway",
+            "omap_file_update_attempts",
+            500)
         self.omap_file_lock_retries = self.omap_state.config.getint_with_default(
             "gateway",
             "omap_file_lock_retries",
@@ -335,6 +343,22 @@ class OmapLock:
             "gateway",
             "omap_file_lock_retry_sleep_interval",
             1.0)
+        self.wait_period_for_pending_lock = self.omap_state.config.getfloat_with_default(
+            "gateway",
+            "wait_period_for_pending_lock",
+            10.0)
+        self.omap_locks_count_limit_for_slowdown = self.omap_state.config.getint_with_default(
+            "gateway",
+            "omap_locks_count_limit_for_slowdown",
+            10)
+        self.omap_slowdown_attempts = self.omap_state.config.getint_with_default(
+            "gateway",
+            "omap_slowdown_attempts",
+            10)
+        self.omap_slowdown_sleep_interval = self.omap_state.config.getfloat_with_default(
+            "gateway",
+            "omap_slowdown_sleep_interval",
+            2.0)
         # This is a development flag, in case we run into issues with the read lock in the field
         self.omap_file_lock_on_read = self.omap_state.config.getboolean_with_default(
             "gateway",
@@ -374,6 +398,10 @@ class OmapLock:
             False)
         if self.omap_file_disable_unlock:
             self.logger.warning("Will not unlock OMAP file for testing purposes")
+            if self.omap_locks_count_limit_for_slowdown > 0:
+                self.omap_locks_count_limit_for_slowdown = 0
+                self.logger.warning("Will disable locks count limit slowdown "
+                                    "feature as unlock is disabled")
 
     def build_omap_lock_cookie(self, exclusive_lock=True, cookie_suffix=None) -> str:
         if cookie_suffix:
@@ -382,6 +410,7 @@ class OmapLock:
             cookie_suffix = ""
 
         cookie_prefix = f"{OmapLock.OMAP_FILE_LOCK_COOKIE_PREFIX}_" \
+                        f"{self.omap_state.id_text}_" \
                         f"{hex(id(self))}_{os.getpid()}_{threading.get_native_id()}_" \
                         f"{cookie_suffix}"
 
@@ -412,7 +441,7 @@ class OmapLock:
     # and in case the Omap is not current, will reload it and try again
     #
     def execute_omap_locking_function(self, grpc_func, omap_locking_func, request, context):
-        for i in range(0, self.omap_file_update_reloads + 1):
+        for i in range(self.omap_file_update_reloads + 1):
             need_to_update = False
             try:
                 return grpc_func(omap_locking_func, request, context)
@@ -424,7 +453,8 @@ class OmapLock:
 
             assert need_to_update
             if self.omap_file_update_reloads > 0:
-                for j in range(10):
+                j = 0
+                for j in range(self.omap_file_update_attempts):
                     if self.gateway_state.update():
                         # update was succesful, we can stop trying
                         break
@@ -434,8 +464,51 @@ class OmapLock:
             raise RuntimeError(f"Unable to lock OMAP file after reloading "
                                f"{self.omap_file_update_reloads} times, exiting")
 
+    def omap_lockers_count(self) -> int:
+        lockers_info = None
+        try:
+            lockers_info = self.omap_state.ioctx.list_lockers(self.omap_state.omap_name,
+                                                              OmapLock.OMAP_FILE_LOCK_NAME)
+        except AttributeError:
+            self.logger.warning("list_lockers() is not implemented in this version")
+            return 0
+        except Exception:
+            self.logger.exception("error in list_lockers()")
+            return 0
+
+        self.logger.debug(f"lockers_info for {self.omap_state.omap_name} "
+                          f"{OmapLock.OMAP_FILE_LOCK_NAME}: {lockers_info}, "
+                          f"id: {self.omap_state.id_text}")
+        assert lockers_info, "Return value from list_lockers() shouldn't be empty"
+
+        tag = None
+        exclusive = False
+        lockers = []
+        try:
+            tag = lockers_info["tag"]
+            exclusive = lockers_info["exclusive"]
+            lockers = lockers_info["lockers"]
+        except Exception:
+            self.logger.exception(f"error parsing list_lockers() result: {lockers_info}")
+        if exclusive and len(lockers) > 1:
+            self.logger.error(f"We shouldn't have {len(lockers)} exclusive "
+                              f"locks at the same time")
+        if exclusive:
+            if tag:
+                self.logger.warning(f"We got a \"{tag}\" tag for the "
+                                    f"{OmapLock.EXCLUSIVE_LOCK_NAME} "
+                                    f"lock and not an empty one")
+        else:
+            if tag and tag != self.OMAP_FILE_LOCK_TAG:
+                self.logger.warning(f"We got a \"{tag}\" tag for the "
+                                    f"{OmapLock.SHARED_LOCK_NAME} "
+                                    f"lock instead of {OmapLock.OMAP_FILE_LOCK_TAG}")
+
+        return len(lockers)
+
     def lock_omap(self, verify_versions=True, lock_exclusive=True, cookie_suffix=None):
         got_lock = False
+
         if lock_exclusive:
             assert self.rpc_lock and self.rpc_lock.locked(), \
                 "The RPC lock is not locked for exclusive OMAP lock."
@@ -443,18 +516,22 @@ class OmapLock:
         if self.omap_file_lock_duration <= 0:
             raise RuntimeError("Lock duration set to 0, should not try to lock OMAP")
 
-        if not self.omap_state.ioctx:
-            self.logger.warning("Not locking OMAP as Rados connection is closed")
-            raise RuntimeError("An attempt to lock OMAP file after Rados connection was closed")
-
         if lock_exclusive:
             lock_kind = OmapLock.EXCLUSIVE_LOCK_NAME
         else:
             lock_kind = OmapLock.SHARED_LOCK_NAME
 
         lock_cookie = self.build_omap_lock_cookie(lock_exclusive, cookie_suffix)
+        self.logger.debug(f"Will lock OMAP {lock_kind}, thread id: "
+                          f"{threading.get_native_id()}, "
+                          f"id: {self.omap_state.id_text}, cookie: "
+                          f"{lock_cookie}")
         i = 0
         while i <= self.omap_file_lock_retries:
+            if not self.omap_state.ioctx:
+                self.logger.warning("Not locking OMAP as Rados connection is closed")
+                raise RuntimeError("An attempt to lock OMAP file after Rados connection was closed")
+
             if not self.gateway_state.update_is_active_lock.locked():
                 i += 1
 
@@ -469,8 +546,8 @@ class OmapLock:
                     self.omap_state.ioctx.lock_shared(self.omap_state.omap_name,
                                                       self.OMAP_FILE_LOCK_NAME,
                                                       lock_cookie,
-                                                      "",
-                                                      "OMAP file changes lock",
+                                                      self.OMAP_FILE_LOCK_TAG,
+                                                      "OMAP file read lock",
                                                       self.omap_file_lock_duration, 0)
                 got_lock = True
                 self.logger.debug(f"Locked OMAP {lock_kind}, thread id: "
@@ -503,7 +580,10 @@ class OmapLock:
                                       f"{self.omap_state.id_text}, cookie: "
                                       f"{lock_cookie}")
                 else:
-                    self.logger.debug("OMAP is locked by an external locker")
+                    self.logger.debug(f"OMAP is locked by an external locker, thread id: "
+                                      f"{threading.get_native_id()}, id: "
+                                      f"{self.omap_state.id_text}, cookie: "
+                                      f"{lock_cookie}")
             except AttributeError:
                 # We got here beause ioctx was closed before trying to lock
                 self.logger.exception("Got an exception trying to lock")
@@ -513,11 +593,9 @@ class OmapLock:
                 raise RuntimeError(f"Unable to lock OMAP file ({lock_kind}), exiting")
 
             time_to_sleep = self.omap_file_lock_retry_sleep_interval
-            if not lock_exclusive:
-                time_to_sleep /= 2.0
             self.logger.warning(
                 f"The OMAP file is locked, will try again in "
-                f"{time_to_sleep} seconds")
+                f"{time_to_sleep} seconds ({lock_kind})")
             if lock_exclusive:
                 with ReleasedLock(self.rpc_lock):
                     time.sleep(time_to_sleep)
@@ -527,6 +605,11 @@ class OmapLock:
         if not got_lock:
             self.logger.error(f"Unable to lock OMAP file ({lock_kind}) after "
                               f"{self.omap_file_lock_retries} tries. Exiting!")
+            self.logger.debug(f"Unable to lock OMAP file ({lock_kind}) after "
+                              f"{self.omap_file_lock_retries} tries. thread id: "
+                              f"{threading.get_native_id()}, id: "
+                              f"{self.omap_state.id_text}, cookie: "
+                              f"{lock_cookie}")
             raise RuntimeError(f"Unable to lock OMAP file ({lock_kind})")
 
         with OmapLock.changes_lock:
@@ -649,6 +732,59 @@ class OmapLock:
             OmapLock.locked_by = {}
             OmapLock.lock_cookie = []
 
+    def _get_write_lock_pending_attr(self) -> bytes:
+        attr = b''
+        try:
+            attr = self.omap_state.ioctx.get_xattr(self.omap_state.lock_pending_markup,
+                                                   self.LOCK_PENDING_ATTR)
+        except rados.NoData:
+            pass
+        except rados.ObjectNotFound:
+            pass
+        except Exception:
+            pass
+
+        return attr
+
+    def mark_write_lock_pending(self, cookie: str) -> bool:
+        attr = self._get_write_lock_pending_attr()
+        value = attr + cookie.encode() + self.LOCK_PENDING_DELIM
+        try:
+            self.omap_state.ioctx.set_xattr(self.omap_state.lock_pending_markup,
+                                            self.LOCK_PENDING_ATTR,
+                                            value)
+            return True
+        except Exception:
+            self.logger.exception(f"failed to set xattr {self.LOCK_PENDING_ATTR}")
+        return False
+
+    def unmark_write_lock_pending(self, cookie: str) -> bool:
+        attr = self._get_write_lock_pending_attr()
+        if not attr:
+            return False
+
+        del_value = cookie.encode() + self.LOCK_PENDING_DELIM
+        if del_value not in attr:
+            return False
+
+        attr = attr.replace(del_value, b'')
+        try:
+            self.omap_state.ioctx.set_xattr(self.omap_state.lock_pending_markup,
+                                            self.LOCK_PENDING_ATTR,
+                                            attr)
+            return True
+        except Exception:
+            self.logger.exception(f"failed to reset xattr {self.LOCK_PENDING_ATTR}")
+        return False
+
+    def is_lock_pending(self) -> bool:
+        attr = self._get_write_lock_pending_attr()
+        if not attr:
+            return False
+
+        self.logger.debug(f"Lock is pending, locker cookie is {attr.decode()}")
+        return True
+
 
 class OmapReadGuard:
     def __init__(self, omap_lock: OmapLock):
@@ -658,20 +794,52 @@ class OmapReadGuard:
         self.lock_start_time = 0.0
 
     def __enter__(self):
-        try:
-            if self.omap_lock.omap_file_lock_duration > 0:
-                self.cookie_suffix = time.time_ns()
-                self.omap_lock.lock_omap(False, False, self.cookie_suffix)
-                self.lock_start_time = time.monotonic()
-                self.actually_locked = True
+        ret = None
+        self.actually_locked = False
+        if not self.omap_lock.omap_file_lock_on_read:
             return self
+        if self.omap_lock.omap_file_lock_duration <= 0:
+            return self
+
+        try:
+            self.cookie_suffix = time.time_ns()
+            if self.omap_lock.omap_locks_count_limit_for_slowdown:
+                if self.omap_lock.omap_slowdown_attempts > 0:
+                    if self.omap_lock.omap_slowdown_sleep_interval > 0:
+                        for i in range(self.omap_lock.omap_slowdown_attempts + 1):
+                            cnt = self.omap_lock.omap_lockers_count()
+                            if cnt <= self.omap_lock.omap_locks_count_limit_for_slowdown:
+                                break
+                            self.omap_lock.logger.info(
+                                f"Have {cnt} OMAP locks active, will wait "
+                                f"{self.omap_lock.omap_slowdown_sleep_interval} seconds")
+                            time.sleep(self.omap_lock.omap_slowdown_sleep_interval)
+                        if i >= self.omap_lock.omap_slowdown_attempts:
+                            self.omap_lock.logger.warning(f"Still has {cnt} OMAP locks, "
+                                                          f"will continue anyway")
+            pend_lock_period = self.omap_lock.wait_period_for_pending_lock
+            while pend_lock_period > 0 and self.omap_lock.is_lock_pending():
+                time.sleep(1)
+                pend_lock_period -= 1
+            if self.omap_lock.wait_period_for_pending_lock > 0:
+                if self.omap_lock.is_lock_pending():
+                    pend_lock_period = self.omap_lock.wait_period_for_pending_lock
+                    self.omap_lock.logger.warning(f"Lock attempt is still pending after "
+                                                  f"{pend_lock_period} "
+                                                  f"seconds, will continue with "
+                                                  f"{OmapLock.SHARED_LOCK_NAME} lock")
+            self.omap_lock.lock_omap(False, False, self.cookie_suffix)
+            self.lock_start_time = time.monotonic()
+            self.actually_locked = True
+            ret = self
         except FileExistsError:
             # we can contiune as we already hold a write lock, but we shouldn't try to unlock
             self.actually_locked = False
-            return self
+            ret = self
         except Exception:
-            pass
-        return None
+            ret = None
+
+        return ret
 
     def __exit__(self, typ, value, traceback):
         if self.actually_locked:
@@ -695,9 +863,34 @@ class OmapWriteGuard:
         self.lock_start_time = 0.0
 
     def __enter__(self):
-        if self.omap_lock.omap_file_lock_duration > 0:
+        if self.omap_lock.omap_file_lock_duration <= 0:
+            return self
+
+        lock_cookie = None
+        marked_as_pending = False
+        if self.omap_lock.wait_period_for_pending_lock > 0:
+            pend_lock_period = self.omap_lock.wait_period_for_pending_lock
+            while pend_lock_period > 0 and self.omap_lock.is_lock_pending():
+                time.sleep(1)
+                pend_lock_period -= 1
+            if self.omap_lock.wait_period_for_pending_lock > 0:
+                if self.omap_lock.is_lock_pending():
+                    self.omap_lock.logger.warning(f"Lock attempt is still pending after "
+                                                  f"{self.omap_lock.wait_period_for_pending_lock} "
+                                                  f"seconds, will continue with "
+                                                  f"{OmapLock.EXCLUSIVE_LOCK_NAME} lock")
+                else:
+                    lock_cookie = self.omap_lock.build_omap_lock_cookie()
+                    marked_as_pending = self.omap_lock.mark_write_lock_pending(lock_cookie)
+        try:
             self.omap_lock.lock_omap()
-            self.lock_start_time = time.monotonic()
+        except Exception:
+            raise
+        finally:
+            if marked_as_pending:
+                assert lock_cookie, "Shouldn't have an empty cookie after marking"
+                self.omap_lock.unmark_write_lock_pending(lock_cookie)
+        self.lock_start_time = time.monotonic()
         return self
 
     def __exit__(self, typ, value, traceback):
@@ -743,6 +936,13 @@ class OmapGatewayState(GatewayState):
         self.omap_lock = None
         gateway_group = self.config.get("gateway", "group")
         self.omap_name = f"nvmeof.{gateway_group}.state" if gateway_group else "nvmeof.state"
+        ceph_utils = CephUtils(config)
+        fsid = ceph_utils.fetch_ceph_fsid()
+        self.logger.debug(f"FSID is {fsid}")
+        if gateway_group:
+            self.lock_pending_markup = f"nvmeof.{gateway_group}.lock-pending.{fsid}"
+        else:
+            self.lock_pending_markup = f"nvmeof.lock-pending.{fsid}"
         self.notify_timeout = self.config.getint_with_default("gateway",
                                                               "state_update_timeout_in_msec",
                                                               2000)
