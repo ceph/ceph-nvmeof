@@ -729,8 +729,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
     def __init__(self, config: GatewayConfig, gateway_state: GatewayStateHandler,
                  rpc_lock, omap_lock: OmapLock, group_id: int, spdk_rpc_client,
-                 spdk_rpc_subsystems_client, ceph_utils: CephUtils,
-                 set_gateway_exit_message) -> None:
+                 spdk_rpc_subsystems_client, ceph_utils: CephUtils) -> None:
         """Constructor"""
         self.gw_logger_object = GatewayLogger(config)
         self.logger = self.gw_logger_object.logger
@@ -797,13 +796,6 @@ class GatewayService(pb2_grpc.GatewayServicer):
             "gateway",
             "enable_key_encryption",
             True)
-        # This is an option for development, normally we should abort the gateway on
-        # errors, this should only be used in case of some catastrophe when we
-        # want to keep the gateway up
-        self.abort_on_errors = self.config.getboolean_with_default(
-            "gateway",
-            "abort_on_errors",
-            True)
         self.ana_map = defaultdict(dict)
         self.ana_grp_state = {}
         self.ana_grp_ns_load = {}
@@ -853,8 +845,6 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                                               daemon=True,
                                                               args=(spdk_notifications_interval,))
             self.spdk_notifications_thread.start()
-
-        self.set_gateway_exit_message = set_gateway_exit_message
 
     def read_spdk_notifications(self, read_interval):
         if read_interval <= 0:
@@ -1131,23 +1121,6 @@ class GatewayService(pb2_grpc.GatewayServicer):
             self.logger.info(f"Allocated cluster {name=} {nonce=}")
             self.cluster_nonce[name] = nonce
 
-    def abort_gateway_if_needed(self, where: str) -> None:
-        if self.abort_on_errors:
-            msg = f"Will abort gateway because of an error in {where}"
-            self.logger.critical(msg)
-            self.abort_on_errors = False
-            self.up_and_running = False
-            if self.set_gateway_exit_message is not None:
-                if not self.set_gateway_exit_message(msg):
-                    self.logger.warning(f"Can't get an indication about the gateway aborting. "
-                                        f"Will continue after an error in {where}")
-            else:
-                self.logger.warning(f"No gateway exit function set, will continue after "
-                                    f"an error in {where}")
-        else:
-            self.logger.warning(f"Gateway abort is disabled, will continue after "
-                                f"an error in {where}")
-
     def _grpc_function_with_lock(self, func, request, context):
         with self.rpc_lock:
             rc = func(request, context)
@@ -1160,7 +1133,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     f"locked: {self.omap_lock.is_exclusively_locked}"
             return rc
 
-    def execute_grpc_function(self, func, request, context):
+    def execute_grpc_function(self, func, request, context, err_prefix=""):
         """This functions handles RPC lock by wrapping 'func' with
            self._grpc_function_with_lock, and assumes (?!) the function 'func'
            called might take OMAP lock internally, however does NOT ensure
@@ -1177,9 +1150,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 self._grpc_function_with_lock, func, request, context)
         except Exception:
             self.logger.exception(f"Failure while executing {func.__name__}()")
-            self.abort_gateway_if_needed(f"{func.__name__}()")
-            return pb2.req_status(status=errno.ESHUTDOWN,
-                                  error_message="Shutting down server")
+            return pb2.req_status(status=errno.EBUSY,
+                                  error_message=f"{err_prefix}Couldn't lock the OMAP file")
 
         return rc
 
@@ -1753,7 +1725,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
         return pb2.subsys_status(status=0, error_message=os.strerror(0), nqn=request.subsystem_nqn)
 
     def create_subsystem(self, request, context=None):
-        return self.execute_grpc_function(self.create_subsystem_safe, request, context)
+        err_prefix = f"Failure creating subsystem {request.subsystem_nqn}: "
+        return self.execute_grpc_function(self.create_subsystem_safe, request, context, err_prefix)
 
     def get_subsystem_namespaces(self, nqn) -> list:
         ns_list = []
@@ -1897,7 +1870,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 self.logger.error(f"Failure removing namespace {nsid} from "
                                   f"{request.subsystem_nqn}:\n{ret.error_message}")
                 self.logger.warning(f"Will continue deleting {request.subsystem_nqn} anyway")
-        return self.execute_grpc_function(self.delete_subsystem_safe, request, context)
+        return self.execute_grpc_function(self.delete_subsystem_safe, request, context,
+                                          f"{delete_subsystem_error_prefix}: ")
 
     def check_if_image_used(self, pool_name, image_name, uuid):
         """Check if image is used by any other namespace."""
@@ -2347,7 +2321,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
     def namespace_add(self, request, context=None):
         """Adds a namespace to a subsystem."""
-        return self.execute_grpc_function(self.namespace_add_safe, request, context)
+        err_prefix = f"Failure adding namespace to {request.subsystem_nqn}: "
+        return self.execute_grpc_function(self.namespace_add_safe, request, context, err_prefix)
 
     def namespace_change_load_balancing_group_safe(self, request, context):
         """Changes a namespace load balancing group."""
@@ -2521,8 +2496,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
     def namespace_change_load_balancing_group(self, request, context=None):
         """Changes a namespace load balancing group."""
+        err_prefix = f"Failure changing load balancing group for namespace " \
+                     f"{request.nsid} in {request.subsystem_nqn}: "
         return self.execute_grpc_function(self.namespace_change_load_balancing_group_safe,
-                                          request, context)
+                                          request, context, err_prefix)
 
     def subsystem_has_connections(self, subsys: str) -> bool:
         assert subsys, "Subsystem NQN is empty"
@@ -2684,7 +2661,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
     def namespace_change_visibility(self, request, context=None):
         """Changes a namespace visibility."""
-        return self.execute_grpc_function(self.namespace_change_visibility_safe, request, context)
+        err_prefix = f"Failure changing visibility for namespace {request.nsid} " \
+                     f"in {request.subsystem_nqn}: "
+        return self.execute_grpc_function(self.namespace_change_visibility_safe,
+                                          request, context, err_prefix)
 
     def namespace_set_rbd_trash_image_safe(self, request, context=None):
         """Changes RBD trash image flag for a namespace."""
@@ -2800,7 +2780,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
     def namespace_set_rbd_trash_image(self, request, context=None):
         """Changes RBD trash image flag for a namespace."""
-        return self.execute_grpc_function(self.namespace_set_rbd_trash_image_safe, request, context)
+        err_prefix = f"Failure setting RBD trash image flag for namespace {request.nsid} " \
+                     f"in {request.subsystem_nqn}: "
+        return self.execute_grpc_function(self.namespace_set_rbd_trash_image_safe,
+                                          request, context, err_prefix)
 
     def _set_image_auto_resize(self, rbd_pool: str, rbd_image: str, value: bool) -> None:
         if value:
@@ -2886,7 +2869,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
     def namespace_set_auto_resize(self, request, context=None):
         """Sets auto resie flag for a namespace."""
-        return self.execute_grpc_function(self.namespace_set_auto_resize_safe, request, context)
+        err_prefix = f"Failure setting auto resize flag for namespace {request.nsid} " \
+                     f"in {request.subsystem_nqn}: "
+        return self.execute_grpc_function(self.namespace_set_auto_resize_safe,
+                                          request, context, err_prefix)
 
     def remove_namespace_from_state(self, nqn, nsid, context):
         if not context:
@@ -3444,7 +3430,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
     def namespace_set_qos_limits(self, request, context=None):
         """Set namespace's qos limits."""
-        return self.execute_grpc_function(self.namespace_set_qos_limits_safe, request, context)
+        err_prefix = f"Failure setting QOS limits for namespace {request.nsid} " \
+                     f"on {request.subsystem_nqn}: "
+        return self.execute_grpc_function(self.namespace_set_qos_limits_safe,
+                                          request, context, err_prefix)
 
     def namespace_resize_safe(self, request, context=None):
         """Resize a namespace."""
@@ -3503,7 +3492,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
     def namespace_resize(self, request, context=None):
         """Resize a namespace."""
-        return self.execute_grpc_function(self.namespace_resize_safe, request, context)
+        err_prefix = f"Failure resizing namespace {request.nsid} on {request.subsystem_nqn}: "
+        return self.execute_grpc_function(self.namespace_resize_safe, request, context, err_prefix)
 
     def delete_rbd_image(self, pool, image):
         if (not pool) and (not image):
@@ -3613,7 +3603,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
     def namespace_delete(self, request, context=None):
         """Delete a namespace."""
-        return self.execute_grpc_function(self.namespace_delete_safe, request, context)
+        err_prefix = f"Failure deleting namespace {request.nsid} from " \
+                     f"{request.subsystem_nqn}: "
+        return self.execute_grpc_function(self.namespace_delete_safe, request, context, err_prefix)
 
     def namespace_add_host_safe(self, request, context):
         """Add a host to a namespace."""
@@ -3747,7 +3739,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
     def namespace_add_host(self, request, context=None):
         """Add a host to a namespace."""
-        return self.execute_grpc_function(self.namespace_add_host_safe, request, context)
+        err_prefix = f"Failure adding host {request.host_nqn} to namespace " \
+                     f"{request.nsid} on {request.subsystem_nqn}: "
+        return self.execute_grpc_function(self.namespace_add_host_safe, request,
+                                          context, err_prefix)
 
     def namespace_delete_host_safe(self, request, context):
         """Delete a host from a namespace."""
@@ -3864,7 +3859,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
     def namespace_delete_host(self, request, context=None):
         """Delete a host from a namespace."""
-        return self.execute_grpc_function(self.namespace_delete_host_safe, request, context)
+        err_prefix = f"Failure deleting host {request.host_nqn} from namespace " \
+                     f"{request.nsid} on {request.subsystem_nqn}: "
+        return self.execute_grpc_function(self.namespace_delete_host_safe, request,
+                                          context, err_prefix)
 
     def matching_host_exists(self, context, subsys_nqn, host_nqn) -> bool:
         if not context:
@@ -4281,7 +4279,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
         return pb2.req_status(status=0, error_message=os.strerror(0))
 
     def add_host(self, request, context=None):
-        return self.execute_grpc_function(self.add_host_safe, request, context)
+        err_prefix = f"Failure adding host {request.host_nqn} to {request.subsystem_nqn}: "
+        return self.execute_grpc_function(self.add_host_safe, request, context, err_prefix)
 
     def remove_host_from_state(self, subsystem_nqn, host_nqn, context):
         if not context:
@@ -4416,7 +4415,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
             return rc
 
     def remove_host(self, request, context=None):
-        return self.execute_grpc_function(self.remove_host_safe, request, context)
+        err_prefix = f"Failure removing host {request.host_nqn} access " \
+                     f"from {request.subsystem_nqn}: "
+        return self.execute_grpc_function(self.remove_host_safe, request, context, err_prefix)
 
     def change_host_key_safe(self, request, context):
         """Changes host's inband authentication key."""
@@ -4625,7 +4626,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
     def change_host_key(self, request, context=None):
         """Changes host's inband authentication key."""
-        return self.execute_grpc_function(self.change_host_key_safe, request, context)
+        cmd2 = "changing" if request.dhchap_key else "deleting"
+        err_prefix = f"Failure {cmd2} DH-HMAC-CHAP key for host {request.host_nqn} " \
+                     f"on subsystem {request.subsystem_nqn}: "
+        return self.execute_grpc_function(self.change_host_key_safe, request, context, err_prefix)
 
     def list_hosts_safe(self, request, context):
         """List hosts."""
@@ -5120,7 +5124,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                                 "active when the appropriate gateway is up")
 
     def create_listener(self, request, context=None):
-        return self.execute_grpc_function(self.create_listener_safe, request, context)
+        err_prefix = f"Failure adding {request.nqn} listener at " \
+                     f"{request.traddr}:{request.trsvcid}: "
+        return self.execute_grpc_function(self.create_listener_safe, request, context, err_prefix)
 
     def remove_listener_from_state(self, nqn, host_name, traddr, port, context):
         if not context:
@@ -5307,7 +5313,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                                    traddr, request.trsvcid, context)
 
     def delete_listener(self, request, context=None):
-        return self.execute_grpc_function(self.delete_listener_safe, request, context)
+        err_prefix = f"Failed to delete listener {request.traddr}:" \
+                     f"{request.trsvcid} from {request.nqn}: "
+        return self.execute_grpc_function(self.delete_listener_safe, request, context, err_prefix)
 
     def list_listeners_safe(self, request, context):
         """List listeners."""
@@ -5734,7 +5742,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
     def change_subsystem_key(self, request, context=None):
         """Change subsystem key."""
-        return self.execute_grpc_function(self.change_subsystem_key_safe, request, context)
+        cmd2 = "changing" if request.dhchap_key else "deleting"
+        err_prefix = f"Failure {cmd2} DH-HMAC-CHAP key for subsystem {request.subsystem_nqn}: "
+        return self.execute_grpc_function(self.change_subsystem_key_safe, request,
+                                          context, err_prefix)
 
     def get_spdk_nvmf_log_flags_and_level_safe(self, request, context):
         """Gets spdk nvmf log flags, log level and log print level"""
