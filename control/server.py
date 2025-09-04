@@ -319,8 +319,7 @@ class GatewayServer:
         self.omap_lock = OmapLock(self.gateway_state, self.rpc_lock)
         self.gateway_rpc = GatewayService(self.config, self.gateway_state, self.rpc_lock,
                                           self.omap_lock, self.group_id, self.spdk_rpc_client,
-                                          self.spdk_rpc_subsystems_client, self.ceph_utils,
-                                          self.set_gateway_exit_message)
+                                          self.spdk_rpc_subsystems_client, self.ceph_utils)
         self.server = self._grpc_server(self._gateway_address())
         pb2_grpc.add_GatewayServicer_to_server(self.gateway_rpc, self.server)
 
