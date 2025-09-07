@@ -88,6 +88,7 @@ class Rebalance:
         for ana_grp in grp_list:
             if self.gw_srv.ana_grp_ns_load[ana_grp] == 0:
                 self.gw_srv.ana_grp_subs_load[ana_grp][nqn] = 0
+                self.logger.debug(f"chosen ana_grp {ana_grp}, min load = {0}")
                 return 0, ana_grp
         for ana_grp in self.gw_srv.ana_grp_subs_load:
             if ana_grp in grp_list:
@@ -123,6 +124,7 @@ class Rebalance:
     #    index of ANA group that is currently responsible for rebalance
     def rebalance_logic(self, request, context) -> int:
         now = time.time()
+        rebalance_attr = ()
         grps_list = self.ceph_utils.get_number_created_gateways(self.gw_srv.gateway_pool,
                                                                 self.gw_srv.gateway_group, False)
         worker_ana_group = self.ceph_utils.get_rebalance_ana_group()
@@ -198,6 +200,8 @@ class Rebalance:
                                 my_eq_more = (self.gw_srv.ana_grp_subs_load[ana_grp][nqn] - 1) >= \
                                              (self.gw_srv.ana_grp_subs_load[min_ana_grp][nqn] + 1)
 
+                                worth = (self.gw_srv.ana_grp_ns_load[ana_grp] -         # noqa: W504
+                                         self.gw_srv.ana_grp_ns_load[min_ana_grp] > 2)  # noqa: W504
                                 if my_eq_more:
                                     self.logger.info(f"Start rebalance (regular) in subsystem "
                                                      f"{nqn}, dest ana {min_ana_grp}, dest ana "
@@ -206,6 +210,9 @@ class Rebalance:
                                     self.ns_rebalance(context, ana_grp, min_ana_grp, 1, nqn)
                                     return 0
                                 else:
+                                    # add to tuple : ana , min-ana , nqn , worth
+                                    if worth:
+                                        rebalance_attr = (ana_grp, min_ana_grp, nqn, worth)
                                     self.logger.debug(f"Found min loaded subsystem {nqn}, ana "
                                                       f"{min_ana_grp}, load {min_load} does not "
                                                       f"fit rebalance criteria!")
@@ -226,6 +233,13 @@ class Rebalance:
                         self.logger.info(f"rebalance (deadlock resolving) is not allowed "
                                          f" invalid group {invalid_ana_group},"
                                          f" subsystem {chosen_nqn}")
+        # if tuple is not empty
+        if rebalance_attr:
+            self.logger.info(
+                f"Start rebalance (fixing regular) in subsystem "
+                f"ana {rebalance_attr[0]}, dest ana {rebalance_attr[1]} nqn {rebalance_attr[2]}")
+            self.ns_rebalance(context, rebalance_attr[0], rebalance_attr[1], 1, rebalance_attr[2])
+            return 0
         return 1
 
     def ns_rebalance(self, context, ana_id, dest_ana_id, num, subs_nqn) -> int:
