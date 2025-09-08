@@ -327,11 +327,8 @@ class DiscoveryService:
         self.version = 1
         self.config = config
         self.lock = threading.Lock()
-        self.abort_on_error = self.config.getboolean_with_default("discovery",
-                                                                  "abort_on_errors",
-                                                                  True)
         self.omap_state = OmapGatewayState(self.config, None, f"discovery-{socket.gethostname()}")
-        self.omap_state.abort_on_error = self.abort_on_error
+        self.omap_state.abort_on_error = False    # No need to crash on OMAP read lock failure
 
         self.gw_logger_object = GatewayLogger(config)
         self.logger = self.gw_logger_object.logger
@@ -397,8 +394,6 @@ class DiscoveryService:
             return omap_dict
         except Exception:
             self.logger.exception("Failure getting OMAP state for discovery")
-            if self.abort_on_error:
-                raise
         return {}
 
     def _get_vals(self, omap_dict, prefix):
@@ -747,6 +742,9 @@ class DiscoveryService:
         self.logger.debug("handle get log page request.")
         self_conn = self.conn_vals[conn.fileno()]
         my_omap_dict = self._read_all()
+        if not my_omap_dict:
+            self.logger.error("Error getting current state.")
+            return -1
         listeners = self._get_vals(my_omap_dict, GatewayState.LISTENER_PREFIX)
         hosts = self._get_vals(my_omap_dict, GatewayState.HOST_PREFIX)
         if len(self_conn.nvmeof_connect_data_hostnqn) != 256:
