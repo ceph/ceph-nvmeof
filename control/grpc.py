@@ -2179,10 +2179,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
             grps_list = self.ceph_utils.get_number_created_gateways(self.gateway_pool,
                                                                     self.gateway_group)
-            min_load, anagrp = \
-                self.rebalance.find_min_loaded_group_in_subsys(request.subsystem_nqn, grps_list)
-            assert anagrp != 0, "Chosen load balancing group is 0"
-
+            if request.anagrpid == 0:
+                _, anagrp = \
+                    self.rebalance.find_min_loaded_group_in_subsys(request.subsystem_nqn,
+                                                                   grps_list)
             if request.nsid:
                 ns = self.subsystem_nsid_bdev_and_uuid.find_namespace(request.subsystem_nqn,
                                                                       request.nsid)
@@ -2234,6 +2234,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     request.anagrpid = anagrp
 
             anagrp = request.anagrpid
+            assert anagrp != 0, "Chosen load balancing group is 0"
             ret_bdev = self.create_bdev(anagrp, bdev_name, request.uuid, request.rbd_pool_name,
                                         request.rbd_image_name, request.block_size, create_image,
                                         request.trash_image, request.size,
