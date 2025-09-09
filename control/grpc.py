@@ -1831,6 +1831,11 @@ class GatewayService(pb2_grpc.GatewayServicer):
             self.logger.error(errmsg)
             return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
 
+        if request.subsystem_nqn not in self.subsys_serial:
+            errmsg = f"{delete_subsystem_error_prefix}: No such subsystem"
+            self.logger.error(errmsg)
+            return pb2.req_status(status=errno.ENOENT, error_message=errmsg)
+
         if self.verify_nqns:
             rc = GatewayUtils.is_valid_nqn(request.subsystem_nqn)
             if rc[0] != 0:
