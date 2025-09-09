@@ -16,6 +16,7 @@ ip2="$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end
 NQN1="nqn.2016-06.io.spdk:cnode1"
 NQN2="nqn.2016-06.io.spdk:cnode2"
 NQN3="nqn.2016-06.io.spdk:cnode3"
+
 NUM_SUBSYSTEMS=3
 MAX_NAMESPACE=58
 
@@ -24,6 +25,12 @@ MAX_NAMESPACE=58
     num_grps=$1
     prev_cnt=0
     first_cnt=1
+    declare -A ana_load
+
+    for group in $(seq "$num_grps"); do
+        ana_load[$group]=0
+    done
+
     for i in $(seq $NUM_SUBSYSTEMS); do
       NQN="nqn.2016-06.io.spdk:cnode$i"
       for group in $(seq $num_grps); do
@@ -31,6 +38,7 @@ MAX_NAMESPACE=58
         #count=$(echo "$json"|jq '[.namespaces[] | select(.load_balancing_group == 1)]|length')
         count=$(echo "$ns_list" | jq --argjson group "$group" '[.namespaces[] | select(.load_balancing_group == $group)] | length')
         echo "namespaces of subsystem "  $NQN " Ana-group " $group " = "  $count
+        ana_load[$group]=$(( ana_load[$group] + count ))
         if ((first_cnt == 1)); then
           first_cnt=0
           prev_cnt=$count
@@ -42,11 +50,28 @@ MAX_NAMESPACE=58
               echo "ℹ️ ℹ️ Namespace Distribution issue"
               exit 1
            else 
-              echo "ℹ️ ℹ️ Compared OK!"     
+              echo "ℹ️ ℹ️ Compared OK!"
            fi 
         fi
       done
     done
+    min_val=10000
+    max_val=0
+    for group in "${!ana_load[@]}"; do
+       val=${ana_load[$group]}
+       if (( val < min_val )); then
+          min_val=$val
+       fi
+       if (( val > max_val )); then
+          max_val=$val
+       fi
+    done
+    if (( max_val - min_val > 2 )); then
+       echo "ℹ️ ℹ️ Namespace ANA group Distribution issue"
+       exit 1
+    else
+       echo "ℹ️ ℹ️ ANA Compared OK!"
+    fi
 }
 
 
