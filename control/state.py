@@ -134,7 +134,7 @@ class GatewayState(ABC):
             GatewayState.build_listener_key_suffix(None, trtype, traddr, str(trsvcid))
 
     @abstractmethod
-    def get_state(self) -> Dict[str, str]:
+    def get_state(self, allow_abort_on_error=True) -> Dict[str, str]:
         """Returns the state dictionary."""
         pass
 
@@ -264,7 +264,7 @@ class LocalGatewayState(GatewayState):
     def __init__(self):
         self.state = {}
 
-    def get_state(self) -> Dict[str, str]:
+    def get_state(self, allow_abort_on_error=True) -> Dict[str, str]:
         """Returns local state dictionary."""
         return self.state.copy()
 
@@ -327,6 +327,10 @@ class OmapLock:
             "gateway",
             "omap_file_update_reloads",
             10)
+        self.omap_file_update_attempts = self.omap_state.config.getint_with_default(
+            "gateway",
+            "omap_file_update_attempts",
+            500)
         self.omap_file_lock_retries = self.omap_state.config.getint_with_default(
             "gateway",
             "omap_file_lock_retries",
@@ -421,30 +425,39 @@ class OmapLock:
                     need_to_update = True
                 else:
                     raise
+            except Exception:
+                raise
 
             assert need_to_update
+            update_ok = False
             if self.omap_file_update_reloads > 0:
-                for j in range(10):
-                    if self.gateway_state.update():
-                        # update was succesful, we can stop trying
+                for j in range(self.omap_file_update_attempts):
+                    update_ok = self.gateway_state.update()
+                    if update_ok:
                         break
-                    time.sleep(1)
+                    time.sleep(0.5)
+                if update_ok:
+                    if j > 3:
+                        self.logger.debug(f"Succeeded to run update() after {j} attempts")
 
         if need_to_update:
-            raise RuntimeError(f"Unable to lock OMAP file after reloading "
-                               f"{self.omap_file_update_reloads} times, exiting")
+            raise RuntimeError(f"Unable to execute function under OMAP file lock after reloading "
+                               f"{i} times, exiting")
+        elif i > 2:
+            self.logger.debug(f"Succeeded to execute {omap_locking_func.__name__} "
+                              f"under OMAP file lock after {i} reloads of OMAP file")
 
-    def omap_lockers_count(self) -> int:
+    def omap_lockers_count(self):
         lockers_info = None
         try:
             lockers_info = self.omap_state.ioctx.list_lockers(self.omap_state.omap_name,
                                                               OmapLock.OMAP_FILE_LOCK_NAME)
         except AttributeError:
             self.logger.warning("list_lockers() is not implemented in this version")
-            return 0
+            return (0, None)
         except Exception:
             self.logger.exception("error in list_lockers()")
-            return 0
+            return (0, None)
 
         self.logger.debug(f"lockers_info for {self.omap_state.omap_name} "
                           f"{OmapLock.OMAP_FILE_LOCK_NAME}: {lockers_info}, "
@@ -474,7 +487,7 @@ class OmapLock:
                                     f"{OmapLock.SHARED_LOCK_NAME} "
                                     f"lock instead of {OmapLock.OMAP_FILE_LOCK_TAG}")
 
-        return len(lockers)
+        return (len(lockers), exclusive)
 
     def lock_omap(self, verify_versions=True, lock_exclusive=True, cookie_suffix=None):
         got_lock = False
@@ -569,6 +582,8 @@ class OmapLock:
         if not got_lock:
             self.logger.error(f"Unable to lock OMAP file ({lock_kind}) after "
                               f"{self.omap_file_lock_retries} tries. Exiting!")
+            (cnt, is_exc) = self.omap_lockers_count()
+            self.logger.debug(f"There are {cnt} active OMAP locks, exclusive: {is_exc}")
             raise RuntimeError(f"Unable to lock OMAP file ({lock_kind})")
 
         with OmapLock.changes_lock:
