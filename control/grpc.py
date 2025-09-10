@@ -757,6 +757,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
             self.logger.info(f"Gateway's host name was overridden to {override_hostname}")
         else:
             self.host_name = socket.gethostname()
+        if not GatewayUtils.is_valid_host_name(self.host_name):
+            self.logger.warning(f"Gateway's host name {self.host_name} is invalid")
         self.verify_nqns = self.config.getboolean_with_default("gateway", "verify_nqns", True)
         self.verify_keys = self.config.getboolean_with_default("gateway", "verify_keys", True)
         self.verify_listener_ip = self.config.getboolean_with_default("gateway",
@@ -4961,6 +4963,12 @@ class GatewayService(pb2_grpc.GatewayServicer):
         if not GatewayState.is_key_element_valid(request.host_name):
             errmsg = f"{create_listener_error_prefix}: Host name " \
                      f"\"{request.host_name}\" contains invalid characters"
+            self.logger.error(errmsg)
+            return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
+
+        if not GatewayUtils.is_valid_host_name(request.host_name):
+            errmsg = f"{create_listener_error_prefix}: Host name " \
+                     f"\"{request.host_name}\" is invalid"
             self.logger.error(errmsg)
             return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
 

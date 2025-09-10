@@ -62,6 +62,8 @@ class GatewayEnumUtils:
 class GatewayUtils:
     DISCOVERY_NQN = "nqn.2014-08.org.nvmexpress.discovery"
     ALL_SUBSYSTEMS = "*"
+    MAX_HOST_NAME_LENGTH = 253
+    DOMAIN_LABEL_MAX_LEN = 63
 
     # We need to enclose IPv6 addresses in brackets before concatenating
     # a colon and port number to it
@@ -85,15 +87,42 @@ class GatewayUtils:
     def is_discovery_nqn(nqn) -> bool:
         return nqn == GatewayUtils.DISCOVERY_NQN
 
-    def is_valid_rev_domain(rev_domain):
-        DOMAIN_LABEL_MAX_LEN = 63
+    def is_valid_host_name(hostname) -> bool:
+        if not hostname:
+            return False
 
+        if not isinstance(hostname, str):
+            return False
+
+        if len(hostname) > GatewayUtils.MAX_HOST_NAME_LENGTH:
+            return False
+
+        parts = hostname.split(".")
+        for one_part in parts:
+            if not one_part:
+                return False
+
+            if len(one_part) > GatewayUtils.DOMAIN_LABEL_MAX_LEN:
+                return False
+
+            if one_part.startswith("-"):
+                return False
+
+            if one_part.endswith("-"):
+                return False
+
+            if not one_part.replace("-", "").isalnum():
+                return False
+
+        return True
+
+    def is_valid_rev_domain(rev_domain):
         domain_parts = rev_domain.split(".")
         for lbl in domain_parts:
             if not lbl:
                 return (errno.EINVAL, "empty domain label doesn't start with a letter")
 
-            if len(lbl) > DOMAIN_LABEL_MAX_LEN:
+            if len(lbl) > GatewayUtils.DOMAIN_LABEL_MAX_LEN:
                 return (errno.EINVAL, f"domain label {lbl} is too long")
 
             if not lbl[0].isalpha():
