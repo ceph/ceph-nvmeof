@@ -1513,6 +1513,96 @@ class TestCreate:
         assert f"Failure adding junk listener at {addr}:5009: " \
                f"can't find subsystem junk" in caplog.text
 
+    def test_create_listener_invalid_hostname(self, caplog):
+        caplog.clear()
+        rc = 0
+        try:
+            cli(["listener", "add", "--subsystem", subsystem, "--host-name", "host*",
+                 "-a", addr, "-s", "5010", "--verify-host-name"])
+        except SystemExit as sysex:
+            rc = int(str(sysex))
+            pass
+        assert "error: invalid host name host*" in caplog.text
+        assert rc == 2
+        caplog.clear()
+        rc = 0
+        try:
+            cli(["listener", "add", "--subsystem", subsystem, "--host-name", "host_name",
+                 "-a", addr, "-s", "5010", "--verify-host-name"])
+        except SystemExit as sysex:
+            rc = int(str(sysex))
+            pass
+        assert "error: invalid host name host_name" in caplog.text
+        assert rc == 2
+        caplog.clear()
+        rc = 0
+        try:
+            cli(["listener", "add", "--subsystem", subsystem, "--host-name", "host-",
+                 "-a", addr, "-s", "5010", "--verify-host-name"])
+        except SystemExit as sysex:
+            rc = int(str(sysex))
+            pass
+        assert "error: invalid host name host-" in caplog.text
+        assert rc == 2
+        caplog.clear()
+        rc = 0
+        try:
+            cli(["listener", "add", "--subsystem", subsystem, "--host-name", "host.host-",
+                 "-a", addr, "-s", "5010", "--verify-host-name"])
+        except SystemExit as sysex:
+            rc = int(str(sysex))
+            pass
+        assert "error: invalid host name host.host-" in caplog.text
+        assert rc == 2
+        caplog.clear()
+        rc = 0
+        try:
+            cli(["listener", "add", "--subsystem", subsystem, "--host-name",
+                 "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+                 "-a", addr, "-s", "5010", "--verify-host-name"])
+        except SystemExit as sysex:
+            rc = int(str(sysex))
+            pass
+        assert "error: invalid host name " \
+               "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" \
+               "xxxxxxxxxxxxxxxxxx" in caplog.text
+        assert rc == 2
+        caplog.clear()
+        rc = 0
+        try:
+            cli(["listener", "add", "--subsystem", subsystem, "--host-name", "host..name",
+                 "-a", addr, "-s", "5010", "--verify-host-name"])
+        except SystemExit as sysex:
+            rc = int(str(sysex))
+            pass
+        assert "error: invalid host name host..name" in caplog.text
+        assert rc == 2
+        caplog.clear()
+        cli(["listener", "add", "--subsystem", subsystem, "--host-name",
+             "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.xxxx"
+             "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+             "-a", addr, "-s", "5010", "--verify-host-name"])
+        assert f"Failure adding {subsystem} listener at {addr}:5010: Gateway's " \
+               f"host name must match current host" in caplog.text
+        caplog.clear()
+        rc = 0
+        try:
+            cli(["listener", "add", "--subsystem", subsystem, "--host-name",
+                 "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx."
+                 "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx."
+                 "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx."
+                 "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+                 "-a", addr, "-s", "5010", "--verify-host-name"])
+        except SystemExit as sysex:
+            rc = int(str(sysex))
+            pass
+        assert "error: invalid host name xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" \
+               "xxxxxxxxxxxxxxxxxxxxxxxxxxx.xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" \
+               "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" \
+               "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.xxxxxxxxxxxxxxxxxxxxxxxxxxx" \
+               "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" in caplog.text
+        assert rc == 2
+
     @pytest.mark.parametrize("listener", listener_list)
     def test_create_listener(self, caplog, listener, gateway):
         caplog.clear()

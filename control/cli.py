@@ -1222,6 +1222,9 @@ class GatewayClient:
         if not args.adrfam:
             args.adrfam = "IPV4"
 
+        if not GatewayUtils.is_valid_host_name(args.host_name):
+            self.cli.parser.error(f"invalid host name {args.host_name}")
+
         self.validate_ip_address(args.traddr, args.adrfam)
         traddr = GatewayUtils.escape_address_if_ipv6(args.traddr)
         adrfam = None
