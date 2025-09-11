@@ -1806,6 +1806,9 @@ class TestDelete:
         caplog.clear()
         cli(["subsystem", "list"])
         assert "No subsystems" in caplog.text
+        caplog.clear()
+        cli(["subsystem", "del", "--subsystem", subsystem])
+        assert f"Failure deleting subsystem {subsystem}: No such subsystem" in caplog.text
 
     def test_delete_subsystem_with_discovery_nqn(self, caplog, gateway):
         caplog.clear()

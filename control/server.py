@@ -24,6 +24,7 @@ import spdk.rpc.client as rpc_client
 import spdk.rpc.nvmf as rpc_nvmf
 import spdk.rpc.iobuf as rpc_iobuf
 import spdk.rpc.dsa as rpc_dsa
+import spdk.rpc.sock as rpc_sock
 
 from .proto import gateway_pb2 as pb2
 from .proto import gateway_pb2_grpc as pb2_grpc
@@ -319,8 +320,7 @@ class GatewayServer:
         self.omap_lock = OmapLock(self.gateway_state, self.rpc_lock)
         self.gateway_rpc = GatewayService(self.config, self.gateway_state, self.rpc_lock,
                                           self.omap_lock, self.group_id, self.spdk_rpc_client,
-                                          self.spdk_rpc_subsystems_client, self.ceph_utils,
-                                          self.set_gateway_exit_message)
+                                          self.spdk_rpc_subsystems_client, self.ceph_utils)
         self.server = self._grpc_server(self._gateway_address())
         pb2_grpc.add_GatewayServicer_to_server(self.gateway_rpc, self.server)
 
@@ -665,8 +665,14 @@ class GatewayServer:
             if iobuf_options:
                 self._initialize_iobuf_options(iobuf_options)
 
+            # Set SSL tickets for ssl sock implemtation
+            self._set_ssl_tickets_number(0)
+
             # Set config and enable dsa accel module offload.
             self._probe_dsa()
+
+            # Notice that some SPDK calls can't be made after framework init
+            self._init_framework()
 
             self.spdk_rpc_ping_client = rpc_client.JSONRPCClient(
                 self.spdk_rpc_socket_path,
@@ -851,6 +857,17 @@ class GatewayServer:
             self.logger.exception("IObuf set options returned with error")
             pass
 
+    def _set_ssl_tickets_number(self, tickets_number=0):
+        """Set SSL tickets number for ssl socket implementation."""
+
+        try:
+            rpc_sock.sock_impl_set_options(self.spdk_rpc_client,
+                                           impl_name="ssl",
+                                           ssl_tickets_number=tickets_number)
+        except Exception:
+            self.logger.exception("sock_impl_set_options returned with error")
+            pass
+
     def _accel_config(self):
         # Instantiate DsaUtils and run config
         if self.config.getboolean_with_default("spdk", "enable_dsa_acceleration", True):
@@ -867,9 +884,15 @@ class GatewayServer:
                 self.logger.debug(f"dsa_scan_accel_module: {res=}")
             else:
                 self.logger.info("DSA acceleration module scanning is disabled")
-            spdk.rpc.framework_start_init(self.spdk_rpc_client)
         except Exception:
             self.logger.exception("Failed to probe dsa accel module offload")
+            raise
+
+    def _init_framework(self):
+        try:
+            spdk.rpc.framework_start_init(self.spdk_rpc_client)
+        except Exception:
+            self.logger.exception("Failed to initialize framework")
             raise
 
     def _create_transport(self, trtype):
