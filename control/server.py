@@ -666,7 +666,7 @@ class GatewayServer:
                 self._initialize_iobuf_options(iobuf_options)
 
             # Set SSL tickets for ssl sock implemtation
-            self._set_ssl_tickets_number(0)
+            self._set_num_ssl_tickets(0)
 
             # Set config and enable dsa accel module offload.
             self._probe_dsa()
@@ -857,13 +857,13 @@ class GatewayServer:
             self.logger.exception("IObuf set options returned with error")
             pass
 
-    def _set_ssl_tickets_number(self, tickets_number=0):
+    def _set_num_ssl_tickets(self, tickets_number=0):
         """Set SSL tickets number for ssl socket implementation."""
 
         try:
             rpc_sock.sock_impl_set_options(self.spdk_rpc_client,
                                            impl_name="ssl",
-                                           ssl_tickets_number=tickets_number)
+                                           num_ssl_tickets=tickets_number)
         except Exception:
             self.logger.exception("sock_impl_set_options returned with error")
             pass
