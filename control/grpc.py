@@ -5319,7 +5319,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                      f"{request.trsvcid} from {request.nqn}: "
         return self.execute_grpc_function(self.delete_listener_safe, request, context, err_prefix)
 
-    def list_listeners_safe(self, request, context):
+    def list_listeners(self, request, context=None):
         """List listeners."""
 
         peer_msg = self.get_peer_message(context)
@@ -5333,52 +5333,46 @@ class GatewayService(pb2_grpc.GatewayServicer):
             return pb2.listeners_info(status=errno.ENOENT, error_message=errmsg, listeners=[])
 
         listeners = []
-        omap_lock = self.omap_lock.get_omap_lock_to_use(context)
-        with omap_lock:
-            state = self.gateway_state.local.get_state()
-            listener_prefix = GatewayState.build_partial_listener_key(request.subsystem, None)
-            for key, val in state.items():
-                if not key.startswith(listener_prefix):
+        state = self.gateway_state.local.get_state()
+        listener_prefix = GatewayState.build_partial_listener_key(request.subsystem, None)
+        for key, val in state.items():
+            if not key.startswith(listener_prefix):
+                continue
+            try:
+                listener = json.loads(val)
+                nqn = listener["nqn"]
+                if nqn != request.subsystem:
+                    self.logger.warning(f"Got subsystem {nqn} instead of "
+                                        f"{request.subsystem}, ignore")
                     continue
-                try:
-                    listener = json.loads(val)
-                    nqn = listener["nqn"]
-                    if nqn != request.subsystem:
-                        self.logger.warning(f"Got subsystem {nqn} instead of "
-                                            f"{request.subsystem}, ignore")
-                        continue
-                    secure = False
-                    if "secure" in listener:
-                        secure = listener["secure"]
-                    active = False
-                    if request.subsystem in self.subsystem_listeners:
+                secure = False
+                if "secure" in listener:
+                    secure = listener["secure"]
+                active = False
+                if request.subsystem in self.subsystem_listeners:
+                    lookfor = (listener["adrfam"].lower(), listener["traddr"],
+                               int(listener["trsvcid"]), secure, False)
+                    if lookfor in self.subsystem_listeners[request.subsystem]:
+                        active = False
+                    else:
                         lookfor = (listener["adrfam"].lower(), listener["traddr"],
-                                   int(listener["trsvcid"]), secure, False)
+                                   int(listener["trsvcid"]), secure, True)
                         if lookfor in self.subsystem_listeners[request.subsystem]:
-                            active = False
+                            active = True
                         else:
-                            lookfor = (listener["adrfam"].lower(), listener["traddr"],
-                                       int(listener["trsvcid"]), secure, True)
-                            if lookfor in self.subsystem_listeners[request.subsystem]:
-                                active = True
-                            else:
-                                self.logger.warning(f"Can't find listener "
-                                                    f"{listener} in local list")
-                    one_listener = pb2.listener_info(host_name=listener["host_name"],
-                                                     trtype="TCP",
-                                                     adrfam=listener["adrfam"],
-                                                     traddr=listener["traddr"],
-                                                     trsvcid=listener["trsvcid"],
-                                                     secure=secure, active=active)
-                    listeners.append(one_listener)
-                except Exception:
-                    self.logger.exception(f"Got exception while parsing {val}")
-                    continue
+                            self.logger.warning(f"Can't find listener "
+                                                f"{listener} in local list")
+                one_listener = pb2.listener_info(host_name=listener["host_name"],
+                                                 trtype="TCP",
+                                                 adrfam=listener["adrfam"],
+                                                 traddr=listener["traddr"],
+                                                 trsvcid=listener["trsvcid"],
+                                                 secure=secure, active=active)
+                listeners.append(one_listener)
+            except Exception:
+                self.logger.exception(f"Got exception while parsing {val}")
 
         return pb2.listeners_info(status=0, error_message=os.strerror(0), listeners=listeners)
-
-    def list_listeners(self, request, context=None):
-        return self.execute_grpc_function(self.list_listeners_safe, request, context)
 
     def show_gateway_listeners_info_safe(self, request, context):
         """Show gateway's listeners info."""
