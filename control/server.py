@@ -23,6 +23,7 @@ import spdk.rpc
 import spdk.rpc.client as rpc_client
 import spdk.rpc.nvmf as rpc_nvmf
 import spdk.rpc.iobuf as rpc_iobuf
+import spdk.rpc.sock as rpc_sock
 
 from .proto import gateway_pb2 as pb2
 from .proto import gateway_pb2_grpc as pb2_grpc
@@ -541,7 +542,6 @@ class GatewayServer:
 
         # Start target
         self.logger.debug(f"Configuring server {self.name}")
-        waiting_for_rpc = False
         spdk_tgt_path = self.config.get("spdk", "tgt_path")
         self.logger.info(f"SPDK Target Path: {spdk_tgt_path}")
         sockdir = self.config.get_with_default("spdk", "rpc_socket_dir", "/var/tmp/")
@@ -563,15 +563,12 @@ class GatewayServer:
         self.logger.info(f"SPDK Socket: {self.spdk_rpc_socket_path}")
         spdk_tgt_cmd_extra_args = self.config.get_with_default(
             "spdk", "tgt_cmd_extra_args", "")
-        cmd = [spdk_tgt_path, "-u", "-r", self.spdk_rpc_socket_path]
+        cmd = [spdk_tgt_path, "--wait-for-rpc", "-u", "-r", self.spdk_rpc_socket_path]
 
         iobuf_options = self.config.get_with_default("spdk", "iobuf_options", "")
         max_subsystems = self.config.getint_with_default("gateway",
                                                          "max_subsystems",
                                                          GatewayService.MAX_SUBSYSTEMS_DEFAULT)
-        if iobuf_options or max_subsystems > 0:
-            waiting_for_rpc = True
-            cmd += ["--wait-for-rpc"]
 
         # Add extra args from the conf file
         if spdk_tgt_cmd_extra_args:
@@ -651,8 +648,11 @@ class GatewayServer:
             if iobuf_options:
                 self._initialize_iobuf_options(iobuf_options)
 
-            if waiting_for_rpc:
-                self._initialize_framework()
+            # Set SSL tickets for ssl sock implemtation
+            self._set_num_ssl_tickets(0)
+
+            # Notice that some SPDK calls can't be made after framework init
+            self._initialize_framework()
 
             self.spdk_rpc_ping_client = rpc_client.JSONRPCClient(
                 self.spdk_rpc_socket_path,
@@ -827,6 +827,17 @@ class GatewayServer:
             rpc_iobuf.iobuf_set_options(self.spdk_rpc_client, **args)
         except Exception:
             self.logger.exception("IObuf set options returned with error")
+            pass
+
+    def _set_num_ssl_tickets(self, tickets_number=0):
+        """Set SSL tickets number for ssl socket implementation."""
+
+        try:
+            rpc_sock.sock_impl_set_options(self.spdk_rpc_client,
+                                           impl_name="ssl",
+                                           num_ssl_tickets=tickets_number)
+        except Exception:
+            self.logger.exception("sock_impl_set_options returned with error")
             pass
 
     def _initialize_framework(self):
