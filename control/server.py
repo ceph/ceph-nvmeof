@@ -443,6 +443,13 @@ class GatewayServer:
                 log_level=protocol_log_level,
                 conn_retries=conn_retries,
             )
+
+            # Set SSL tickets for ssl sock implemtation
+            self._set_num_ssl_tickets(0)
+
+            # Notice that some SPDK calls can't be made after framework init
+            self._init_framework()
+
             self.spdk_rpc_ping_client = rpc_client.JSONRPCClient(
                 self.spdk_rpc_socket_path,
                 None,
@@ -533,6 +540,24 @@ class GatewayServer:
         self.logger.info("Discovery service terminated")
 
         self.discovery_pid = None
+
+    def _set_num_ssl_tickets(self, tickets_number=0):
+        """Set SSL tickets number for ssl socket implementation."""
+
+        try:
+            rpc_sock.sock_impl_set_options(self.spdk_rpc_client,
+                                           impl_name="ssl",
+                                           num_ssl_tickets=tickets_number)
+        except Exception:
+            self.logger.exception("sock_impl_set_options returned with error")
+            pass
+
+    def _init_framework(self):
+        try:
+            spdk.rpc.framework_start_init(self.spdk_rpc_client)
+        except Exception:
+            self.logger.exception("Failed to initialize framework")
+            raise
 
     def _create_transport(self, trtype):
         """Initializes a transport type."""
