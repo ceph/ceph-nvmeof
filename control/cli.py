@@ -943,7 +943,9 @@ class GatewayClient:
         if args.subsystem == GatewayUtils.DISCOVERY_NQN:
             self.cli.parser.error("Can't delete a discovery subsystem")
 
-        req = pb2.delete_subsystem_req(subsystem_nqn=args.subsystem, force=args.force)
+        req = pb2.delete_subsystem_req(subsystem_nqn=args.subsystem,
+                                       force=args.force,
+                                       i_am_sure=args.i_am_sure)
         try:
             ret = self.stub.delete_subsystem(req)
         except Exception as ex:
@@ -1140,6 +1142,10 @@ class GatewayClient:
                  help="Delete subsytem's namespaces if any, then delete subsystem. If not set "
                       "a subsystem deletion would fail in case it contains namespaces",
                  action='store_true', required=False),
+        argument("--i-am-sure",
+                 help="Confirmation for deleting the namespace associated RBD image",
+                 action='store_true',
+                 required=False),
     ]
     subsys_list_args = [
         argument("--subsystem",

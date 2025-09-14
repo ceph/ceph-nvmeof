@@ -39,6 +39,8 @@ image24 = "mytestdevimage24"
 image25 = "mytestdevimage25"
 image26 = "mytestdevimage26"
 image27 = "mytestdevimage27"
+image28 = "mytestdevimage28"
+image29 = "mytestdevimage29"
 pool = "rbd"
 subsystem = "nqn.2016-06.io.spdk:cnode1"
 subsystem2 = "nqn.2016-06.io.spdk:cnode2"
@@ -53,6 +55,8 @@ subsystem10 = "nqn.2016-06.io.spdk:cnode10"
 subsystem11 = "nqn.2016-06.io.spdk:cnode11"
 subsystem12 = "nqn.2016-06.io.spdk:cnode12"
 subsystem13 = "nqn.2016-06.io.spdk:cnode13"
+subsystem14 = "nqn.2016-06.io.spdk:cnode14"
+subsystem15 = "nqn.2016-06.io.spdk:cnode15"
 subsystemX = "nqn.2016-06.io.spdk:cnodeX"
 discovery_nqn = "nqn.2014-08.org.nvmexpress.discovery"
 serial = "Ceph00000000000001"
@@ -2333,3 +2337,35 @@ class TestReadOnlyNamespace:
         assert f'"rbd_image_name": "{image27}",' in caplog.text
         assert '"read_only": false,' in caplog.text
         assert '"read_only": true,' not in caplog.text
+
+
+class TestTrashImageOnSubsysDel:
+    def test_trash_image_on_subsys_del(self, caplog, gateway):
+        caplog.clear()
+        cli(["subsystem", "add", "--subsystem", subsystem14, "--no-group-append"])
+        assert f"Adding subsystem {subsystem14}: Successful" in caplog.text
+        caplog.clear()
+        cli(["namespace", "add", "--subsystem", subsystem14, "--rbd-pool", pool,
+             "--rbd-image", image28, "--size", "10MB",
+             "--rbd-create-image", "--rbd-trash-image-on-delete"])
+        assert f"Adding namespace 1 to {subsystem14}: Successful" in caplog.text
+        caplog.clear()
+        cli(["namespace", "add", "--subsystem", subsystem14, "--rbd-pool", pool,
+             "--rbd-image", image28])
+        assert f"RBD image {pool}/{image28} is already used by a namespace"
+        cli(["subsystem", "del", "--subsystem", subsystem14, "--force"])
+        assert f"Deleting subsystem {subsystem14}: Successful" in caplog.text
+        assert f"Failure deleting namespace 1 from {subsystem14}: Confirmation for " \
+               f"trashing RBD image is needed." in caplog.text
+        caplog.clear()
+        cli(["subsystem", "add", "--subsystem", subsystem15, "--no-group-append"])
+        assert f"Adding subsystem {subsystem15}: Successful" in caplog.text
+        cli(["namespace", "add", "--subsystem", subsystem15, "--rbd-pool", pool,
+             "--rbd-image", image29, "--size", "10MB",
+             "--rbd-create-image", "--rbd-trash-image-on-delete"])
+        assert f"Adding namespace 1 to {subsystem15}: Successful" in caplog.text
+        caplog.clear()
+        cli(["subsystem", "del", "--subsystem", subsystem15, "--force", "--i-am-sure"])
+        assert f"Deleting subsystem {subsystem15}: Successful" in caplog.text
+        assert f"Failure deleting namespace 1 from {subsystem15}: Confirmation for " \
+               f"trashing RBD image is needed." not in caplog.text

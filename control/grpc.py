@@ -1824,7 +1824,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
         peer_msg = self.get_peer_message(context)
         delete_subsystem_error_prefix = f"Failure deleting subsystem {request.subsystem_nqn}"
         self.logger.info(f"Received request to delete subsystem {request.subsystem_nqn}, "
-                         f"force: {request.force}, context: {context}{peer_msg}")
+                         f"force: {request.force}, i_am_sure: {request.i_am_sure}, "
+                         f"context: {context}{peer_msg}")
 
         if not request.subsystem_nqn:
             errmsg = "Failure deleting subsystem, missing subsystem NQN"
@@ -1861,7 +1862,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
             # We found a namespace still using this subsystem and --force was used so
             # we will try to remove the namespace
             self.logger.warning(f"Will remove namespace {nsid} from {request.subsystem_nqn}")
-            del_req = pb2.namespace_delete_req(subsystem_nqn=request.subsystem_nqn, nsid=nsid)
+            del_req = pb2.namespace_delete_req(subsystem_nqn=request.subsystem_nqn,
+                                               nsid=nsid, i_am_sure=request.i_am_sure)
             ret = self.namespace_delete(del_req, context)
             if ret.status == 0:
                 self.logger.info(f"Automatically removed namespace {nsid} from "
