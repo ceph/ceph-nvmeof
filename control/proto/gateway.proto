@@ -241,6 +241,7 @@ message create_subsystem_req {
 message delete_subsystem_req {
 	string subsystem_nqn = 1;
 	optional bool force = 2;
+	optional bool i_am_sure = 3;
 }
 
 message change_subsystem_key_req {
