@@ -5119,12 +5119,17 @@ class GatewayService(pb2_grpc.GatewayServicer):
             if context:
                 # Update gateway state
                 try:
+                    # this is needed so 0 values will be written to output buffer
+                    if not request.adrfam:
+                        request.adrfam = 0
+                    request.traddr = traddr
                     json_req = json_format.MessageToJson(
                         request, preserving_proto_field_name=True,
-                        including_default_value_fields=True)
+                        including_default_value_fields=True,
+                        use_integers_for_enums=True)
                     self.gateway_state.add_listener(request.nqn,
                                                     request.host_name,
-                                                    "TCP", request.traddr,
+                                                    "TCP", traddr,
                                                     request.trsvcid, json_req)
                 except Exception as ex:
                     errmsg = f"Error persisting listener {request.traddr}:{request.trsvcid}"
@@ -5169,14 +5174,13 @@ class GatewayService(pb2_grpc.GatewayServicer):
                         self.logger.warning(f"Got subsystem {listener_nqn} "
                                             f"instead of {nqn}, ignore")
                         continue
-                    if listener["traddr"] != traddr:
+                    elif listener["traddr"] != traddr:
                         continue
-                    if listener["trsvcid"] != port:
+                    elif listener["trsvcid"] != port:
                         continue
                     listener_hosts.append(listener["host_name"])
                 except Exception:
                     self.logger.exception(f"Got exception while parsing {val}")
-                    continue
         else:
             listener_hosts.append(host_name)
 
@@ -5202,8 +5206,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         assert self.rpc_lock.locked(), "RPC is unlocked when calling delete_listener_safe()"
         ret = True
-        esc_traddr = GatewayUtils.escape_address_if_ipv6(request.traddr)
-        delete_listener_error_prefix = f"Failed to delete listener {esc_traddr}:" \
+        delete_listener_error_prefix = f"Failed to delete listener {request.traddr}:" \
                                        f"{request.trsvcid} from {request.nqn}"
 
         adrfam = GatewayEnumUtils.get_key_from_value(pb2.AddressFamily, request.adrfam)
@@ -5212,7 +5215,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
             self.logger.error(errmsg)
             return pb2.req_status(status=errno.ENOKEY, error_message=errmsg)
 
-        traddr = GatewayUtils.unescape_address_if_ipv6(request.traddr, adrfam)
+        traddr = GatewayUtils.unescape_address(request.traddr)
+        delete_listener_error_prefix = f"Failed to delete listener {traddr}:" \
+                                       f"{request.trsvcid} from {request.nqn}"
 
         peer_msg = self.get_peer_message(context)
         force_msg = " forcefully" if request.force else ""
@@ -5220,7 +5225,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         self.logger.info(f"Received request to delete TCP listener of {host_msg}"
                          f" for subsystem {request.nqn} at"
-                         f" {esc_traddr}:{request.trsvcid}{force_msg},"
+                         f" {traddr}:{request.trsvcid}{force_msg},"
                          f" context: {context}{peer_msg}")
 
         if request.host_name == "*" and not request.force:
@@ -5251,7 +5256,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 if conn.trsvcid != request.trsvcid:
                     continue
                 errmsg = f"{delete_listener_error_prefix}: There are active connections for " \
-                         f"{esc_traddr}:{request.trsvcid}. Deleting the listener terminates " \
+                         f"{traddr}:{request.trsvcid}. Deleting the listener terminates " \
                          f"active connections. You can continue to delete the listener by " \
                          f"adding the \"--force\" parameter."
                 self.logger.error(errmsg)
@@ -5359,17 +5364,26 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     self.logger.warning(f"Got subsystem {nqn} instead of "
                                         f"{request.subsystem}, ignore")
                     continue
+                try:
+                    adrfam = listener["adrfam"]
+                    if isinstance(adrfam, int):
+                        adrfam = GatewayEnumUtils.get_key_from_value(pb2.AddressFamily, adrfam)
+                except KeyError:
+                    adrfam = GatewayEnumUtils.get_key_from_value(pb2.AddressFamily, 0)
+                    self.logger.debug(f"Missing adrfam in entry use default value: {adrfam}")
+                adrfam = adrfam.lower()
                 secure = False
                 if "secure" in listener:
                     secure = listener["secure"]
                 active = False
                 if request.subsystem in self.subsystem_listeners:
-                    lookfor = (listener["adrfam"].lower(), listener["traddr"],
+                    traddr = GatewayUtils.unescape_address_if_ipv6(listener["traddr"], adrfam)
+                    lookfor = (adrfam, traddr,
                                int(listener["trsvcid"]), secure, False)
                     if lookfor in self.subsystem_listeners[request.subsystem]:
                         active = False
                     else:
-                        lookfor = (listener["adrfam"].lower(), listener["traddr"],
+                        lookfor = (adrfam, traddr,
                                    int(listener["trsvcid"]), secure, True)
                         if lookfor in self.subsystem_listeners[request.subsystem]:
                             active = True

@@ -13,6 +13,8 @@ from .config import GatewayConfig
 from .state import GatewayState, LocalGatewayState, OmapLock, OmapGatewayState, GatewayStateHandler
 from .utils import GatewayLogger
 from .utils import GatewayUtilsCrypto
+from .utils import GatewayEnumUtils
+from .proto import gateway_pb2 as pb2
 
 from typing import Dict
 
@@ -816,11 +818,18 @@ class DiscoveryService:
                 log_entry = DiscoveryLogEntry()
                 log_entry.trtype = TRANSPORT_TYPES.TCP
                 log_adrfam = allow_listeners[log_entry_counter]["adrfam"]
-                adrfam = ADRFAM_TYPES[log_adrfam.lower()]
+                if isinstance(log_adrfam, int):
+                    adrfam = GatewayEnumUtils.get_key_from_value(pb2.AddressFamily, log_adrfam)
+                else:
+                    adrfam = log_adrfam
                 if adrfam is None:
                     self.logger.error(f"unsupported address family {log_adrfam}")
                 else:
-                    log_entry.adrfam = adrfam
+                    adrfam = ADRFAM_TYPES[adrfam.lower()]
+                    if adrfam is None:
+                        self.logger.error(f"unsupported address family {log_adrfam}")
+                    else:
+                        log_entry.adrfam = adrfam
                 log_entry.subtype = NVMF_SUBTYPE.NVME
                 log_entry.treq = NVMF_TREQ_SECURE_CHANNEL.NOT_REQUIRED
                 log_entry.port_id = log_entry_counter
