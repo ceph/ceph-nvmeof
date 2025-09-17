@@ -201,7 +201,7 @@ class Rebalance:
                                              (self.gw_srv.ana_grp_subs_load[min_ana_grp][nqn] + 1)
 
                                 worth = (self.gw_srv.ana_grp_ns_load[ana_grp] -         # noqa: W504
-                                         self.gw_srv.ana_grp_ns_load[min_ana_grp] > 2)  # noqa: W504
+                                         self.gw_srv.ana_grp_ns_load[min_ana_grp] > 1)  # noqa: W504
                                 if my_eq_more:
                                     self.logger.info(f"Start rebalance (regular) in subsystem "
                                                      f"{nqn}, dest ana {min_ana_grp}, dest ana "
