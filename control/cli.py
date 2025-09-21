@@ -621,13 +621,16 @@ class GatewayClient:
                     adrfam = GatewayEnumUtils.get_key_from_value(pb2.AddressFamily,
                                                                  lstnr.listener.adrfam)
                     adrfam = self.format_adrfam(adrfam)
+                    traddr = lstnr.listener.traddr
+                    if lstnr.listener.adrfam == pb2.ipv6:
+                        traddr = GatewayUtils.escape_address_if_ipv6(traddr)
                     secure = "Yes" if lstnr.listener.secure else "No"
                     active = "Yes" if lstnr.listener.active else "No"
                     ana_states = ana_states.removesuffix("\n")
                     listeners_list.append([lstnr.listener.host_name,
                                            lstnr.listener.trtype,
                                            adrfam,
-                                           f"{lstnr.listener.traddr}:{lstnr.listener.trsvcid}",
+                                           f"{traddr}:{lstnr.listener.trsvcid}",
                                            secure,
                                            active,
                                            ana_states])
@@ -1358,10 +1361,13 @@ class GatewayClient:
                     adrfam = self.format_adrfam(adrfam)
                     secure = "Yes" if lstnr.secure else "No"
                     active = "Yes" if lstnr.active else "No"
+                    traddr = lstnr.traddr
+                    if lstnr.adrfam == pb2.ipv6:
+                        traddr = GatewayUtils.escape_address_if_ipv6(traddr)
                     listeners_list.append([lstnr.host_name,
                                            lstnr.trtype,
                                            adrfam,
-                                           f"{lstnr.traddr}:{lstnr.trsvcid}",
+                                           f"{traddr}:{lstnr.trsvcid}",
                                            secure,
                                            active])
                 if len(listeners_list) > 0:
@@ -1836,7 +1842,10 @@ class GatewayClient:
                         conn_secure = "Yes" if conn.secure else "No"
                     conn_addr = "<n/a>"
                     if conn.connected:
-                        conn_addr = f"{conn.traddr}:{conn.trsvcid}"
+                        traddr = conn.traddr
+                        if conn.adrfam == pb2.ipv6:
+                            traddr = GatewayUtils.escape_address_if_ipv6(traddr)
+                        conn_addr = f"{traddr}:{conn.trsvcid}"
                     subsys_col = []
                     if connections_info.subsystem_nqn == GatewayUtils.ALL_SUBSYSTEMS:
                         subsys_col = [conn.subsystem]

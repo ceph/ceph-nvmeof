@@ -5,6 +5,7 @@ from control.cli import main as cli
 from control.cli import main_test as cli_test
 from control.cephutils import CephUtils
 from control.utils import GatewayUtils
+from control.utils import GatewayEnumUtils
 import spdk.rpc.bdev as rpc_bdev
 from spdk.rpc import spdk_get_version
 import grpc
@@ -86,6 +87,7 @@ server_addr_ipv6 = "2001:db8::3"
 listener_list = [["-a", addr, "-s", "5001", "-f", "ipv4"], ["-a", addr, "-s", "5002"]]
 listener_list_no_port = [["-a", addr]]
 listener_list_invalid_adrfam = [["-a", addr, "-s", "5013", "--adrfam", "JUNK"]]
+listener_list_no_adrfam = [["-a", addr, "-s", "5053"]]
 listener_list_ipv6 = [["-a", addr_ipv6, "-s", "5003", "--adrfam", "ipv6"],
                       ["-a", addr_ipv6, "-s", "5004", "--adrfam", "IPV6"]]
 listener_list_discovery = [["-n", discovery_nqn, "-t", host_name, "-a", addr, "-s", "5012"]]
@@ -239,10 +241,10 @@ class TestCreate:
         assert 'NQN "nqn.2016" is too short, minimal length is 11' in caplog.text
         caplog.clear()
         cli(["subsystem", "add", "--subsystem",
-             "nqn.2016-06XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
-             "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
-             "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
-             "XXXXXXXXXXXXXXXXXXX",
+             "nqn.2016-06ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ"
+             "ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ"
+             "ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ"
+             "ZZZZZZZZZZZZZZZZZZZ",
              "--no-group-append"])
         assert "is too long, maximal length is 223" in caplog.text
         caplog.clear()
@@ -271,8 +273,8 @@ class TestCreate:
         assert "reverse domain is not formatted correctly" in caplog.text
         caplog.clear()
         cli(["subsystem", "add",
-             "--subsystem", "nqn.2016-06.io.XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
-                            "XXXXXXXXXXXXXXXXXXXXX.spdk:cnode1", "--no-group-append"])
+             "--subsystem", "nqn.2016-06.io.ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ"
+                            "ZZZZZZZZZZZZZZZZZZZZZ.spdk:cnode1", "--no-group-append"])
         assert "reverse domain is not formatted correctly" in caplog.text
         caplog.clear()
         cli(["subsystem", "add", "--subsystem", "nqn.2016-06.io.-spdk:cnode1",
@@ -1545,20 +1547,74 @@ class TestCreate:
         assert "ipv4" in caplog.text.lower()
         assert f"Adding {subsystem} listener at {listener[1]}:4420: Successful" in caplog.text
 
-    @pytest.mark.parametrize("listener", listener_list)
-    @pytest.mark.parametrize("listener_ipv6", listener_list_ipv6)
-    def test_list_listeners(self, caplog, listener, listener_ipv6, gateway):
+    @pytest.mark.parametrize("listener", listener_list_no_adrfam)
+    def test_create_listener_no_adrfam(self, caplog, listener, gateway):
+        gw, stub = gateway
         caplog.clear()
-        cli(["--format", "json", "listener", "list", "--subsystem", subsystem])
-        assert f'"host_name": "{host_name}",' in caplog.text
-        assert f'"traddr": "{listener[1]}",' in caplog.text
-        assert f'"trsvcid": {listener[3]},' in caplog.text
-        assert '"adrfam": "ipv4"' in caplog.text
-        assert f'"traddr": "[{listener_ipv6[1]}]",' in caplog.text
-        assert f'"trsvcid": {listener_ipv6[3]},' in caplog.text
-        assert '"adrfam": "ipv6"' in caplog.text
-        assert '"active": true,' in caplog.text
-        assert '"active": false,' not in caplog.text
+        listener_add_req = pb2.create_listener_req(
+            nqn=subsystem,
+            host_name=host_name,
+            traddr=listener[1],
+            trsvcid=int(listener[3]),
+            verify_host_name=True)
+        stub.create_listener(listener_add_req)
+        assert "create_listener: True" in caplog.text
+        assert "ipv4" in caplog.text.lower()
+
+    def _adrfam2string(self, adrfam):
+        if isinstance(adrfam, str):
+            return adrfam
+        assert isinstance(adrfam, int)
+        adrfam = GatewayEnumUtils.get_key_from_value(pb2.AddressFamily, adrfam).lower()
+        return adrfam
+
+    def test_list_listeners(self, caplog, gateway):
+        caplog.clear()
+        listeners = cli_test(["listener", "list", "--subsystem", subsystem])
+        assert listeners.status == 0
+        assert listeners.listeners[0].host_name == host_name
+        assert listeners.listeners[0].traddr == listener_list[0][1]
+        assert listeners.listeners[0].trsvcid == int(listener_list[0][3])
+        assert self._adrfam2string(listeners.listeners[0].adrfam) == listener_list[0][5].lower()
+        assert listeners.listeners[0].active
+        assert not listeners.listeners[0].secure
+
+        assert listeners.listeners[1].host_name == host_name
+        assert listeners.listeners[1].traddr == listener_list[1][1]
+        assert listeners.listeners[1].trsvcid == int(listener_list[1][3])
+        assert self._adrfam2string(listeners.listeners[1].adrfam) == "ipv4"
+        assert listeners.listeners[1].active
+        assert not listeners.listeners[1].secure
+
+        assert listeners.listeners[2].host_name == host_name
+        assert listeners.listeners[2].traddr == listener_list_ipv6[0][1]
+        assert listeners.listeners[2].trsvcid == int(listener_list_ipv6[0][3])
+        assert \
+            self._adrfam2string(listeners.listeners[2].adrfam) == listener_list_ipv6[0][5].lower()
+        assert listeners.listeners[2].active
+        assert not listeners.listeners[2].secure
+
+        assert listeners.listeners[3].host_name == host_name
+        assert listeners.listeners[3].traddr == listener_list_ipv6[1][1]
+        assert listeners.listeners[3].trsvcid == int(listener_list_ipv6[1][3])
+        assert \
+            self._adrfam2string(listeners.listeners[3].adrfam) == listener_list_ipv6[1][5].lower()
+        assert listeners.listeners[3].active
+        assert not listeners.listeners[3].secure
+
+        assert listeners.listeners[4].host_name == host_name
+        assert listeners.listeners[4].traddr == listener_list_no_port[0][1]
+        assert listeners.listeners[4].trsvcid == 4420
+        assert self._adrfam2string(listeners.listeners[4].adrfam) == "ipv4"
+        assert listeners.listeners[4].active
+        assert not listeners.listeners[4].secure
+
+        assert listeners.listeners[5].host_name == host_name
+        assert listeners.listeners[5].traddr == listener_list_no_adrfam[0][1]
+        assert listeners.listeners[5].trsvcid == int(listener_list_no_adrfam[0][3])
+        assert self._adrfam2string(listeners.listeners[5].adrfam) == "ipv4"
+        assert listeners.listeners[5].active
+        assert not listeners.listeners[5].secure
 
     def test_list_listeners_bad_subsys(self, caplog, gateway):
         caplog.clear()
