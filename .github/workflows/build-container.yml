@@ -607,6 +607,7 @@ jobs:
       - name: Cluster build and Atom tests run
         if: always()
         run: |
+          set -o pipefail
           . .env
           ACTION_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           ./tests/atom/clusterBuildTestsRun.sh $NVMEOF_VERSION $CEPH_BRANCH $CEPH_SHA $ATOM_SHA $ACTION_URL 2>&1 | tee atom_nvmeof_console.log
