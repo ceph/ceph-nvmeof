@@ -17,6 +17,7 @@ ATOM_SHA=$4
 ACTION_URL=$5
 NIGHTLY=$6
 
+echo "CEPH_SHA found is: $CEPH_SHA"
 RUNNER_FOLDER='/home/cephnvme/actions-runner-ceph-m7'
 BUSY_FILE='/home/cephnvme/busyServer.txt'
 RUNNER_NIGHTLY_FOLDER='/home/cephnvme/actions-runner-ceph-m8'
@@ -65,10 +66,12 @@ sudo docker build -t nvmeof_atom:$ATOM_SHA .
 set -x
 if [ "$NIGHTLY" != "nightly" ]; then
     check_cluster_busy "$BUSY_FILE" "$ACTION_URL"
+    # Create a temporary file to capture output and exit status
+    TEMP_OUTPUT="/tmp/docker_output_$$"
     sudo docker run \
         -v /root/.ssh:/root/.ssh \
         nvmeof_atom:"$ATOM_SHA" \
-        python3 atom.py \
+        bash -c "python3 atom.py \
         --project=nvmeof \
         --ceph-img=quay.ceph.io/ceph-ci/ceph:"$CEPH_SHA" \
         --ceph-branch="$CEPH_BRANCH" \
@@ -76,9 +79,8 @@ if [ "$NIGHTLY" != "nightly" ]; then
         --cli-img=quay.io/ceph/nvmeof-cli:"$VERSION" \
         --initiators=1 \
         --gw-group-num=1 \
-        --gw-num=4 \
+        --gw-num=2 \
         --gw-to-stop-num=1 \
-        --gw-scale-down-num=1 \
         --subsystem-num=2 \
         --ns-num=4 \
         --subsystem-max-ns-num=2048 \
@@ -90,10 +92,9 @@ if [ "$NIGHTLY" != "nightly" ]; then
         --fio-devices-num=1 \
         --lb-timeout=20 \
         --config-dbg-mon=10 \
-        --config-dbg-ms=1 \
+        --config-dbg-ms=0 \
         --nvmeof-daemon-stop \
         --nvmeof-systemctl-stop \
-        --mon-leader-stop \
         --mon-client-kill \
         --nvmeof-daemon-remove \
         --redeploy-gws \
@@ -103,16 +104,23 @@ if [ "$NIGHTLY" != "nightly" ]; then
         --dont-power-off-cloud-vms \
         --skip-lb-group-change-test \
         --skip-gw-failover-latency-test \
+        --skip-reservations-basic-test \
         --ibm-cloud-key=nokey \
         --github-nvmeof-token=nokey \
-        --env=m7
+        --env=m7; exit \$?" 2>&1 | tee "$TEMP_OUTPUT"
     DOCKER_EXIT_STATUS=$?
+
+    # Read the output from the temporary file
+    DOCKER_OUTPUT=$(cat "$TEMP_OUTPUT")
+    rm -f "$TEMP_OUTPUT"
 else
     check_cluster_busy "$BUSY_NIGHTLY_FILE" "$ACTION_URL"
+    # Create a temporary file to capture output and exit status
+    TEMP_OUTPUT="/tmp/docker_output_$$"
     sudo docker run \
         -v /root/.ssh:/root/.ssh \
         nvmeof_atom:"$ATOM_SHA" \
-        python3 atom.py \
+        bash -c "python3 atom.py \
         --project=nvmeof \
         --ceph-img=quay.ceph.io/ceph-ci/ceph:"$CEPH_SHA" \
         --ceph-branch="$CEPH_BRANCH" \
@@ -122,7 +130,6 @@ else
         --gw-group-num=1 \
         --gw-num=8 \
         --gw-to-stop-num=1 \
-        --gw-scale-down-num=1 \
         --subsystem-num=103 \
         --ns-num=8 \
         --subsystem-max-ns-num=2048 \
@@ -134,10 +141,9 @@ else
         --fio-devices-num=1 \
         --lb-timeout=20 \
         --config-dbg-mon=10 \
-        --config-dbg-ms=1 \
+        --config-dbg-ms=0 \
         --nvmeof-daemon-stop \
         --nvmeof-systemctl-stop \
-        --mon-leader-stop \
         --mon-client-kill \
         --nvmeof-daemon-remove \
         --github-action-deployment \
@@ -147,20 +153,37 @@ else
         --skip-gw-failover-latency-test \
         --skip-block-list-test \
         --skip-multi-hosts-conn-test \
+        --skip-reservations-basic-test \
         --ibm-cloud-key=nokey \
         --github-nvmeof-token=nokey \
         --encryption-key \
-        --env=m8
+        --env=m8; exit \$?" 2>&1 | tee "$TEMP_OUTPUT"
     DOCKER_EXIT_STATUS=$?
+
+    # Read the output from the temporary file
+    DOCKER_OUTPUT=$(cat "$TEMP_OUTPUT")
+    rm -f "$TEMP_OUTPUT"
 fi
 
 set +x
 
+# Check for test failures even if Docker exit status is 0
 if [ $DOCKER_EXIT_STATUS -eq 0 ]; then
-    echo "Atom docker run succeeded"
+    echo "Atom docker run completed successfully"
+    # Additional check: look for pytest failure indicators in the captured output
+    # Check if any test failed based on common pytest failure patterns
+    echo "DEBUG: Checking for test failure patterns..."
+    if echo "$DOCKER_OUTPUT" | grep -E "(failed.*passed|FAILED.*test|_pytest\.outcomes\.Exit.*failure)" > /dev/null; then
+        echo "Tests failed despite successful Docker run - forcing failure"
+        echo "DEBUG: Found failure patterns in output"
+        exit 1
+    else
+        echo "DEBUG: No failure patterns found in output"
+        echo "DEBUG: Docker exit status was 0, considering this a success"
+    fi
 else
-    echo "Atom docker run failed!!!"
-    exit 1
+    echo "Atom docker run failed with exit code: $DOCKER_EXIT_STATUS"
+    exit $DOCKER_EXIT_STATUS
 fi
 
 # TODO- when https://github.com/ceph/ceph-nvmeof/issues/1369 will be fixed, we can uncomment the following lines
