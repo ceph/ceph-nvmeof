@@ -19,6 +19,7 @@ RUN \
     --mount=type=cache,target=/var/lib/dnf \
     dnf install -y python3-rados && \
     dnf install -y python3-rbd && \
+    dnf install -y gdb && \
     dnf config-manager --set-enabled crb && \
     dnf install -y ceph-mon-client-nvmeof
 ENTRYPOINT ["python3", "-m", "control"]
