@@ -23,6 +23,8 @@ jobs:
   detect-go:
     name: Detect Go Code
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     outputs:
       has-go: ${{ steps.check.outputs.has-go }}
     steps:
