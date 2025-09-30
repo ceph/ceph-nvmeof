@@ -452,7 +452,7 @@ class NamespaceInfo:
                f"bdev: {self.bdev}, uuid: {self.uuid}, " \
                f"auto_visible: {self.auto_visible}, anagrpid: {self.anagrpid}, " \
                f"pool: {self.pool}, image: {self.image}, trash_image: {self.trash_image}, " \
-               f"read_only: {self.read_only}, " \
+               f"read_only: {self.read_only}, image_shrunk: {self.image_was_shrunk}, " \
                f"hosts: {self.host_list}"
 
     def empty(self) -> bool:
