@@ -13,7 +13,7 @@ name: "CodeQL Advanced"
 
 on:
   push:
-    branches: [ "devel", "reef_7.1", "squid_8.0", "squid_8.1", "tentacle_9.0" ]
+    branches: [ "devel", "*", "reef_7.1", "squid_8.0", "squid_8.1", "tentacle_9.0" ]
   pull_request:
     branches: [ "devel", "*", "reef_7.1", "squid_8.0", "squid_8.1", "tentacle_9.0" ]
   schedule:
