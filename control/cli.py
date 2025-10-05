@@ -2853,7 +2853,7 @@ class GatewayClient:
                  action='store_true',
                  required=False),
         argument("--disable-auto-resize",
-                 help="When the RBD image is resized, not not automatically resize the namespace",
+                 help="When the RBD image is resized, do not automatically resize the namespace",
                  action='store_true',
                  required=False),
         argument("--read-only",
