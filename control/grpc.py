@@ -626,17 +626,19 @@ class NamespacesLocalList:
 class ImageIdentification:
     DELIMITER = GatewayState.OMAP_KEY_DELIMITER
 
-    def __init__(self, group_name, subsys, uuid):
+    def __init__(self, group_name, subsys, uuid, fsid=None):
         group_name_to_use = None
         if group_name is not None:
             group_name_to_use = group_name.replace(ImageIdentification.DELIMITER, "-")
         self.group_name = group_name_to_use
         self.subsys = subsys
         self.uuid = uuid
+        self.fsid = fsid
 
     def __str__(self):
         return f"{self.group_name}{ImageIdentification.DELIMITER}{self.subsys}" \
-               f"{ImageIdentification.DELIMITER}{self.uuid}"
+               f"{ImageIdentification.DELIMITER}{self.uuid}" \
+               f"{ImageIdentification.DELIMITER}{self.fsid}"
 
     def empty(self) -> bool:
         if self.group_name is not None:
@@ -646,6 +648,11 @@ class ImageIdentification:
         if self.uuid is not None:
             return False
         return True
+
+    def does_fsid_match(self, fsid) -> bool:
+        if fsid is None or self.fsid is None:
+            return False
+        return fsid == self.fsid
 
     def is_same_group(self, group_name: str) -> bool:
         if group_name is None:
@@ -663,6 +670,8 @@ class ImageIdentification:
         return uuid == self.uuid
 
     def is_same_image_id(self, img_id) -> bool:
+        if self.fsid is not None and img_id.fsid is not None and self.fsid != img_id.fsid:
+            return False
         if self.group_name != img_id.group_name:
             return False
         if self.subsys != img_id.subsys:
@@ -674,11 +683,13 @@ class ImageIdentification:
     @classmethod
     def parse(cls, img_ids: str) -> list:
         parts = img_ids.split(ImageIdentification.DELIMITER)
+        if len(parts) < 4:
+            parts.append(None)
         ids_list = []
         while parts:
-            group_name, subsys, uuid = parts[:3]
-            ids_list.append(ImageIdentification(group_name, subsys, uuid))
-            parts = parts[3:]
+            group_name, subsys, uuid, fsid = parts[:4]
+            ids_list.append(ImageIdentification(group_name, subsys, uuid, fsid))
+            parts = parts[4:]
 
         return ids_list
 
@@ -835,6 +846,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         self.spdk_qos_timeslice = self.config.getint_with_default("spdk",
                                                                   "qos_timeslice_in_usecs", None)
         self.force_tls = self.config.getboolean_with_default("gateway", "force_tls", False)
+        self.fsid = None
         spdk_notifications_interval = self.config.getint_with_default("spdk",
                                                                       "notifications_interval",
                                                                       60)
@@ -1185,6 +1197,13 @@ class GatewayService(pb2_grpc.GatewayServicer):
     def set_image_identification(self, rbd_pool: str, rbd_image: str, img_id: ImageIdentification):
         assert img_id, "Can't set an empty image id"
 
+        if self.fsid is None:
+            self.fsid = self.ceph_utils.fetch_ceph_fsid()
+            self.logger.debug(f"Cluster FSID is {self.fsid}")
+        if img_id.fsid is None:
+            self.logger.debug(f"No FSID set for image id {img_id}, "
+                              f"will use current FSID {self.fsid}")
+            img_id.fsid = self.fsid
         img_id_value = ""
         img_ids_list = self.get_image_identification(rbd_pool, rbd_image)
         for one_id in img_ids_list:
@@ -1209,6 +1228,13 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                     rbd_image: str, img_id: ImageIdentification):
         assert img_id, "Can't delete an empty image id"
 
+        if self.fsid is None:
+            self.fsid = self.ceph_utils.fetch_ceph_fsid()
+            self.logger.debug(f"Cluster FSID is {self.fsid}")
+        if img_id.fsid is None:
+            self.logger.debug(f"No FSID set for image id {img_id}, "
+                              f"will use current FSID {self.fsid}")
+            img_id.fsid = self.fsid
         img_id_value = ""
         img_ids_list = self.get_image_identification(rbd_pool, rbd_image)
         for one_id in img_ids_list:
@@ -1883,7 +1909,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         img_ids_list = self.get_image_identification(pool_name, image_name)
         for img_id in img_ids_list:
-            if not img_id.empty():
+            if not img_id.empty() and img_id.does_fsid_match(self.fsid):
                 if not img_id.is_same_group(self.gateway_group):
                     grp_txt = f", group {img_id.group_name}" if img_id.group_name else ""
                     errmsg = f"RBD image {pool_name}/{image_name} is already used by a namespace " \
@@ -1891,9 +1917,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     return errmsg, img_id.subsys
                 if not img_id.is_same_uuid(uuid):
                     uuid_txt = f"with UUID {img_id.uuid} " if img_id.uuid else ""
+                    grp_txt = f", group {img_id.group_name}" if img_id.group_name else ""
                     errmsg = f"RBD image {pool_name}/{image_name} is already used by a namespace " \
-                             f"{uuid_txt}" \
-                             f"in subsystem {img_id.subsys}, group {img_id.group_name}"
+                             f"{uuid_txt}in subsystem {img_id.subsys}{grp_txt}"
                     return errmsg, img_id.subsys
 
         state = self.gateway_state.local.get_state()
