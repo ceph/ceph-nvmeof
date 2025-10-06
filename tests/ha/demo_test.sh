@@ -334,10 +334,10 @@ function demo_bdevperf_unsecured()
     [[ `cat /tmp/listeners.txt | jq -r '.listeners[1].active'` == "true" ]]
     [[ `cat /tmp/listeners.txt | jq -r '.listeners[2].trtype'` == "TCP" ]]
     [[ `cat /tmp/listeners.txt | jq -r '.listeners[2].adrfam'` == "ipv6" ]]
-    [[ `cat /tmp/listeners.txt | jq -r '.listeners[2].traddr'` == "[2001:db8::3]" ]]
+    [[ `cat /tmp/listeners.txt | jq -r '.listeners[2].traddr'` == "2001:db8::3" ]]
     [[ `cat /tmp/listeners.txt | jq -r '.listeners[2].trsvcid'` == "4420" ]]
     [[ `cat /tmp/listeners.txt | jq -r '.listeners[2].secure'` == "false" ]]
-    [[ `cat /tmp/listeners.txt | jq -r '.listeners[2].active'` == "false" ]]
+    [[ `cat /tmp/listeners.txt | jq -r '.listeners[2].active'` == "true" ]]
     [[ `cat /tmp/listeners.txt | jq -r '.listeners[3]'` == "null" ]]
     hostname20=`cat /tmp/listeners.txt | jq -r '.listeners[0].host_name'`
     hostname21=`cat /tmp/listeners.txt | jq -r '.listeners[1].host_name'`
@@ -350,9 +350,9 @@ function demo_bdevperf_unsecured()
     rm -f /tmp/listeners.txt
     cephnvmf_func --output stdio --format plain gw listener_info --subsystem $NQN > /tmp/gw_listeners.txt
     cat /tmp/gw_listeners.txt
-    grep "TCP          IPv6              2001:db8::3:4420   No        Yes       1: Optimized" /tmp/gw_listeners.txt
-    grep "TCP          IPv4              0.0.0.0:4430       No        Yes       1: Optimized" /tmp/gw_listeners.txt
-    grep "TCP          IPv4              192.168.13.3:4420  No        Yes       1: Optimized" /tmp/gw_listeners.txt
+    grep "TCP          IPv6              \[2001:db8::3\]:4420  No        Yes       1: Optimized" /tmp/gw_listeners.txt
+    grep "TCP          IPv4              0.0.0.0:4430        No        Yes       1: Optimized" /tmp/gw_listeners.txt
+    grep "TCP          IPv4              192.168.13.3:4420   No        Yes       1: Optimized" /tmp/gw_listeners.txt
 
     set +e
     tail -n +4 /tmp/gw_listeners.txt | grep -v "Optimized"
