@@ -284,18 +284,23 @@ class TestCreate:
         assert "contains invalid characters" in caplog.text
         caplog.clear()
         cli(["subsystem", "add", "--subsystem", subsystem,
-             "--max-namespaces", "2049", "--no-group-append"])
-        assert f"The requested max number of namespaces for subsystem {subsystem} (2049) " \
+             "--max-namespaces", "3700", "--no-group-append"])
+        assert f"Failure creating subsystem {subsystem}: Max namespaces " \
+               f"can't be greater than 2048" in caplog.text
+        caplog.clear()
+        cli(["subsystem", "add", "--subsystem", subsystem,
+             "--max-namespaces", "2039", "--no-group-append"])
+        assert f"The requested max number of namespaces for subsystem {subsystem} (2039) " \
                f"is greater than the global limit on the number of namespaces (12), " \
                f"will continue" in caplog.text
         assert f"Adding subsystem {subsystem}: Successful" in caplog.text
         cli(["--format", "json", "subsystem", "list"])
         assert f'"serial_number": "{serial}"' not in caplog.text
         assert f'"nqn": "{subsystem}"' in caplog.text
-        assert '"max_namespaces": 2049' in caplog.text
+        assert '"max_namespaces": 2039' in caplog.text
         caplog.clear()
         cli(["subsystem", "add", "--subsystem", subsystem,
-             "--max-namespaces", "2049", "--no-group-append"])
+             "--max-namespaces", "2039", "--no-group-append"])
         assert f"Failure creating subsystem {subsystem}: Subsystem already exists" in caplog.text
         caplog.clear()
         cli(["subsystem", "add", "--subsystem", subsystem2,
@@ -881,7 +886,7 @@ class TestCreate:
         cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool,
              "--rbd-image", image9, "--nsid", "3000", "--size", "16MB", "--rbd-create-image"])
         assert f"Failure adding namespace using ID 3000 to {subsystem}: " \
-               f"Requested ID 3000 is bigger than the maximal one (2049)" in caplog.text
+               f"Requested ID 3000 is bigger than the maximal one (2039)" in caplog.text
         assert "Received request to delete bdev" in caplog.text
         caplog.clear()
         cli(["subsystem", "add", "--subsystem", subsystem5, "--no-group-append",

@@ -731,6 +731,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
     MAX_SUBSYSTEMS_DEFAULT = 128
     MAX_NAMESPACES_DEFAULT = 4096
     MAX_NAMESPACES_PER_SUBSYSTEM_DEFAULT = 512
+    # The actual highest value seems to be 3647, so pick a lower value
+    MAX_VALUE_FOR_MAX_NAMESPACES_PER_SUBSYSTEM = 2048
     MAX_HOSTS_PER_SUBSYS_DEFAULT = 128
     MAX_HOSTS_DEFAULT = 2048
     # notification name should be the same as in spdk/lib/nvmf/ctrlr.c
@@ -794,6 +796,12 @@ class GatewayService(pb2_grpc.GatewayServicer):
             "gateway",
             "max_namespaces_per_subsystem",
             GatewayService.MAX_NAMESPACES_PER_SUBSYSTEM_DEFAULT)
+        biggest_max_ns_per_subsys = GatewayService.MAX_VALUE_FOR_MAX_NAMESPACES_PER_SUBSYSTEM
+        if self.max_namespaces_per_subsystem > biggest_max_ns_per_subsys:
+            self.logger.error(f"Max namespaces per subsystem can't be greater than "
+                              f"{biggest_max_ns_per_subsys}, will use "
+                              f"this value instead")
+            self.max_namespaces_per_subsystem = biggest_max_ns_per_subsys
         self.max_hosts_per_subsystem = self.config.getint_with_default(
             "gateway",
             "max_hosts_per_subsystem",
@@ -1560,6 +1568,13 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                      nqn=request.subsystem_nqn)
 
         if request.max_namespaces:
+            if request.max_namespaces > GatewayService.MAX_VALUE_FOR_MAX_NAMESPACES_PER_SUBSYSTEM:
+                errmsg = f"{create_subsystem_error_prefix}: Max namespaces can't be greater " \
+                         f"than {GatewayService.MAX_VALUE_FOR_MAX_NAMESPACES_PER_SUBSYSTEM}"
+                self.logger.error(errmsg)
+                return pb2.subsys_status(status=errno.EINVAL,
+                                         error_message=errmsg,
+                                         nqn=request.subsystem_nqn)
             if request.max_namespaces > self.max_namespaces:
                 self.logger.warning(f"The requested max number of namespaces for subsystem "
                                     f"{request.subsystem_nqn} ({request.max_namespaces}) is "
