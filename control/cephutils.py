@@ -56,6 +56,19 @@ class CephUtils:
                                 f"{rply[2]}\nCommand was \"{cmd}\"")
         return rply
 
+    def get_gw_listeners(self, pool, group) -> list:
+        try:
+            str = '{' + f'"prefix":"nvme-gw listeners", "pool":"{pool}", "group":"{group}"' + '}'
+            self.logger.debug(f"nvme-listeners string: {str}")
+            rply = self.execute_ceph_monitor_command(str)
+            self.logger.debug(f"reply \"{rply}\"")
+            conv_str = rply[1].decode()
+            data = json.loads(conv_str)
+            return data["Created listeners"]
+        except Exception as e:
+            self.logger.error(f"nvme-gw listeners command failed: {e}")
+            return []
+
     def get_gw_id_owner_ana_group(self, pool, group, anagrp):
         str = '{' + f'"prefix":"nvme-gw show", "pool":"{pool}", "group":"{group}"' + '}'
         self.logger.debug(f"nvme-show string: {str}")
