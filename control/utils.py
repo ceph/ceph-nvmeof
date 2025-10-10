@@ -17,6 +17,7 @@ import logging.handlers
 import gzip
 import shutil
 import netifaces
+import ipaddress
 from typing import Tuple, List
 from cryptography.fernet import Fernet
 import cryptography.exceptions
@@ -615,6 +616,20 @@ class NICS:
                 if "addr" in v6addr and v6addr["addr"] == addr:
                     return True
         return False
+
+    def get_ips_in_subnet(self, subnet):
+        subnet_ = ipaddress.ip_network(subnet, strict=False)
+        found_ips = []
+        for dev in self.adapters:
+            nic = self.adapters[dev]
+            if isinstance(subnet_, ipaddress.IPv4Network):
+                host_ips = nic.ipv4_addresses
+            elif isinstance(subnet_, ipaddress.IPv6Network):
+                host_ips = nic.ipv6_addresses
+            for ip in host_ips:
+                if ipaddress.ip_address(ip) in subnet_:
+                    found_ips.append(ip)
+        return found_ips
 
 
 class NIC:
