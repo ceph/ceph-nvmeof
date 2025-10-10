@@ -801,11 +801,9 @@ class DiscoveryService:
             for host in hosts:
                 if host["host_nqn"] == '*' or host["host_nqn"] == hostnqn:
                     subsystem_nqn = host["subsystem_nqn"]
-                    if subsystem_nqn in nvmemon_listeners:
+                    if nvmemon_listeners and (subsystem_nqn in nvmemon_listeners):
                         subsystem_listeners = nvmemon_listeners[subsystem_nqn]
                         for _listener in subsystem_listeners:
-                            # TODO: It is better to change nqn in the "listener"
-                            # to subsystem_nqn to avoid confusion
                             listener = {
                                 "adrfam": _listener["address_family"],
                                 "trsvcid": _listener["svcid"],
@@ -813,6 +811,12 @@ class DiscoveryService:
                                 "traddr": _listener["address"],
                             }
                             allow_listeners += [listener,]
+                    else:
+                        for listener in listeners:
+                            # TODO: It is better to change nqn in the "listener"
+                            # to subsystem_nqn to avoid confusion
+                            if host["subsystem_nqn"] == listener["nqn"]:
+                                allow_listeners += [listener,]
             self_conn.allow_listeners = allow_listeners
 
         # Prepare all log page data segments
