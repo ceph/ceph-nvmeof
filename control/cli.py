@@ -903,7 +903,9 @@ class GatewayClient:
                                        max_namespaces=args.max_namespaces,
                                        enable_ha=True,
                                        no_group_append=args.no_group_append,
-                                       dhchap_key=args.dhchap_key)
+                                       dhchap_key=args.dhchap_key,
+                                       network_mask=args.network_mask,
+                                       secure_listeners=args.secure_listeners)
         try:
             ret = self.stub.create_subsystem(req)
         except Exception as ex:
@@ -1137,6 +1139,13 @@ class GatewayClient:
         argument("--dhchap-key",
                  "-k",
                  help="Subsystem DH-HMAC-CHAP key",
+                 required=False),
+        argument("--network-mask",
+                 help="For this subnet, automatically create listeners for this subsystem",
+                 required=False),
+        argument("--secure-listeners",
+                 help="Make all the auto-listeners for this subsystem secures",
+                 action='store_true',
                  required=False),
     ]
     subsys_del_args = [

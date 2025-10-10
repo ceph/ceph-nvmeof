@@ -248,6 +248,8 @@ message create_subsystem_req {
 	optional bool no_group_append = 5;
 	optional string dhchap_key = 6;
 	optional bool key_encrypted = 7;
+	optional string network_mask = 8;
+	optional bool secure_listeners = 9;
 }
 
 message delete_subsystem_req {
