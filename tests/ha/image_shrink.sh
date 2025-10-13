@@ -50,6 +50,9 @@ nslist=$(cephnvmf_func --output stdio --format json namespace list --subsystem $
 [[ `echo $nslist | jq -r '.namespaces[0].image_was_shrunk'` == "true" ]]
 [[ `echo $nslist | jq -r '.namespaces[1]'` == "null" ]]
 
+echo "ℹ️  refresh size"
+cephnvmf_func namespace refresh_size --subsystem "${NQN}" --nsid 1
+
 echo "ℹ️  disable SPDK notification handling"
 sed -i 's/^.*notifications_interval.*$/notifications_interval=0/' ceph-nvmeof.conf
 container_id=$(docker ps -q -f name=nvmeof)
