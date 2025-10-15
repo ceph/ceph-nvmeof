@@ -59,7 +59,7 @@ MONITOR_POLLING_RATE_SEC = 2     # monitor polls gw each 2 seconds
 
 
 class SubsystemsCache:
-    SUBSYSTEMS_CACHE_EXPIRATION = 5
+    SUBSYSTEMS_CACHE_EXPIRATION = 30
 
     def __init__(self, expiration=None):
         self.cache_lock = threading.Lock()
