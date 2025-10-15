@@ -3115,11 +3115,13 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                                                                 nsid)
                     lb_group_configured = 0
                     cluster_name = None
+                    was_image_shrunk = False
                     if find_ret.empty():
                         self.logger.warning(f"Can't find info of namesapce {nsid} in "
                                             f"{subsys_nqn}. Some fields value "
                                             f"will be inaccurate")
                     else:
+                        was_image_shrunk = find_ret.was_image_shrunk()
                         lb_group_configured = find_ret.anagrpid
                         try:
                             cluster_name = self.bdev_cluster[find_ret.bdev]
@@ -3137,20 +3139,21 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                                read_only=find_ret.read_only,
                                                configured_load_balancing_group=lb_group_configured,
                                                cluster_name=cluster_name,
-                                               image_was_shrunk=find_ret.was_image_shrunk())
+                                               image_was_shrunk=was_image_shrunk)
                     with self.rpc_lock:
                         ns_bdev = self.get_bdev_info(bdev_name)
                     if ns_bdev is None:
                         self.logger.warning(f"Can't find namespace's bdev {bdev_name}, "
                                             f"will not list bdev's information")
                     else:
+                        image_size = None
                         try:
                             drv_specific_info = ns_bdev["driver_specific"]
                             rbd_info = drv_specific_info["rbd"]
                             one_ns.rbd_image_name = rbd_info["rbd_name"]
                             one_ns.rbd_pool_name = rbd_info["pool_name"]
                             one_ns.block_size = ns_bdev["block_size"]
-                            one_ns.rbd_image_size = ns_bdev["block_size"] * ns_bdev["num_blocks"]
+                            image_size = ns_bdev["block_size"] * ns_bdev["num_blocks"]
                             assigned_limits = ns_bdev["assigned_rate_limits"]
                             one_ns.rw_ios_per_second = assigned_limits["rw_ios_per_sec"]
                             one_ns.rw_mbytes_per_second = assigned_limits["rw_mbytes_per_sec"]
@@ -3163,6 +3166,20 @@ class GatewayService(pb2_grpc.GatewayServicer):
                         except Exception:
                             self.logger.exception(f"{ns_bdev=} parse error")
                             pass
+                        if was_image_shrunk and one_ns.rbd_pool_name and one_ns.rbd_image_name:
+                            shrunk_image_size = None
+                            try:
+                                shrunk_image_size = self.ceph_utils.get_image_size(
+                                    one_ns.rbd_pool_name, one_ns.rbd_image_name)
+                            except Exception:
+                                self.logger.exception(f"error getting size of "
+                                                      f"{one_ns.rbd_pool_name}/"
+                                                      f"{one_ns.rbd_image_name}")
+                                pass
+                            if shrunk_image_size is not None:
+                                image_size = shrunk_image_size
+                        if image_size is not None:
+                            one_ns.rbd_image_size = image_size
                         one_ns.disable_auto_resize = self._is_auto_resize_disabled_for_image(
                             one_ns.rbd_pool_name, one_ns.rbd_image_name)
                     namespaces.append(one_ns)
@@ -3533,7 +3550,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         if ret.status == 0:
             errmsg = os.strerror(0)
-            find_ret.set_image_was_shrunk(False)
+            if request.new_size > 0:
+                find_ret.set_image_was_shrunk(False)
         else:
             errmsg = f"Failure resizing namespace {request.nsid} on " \
                      f"{request.subsystem_nqn}: {ret.error_message}"
