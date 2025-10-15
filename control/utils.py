@@ -118,6 +118,15 @@ class GatewayUtils:
 
         return True
 
+    def get_hostname(ip_addr: str, logger) -> str:
+        try:
+            ret = socket.gethostbyaddr(ip_addr)
+            if ret:
+                return ret[0]
+        except Exception as e:
+            logger.error(f'error in get_hostname: {e}')
+            return ''
+
     def is_valid_rev_domain(rev_domain):
         domain_parts = rev_domain.split(".")
         for lbl in domain_parts:

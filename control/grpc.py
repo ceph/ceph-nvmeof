@@ -5875,13 +5875,16 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     secure = subsystem.get('secure_listeners', False)
                     for _listener in subsystem_listeners:
                         listener = {
-                            "host_name": "test",  # TODO
+                            "host_name": _listener["gw_id"],
                             "adrfam": (_listener["address_family"] or '').lower(),
                             "trsvcid": int(_listener["svcid"] or 0),
                             "nqn": request.subsystem,
                             "traddr": _listener["address"],
                             "secure": secure,
                         }
+                        hostname = GatewayUtils.get_hostname(listener["traddr"], self.logger)
+                        if hostname:
+                            listener["host_name"] = hostname
                         listener_key = (listener["traddr"], listener["trsvcid"],
                                         secure)
                         if listener_key in omap_listeners:
