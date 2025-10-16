@@ -96,7 +96,6 @@ class GatewayServer:
         gateway_rpc: GatewayService implementation
         server: gRPC server instance to receive gateway client requests
         spdk_rpc_client: Client of SPDK RPC server
-        spdk_rpc_ping_client: Ping client of SPDK RPC server
         spdk_rpc_subsystems_client: subsystems client of SPDK RPC server
         spdk_rpc_prometheus_client: prometheus client of SPDK RPC server
         spdk_process: Subprocess running SPDK NVMEoF target application
@@ -674,13 +673,6 @@ class GatewayServer:
             # Notice that some SPDK calls can't be made after framework init
             self._init_framework()
 
-            self.spdk_rpc_ping_client = rpc_client.JSONRPCClient(
-                self.spdk_rpc_socket_path,
-                None,
-                timeout,
-                log_level=protocol_log_level,
-                conn_retries=conn_retries,
-            )
             self.spdk_rpc_subsystems_client = rpc_client.JSONRPCClient(
                 self.spdk_rpc_socket_path,
                 None,
@@ -977,13 +969,14 @@ class GatewayServer:
                 consecutive_ping_failures = 0
 
     def _ping(self):
-        """Confirms communication with SPDK process."""
-        try:
-            spdk.rpc.spdk_get_version(self.spdk_rpc_ping_client)
-            return True
-        except Exception:
-            self.logger.exception("spdk_get_version failed")
-            return False
+        """Confirms communication with SPDK process and refreshes subsystems cache.
+
+        This serves dual purpose:
+        1. Health check: Verify SPDK is responding
+        2. Cache refresh: Update subsystems cache with fresh data
+        """
+        # Delegate to cache - it handles RPC call and update internally
+        return self.gateway_rpc.subsystems_cache.refresh()
 
     def probe_huge_pages(self):
         """Probe kernel's huge pages confiuguration"""

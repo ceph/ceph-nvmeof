@@ -817,3 +817,71 @@ class DsaUtils:
                 # ENOENT is fine
                 if e.errno != errno.ENOENT:
                     self.logger.exception(f"Error removing DSA config file {conf_file}")
+
+
+class NvmeofConnectionUtils:
+    """Utilities for NVMe-oF connection processing."""
+
+    @staticmethod
+    def find_qpair_for_controller(controller, qpair_list, logger=None):
+        """Find matching qpair for a controller.
+
+        Matches qpair to controller by cntlid and returns transport address info.
+
+        Args:
+            controller: Controller dict from SPDK (must have "cntlid", "hostnqn")
+            qpair_list: List of qpair dicts from SPDK
+            logger: Optional logger for debug messages
+
+        Returns:
+            tuple: (found: bool, hostnqn: str, traddr: str, trsvcid: int,
+                   trtype: str, adrfam: str)
+            If not found, returns (False, hostnqn, "", 0, "", "")
+        """
+        found = False
+        hostnqn = controller.get("hostnqn", "")
+        traddr = ""
+        trsvcid = 0
+        adrfam = ""
+        trtype = "TCP"
+
+        for qp in qpair_list:
+            try:
+                if qp.get("cntlid") != controller.get("cntlid"):
+                    continue
+                if qp.get("state") != "enabled":
+                    if logger:
+                        logger.debug(f"Qpair {qp} is not enabled")
+                    continue
+                addr = qp.get("listen_address")
+                if not addr:
+                    continue
+                traddr = addr.get("traddr")
+                if not traddr:
+                    continue
+                trsvcid = int(addr.get("trsvcid", 0))
+                try:
+                    trtype = addr.get("trtype", "").upper()
+                except Exception:
+                    pass
+                try:
+                    adrfam = addr.get("adrfam", "").lower()
+                except Exception:
+                    pass
+                found = True
+                break
+            except Exception:
+                if logger:
+                    logger.exception(f"Got exception while parsing qpair: {qp}")
+                pass
+
+        if not found and logger:
+            logger.debug(f"Can't find active qpair for connection {controller}")
+
+        # Apply defaults if not set
+        if not trtype:
+            trtype = "TCP"
+        if not adrfam:
+            adrfam = "ipv4"
+
+        return found, hostnqn, traddr, trsvcid, trtype, adrfam

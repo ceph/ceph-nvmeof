@@ -90,15 +90,21 @@ def verify_namespaces(caplog, gw_port, subsys, first_nsid, last_nsid, grp):
         verify_one_namespace_lb_group(caplog, gw_port, subsys, str(ns), grp)
 
 
-def verify_namespaces_using_get_subsystems(caplog, gw_port, subsys, first_nsid, last_nsid, grp):
+def verify_namespaces_using_list(caplog, gw_port, subsys, first_nsid, last_nsid, grp):
+    """Verify namespaces using direct SPDK query (via namespace list).
+
+    Queries SPDK directly via 'namespace list' to get real-time data,
+    bypassing the get_subsystems cache.
+    """
     caplog.clear()
-    subsys_info = cli_test(["--server-port", gw_port, "get_subsystems"])
-    assert len(subsys_info.subsystems) == 1
-    assert subsys_info.subsystems[0].nqn == subsys
-    assert len(subsys_info.subsystems[0].namespaces) >= last_nsid
+    # Use namespace list which queries SPDK directly (no cache)
+    ns_info = cli_test(["--server-port", gw_port, "namespace", "list", "--subsystem", subsys])
+    assert ns_info.status == 0
+    assert ns_info.subsystem_nqn == subsys
+    assert len(ns_info.namespaces) >= last_nsid
     for ns in range(first_nsid, last_nsid + 1):
-        assert subsys_info.subsystems[0].namespaces[ns - 1].nsid == ns
-        assert subsys_info.subsystems[0].namespaces[ns - 1].anagrpid == grp
+        assert ns_info.namespaces[ns - 1].nsid == ns
+        assert ns_info.namespaces[ns - 1].configured_load_balancing_group == grp
 
 
 def verify_namespaces_using_spdk_get_subsystems(caplog, gw, subsys, first_nsid, last_nsid, grp):
@@ -331,14 +337,14 @@ def test_change_namespace_lb_group(caplog, two_gateways):
     verify_namespaces(caplog, "5502", subsystem, 1 + (namespace_count // 2),
                       namespace_count, anagrpid2)
 
-    verify_namespaces_using_get_subsystems(caplog, "5500", subsystem, 1, namespace_count // 2,
-                                           int(anagrpid))
-    verify_namespaces_using_get_subsystems(caplog, "5500", subsystem, 1 + (namespace_count // 2),
-                                           namespace_count, int(anagrpid2))
-    verify_namespaces_using_get_subsystems(caplog, "5502", subsystem, 1, namespace_count // 2,
-                                           int(anagrpid))
-    verify_namespaces_using_get_subsystems(caplog, "5502", subsystem, 1 + (namespace_count // 2),
-                                           namespace_count, int(anagrpid2))
+    verify_namespaces_using_list(caplog, "5500", subsystem, 1, namespace_count // 2,
+                                 int(anagrpid))
+    verify_namespaces_using_list(caplog, "5500", subsystem, 1 + (namespace_count // 2),
+                                 namespace_count, int(anagrpid2))
+    verify_namespaces_using_list(caplog, "5502", subsystem, 1, namespace_count // 2,
+                                 int(anagrpid))
+    verify_namespaces_using_list(caplog, "5502", subsystem, 1 + (namespace_count // 2),
+                                 namespace_count, int(anagrpid2))
 
     verify_namespaces_using_spdk_get_subsystems(caplog, gatewayA, subsystem, 1,
                                                 namespace_count // 2, int(anagrpid))
@@ -360,14 +366,14 @@ def test_change_namespace_lb_group(caplog, two_gateways):
     verify_namespaces(caplog, "5502", subsystem, 1 + (namespace_count // 2),
                       namespace_count, anagrpid)
 
-    verify_namespaces_using_get_subsystems(caplog, "5500", subsystem, 1, namespace_count // 2,
-                                           int(anagrpid2))
-    verify_namespaces_using_get_subsystems(caplog, "5500", subsystem, 1 + (namespace_count // 2),
-                                           namespace_count, int(anagrpid))
-    verify_namespaces_using_get_subsystems(caplog, "5502", subsystem, 1, namespace_count // 2,
-                                           int(anagrpid2))
-    verify_namespaces_using_get_subsystems(caplog, "5502", subsystem, 1 + (namespace_count // 2),
-                                           namespace_count, int(anagrpid))
+    verify_namespaces_using_list(caplog, "5500", subsystem, 1, namespace_count // 2,
+                                 int(anagrpid2))
+    verify_namespaces_using_list(caplog, "5500", subsystem, 1 + (namespace_count // 2),
+                                 namespace_count, int(anagrpid))
+    verify_namespaces_using_list(caplog, "5502", subsystem, 1, namespace_count // 2,
+                                 int(anagrpid2))
+    verify_namespaces_using_list(caplog, "5502", subsystem, 1 + (namespace_count // 2),
+                                 namespace_count, int(anagrpid))
 
     verify_namespaces_using_spdk_get_subsystems(caplog, gatewayA, subsystem, 1,
                                                 namespace_count // 2, int(anagrpid2))

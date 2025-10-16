@@ -11,9 +11,9 @@ import os
 import time
 import threading
 import inspect
-import types
 import math
 import spdk.rpc as rpc
+import spdk.rpc.nvmf as rpc_nvmf
 
 from .proto import gateway_pb2 as pb2
 from prometheus_client.core import REGISTRY, GaugeMetricFamily
@@ -21,6 +21,7 @@ from prometheus_client.core import CounterMetricFamily, InfoMetricFamily
 from prometheus_client import start_http_server, GC_COLLECTOR
 from functools import wraps
 from .utils import NICS
+from .utils import NvmeofConnectionUtils
 
 COLLECTION_ELAPSED_WARNING = 0.8   # Percentage of the refresh interval before a warning is issued
 REGISTRY.unregister(GC_COLLECTOR)  # Turn off garbage collector metrics
@@ -59,39 +60,126 @@ def timer(method):
     return call
 
 
-def connection_cache_with_timer(ttl_seconds=60):
-    def decorator(method):
-        @wraps(method)
-        def call(self, *args, **kwargs):
-            st = time.time()
-            cache_age = st - self.connection_map_cache_time
+class ConnectionsCache:
+    """Cache for connection data (controllers and qpairs from SPDK).
 
-            # Check if cache is still valid
-            if self.connection_map_cache is not None and cache_age < ttl_seconds:
-                # Cache hit
-                result = self.connection_map_cache
-                logger.debug(
-                    f'Connection cache hit (age: {cache_age:.1f}s of{ttl_seconds}s TTL)')
-            else:
-                # Cache miss - do the expensive work
-                logger.debug(f'Connection cache miss (age: {cache_age:.1f}s), refreshing...')
+    Refreshed by Prometheus collector during each _get_data() call.
+    Stores full connection information for all subsystems.
+    """
 
-                result = method(*args, **kwargs)
+    def __init__(self, spdk_rpc_client, gateway_rpc):
+        self.cache_lock = threading.Lock()
+        self.connections_map = {}  # subsystem_nqn -> pb2.connections_info
+        self.spdk_rpc_client = spdk_rpc_client
+        self.gateway_rpc = gateway_rpc
 
-                # Update cache
-                self.connection_map_cache = result
-                self.connection_map_cache_time = st
+    def get(self):
+        """Get cached connections map. Returns dict of subsystem_nqn -> pb2.connections_info"""
+        with self.cache_lock:
+            return self.connections_map
 
-                logger.debug(f'Connection cache refreshed (valid for {ttl_seconds}s)')
+    def refresh(self, subsystem_list):
+        """Refresh cache by calling SPDK RPC for all subsystems.
 
-            # Record timing
-            elapsed = time.time() - st
-            if hasattr(self, 'method_timings'):
-                self.method_timings[method.__name__] = elapsed
+        Args:
+            subsystem_list: List of subsystem protobuf objects to refresh connections for
+        """
+        try:
+            new_connections_map = {}
+            for subsys in subsystem_list:
+                subsystem_nqn = subsys.nqn
+                connections_info = self._get_connections_for_subsystem(subsys)
+                if connections_info:
+                    new_connections_map[subsystem_nqn] = connections_info
 
-            return result
-        return call
-    return decorator
+            # Update cache atomically
+            with self.cache_lock:
+                self.connections_map = new_connections_map
+
+            logger.debug(f"ConnectionsCache refreshed for {len(new_connections_map)} subsystems")
+        except Exception:
+            logger.exception("Failed to refresh ConnectionsCache")
+
+    def _get_connections_for_subsystem(self, subsys_protobuf):
+        """Get connections for a single subsystem by calling SPDK directly.
+
+        Args:
+            subsys_protobuf: Protobuf subsystem object from cached subsystems_info
+
+        Returns pb2.connections_info or None on error.
+        """
+        try:
+            subsystem_nqn = subsys_protobuf.nqn
+
+            # Call SPDK directly for this subsystem
+            qpair_ret = rpc_nvmf.nvmf_subsystem_get_qpairs(
+                self.spdk_rpc_client, nqn=subsystem_nqn)
+            ctrl_ret = rpc_nvmf.nvmf_subsystem_get_controllers(
+                self.spdk_rpc_client, nqn=subsystem_nqn)
+
+            connections = []
+            host_nqns = []
+
+            # Build list of host NQNs from cached subsystem protobuf data
+            for h in subsys_protobuf.hosts:
+                try:
+                    host_nqns.append(h.nqn)
+                except Exception:
+                    pass
+
+            # Build connections from controllers and qpairs
+            for conn in ctrl_ret:
+                try:
+                    # Use shared utility to find qpair and extract address info
+                    found, hostnqn, traddr, trsvcid, trtype, adrfam = \
+                        NvmeofConnectionUtils.find_qpair_for_controller(conn, qpair_ret)
+
+                    if not found:
+                        continue
+
+                    # Check keepalive timeout status (like gateway does)
+                    was_ka_timeout = \
+                        self.gateway_rpc.host_info.was_host_disconnected_due_to_keepalive_timeout(
+                            subsystem_nqn, hostnqn)
+
+                    # Create connection object (simplified for Prometheus - no PSK/DHCHAP)
+                    one_conn = pb2.connection(
+                        nqn=hostnqn, connected=True,
+                        traddr=traddr, trsvcid=trsvcid,
+                        trtype=trtype, adrfam=adrfam,
+                        qpairs_count=conn["num_io_qpairs"],
+                        controller_id=conn["cntlid"],
+                        subsystem=subsystem_nqn,
+                        disconnected_due_to_keepalive_timeout=was_ka_timeout
+                    )
+                    connections.append(one_conn)
+                    if hostnqn in host_nqns:
+                        host_nqns.remove(hostnqn)
+                except Exception:
+                    pass
+
+            # Add disconnected hosts
+            for nqn in host_nqns:
+                # Check keepalive timeout status for disconnected hosts too
+                was_ka_timeout = \
+                    self.gateway_rpc.host_info.was_host_disconnected_due_to_keepalive_timeout(
+                        subsystem_nqn, nqn)
+                one_conn = pb2.connection(
+                    nqn=nqn, connected=False, traddr="<n/a>", trsvcid=0,
+                    qpairs_count=-1, controller_id=-1,
+                    subsystem=subsystem_nqn,
+                    disconnected_due_to_keepalive_timeout=was_ka_timeout
+                )
+                connections.append(one_conn)
+
+            return pb2.connections_info(
+                status=0, error_message=os.strerror(0),
+                subsystem_nqn=subsystem_nqn, connections=connections
+            )
+
+        except Exception:
+            logger.exception(f"Failed to get connections for {subsystem_nqn}")
+            return None
 
 
 def start_httpd(**kwargs):
@@ -167,16 +255,10 @@ class NVMeOFCollector:
         self.spdk_thread_stats = {}
         self.subsystems = []
         self.connections = {}
-        self.hosts = {}
         self.method_timings = {}
 
-        # Cache for connection map
-        self.connection_map_cache = None           # Store cached connection data
-        self.connection_map_cache_time = 0           # Last time the connection cache was refreshed
-        cache_ttl = self.gw_config.getint_with_default(
-            "gateway", "prometheus_connection_list_cache_expiration", 60)
-        decorated_method = connection_cache_with_timer(cache_ttl)(self._get_connection_map)
-        self._get_connection_map = types.MethodType(decorated_method, self)
+        # Connections cache - refreshed during each _get_data() call
+        self.connections_cache = ConnectionsCache(spdk_rpc_client, gateway_rpc)
 
         if self.bdev_pools:
             logger.info(f"Stats restricted to bdevs in the following pool(s): "
@@ -239,35 +321,13 @@ class NVMeOFCollector:
 
     @timer
     def _get_subsystems(self):
-        """Fetch aggregated subsystem information"""
-        subsystems_info = self.gateway_rpc.get_subsystems(pb2.get_subsystems_req(), None)
+        """Fetch aggregated subsystem information from cache"""
+        subsystems_info = self.gateway_rpc.subsystems_cache.get()
         return subsystems_info.subsystems
 
-    def _get_connection_map(self, subsystem_list):
-        """Fetch connection information for all defined subsystems"""
-        connection_map = {}
-        for subsys in subsystem_list:
-            resp = self.gateway_rpc.list_connections(pb2.list_connections_req(subsystem=subsys.nqn))
-            if resp.status != 0:
-                logger.error(f"Exporter failed to fetch connection info for "
-                             f"{subsys.nqn}: {resp.error_message}")
-                continue
-            connection_map[subsys.nqn] = resp
-        return connection_map
-
-    @timer
-    def _get_host_map(self, subsystem_list):
-        """Fetch host information for all defined subsystems"""
-        host_map = {}
-        for subsys in subsystem_list:
-            resp = self.gateway_rpc.list_hosts(pb2.list_hosts_req(subsystem=subsys.nqn,
-                                                                  clear_alerts=True))
-            if resp.status != 0:
-                logger.error(f"Exporter failed to fetch host info for "
-                             f"{subsys.nqn}: {resp.error_message}")
-                continue
-            host_map[subsys.nqn] = resp
-        return host_map
+    def _get_connection_map(self):
+        """Fetch connection information from ConnectionsCache (already populated)"""
+        return self.connections_cache.get()
 
     def _get_data(self):
         """Gather data from the SPDK"""
@@ -279,10 +339,11 @@ class NVMeOFCollector:
         logger.debug("Done with _get_spdk_thread_stats()")
         self.subsystems = self._get_subsystems()
         logger.debug("Done with _get_subsystems()")
-        self.connections = self._get_connection_map(self.subsystems)
+        # Refresh connections cache with fresh data from SPDK
+        self.connections_cache.refresh(self.subsystems)
+        logger.debug("Done with _refresh_connections_cache()")
+        self.connections = self._get_connection_map()
         logger.debug("Done with _get_connection_map()")
-        self.hosts = self._get_host_map(self.subsystems)
-        logger.debug("Done with _get_host_map()")
 
     def _log_timings(self):
         """Log timing for each method"""
@@ -292,7 +353,6 @@ class NVMeOFCollector:
         logger.debug(f"_get_spdk_thread_stats(): {t.get('_get_spdk_thread_stats', 0):.2f}s")
         logger.debug(f"_get_subsystems(): {t.get('_get_subsystems', 0):.2f}s")
         logger.debug(f"_get_connection_map(): {t.get('_get_connection_map', 0):.2f}s")
-        logger.debug(f"_get_host_map(): {t.get('_get_host_map', 0):.2f}s")
 
     @ttl
     def collect(self):
@@ -545,12 +605,7 @@ class NVMeOFCollector:
                     f"{conn.traddr}:{conn.trsvcid}" if conn.connected else "<n/a>"
                 ], 1 if conn.connected else 0)
 
-            try:
-                host_info = self.hosts[nqn]
-            except KeyError:
-                logger.debug(f"couldn't find {nqn} in host list, skipping")
-                continue
-            for host in host_info.hosts:
+            for host in subsys.hosts:
                 host_keep_alive_timeout.add_metric([
                     self.gw_metadata.name,
                     nqn,

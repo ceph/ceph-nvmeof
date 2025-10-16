@@ -15,7 +15,7 @@ NQN="nqn.2016-06.io.spdk:cnode1"
  verify_gw_exists_and_no_subs()
  {
      IP=$1
-     subs=$(docker compose run -T --rm nvmeof-cli --server-address $IP --server-port 5500 --output stdio --format json get_subsystems)
+     subs=$(docker compose run -T --rm nvmeof-cli --server-address $IP --server-port 5500 --output stdio --format json subsystem list)
      echo "show subsystems after del : $subs"
      if echo "$subs" | grep -q '"subsystems": \[\]'; then
        echo "The string contains 'subsystems:[]' on GW  ip $IP"
@@ -31,7 +31,7 @@ NQN="nqn.2016-06.io.spdk:cnode1"
   for i in $(seq 2); do
 
      docker compose run -T --rm nvmeof-cli --server-address $ip --server-port 5500 subsystem del -n $NQN --force
-     sleep 2
+     sleep 2 # brief wait for OMAP sync across gateways
      verify_gw_exists_and_no_subs  $ip
      verify_gw_exists_and_no_subs  $ip2
 
