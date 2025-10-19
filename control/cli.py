@@ -621,13 +621,16 @@ class GatewayClient:
                     adrfam = GatewayEnumUtils.get_key_from_value(pb2.AddressFamily,
                                                                  lstnr.listener.adrfam)
                     adrfam = self.format_adrfam(adrfam)
+                    traddr = lstnr.listener.traddr
+                    if lstnr.listener.adrfam == pb2.ipv6:
+                        traddr = GatewayUtils.escape_address_if_ipv6(traddr)
                     secure = "Yes" if lstnr.listener.secure else "No"
                     active = "Yes" if lstnr.listener.active else "No"
                     ana_states = ana_states.removesuffix("\n")
                     listeners_list.append([lstnr.listener.host_name,
                                            lstnr.listener.trtype,
                                            adrfam,
-                                           f"{lstnr.listener.traddr}:{lstnr.listener.trsvcid}",
+                                           f"{traddr}:{lstnr.listener.trsvcid}",
                                            secure,
                                            active,
                                            ana_states])
@@ -943,7 +946,9 @@ class GatewayClient:
         if args.subsystem == GatewayUtils.DISCOVERY_NQN:
             self.cli.parser.error("Can't delete a discovery subsystem")
 
-        req = pb2.delete_subsystem_req(subsystem_nqn=args.subsystem, force=args.force)
+        req = pb2.delete_subsystem_req(subsystem_nqn=args.subsystem,
+                                       force=args.force,
+                                       i_am_sure=args.i_am_sure)
         try:
             ret = self.stub.delete_subsystem(req)
         except Exception as ex:
@@ -1140,6 +1145,10 @@ class GatewayClient:
                  help="Delete subsytem's namespaces if any, then delete subsystem. If not set "
                       "a subsystem deletion would fail in case it contains namespaces",
                  action='store_true', required=False),
+        argument("--i-am-sure",
+                 help="Confirmation for deleting the namespace associated RBD image",
+                 action='store_true',
+                 required=False),
     ]
     subsys_list_args = [
         argument("--subsystem",
@@ -1352,10 +1361,13 @@ class GatewayClient:
                     adrfam = self.format_adrfam(adrfam)
                     secure = "Yes" if lstnr.secure else "No"
                     active = "Yes" if lstnr.active else "No"
+                    traddr = lstnr.traddr
+                    if lstnr.adrfam == pb2.ipv6:
+                        traddr = GatewayUtils.escape_address_if_ipv6(traddr)
                     listeners_list.append([lstnr.host_name,
                                            lstnr.trtype,
                                            adrfam,
-                                           f"{lstnr.traddr}:{lstnr.trsvcid}",
+                                           f"{traddr}:{lstnr.trsvcid}",
                                            secure,
                                            active])
                 if len(listeners_list) > 0:
@@ -1830,7 +1842,10 @@ class GatewayClient:
                         conn_secure = "Yes" if conn.secure else "No"
                     conn_addr = "<n/a>"
                     if conn.connected:
-                        conn_addr = f"{conn.traddr}:{conn.trsvcid}"
+                        traddr = conn.traddr
+                        if conn.adrfam == pb2.ipv6:
+                            traddr = GatewayUtils.escape_address_if_ipv6(traddr)
+                        conn_addr = f"{traddr}:{conn.trsvcid}"
                     subsys_col = []
                     if connections_info.subsystem_nqn == GatewayUtils.ALL_SUBSYSTEMS:
                         subsys_col = [conn.subsystem]
@@ -2838,7 +2853,7 @@ class GatewayClient:
                  action='store_true',
                  required=False),
         argument("--disable-auto-resize",
-                 help="When the RBD image is resized, not not automatically resize the namespace",
+                 help="When the RBD image is resized, do not automatically resize the namespace",
                  action='store_true',
                  required=False),
         argument("--read-only",
