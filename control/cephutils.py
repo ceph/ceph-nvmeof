@@ -229,6 +229,29 @@ class CephUtils:
 
         return False
 
+    def rados_namespace_exists(self, pool, namespace) -> bool:
+        """Check if RADOS namespace exists in pool."""
+        if not pool or not namespace:
+            return False
+        try:
+            with rados.Rados(conffile=self.ceph_conf, rados_id=self.rados_id) as cluster:
+                with cluster.open_ioctx(pool) as ioctx:
+                    rbd_inst = rbd.RBD()
+                    existing_namespaces = rbd_inst.namespace_list(ioctx)  # RADOS namespaces
+
+                    if namespace in existing_namespaces:
+                        self.logger.debug(f"RADOS namespace {namespace} exists in pool {pool}")
+                        return True
+                    else:
+                        self.logger.error(f"RADOS namespace {namespace} \
+                                          does NOT exist in pool {pool}")
+                        return False
+        except Exception:
+            self.logger.exception(f"Can't check if RADOS namespace {namespace} \
+                                  exists in pool {pool}")
+
+        return False
+
     def service_daemon_register(self, cluster, metadata):
         try:
             if cluster:              # rados client
@@ -245,7 +268,10 @@ class CephUtils:
         except Exception:
             self.logger.exception("Can't update daemon status to service_map!")
 
-    def create_image(self, pool_name, data_pool_name, image_name, size) -> bool:
+    def create_image(self, pool_name, data_pool_name, image_name, size,
+                     rados_namespace_name=None) -> bool:
+        image_path = f"{pool_name}/{rados_namespace_name}/{image_name}" if rados_namespace_name \
+            else f"{pool_name}/{image_name}"
         # Check for pool existence in advance as we don't create it if it's not there
         if not self.pool_exists(pool_name):
             raise rbd.ImageNotFound(f"Pool {pool_name} doesn't exist", errno=errno.ENODEV)
@@ -254,18 +280,22 @@ class CephUtils:
             raise rbd.ImageNotFound(f"Data pool {data_pool_name} doesn't exist",
                                     errno=errno.ENODEV)
 
+        if rados_namespace_name:
+            if not self.rados_namespace_exists(pool_name, rados_namespace_name):
+                raise rbd.ImageNotFound(f"Namespace {rados_namespace_name} doesn't exist in pool "
+                                        f"{pool_name}", errno=errno.ENODEV)
         image_exists = False
         try:
-            image_size = self.get_image_size(pool_name, image_name)
+            image_size = self.get_image_size(pool_name, image_name, rados_namespace_name)
             image_exists = True
         except rbd.ImageNotFound:
-            self.logger.debug(f"Image {pool_name}/{image_name} doesn't exist, will "
+            self.logger.debug(f"Image {image_path} doesn't exist, will "
                               f"create it using size {size}")
             pass
 
         if image_exists:
             if image_size != size:
-                raise rbd.ImageExists(f"Image {pool_name}/{image_name} already exists with "
+                raise rbd.ImageExists(f"Image {image_path} already exists with "
                                       f"a size of {image_size} bytes which differs from the "
                                       f"requested size of {size} bytes",
                                       errno=errno.EEXIST)
@@ -273,21 +303,25 @@ class CephUtils:
 
         with rados.Rados(conffile=self.ceph_conf, rados_id=self.rados_id) as cluster:
             with cluster.open_ioctx(pool_name) as ioctx:
+                if rados_namespace_name:
+                    ioctx.set_namespace(rados_namespace_name)
                 rbd_inst = rbd.RBD()
                 try:
                     rbd_inst.create(ioctx, image_name, size, data_pool=data_pool_name)
                 except rbd.ImageExists:
-                    self.logger.exception(f"Image {pool_name}/{image_name} was created just now")
-                    raise rbd.ImageExists(f"Image {pool_name}/{image_name} was just created by "
+                    self.logger.exception(f"Image {image_path} was created just now")
+                    raise rbd.ImageExists(f"Image {image_path} was just created by "
                                           f"someone else, please retry",
                                           errno=errno.EAGAIN)
                 except Exception as ex:
-                    self.logger.exception(f"Can't create image {pool_name}/{image_name}")
+                    self.logger.exception(f"Can't create image {image_path}")
                     raise ex
 
         return True
 
-    def delete_image(self, pool_name, image_name) -> bool:
+    def delete_image(self, pool_name, image_name, rados_namespace_name=None) -> bool:
+        image_path = f"{pool_name}/{rados_namespace_name}/{image_name}" if rados_namespace_name \
+            else f"{pool_name}/{image_name}"
         if not pool_name and not image_name:
             return True
 
@@ -297,48 +331,62 @@ class CephUtils:
 
         with rados.Rados(conffile=self.ceph_conf, rados_id=self.rados_id) as cluster:
             with cluster.open_ioctx(pool_name) as ioctx:
+                if rados_namespace_name:
+                    ioctx.set_namespace(rados_namespace_name)
                 rbd_inst = rbd.RBD()
                 try:
                     rbd_inst.remove(ioctx, image_name)
                 except rbd.ImageNotFound:
-                    self.logger.warning(f"Image {pool_name}/{image_name} is not found")
+                    self.logger.warning(f"Image {image_path} is not found")
                     return True
                 except (rbd.ImageBusy, rbd.ImageHasSnapshots):
-                    self.logger.exception(f"Can't delete image {pool_name}/{image_name}")
+                    self.logger.exception(f"Can't delete image {image_path}")
                     return False
 
         return True
 
-    def get_image_size(self, pool_name: str, image_name: str) -> int:
+    def get_image_size(self, pool_name: str, image_name: str,
+                       rados_namespace_name: str = None) -> int:
         image_size = 0
         if not self.pool_exists(pool_name):
             raise rbd.ImageNotFound(f"Pool {pool_name} doesn't exist", errno=errno.ENODEV)
 
+        image_path = f"{pool_name}/{rados_namespace_name}/{image_name}" if rados_namespace_name \
+            else f"{pool_name}/{image_name}"
+
         with rados.Rados(conffile=self.ceph_conf, rados_id=self.rados_id) as cluster:
             with cluster.open_ioctx(pool_name) as ioctx:
+                # Set namespace if provided
+                if rados_namespace_name:
+                    ioctx.set_namespace(rados_namespace_name)
                 try:
                     with rbd.Image(ioctx, image_name) as img:
                         image_size = img.size()
                 except rbd.ImageNotFound:
-                    raise rbd.ImageNotFound(f"Image {pool_name}/{image_name} doesn't exist",
+                    raise rbd.ImageNotFound(f"Image {image_path} doesn't exist",
                                             errno=errno.ENODEV)
                 except Exception as ex:
                     self.logger.exception(f"Error while trying to get the size of image "
-                                          f"{pool_name}/{image_name}")
+                                          f"{image_path}")
                     raise ex
 
         return image_size
 
-    def were_image_qos_limits_changed(self, pool_name: str, image_name: str) -> bool:
+    def were_image_qos_limits_changed(self, pool_name: str, image_name: str,
+                                      rados_namespace_name: str) -> bool:
+        image_path = f"{pool_name}/{rados_namespace_name}/{image_name}" if rados_namespace_name \
+            else f"{pool_name}/{image_name}"
         if not self.pool_exists(pool_name):
             raise rbd.ImageNotFound(f"Pool {pool_name} doesn't exist", errno=errno.ENODEV)
 
         with rados.Rados(conffile=self.ceph_conf, rados_id=self.rados_id) as cluster:
             with cluster.open_ioctx(pool_name) as ioctx:
+                if rados_namespace_name:
+                    ioctx.set_namespace(rados_namespace_name)
                 try:
                     with rbd.Image(ioctx, image_name) as img:
                         attributes = img.config_list()
-                        self.logger.debug(f"Config for image {pool_name}/{image_name}:")
+                        self.logger.debug(f"Config for image {image_path}:")
                         self.logger.debug("==========================================")
                         for one_img_attr in attributes:
                             self.logger.debug(f"{one_img_attr}")
@@ -355,22 +403,23 @@ class CephUtils:
                             except Exception:
                                 self.logger.exception(f"error parsing {one_img_attr}")
                 except rbd.ImageNotFound:
-                    raise rbd.ImageNotFound(f"Image {pool_name}/{image_name} doesn't exist",
+                    raise rbd.ImageNotFound(f"Image {image_path} doesn't exist",
                                             errno=errno.ENODEV)
                 except Exception:
                     self.logger.exception(f"Error while trying to get the config of image "
-                                          f"{pool_name}/{image_name}")
+                                          f"{image_path}")
                     raise
 
         return False
 
-    def does_image_exist(self, pool_name: str, image_name: str) -> bool:
+    def does_image_exist(self, pool_name: str, image_name: str,
+                         rados_namespace_name: str = None) -> bool:
         if not pool_name:
             return False
         if not image_name:
             return False
         try:
-            self.get_image_size(pool_name, image_name)
+            self.get_image_size(pool_name, image_name, rados_namespace_name)
             return True
         except rbd.ImageNotFound:
             return False
@@ -378,14 +427,17 @@ class CephUtils:
             self.logger.exception("Failure getting image size")
         return False
 
-    def set_image_metadata(self, pool: str, image_name: str, key: str, value: str) -> None:
+    def set_image_metadata(self, pool: str, image_name: str,
+                           rados_namespace_name: str, key: str, value: str) -> None:
         if not self.pool_exists(pool):
             raise rbd.ImageNotFound(f"Pool {pool} doesn't exist", errno=errno.ENOENT)
-        if not self.does_image_exist(pool, image_name):
+        if not self.does_image_exist(pool, image_name, rados_namespace_name):
             raise rbd.ImageNotFound(f"Image {pool}/{image_name} doesn't exist", errno=errno.ENOENT)
 
         with rados.Rados(conffile=self.ceph_conf, rados_id=self.rados_id) as cluster:
             with cluster.open_ioctx(pool) as ioctx:
+                if rados_namespace_name:
+                    ioctx.set_namespace(rados_namespace_name)
                 try:
                     with rbd.Image(ioctx, image_name) as img:
                         img.metadata_set(key, value)
@@ -399,13 +451,16 @@ class CephUtils:
                                           f"{pool}/{image_name} to {value}")
                     raise
 
-    def get_image_metadata(self, pool: str, image_name: str, key: str) -> str:
+    def get_image_metadata(self, pool: str, image_name: str,
+                           rados_namespace_name: str, key: str) -> str:
         if not self.pool_exists(pool):
             raise rbd.ImageNotFound(f"Pool {pool} doesn't exist", errno=errno.ENODEV)
 
         value = None
         with rados.Rados(conffile=self.ceph_conf, rados_id=self.rados_id) as cluster:
             with cluster.open_ioctx(pool) as ioctx:
+                if rados_namespace_name:
+                    ioctx.set_namespace(rados_namespace_name)
                 try:
                     with rbd.Image(ioctx, image_name) as img:
                         value = img.metadata_get(key)
@@ -423,12 +478,15 @@ class CephUtils:
                     raise
         return value
 
-    def remove_image_metadata(self, pool: str, image_name: str, key: str) -> None:
+    def remove_image_metadata(self, pool: str, image_name: str,
+                              rados_namespace_name: str, key: str) -> None:
         if not self.pool_exists(pool):
             raise rbd.ImageNotFound(f"Pool {pool} doesn't exist", errno=errno.ENODEV)
 
         with rados.Rados(conffile=self.ceph_conf, rados_id=self.rados_id) as cluster:
             with cluster.open_ioctx(pool) as ioctx:
+                if rados_namespace_name:
+                    ioctx.set_namespace(rados_namespace_name)
                 try:
                     with rbd.Image(ioctx, image_name) as img:
                         img.metadata_remove(key)
