@@ -433,7 +433,7 @@ class SubsystemHostAuth:
 
 class NamespaceInfo:
     def __init__(self, subsys, nsid, bdev, uuid, anagrpid, auto_visible, pool, data_pool, image,
-                 trash_image, read_only, location):
+                rados_namespace_name, trash_image, read_only, location):
         self.subsys = subsys
         self.nsid = nsid
         self.bdev = bdev
@@ -444,6 +444,7 @@ class NamespaceInfo:
         self.pool = pool
         self.data_pool = data_pool
         self.image = image
+        self.rados_namespace_name = rados_namespace_name
         self.trash_image = trash_image
         self.read_only = read_only
         self.location = location
@@ -454,7 +455,7 @@ class NamespaceInfo:
                f"bdev: {self.bdev}, uuid: {self.uuid}, " \
                f"auto_visible: {self.auto_visible}, anagrpid: {self.anagrpid}, " \
                f"pool: {self.pool}, data_pool: {self.data_pool}, image: {self.image}, " \
-               f"trash_image: {self.trash_image}, " \
+               f"rados_namespace: {self.rados_namespace_name}, " \
                f"read_only: {self.read_only}, image_shrunk: {self.image_was_shrunk}, " \
                f"location: {self.location}, " \
                f"hosts: {self.host_list}"
@@ -510,7 +511,7 @@ class NamespaceInfo:
 
 
 class NamespacesLocalList:
-    EMPTY_NAMESPACE = NamespaceInfo(None, None, None, None, 0, False, None,
+    EMPTY_NAMESPACE = NamespaceInfo(None, None, None, None, 0, False, None, None,
                                     None, None, False, False, None)
 
     def __init__(self):
@@ -527,12 +528,12 @@ class NamespacesLocalList:
                 self.namespace_list.pop(nqn, None)
 
     def add_namespace(self, nqn, nsid, bdev, uuid, anagrpid, auto_visible,
-                      pool, data_pool, image, trash_image, read_only, location):
+                      pool, data_pool, image, rados_namespace_name, trash_image, read_only, location):
         if not bdev:
             bdev = GatewayService.find_unique_bdev_name(uuid)
         self.namespace_list[nqn][nsid] = NamespaceInfo(nqn, nsid, bdev, uuid, anagrpid,
                                                        auto_visible, pool, data_pool,
-                                                       image, trash_image, read_only,
+                                                       image, rados_namespace_name, trash_image, read_only,
                                                        location)
 
     def find_namespace(self, nqn, nsid, uuid=None, bdev=None) -> NamespaceInfo:
@@ -2038,7 +2039,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
     def create_namespace(self, subsystem_nqn, bdev_name, nsid, anagrpid, uuid,
                          auto_visible, rbd_pool, rbd_data_pool, rbd_image_name,
-                         trash_image, read_only, location, context):
+                         rados_namespace_name, trash_image, read_only, location, context):
         """Adds a namespace to a subsystem."""
 
         assert self.rpc_lock.locked(), "RPC is unlocked when calling create_namespace()"
@@ -2065,7 +2066,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
         peer_msg = self.get_peer_message(context)
         rbd_msg = ""
         if rbd_pool and rbd_image_name:
-            rbd_msg = f"RBD image {rbd_pool}/{rbd_image_name}, "
+            rbd_msg = f"RBD image {rbd_pool}/{rbd_image_name}, " if not rados_namespace_name \
+                      else f"RBD image {rbd_pool}/{rados_namespace_name}/{rbd_image_name}, "
         self.logger.info(f"Received request to add {bdev_name} to {subsystem_nqn} with load "
                          f"balancing group id {anagrpid}{nsid_msg}, auto_visible: {auto_visible}, "
                          f"{rbd_msg}context: {context}{peer_msg}")
@@ -2136,6 +2138,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                                             anagrpid, auto_visible,
                                                             rbd_pool, rbd_data_pool,
                                                             rbd_image_name,
+                                                            rados_namespace_name,
                                                             trash_image, read_only,
                                                             location)
             self.logger.debug(f"subsystem_add_ns: {nsid}")
@@ -2284,6 +2287,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                          f"no_auto_visible: {request.no_auto_visible}, "
                          f"disable_auto_resize: {request.disable_auto_resize}, "
                          f"read_only: {request.read_only}, location: {loc_msg}, "
+                         f"rbd_namespace_name: {request.rbd_namespace_name}, "
                          f"context: {context}{peer_msg}")
 
         if not request.uuid:
@@ -2394,7 +2398,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                            not request.no_auto_visible,
                                            ret_bdev.rbd_pool, request.rbd_data_pool_name,
                                            ret_bdev.rbd_image_name,
-                                           ret_bdev.trash_image, request.read_only,
+                                           ret_bdev.rados_namespace_name, ret_bdev.trash_image, request.read_only,
                                            request.location, context)
             if ret_ns.status == 0 and request.nsid and ret_ns.nsid != request.nsid:
                 errmsg = f"Returned ID {ret_ns.nsid} differs from requested one {request.nsid}"
