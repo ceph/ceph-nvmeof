@@ -111,12 +111,13 @@ class SubsystemsCache:
 
 class BdevStatus:
     def __init__(self, status, error_message, bdev_name="",
-                 rbd_pool=None, rbd_image_name=None, trash_image=False):
+                 rbd_pool=None, rbd_image_name=None, rados_namespace_name=None, trash_image=False):
         self.status = status
         self.error_message = error_message
         self.bdev_name = bdev_name
         self.rbd_pool = rbd_pool
         self.rbd_image_name = rbd_image_name
+        self.rados_namespace_name = rados_namespace_name
         self.trash_image = trash_image
 
 
@@ -433,7 +434,7 @@ class SubsystemHostAuth:
 
 class NamespaceInfo:
     def __init__(self, subsys, nsid, bdev, uuid, anagrpid, auto_visible, pool, data_pool, image,
-                rados_namespace_name, trash_image, read_only, location):
+                 rados_namespace_name, trash_image, read_only, location):
         self.subsys = subsys
         self.nsid = nsid
         self.bdev = bdev
@@ -456,6 +457,7 @@ class NamespaceInfo:
                f"auto_visible: {self.auto_visible}, anagrpid: {self.anagrpid}, " \
                f"pool: {self.pool}, data_pool: {self.data_pool}, image: {self.image}, " \
                f"rados_namespace: {self.rados_namespace_name}, " \
+               f"trash_image: {self.trash_image}, " \
                f"read_only: {self.read_only}, image_shrunk: {self.image_was_shrunk}, " \
                f"location: {self.location}, " \
                f"hosts: {self.host_list}"
@@ -527,13 +529,27 @@ class NamespacesLocalList:
             else:
                 self.namespace_list.pop(nqn, None)
 
-    def add_namespace(self, nqn, nsid, bdev, uuid, anagrpid, auto_visible,
-                      pool, data_pool, image, rados_namespace_name, trash_image, read_only, location):
+    def add_namespace(
+            self,
+            nqn,
+            nsid,
+            bdev,
+            uuid,
+            anagrpid,
+            auto_visible,
+            pool,
+            data_pool,
+            image,
+            rados_namespace_name,
+            trash_image,
+            read_only,
+            location):
         if not bdev:
             bdev = GatewayService.find_unique_bdev_name(uuid)
         self.namespace_list[nqn][nsid] = NamespaceInfo(nqn, nsid, bdev, uuid, anagrpid,
                                                        auto_visible, pool, data_pool,
-                                                       image, rados_namespace_name, trash_image, read_only,
+                                                       image, rados_namespace_name,
+                                                       trash_image, read_only,
                                                        location)
 
     def find_namespace(self, nqn, nsid, uuid=None, bdev=None) -> NamespaceInfo:
@@ -1205,19 +1221,22 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         return rc
 
-    def get_image_identification(self, rbd_pool: str, rbd_image: str) -> list[ImageIdentification]:
+    def get_image_identification(self, rbd_pool: str, rbd_image: str,
+                                 rados_namespace_name: str) -> list[ImageIdentification]:
         image_id_metadata = None
-        if not self.ceph_utils.does_image_exist(rbd_pool, rbd_image):
-            self.logger.debug(f"Image {rbd_pool}/{rbd_image} not found")
+        image_path = f"{rbd_pool}/{rbd_image}" if not rados_namespace_name \
+            else f"{rbd_pool}/{rados_namespace_name}/{rbd_image}"
+        if not self.ceph_utils.does_image_exist(rbd_pool, rbd_image, rados_namespace_name):
+            self.logger.debug(f"Image {image_path} not found")
             return []
         try:
             image_id_metadata = self.ceph_utils.get_image_metadata(
-                rbd_pool, rbd_image, CephUtils.METADATA_KEY_IMAGE_ID)
+                rbd_pool, rbd_image, rados_namespace_name, CephUtils.METADATA_KEY_IMAGE_ID)
         except KeyError:
             pass
         except Exception:
             self.logger.exception(f"Error getting image identification for image "
-                                  f"{rbd_pool}/{rbd_image}")
+                                  f"{image_path}")
         if not image_id_metadata:
             return []
 
@@ -1228,13 +1247,15 @@ class GatewayService(pb2_grpc.GatewayServicer):
             return []
 
         self.logger.debug(f"Found image ids {ImageIdentification.list2string(img_ids_list)} "
-                          f"for {rbd_pool}/{rbd_image}")
+                          f"for {image_path}")
 
         return img_ids_list
 
-    def set_image_identification(self, rbd_pool: str, rbd_image: str, img_id: ImageIdentification):
+    def set_image_identification(self, rbd_pool: str, rbd_image: str,
+                                 rados_namespace_name: str, img_id: ImageIdentification):
         assert img_id, "Can't set an empty image id"
-
+        image_path = f"{rbd_pool}/{rbd_image}" if not rados_namespace_name \
+            else f"{rbd_pool}/{rados_namespace_name}/{rbd_image}"
         if self.fsid is None:
             self.fsid = self.ceph_utils.fetch_ceph_fsid()
             self.logger.debug(f"Cluster FSID is {self.fsid}")
@@ -1243,7 +1264,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                               f"will use current FSID {self.fsid}")
             img_id.fsid = self.fsid
         img_id_value = ""
-        img_ids_list = self.get_image_identification(rbd_pool, rbd_image)
+        img_ids_list = self.get_image_identification(rbd_pool, rbd_image, rados_namespace_name)
         for one_id in img_ids_list:
             if one_id.is_same_image_id(img_id):
                 self.logger.debug(f"Image id {img_id} already included in "
@@ -1255,17 +1276,21 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         try:
             self.ceph_utils.set_image_metadata(rbd_pool, rbd_image,
+                                               rados_namespace_name,
                                                CephUtils.METADATA_KEY_IMAGE_ID,
                                                img_id_value)
-            self.logger.debug(f"set image id {img_id_value} for {rbd_pool}/{rbd_image}")
+            self.logger.debug(f"set image id {img_id_value} for {image_path}")
         except Exception:
             self.logger.exception(f"Error setting image identification {img_id_value} for "
-                                  f"{rbd_pool}{rbd_image}")
+                                  f"{image_path}")
 
     def delete_image_identification(self, rbd_pool: str,
-                                    rbd_image: str, img_id: ImageIdentification):
+                                    rbd_image: str, rados_namespace_name: str,
+                                    img_id: ImageIdentification):
         assert img_id, "Can't delete an empty image id"
 
+        image_path = f"{rbd_pool}/{rbd_image}" if not rados_namespace_name \
+            else f"{rbd_pool}/{rados_namespace_name}/{rbd_image}"
         if self.fsid is None:
             self.fsid = self.ceph_utils.fetch_ceph_fsid()
             self.logger.debug(f"Cluster FSID is {self.fsid}")
@@ -1274,7 +1299,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                               f"will use current FSID {self.fsid}")
             img_id.fsid = self.fsid
         img_id_value = ""
-        img_ids_list = self.get_image_identification(rbd_pool, rbd_image)
+        img_ids_list = self.get_image_identification(rbd_pool, rbd_image, rados_namespace_name)
         for one_id in img_ids_list:
             if one_id.is_same_image_id(img_id):
                 self.logger.debug(f"Image id {img_id} was found in "
@@ -1287,25 +1312,27 @@ class GatewayService(pb2_grpc.GatewayServicer):
         if not img_id_value:
             try:
                 self.ceph_utils.remove_image_metadata(rbd_pool, rbd_image,
+                                                      rados_namespace_name,
                                                       CephUtils.METADATA_KEY_IMAGE_ID)
-                self.logger.debug(f"remove all image ids for {rbd_pool}/{rbd_image}")
+                self.logger.debug(f"remove all image ids for {image_path}")
             except Exception:
                 self.logger.exception(f"Error removing image identifications for "
-                                      f"{rbd_pool}/{rbd_image}")
+                                      f"{image_path}")
         else:
             try:
                 self.ceph_utils.set_image_metadata(rbd_pool, rbd_image,
+                                                   rados_namespace_name,
                                                    CephUtils.METADATA_KEY_IMAGE_ID,
                                                    img_id_value)
-                self.logger.debug(f"set image id {img_id_value} for {rbd_pool}/{rbd_image}")
+                self.logger.debug(f"set image id {img_id_value} for {image_path}")
             except Exception:
                 self.logger.exception(f"Error setting image identification {img_id_value} for "
-                                      f"{rbd_pool}{rbd_image}")
+                                      f"{image_path}")
 
     def create_bdev(self, anagrp: int, name, uuid, rbd_pool_name, rbd_data_pool_name,
                     rbd_image_name,
                     block_size, create_image, trash_image, rbd_image_size, disable_auto_resize,
-                    read_only, context, peer_msg=""):
+                    read_only, rados_namespace_name, context, peer_msg=""):
         """Creates a bdev from an RBD image."""
 
         if create_image:
@@ -1322,13 +1349,16 @@ class GatewayService(pb2_grpc.GatewayServicer):
         else:
             ro_msg = "read write"
 
+        image_path = f"{rbd_pool_name}/{rados_namespace_name}/{rbd_image_name}" \
+            if rados_namespace_name else f"{rbd_pool_name}/{rbd_image_name}"
+
         if rbd_data_pool_name:
             data_pool_msg = f", using data pool {rbd_data_pool_name}, "
         else:
             data_pool_msg = ""
 
         self.logger.info(f"Received request to create {ro_msg} bdev {name} from"
-                         f" {rbd_pool_name}/{rbd_image_name} {data_pool_msg}"
+                         f" {image_path} {data_pool_msg}"
                          f"(size {rbd_image_size} bytes)"
                          f" with block size {block_size}, {cr_img_msg}, {trsh_msg}"
                          f"context={context}{peer_msg}")
@@ -1392,21 +1422,23 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
             try:
                 rc = self.ceph_utils.create_image(rbd_pool_name, rbd_data_pool_name,
-                                                  rbd_image_name, rbd_image_size)
+                                                  rbd_image_name, rbd_image_size,
+                                                  rados_namespace_name)
                 if rc:
                     data_pool_msg = ""
                     if rbd_data_pool_name:
                         data_pool_msg = f", data pool is {rbd_data_pool_name}"
-                    self.logger.info(f"Image {rbd_pool_name}/{rbd_image_name} created, size "
+                    self.logger.info(f"Image {image_path} created, size "
                                      f"is {rbd_image_size} bytes{data_pool_msg}")
                     created_rbd_pool = rbd_pool_name
                     created_rbd_image_name = rbd_image_name
+                    created_rados_namespace_name = rados_namespace_name
                 else:
-                    self.logger.info(f"Image {rbd_pool_name}/{rbd_image_name} already exists "
+                    self.logger.info(f"Image {image_path} already exists "
                                      f"with size {rbd_image_size} bytes")
                     if trash_image:
                         self.logger.warning(f"Notice that as image "
-                                            f"{rbd_pool_name}/{rbd_image_name} was created "
+                                            f"{image_path} was created "
                                             f"outside the gateway it won't get trashed on "
                                             f"namespace deletion")
                         trash_image = False
@@ -1421,25 +1453,27 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     errcode = errno.ENODEV
                 if not msg:
                     msg = str(ex)
-                errmsg = f"Can't create RBD image {rbd_pool_name}/{rbd_image_name}: {msg}"
+                errmsg = f"Can't create RBD image {image_path}: {msg}"
                 self.logger.exception(errmsg)
                 return BdevStatus(status=errcode, error_message=errmsg)
         else:
-            if not self.ceph_utils.does_image_exist(rbd_pool_name, rbd_image_name):
-                self.logger.error(f"RBD image {rbd_pool_name}/{rbd_image_name} "
+            if not self.ceph_utils.does_image_exist(rbd_pool_name, rbd_image_name,
+                                                    rados_namespace_name):
+                self.logger.error(f"RBD image {image_path} "
                                   f"does not exist and '--rbd-create-image' "
                                   f"was not specified")
                 return BdevStatus(status=errno.EEXIST,
-                                  error_message=f"RBD image {rbd_pool_name}/{rbd_image_name} "
+                                  error_message=f"RBD image {image_path} "
                                                 f"does not exist and '--rbd-create-image' "
                                                 f"was not specified")
 
         if disable_auto_resize:
             try:
-                self._set_image_auto_resize(rbd_pool_name, rbd_image_name, False)
+                self._set_image_auto_resize(rbd_pool_name, rbd_image_name,
+                                            rados_namespace_name, False)
             except Exception as ex:
                 self.logger.warning(f"Error setting auto resize flag for image "
-                                    f"{rbd_pool_name}/{rbd_image_name}, namespace "
+                                    f"{image_path}, namespace "
                                     f"will get resized in case of an image resize:\n{ex}")
 
         cluster_name = None
@@ -1450,6 +1484,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 self.spdk_rpc_client,
                 name=name,
                 cluster_name=cluster_name,
+                rados_namespace_name=rados_namespace_name,
                 pool_name=rbd_pool_name,
                 rbd_name=rbd_image_name,
                 block_size=block_size,
@@ -1475,7 +1510,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 status = resp["code"]
                 errmsg = resp['message']
             if trash_image:
-                self.delete_rbd_image(created_rbd_pool, created_rbd_image_name)
+                self.delete_rbd_image(created_rbd_pool, created_rbd_image_name,
+                                      created_rados_namespace_name)
             return BdevStatus(status=status, error_message=errmsg)
 
         # Just in case SPDK failed with no exception
@@ -1483,7 +1519,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
             errmsg = f"Can't create bdev {name}"
             self.logger.error(errmsg)
             if trash_image:
-                self.delete_rbd_image(created_rbd_pool, created_rbd_image_name)
+                self.delete_rbd_image(created_rbd_pool, created_rbd_image_name,
+                                      created_rados_namespace_name)
             return BdevStatus(status=errno.ENODEV, error_message=errmsg)
 
         assert name == bdev_name, f"Created bdev name {bdev_name} differs " \
@@ -1492,7 +1529,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         return BdevStatus(status=0, error_message=os.strerror(0), bdev_name=name,
                           rbd_pool=rbd_pool_name,
                           rbd_image_name=rbd_image_name,
-                          trash_image=trash_image)
+                          rados_namespace_name=rados_namespace_name, trash_image=trash_image)
 
     def resize_bdev(self, bdev_name, new_size, peer_msg=""):
         """Resizes a bdev."""
@@ -1501,6 +1538,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         assert self.rpc_lock.locked(), "RPC is unlocked when calling resize_bdev()"
         rbd_pool_name = None
         rbd_image_name = None
+        rados_namespace_name = None
         bdev_info = self.get_bdev_info(bdev_name)
         if bdev_info is not None:
             try:
@@ -1508,6 +1546,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 rbd_info = drv_specific_info["rbd"]
                 rbd_pool_name = rbd_info["pool_name"]
                 rbd_image_name = rbd_info["rbd_name"]
+                rados_namespace_name = rbd_info["rados_namespace_name"]
             except KeyError as err:
                 self.logger.warning(f"Key {err} is not found, will not check size for shrinkage")
                 pass
@@ -1517,7 +1556,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         if rbd_pool_name and rbd_image_name:
             try:
-                current_size = self.ceph_utils.get_image_size(rbd_pool_name, rbd_image_name)
+                current_size = self.ceph_utils.get_image_size(rbd_pool_name,
+                                                              rbd_image_name, rados_namespace_name)
                 # a new size of 0 is a special case to instruct SPDK to not change the size
                 # and only send a notification to update its internal data
                 if new_size > 0 and current_size > new_size * 1024 * 1024:
@@ -1526,8 +1566,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                                         f"is smaller than current size "
                                                         f"{current_size} bytes")
             except Exception as ex:
+                image_path = f"{rbd_pool_name}/{rados_namespace_name}/{rbd_image_name}" \
+                    if rados_namespace_name else f"{rbd_pool_name}/{rbd_image_name}"
                 self.logger.warning(f"Error trying to get the size of image "
-                                    f"{rbd_pool_name}/{rbd_image_name}, won't check "
+                                    f"{image_path}, won't check "
                                     f"size for shrinkage:\n{ex}")
                 pass
 
@@ -1998,24 +2040,27 @@ class GatewayService(pb2_grpc.GatewayServicer):
         return self.execute_grpc_function(self.delete_subsystem_safe, request, context,
                                           f"{delete_subsystem_error_prefix}: ")
 
-    def check_if_image_used(self, pool_name, image_name, uuid):
+    def check_if_image_used(self, pool_name, image_name, rados_namespace_name, uuid):
         """Check if image is used by any other namespace."""
 
         errmsg = ""
         nqn = None
-
-        img_ids_list = self.get_image_identification(pool_name, image_name)
+        image_path = f"{pool_name}/{rados_namespace_name}/{image_name}" \
+            if rados_namespace_name else f"{pool_name}/{image_name}"
+        # Normalize: treat "" as None
+        check_rados_ns = None if rados_namespace_name == "" else rados_namespace_name
+        img_ids_list = self.get_image_identification(pool_name, image_name, rados_namespace_name)
         for img_id in img_ids_list:
             if not img_id.empty() and img_id.does_fsid_match(self.fsid):
                 if not img_id.is_same_group(self.gateway_group):
                     grp_txt = f", group {img_id.group_name}" if img_id.group_name else ""
-                    errmsg = f"RBD image {pool_name}/{image_name} is already used by a namespace " \
+                    errmsg = f"RBD image {image_path} is already used by a namespace " \
                              f"in subsystem {img_id.subsys}{grp_txt}"
                     return errmsg, img_id.subsys
                 if not img_id.is_same_uuid(uuid):
                     uuid_txt = f"with UUID {img_id.uuid} " if img_id.uuid else ""
                     grp_txt = f", group {img_id.group_name}" if img_id.group_name else ""
-                    errmsg = f"RBD image {pool_name}/{image_name} is already used by a namespace " \
+                    errmsg = f"RBD image {image_path} is already used by a namespace " \
                              f"{uuid_txt}in subsystem {img_id.subsys}{grp_txt}"
                     return errmsg, img_id.subsys
 
@@ -2027,9 +2072,13 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 ns = json.loads(val)
                 ns_pool = ns["rbd_pool_name"]
                 ns_image = ns["rbd_image_name"]
-                if pool_name and pool_name == ns_pool and image_name and image_name == ns_image:
+                ns_rados_namespace = ns.get("rados_namespace_name")
+                path = f"{ns_pool}/{ns_rados_namespace}/{ns_image}" \
+                    if ns_rados_namespace else f"{ns_pool}/{ns_image}"
+                if pool_name and pool_name == ns_pool and image_name and image_name == ns_image \
+                        and check_rados_ns == ns_rados_namespace:
                     nqn = ns["subsystem_nqn"]
-                    errmsg = f"RBD image {ns_pool}/{ns_image} is already used by a namespace " \
+                    errmsg = f"RBD image {path} is already used by a namespace " \
                              f"in subsystem {nqn}"
                     break
             except Exception:
@@ -2282,12 +2331,15 @@ class GatewayService(pb2_grpc.GatewayServicer):
         peer_msg = self.get_peer_message(context)
         nsid_msg = f"{request.nsid} " if request.nsid else ""
         loc_msg = f'"{request.location}"' if request.location else '""'
+        rados_namespace_msg = ""
+        if request.rados_namespace_name:
+            rados_namespace_msg = f"rados_namespace_name: {request.rados_namespace_name}, "
         self.logger.info(f"Received request to add namespace {nsid_msg}to "
                          f"{request.subsystem_nqn}, ana group {request.anagrpid}, "
                          f"no_auto_visible: {request.no_auto_visible}, "
                          f"disable_auto_resize: {request.disable_auto_resize}, "
                          f"read_only: {request.read_only}, location: {loc_msg}, "
-                         f"rbd_namespace_name: {request.rbd_namespace_name}, "
+                         f"{rados_namespace_msg}"
                          f"context: {context}{peer_msg}")
 
         if not request.uuid:
@@ -2302,6 +2354,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
             try:
                 self.ceph_utils.remove_image_metadata(request.rbd_pool_name,
                                                       request.rbd_image_name,
+                                                      request.rados_namespace_name,
                                                       "reservation_key")
             except Exception:
                 self.logger.warning(f"Failed to delete reservation_key "
@@ -2333,6 +2386,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
             if context:
                 errmsg, ns_nqn = self.check_if_image_used(request.rbd_pool_name,
                                                           request.rbd_image_name,
+                                                          request.rados_namespace_name,
                                                           request.uuid)
                 if errmsg and ns_nqn:
                     if request.force:
@@ -2370,6 +2424,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                         request.rbd_image_name, request.block_size, create_image,
                                         request.trash_image, request.size,
                                         request.disable_auto_resize, request.read_only,
+                                        request.rados_namespace_name,
                                         context, peer_msg)
             if ret_bdev.status != 0:
                 errmsg = f"Failure adding namespace {nsid_msg}to {request.subsystem_nqn}: " \
@@ -2398,7 +2453,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                            not request.no_auto_visible,
                                            ret_bdev.rbd_pool, request.rbd_data_pool_name,
                                            ret_bdev.rbd_image_name,
-                                           ret_bdev.rados_namespace_name, ret_bdev.trash_image, request.read_only,
+                                           ret_bdev.rados_namespace_name,
+                                           ret_bdev.trash_image, request.read_only,
                                            request.location, context)
             if ret_ns.status == 0 and request.nsid and ret_ns.nsid != request.nsid:
                 errmsg = f"Returned ID {ret_ns.nsid} differs from requested one {request.nsid}"
@@ -2421,7 +2477,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                          f"{ret_ns.error_message}"
                 self.logger.error(errmsg)
                 if ret_bdev.trash_image:
-                    self.delete_rbd_image(ret_bdev.rbd_pool, ret_bdev.rbd_image_name)
+                    self.delete_rbd_image(ret_bdev.rbd_pool, ret_bdev.rbd_image_name,
+                                          ret_bdev.rados_namespace_name)
                 return pb2.nsid_status(status=ret_ns.status, error_message=errmsg)
 
             if context:
@@ -2441,7 +2498,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     except Exception:
                         pass
                     if ret_bdev.trash_image:
-                        self.delete_rbd_image(ret_bdev.rbd_pool, ret_bdev.rbd_image_name)
+                        self.delete_rbd_image(ret_bdev.rbd_pool, ret_bdev.rbd_image_name,
+                                              ret_bdev.rados_namespace_name)
                     return pb2.nsid_status(status=errno.EINVAL, error_message=errmsg)
 
             img_id = ImageIdentification(self.gateway_group,
@@ -2449,6 +2507,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                          request.uuid)
             self.set_image_identification(request.rbd_pool_name,
                                           request.rbd_image_name,
+                                          request.rados_namespace_name,
                                           img_id)
 
         return pb2.nsid_status(status=0, error_message=os.strerror(0), nsid=ret_ns.nsid)
@@ -2580,6 +2639,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                                     rbd_image_name=ns_entry["rbd_image_name"],
                                                     rbd_data_pool_name=ns_entry[
                                                         "rbd_data_pool_name"],
+                                                    rados_namespace_name=ns_entry[
+                                                        "rados_namespace_name"],
                                                     subsystem_nqn=ns_entry["subsystem_nqn"],
                                                     nsid=ns_entry["nsid"],
                                                     block_size=ns_entry["block_size"],
@@ -2638,6 +2699,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
             ns["rbd_data_pool_name"]
         except KeyError:
             ns["rbd_data_pool_name"] = None
+        try:
+            ns["rados_namespace_name"]
+        except KeyError:
+            ns["rados_namespace_name"] = None
 
     def namespace_change_load_balancing_group(self, request, context=None):
         """Changes a namespace load balancing group."""
@@ -2780,6 +2845,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                                     rbd_image_name=ns_entry["rbd_image_name"],
                                                     rbd_data_pool_name=ns_entry[
                                                         "rbd_data_pool_name"],
+                                                    rados_namespace_name=ns_entry[
+                                                        "rados_namespace_name"],
                                                     subsystem_nqn=ns_entry["subsystem_nqn"],
                                                     nsid=ns_entry["nsid"],
                                                     block_size=ns_entry["block_size"],
@@ -2880,6 +2947,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                                     rbd_image_name=ns_entry["rbd_image_name"],
                                                     rbd_data_pool_name=ns_entry[
                                                         "rbd_data_pool_name"],
+                                                    rados_namespace_name=ns_entry[
+                                                        "rados_namespace_name"],
                                                     subsystem_nqn=ns_entry["subsystem_nqn"],
                                                     nsid=ns_entry["nsid"],
                                                     block_size=ns_entry["block_size"],
@@ -3001,6 +3070,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                                     rbd_image_name=ns_entry["rbd_image_name"],
                                                     rbd_data_pool_name=ns_entry[
                                                         "rbd_data_pool_name"],
+                                                    rados_namespace_name=ns_entry[
+                                                        "rados_namespace_name"],
                                                     subsystem_nqn=ns_entry["subsystem_nqn"],
                                                     nsid=ns_entry["nsid"],
                                                     block_size=ns_entry["block_size"],
@@ -3039,27 +3110,33 @@ class GatewayService(pb2_grpc.GatewayServicer):
         return self.execute_grpc_function(self.namespace_set_rbd_trash_image_safe,
                                           request, context, err_prefix)
 
-    def _set_image_auto_resize(self, rbd_pool: str, rbd_image: str, value: bool) -> None:
+    def _set_image_auto_resize(self, rbd_pool: str, rbd_image: str,
+                               rados_namespace_name: str, value: bool) -> None:
         if value:
             self.ceph_utils.remove_image_metadata(rbd_pool, rbd_image,
+                                                  rados_namespace_name,
                                                   CephUtils.METADATA_KEY_AUTO_RESIZE)
         else:
             self.ceph_utils.set_image_metadata(rbd_pool, rbd_image,
+                                               rados_namespace_name,
                                                CephUtils.METADATA_KEY_AUTO_RESIZE,
                                                CephUtils.METADATA_VALUE_NO_AUTO_RESIZE)
 
-    def _is_auto_resize_disabled_for_image(self, rbd_pool: str, rbd_image: str) -> bool:
+    def _is_auto_resize_disabled_for_image(self, rbd_pool: str, rbd_image: str,
+                                           rados_namespace_name: str) -> bool:
         try:
             auto_resize_metadata = self.ceph_utils.get_image_metadata(
-                rbd_pool, rbd_image, CephUtils.METADATA_KEY_AUTO_RESIZE)
+                rbd_pool, rbd_image, rados_namespace_name, CephUtils.METADATA_KEY_AUTO_RESIZE)
             if auto_resize_metadata is None:
                 return False
             return auto_resize_metadata.lower() == CephUtils.METADATA_VALUE_NO_AUTO_RESIZE.lower()
         except KeyError:
             pass
         except Exception:
+            image_path = f"{rbd_pool}/{rbd_image}" if not rados_namespace_name else \
+                f"{rbd_pool}/{rados_namespace_name}/{rbd_image}"
             self.logger.exception(f"Error getting auto resize flag for image "
-                                  f"{rbd_pool}/{rbd_image}")
+                                  f"{image_path}")
         return False
 
     def namespace_set_auto_resize_safe(self, request, context=None):
@@ -3112,7 +3189,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
             return pb2.req_status(status=errno.ENODEV, error_message=errmsg)
 
         try:
-            self._set_image_auto_resize(find_ret.pool, find_ret.image, request.auto_resize)
+            self._set_image_auto_resize(find_ret.pool, find_ret.image,
+                                        find_ret.rados_namespace_name, request.auto_resize)
         except Exception:
             errmsg = f"Error setting auto resize flag for image " \
                      f"{find_ret.pool}/{find_ret.image}"
@@ -3357,6 +3435,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                             rbd_info = drv_specific_info["rbd"]
                             one_ns.rbd_image_name = rbd_info["rbd_name"]
                             one_ns.rbd_pool_name = rbd_info["pool_name"]
+                            one_ns.rados_namespace_name = rbd_info["rados_namespace_name"]
                             one_ns.block_size = ns_bdev["block_size"]
                             image_size = ns_bdev["block_size"] * ns_bdev["num_blocks"]
                             assigned_limits = ns_bdev["assigned_rate_limits"]
@@ -3375,7 +3454,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                             shrunk_image_size = None
                             try:
                                 shrunk_image_size = self.ceph_utils.get_image_size(
-                                    one_ns.rbd_pool_name, one_ns.rbd_image_name)
+                                    one_ns.rbd_pool_name, one_ns.rbd_image_name,
+                                    one_ns.rados_namespace_name)
                             except Exception:
                                 self.logger.exception(f"error getting size of "
                                                       f"{one_ns.rbd_pool_name}/"
@@ -3386,7 +3466,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                         if image_size is not None:
                             one_ns.rbd_image_size = image_size
                         one_ns.disable_auto_resize = self._is_auto_resize_disabled_for_image(
-                            one_ns.rbd_pool_name, one_ns.rbd_image_name)
+                            one_ns.rbd_pool_name, one_ns.rbd_image_name,
+                            one_ns.rados_namespace_name)
                     namespaces.append(one_ns)
                 if request.subsystem != GatewayUtils.ALL_SUBSYSTEMS:
                     break
@@ -3413,7 +3494,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
             return pb2.namespace_io_stats_info(status=errno.EINVAL, error_message=errmsg)
 
         if not request.subsystem_nqn:
-            errmsg = f"Failure getting IO stats for namespace {request.nsid}, missing subsystem NQN"
+            errmsg = f"Failure getting IO stats for namespace {request.nsid}, \
+                missing subsystem NQN"
             self.logger.error(errmsg)
             return pb2.namespace_io_stats_info(status=errno.EINVAL, error_message=errmsg)
 
@@ -3574,7 +3656,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
             return pb2.req_status(status=errno.ENODEV, error_message=errmsg)
 
         try:
-            if self.ceph_utils.were_image_qos_limits_changed(find_ret.pool, find_ret.image):
+            if self.ceph_utils.were_image_qos_limits_changed(find_ret.pool, find_ret.image,
+                                                             find_ret.rados_namespace_name):
                 if request.force:
                     self.logger.warning(f"The QOS limits for image "
                                         f"{find_ret.pool}/{find_ret.image} were changed, will "
@@ -3769,7 +3852,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         err_prefix = f"Failure resizing namespace {request.nsid} on {request.subsystem_nqn}: "
         return self.execute_grpc_function(self.namespace_resize_safe, request, context, err_prefix)
 
-    def delete_rbd_image(self, pool, image):
+    def delete_rbd_image(self, pool, image, rados_namespace_name):
         if (not pool) and (not image):
             return
 
@@ -3778,10 +3861,12 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                 "will not delete RBD image")
             return
 
-        if self.ceph_utils.delete_image(pool, image):
-            self.logger.info(f"Deleted RBD image {pool}/{image}")
+        path = f"{pool}/{rados_namespace_name}/{image}" \
+            if rados_namespace_name else f"{pool}/{image}"
+        if self.ceph_utils.delete_image(pool, image, rados_namespace_name):
+            self.logger.info(f"Deleted RBD image {path}")
         else:
-            self.logger.warning(f"Failed to delete RBD image {pool}/{image}")
+            self.logger.warning(f"Failed to delete RBD image {path}")
 
     def namespace_delete_safe(self, request, context):
         """Delete a namespace."""
@@ -3837,9 +3922,11 @@ class GatewayService(pb2_grpc.GatewayServicer):
         if find_ret.trash_image:
             rbd_pool = find_ret.pool
             rbd_image_name = find_ret.image
+            rados_namespace_name = find_ret.rados_namespace_name
         else:
             rbd_pool = None
             rbd_image_name = None
+            rados_namespace_name = None
 
         if (rbd_pool and (not rbd_image_name)) or ((not rbd_pool) and rbd_image_name):
             self.logger.warning("RBD pool and image name should be both set or unset, "
@@ -3856,6 +3943,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
             self.remove_namespace_from_state(request.subsystem_nqn, request.nsid, context)
 
         self.delete_image_identification(find_ret.pool, find_ret.image,
+                                         find_ret.rados_namespace_name,
                                          ImageIdentification(self.gateway_group,
                                                              request.subsystem_nqn,
                                                              find_ret.uuid))
@@ -3867,11 +3955,11 @@ class GatewayService(pb2_grpc.GatewayServicer):
                          f"{request.subsystem_nqn}: {ret_del.error_message}"
                 self.logger.error(errmsg)
                 if find_ret.trash_image:
-                    self.delete_rbd_image(rbd_pool, rbd_image_name)
+                    self.delete_rbd_image(rbd_pool, rbd_image_name, rados_namespace_name)
                 return pb2.nsid_status(status=ret_del.status, error_message=errmsg)
 
         if find_ret.trash_image:
-            self.delete_rbd_image(rbd_pool, rbd_image_name)
+            self.delete_rbd_image(rbd_pool, rbd_image_name, rados_namespace_name)
 
         return pb2.req_status(status=0, error_message=os.strerror(0))
 

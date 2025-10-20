@@ -1975,7 +1975,8 @@ class GatewayClient:
                                     disable_auto_resize=args.disable_auto_resize,
                                     read_only=args.read_only,
                                     rbd_data_pool_name=args.rbd_data_pool,
-                                    location=args.location)
+                                    location=args.location,
+                                    rados_namespace_name=args.rados_namespace)
         try:
             ret = self.stub.namespace_add(req)
         except Exception as ex:
@@ -2212,6 +2213,9 @@ class GatewayClient:
                     data_pool_msg = ""
                     if ns.rbd_data_pool_name:
                         data_pool_msg = f"\nData pool {ns.rbd_data_pool_name}"
+                    img_path = f"{ns.rbd_pool_name}/{ns.rados_namespace_name}/{ns.rbd_image_name}" \
+                        if ns.rados_namespace_name \
+                        else f"{ns.rbd_pool_name}/{ns.rbd_image_name}"
                     verbose_info = []
                     if args.verbose:
                         verbose_info = [cluster_name]
@@ -2220,8 +2224,7 @@ class GatewayClient:
                     namespaces_list.append([subsys_nqn,
                                             ns.nsid,
                                             break_string(ns.bdev_name, "-", 2),
-                                            f"{ns.rbd_pool_name}/{ns.rbd_image_name}"
-                                            f"{data_pool_msg}",
+                                            f"{img_path}{data_pool_msg}",
                                             f"{ro_msg}{trash_msg}{auto_resize_msg}",
                                             self.format_size(ns.rbd_image_size),
                                             self.format_size(ns.block_size),
@@ -2880,6 +2883,10 @@ class GatewayClient:
                  "-i",
                  help="RBD image name",
                  required=True),
+        argument("--rados-namespace",
+                 "-r",
+                 help="RADOS namespace name",
+                 required=False),
         argument("--rbd-create-image",
                  "-c",
                  help="Create RBD image if needed",
