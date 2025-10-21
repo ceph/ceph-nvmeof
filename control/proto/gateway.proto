@@ -155,6 +155,7 @@ message namespace_add_req {
 	optional bool trash_image = 12;
 	optional bool disable_auto_resize = 13;
 	optional bool read_only = 14;
+	optional string rbd_data_pool_name = 15;
 }
 
 message namespace_resize_req {
@@ -599,6 +600,7 @@ message namespace_cli {
         optional string cluster_name = 19;
         optional uint32 configured_load_balancing_group = 20;
 	optional bool image_was_shrunk = 21;
+	optional string rbd_data_pool_name = 22;
 }
 
 message namespaces_info {

@@ -7,16 +7,24 @@
 #  Authors: gbregman@ibm.com
 #
 import errno
+import os
 import rbd
 import rados
 import time
 import json
+from enum import Enum
 from .utils import GatewayLogger
 
 
 class CephUtils:
     """Miscellaneous functions which connect to Ceph
     """
+
+    class CephPoolType(Enum):
+        INVALID = -1
+        REPLICATED = 1
+        RAID4 = 2
+        ERASURE = 3
 
     RBD_QOS_PREFIX = "rbd_qos_"
     RBD_QOS_SUFFIX = "_limit"
@@ -39,8 +47,14 @@ class CephUtils:
         self.logger.debug(f"Execute monitor command: {cmd}")
         with rados.Rados(conffile=self.ceph_conf, rados_id=self.rados_id) as cluster:
             rply = cluster.mon_command(cmd, b'')
-            self.logger.debug(f"Monitor reply: {rply}")
-            return rply
+        self.logger.debug(f"Monitor reply: {rply}")
+        if not rply or len(rply) != 3:
+            self.logger.error(f"Invalid Ceph reply: {rply} for command \"{cmd}\"")
+            return (-errno.EINVAL, b'', '')
+        if rply[0] != 0:
+            self.logger.warning(f"Got error {-rply[0]} ({os.strerror(-rply[0])}) from Ceph: "
+                                f"{rply[2]}\nCommand was \"{cmd}\"")
+        return rply
 
     def get_gw_id_owner_ana_group(self, pool, group, anagrp):
         str = '{' + f'"prefix":"nvme-gw show", "pool":"{pool}", "group":"{group}"' + '}'
@@ -152,6 +166,69 @@ class CephUtils:
 
         return False
 
+    def get_pool_type(self, pool) -> CephPoolType:
+        cmd = '{' + '"prefix": "osd pool ls", "detail": "detail", "format": "json"' + '}'
+        rply = self.execute_ceph_monitor_command(cmd)
+        assert len(rply) == 3, f"Invalid Ceph reply: {rply}"
+        if rply[0] != 0:
+            return CephUtils.CephPoolType.INVALID
+        rply_str = rply[1].decode()
+        pools_data = None
+        try:
+            pools_data = json.loads(rply_str)
+        except Exception:
+            self.logger.exception(f"JSON loads {rply_str}")
+        if not pools_data:
+            self.logger.error(f"Can't load pool {pool} data")
+            return CephUtils.CephPoolType.INVALID
+        pool_found = None
+        for one_pool in pools_data:
+            try:
+                if one_pool["pool_name"] == pool:
+                    pool_found = one_pool
+                    break
+            except Exception:
+                self.logger.exception(f"Error parsing pool {one_pool}")
+        if not pool_found:
+            self.logger.error(f"Can't find pool {pool} data")
+            return CephUtils.CephPoolType.INVALID
+
+        try:
+            pool_type = pool_found["type"]
+        except Exception:
+            self.logger.exception(f"Can't get type from pool {pool_found}")
+            return CephUtils.CephPoolType.INVALID
+
+        try:
+            return CephUtils.CephPoolType(pool_type)
+        except ValueError:
+            self.logger.exception(f"Unknown pool type {pool_type} in pool {pool_found}")
+
+        return CephUtils.CephPoolType.INVALID
+
+    def allow_ec_overwrites_is_set(self, pool) -> bool:
+        cmd = '{' + f'"prefix": "osd pool get", "pool": "{pool}", ' \
+                    f'"var": "allow_ec_overwrites", "format": "json"' + '}'
+        rply = self.execute_ceph_monitor_command(cmd)
+        assert len(rply) == 3, f"Invalid Ceph reply: {rply}"
+        if rply[0] != 0:
+            return False
+        rply_str = rply[1].decode()
+        ec_overwrites = False
+        try:
+            ec_overwrites = json.loads(rply_str)
+        except Exception:
+            self.logger.exception(f"JSON loads {rply_str}")
+            return False
+
+        try:
+            return ec_overwrites["allow_ec_overwrites"]
+        except Exception:
+            self.logger.exception(f"Can't get \"allow_ec_overwrites\" attribute "
+                                  f"from pool {pool}: {ec_overwrites}")
+
+        return False
+
     def service_daemon_register(self, cluster, metadata):
         try:
             if cluster:              # rados client
@@ -168,10 +245,14 @@ class CephUtils:
         except Exception:
             self.logger.exception("Can't update daemon status to service_map!")
 
-    def create_image(self, pool_name, image_name, size) -> bool:
+    def create_image(self, pool_name, data_pool_name, image_name, size) -> bool:
         # Check for pool existence in advance as we don't create it if it's not there
         if not self.pool_exists(pool_name):
             raise rbd.ImageNotFound(f"Pool {pool_name} doesn't exist", errno=errno.ENODEV)
+
+        if data_pool_name and not self.pool_exists(data_pool_name):
+            raise rbd.ImageNotFound(f"Data pool {data_pool_name} doesn't exist",
+                                    errno=errno.ENODEV)
 
         image_exists = False
         try:
@@ -194,15 +275,15 @@ class CephUtils:
             with cluster.open_ioctx(pool_name) as ioctx:
                 rbd_inst = rbd.RBD()
                 try:
-                    rbd_inst.create(ioctx, image_name, size)
+                    rbd_inst.create(ioctx, image_name, size, data_pool=data_pool_name)
                 except rbd.ImageExists:
                     self.logger.exception(f"Image {pool_name}/{image_name} was created just now")
                     raise rbd.ImageExists(f"Image {pool_name}/{image_name} was just created by "
                                           f"someone else, please retry",
                                           errno=errno.EAGAIN)
-                except Exception:
+                except Exception as ex:
                     self.logger.exception(f"Can't create image {pool_name}/{image_name}")
-                    raise
+                    raise ex
 
         return True
 

@@ -1973,7 +1973,8 @@ class GatewayClient:
                                     no_auto_visible=args.no_auto_visible,
                                     trash_image=args.rbd_trash_image_on_delete,
                                     disable_auto_resize=args.disable_auto_resize,
-                                    read_only=args.read_only)
+                                    read_only=args.read_only,
+                                    rbd_data_pool_name=args.rbd_data_pool)
         try:
             ret = self.stub.namespace_add(req)
         except Exception as ex:
@@ -2207,6 +2208,9 @@ class GatewayClient:
                     ro_msg = "Read-Only" if ns.read_only else "Read-Write"
                     trash_msg = "\nTrash on delete" if ns.trash_image else ""
                     auto_resize_msg = "\nDisable auto resize" if ns.disable_auto_resize else ""
+                    data_pool_msg = ""
+                    if ns.rbd_data_pool_name:
+                        data_pool_msg = f"\nData pool {ns.rbd_data_pool_name}"
                     verbose_info = []
                     if args.verbose:
                         verbose_info = [cluster_name]
@@ -2214,7 +2218,8 @@ class GatewayClient:
                     namespaces_list.append([subsys_nqn,
                                             ns.nsid,
                                             break_string(ns.bdev_name, "-", 2),
-                                            f"{ns.rbd_pool_name}/{ns.rbd_image_name}",
+                                            f"{ns.rbd_pool_name}/{ns.rbd_image_name}"
+                                            f"{data_pool_msg}",
                                             f"{ro_msg}{trash_msg}{auto_resize_msg}",
                                             self.format_size(ns.rbd_image_size),
                                             self.format_size(ns.block_size),
@@ -2819,6 +2824,10 @@ class GatewayClient:
                  "-p",
                  help="RBD pool name",
                  required=True),
+        argument("--rbd-data-pool",
+                 "-d",
+                 help="RBD data pool name (only required for erasure pools)",
+                 required=False),
         argument("--rbd-image",
                  "-i",
                  help="RBD image name",

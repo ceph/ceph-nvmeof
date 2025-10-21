@@ -418,7 +418,7 @@ class TestCreate:
         ret = stub.namespace_add(add_namespace_req)
         assert ret.status != 0
         assert "Failure adding namespace" in caplog.text
-        assert "image size must be aligned to MiBs" in caplog.text
+        assert "Image size must be aligned to MiBs" in caplog.text
 
     def test_add_namespace_wrong_block_size(self, caplog, gateway):
         gw, stub = gateway
@@ -432,7 +432,7 @@ class TestCreate:
         ret = stub.namespace_add(add_namespace_req)
         assert ret.status != 0
         assert "Failure adding namespace" in caplog.text
-        assert "block size can't be zero" in caplog.text
+        assert "Block size can't be zero" in caplog.text
 
     def test_add_namespace_double_uuid(self, caplog, gateway):
         caplog.clear()
@@ -2262,7 +2262,8 @@ class TestDeleteRBDImage:
         caplog.clear()
         cli(["namespace", "add", "--subsystem", subsystem10, "--rbd-pool", pool,
              "--rbd-image", image19])
-        assert f"Failure adding namespace to {subsystem10}: Failure creating bdev" in caplog.text
+        assert f"Failure adding namespace to {subsystem10}: RBD image {pool}/{image19} " \
+               f"does not exist and '--rbd-create-image' was not specified" in caplog.text
         caplog.clear()
         cli(["namespace", "add", "--subsystem", subsystem10, "--rbd-pool", pool,
              "--rbd-image", image19, "--rbd-create-image", "--size", "32MB"])

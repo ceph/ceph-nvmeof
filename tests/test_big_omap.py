@@ -91,19 +91,30 @@ def verify_one_namespace_lb_group(caplog, gw_port, subsys, nsid_to_verify, grp):
     caplog.clear()
     cli(["--server-port", gw_port, "--format", "json", "namespace", "list",
          "--subsystem", subsys, "--nsid", str(nsid_to_verify)])
-    assert f'"nsid": {nsid_to_verify},' in caplog.text
-    assert f'"load_balancing_group": {grp},' in caplog.text
+    if f'"nsid": {nsid_to_verify},' not in caplog.text:
+        return f'Couldn\'t find \'"nsid": {nsid_to_verify},\' ' \
+               f'port {gw_port}, subsystem {subsys}'
+    if f'"load_balancing_group": {grp},' not in caplog.text:
+        return f'Couldn\'t find \'"load_balancing_group": {grp},\' ' \
+               f'port {gw_port}, subsystem {subsys}'
+    return None
 
 
 def verify_namespaces(caplog, gw_port, subsys, first_nsid, last_nsid, grp):
     for ns in range(first_nsid, last_nsid + 1):
-        verify_one_namespace_lb_group(caplog, gw_port, subsys, ns, grp)
+        rc = verify_one_namespace_lb_group(caplog, gw_port, subsys, ns, grp)
+        if rc is not None:
+            return rc
+    return None
 
 
 def verify_resources(caplog, gw_port, subsys_cnt, ns_cnt, grp):
     for subsys_id in range(1, subsys_cnt + 1):
         subsys = f"{subsystem_prefix}{subsys_id}"
-        verify_namespaces(caplog, gw_port, subsys, 1, ns_cnt, grp)
+        rc = verify_namespaces(caplog, gw_port, subsys, 1, ns_cnt, grp)
+        if rc is not None:
+            return rc
+    return None
 
 
 def create_resources(caplog, subsys_cnt, host_cnt, ns_cnt, grp):
@@ -163,33 +174,54 @@ def test_big_omap(caplog, two_gateways):
     gwA = gatewayA.gateway_rpc
     gwB = gatewayB.gateway_rpc
 
+    sleep_delta = 10
+    print("About to create the resources")
     create_resources(caplog, subsystem_count, host_count, namespace_count, anagrpid)
     waitForUpdate = max(int(gwA.config.config["gateway"]["state_update_interval_sec"]),
                         int(gwB.config.config["gateway"]["state_update_interval_sec"]))
-    waitForUpdate += 10
-    time.sleep(waitForUpdate)
+    time.sleep(waitForUpdate + sleep_delta)
+    print("Verify the resources were created")
     for port in [gwA.config.config["gateway"]["port"],
                  gwB.config.config["gateway"]["port"]]:
-        verify_resources(caplog, port, subsystem_count, namespace_count, anagrpid)
+        retries = 3
+        while True:
+            rc = verify_resources(caplog, port, subsystem_count, namespace_count, anagrpid)
+            if rc is None:
+                break
+            retries -= 1
+            assert retries > 0, f"Failed verifying created resources: {rc}"
+            time.sleep(sleep_delta)
 
+    print("Create listeners")
     create_listeners(caplog, gwA.host_name, gwA.config.config["gateway"]["port"],
                      subsystem_count, "127.0.0.1", 3000)
     create_listeners(caplog, gwB.host_name, gwB.config.config["gateway"]["port"],
                      subsystem_count, "127.0.0.1", 4000)
 
-    time.sleep(waitForUpdate)
+    time.sleep(waitForUpdate + sleep_delta)
+    print("Change load balancing group")
     change_lb_group_for_all_subsystems(caplog,
                                        gwA.config.config["gateway"]["port"],
                                        gwB.config.config["gateway"]["port"],
                                        anagrpid2)
-    time.sleep(waitForUpdate)
+    time.sleep(waitForUpdate + sleep_delta)
+    print("Verify resources after load balancing group change")
     for port in [gwA.config.config["gateway"]["port"],
                  gwB.config.config["gateway"]["port"]]:
-        verify_resources(caplog, port, subsystem_count, namespace_count, anagrpid2)
+        retries = 3
+        while True:
+            rc = verify_resources(caplog, port, subsystem_count, namespace_count, anagrpid2)
+            if rc is None:
+                break
+            retries -= 1
+            assert retries > 0, f"Failed verifying resources after load " \
+                                f"balancing group change: {rc}"
+            time.sleep(sleep_delta)
 
     configB = gwB.config
     portB = gwB.config.config["gateway"]["port"]
     gatewayB.__exit__(None, None, None)
+    print("Restarting gateway B")
     time.sleep(15)
     gatewayB = GatewayServer(configB)
     ceph_utils = CephUtils(configB)
@@ -198,5 +230,13 @@ def test_big_omap(caplog, two_gateways):
         f'"group": "{group_name}"' + "}"
     )
     gatewayB.serve()
-    time.sleep(waitForUpdate)
-    verify_resources(caplog, portB, subsystem_count, namespace_count, anagrpid2)
+    time.sleep(waitForUpdate + sleep_delta)
+    print("Verify resources after gateway restart")
+    while True:
+        retries = 3
+        rc = verify_resources(caplog, portB, subsystem_count, namespace_count, anagrpid2)
+        if rc is None:
+            break
+        retries -= 1
+        assert retries > 0, f"Failed verifying resources after gateway restart: {rc}"
+        time.sleep(sleep_delta)
