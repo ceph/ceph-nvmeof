@@ -2549,6 +2549,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 try:
                     add_req = pb2.namespace_add_req(rbd_pool_name=ns_entry["rbd_pool_name"],
                                                     rbd_image_name=ns_entry["rbd_image_name"],
+                                                    rbd_data_pool_name=ns_entry[
+                                                        "rbd_data_pool_name"],
                                                     subsystem_nqn=ns_entry["subsystem_nqn"],
                                                     nsid=ns_entry["nsid"],
                                                     block_size=ns_entry["block_size"],
@@ -2598,6 +2600,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
             ns["force"]
         except KeyError:
             ns["force"] = False
+        try:
+            ns["rbd_data_pool_name"]
+        except KeyError:
+            ns["rbd_data_pool_name"] = None
 
     def namespace_change_load_balancing_group(self, request, context=None):
         """Changes a namespace load balancing group."""
@@ -2738,6 +2744,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 try:
                     add_req = pb2.namespace_add_req(rbd_pool_name=ns_entry["rbd_pool_name"],
                                                     rbd_image_name=ns_entry["rbd_image_name"],
+                                                    rbd_data_pool_name=ns_entry[
+                                                        "rbd_data_pool_name"],
                                                     subsystem_nqn=ns_entry["subsystem_nqn"],
                                                     nsid=ns_entry["nsid"],
                                                     block_size=ns_entry["block_size"],
@@ -2853,6 +2861,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 try:
                     add_req = pb2.namespace_add_req(rbd_pool_name=ns_entry["rbd_pool_name"],
                                                     rbd_image_name=ns_entry["rbd_image_name"],
+                                                    rbd_data_pool_name=ns_entry[
+                                                        "rbd_data_pool_name"],
                                                     subsystem_nqn=ns_entry["subsystem_nqn"],
                                                     nsid=ns_entry["nsid"],
                                                     block_size=ns_entry["block_size"],
