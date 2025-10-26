@@ -2254,7 +2254,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     else:
                         errmsg = f"{errmsg}, either delete the namespace or use the \"force\" " \
                                  f"argument,\nyou can find the offending namespace by using " \
-                                 f"the \"namespace list --subsystem {ns_nqn}\" CLI command"
+                                 f"the \"namespace list\" CLI command on substsem {ns_nqn}"
                         self.logger.error(errmsg)
                         return pb2.nsid_status(status=errno.EEXIST, error_message=errmsg)
 
@@ -3592,9 +3592,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
                      f"RBD image is needed.\nIn order to delete the namespace " \
                      f"either repeat the command using the \"--i-am-sure\" " \
                      f"parameter,\nor reset the RBD trash image flag using " \
-                     f"the command:\n" \
-                     f"namespace set_rbd_trash_image --subsystem {request.subsystem_nqn} " \
-                     f"--nsid {request.nsid} --rbd-trash-image-on-delete no"
+                     f"the \"namespace set_rbd_trash_image \" CLI command " \
+                     f"on subsystem {request.subsystem_nqn} " \
+                     f"and NSID {request.nsid}"
             self.logger.error(errmsg)
             return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
 
