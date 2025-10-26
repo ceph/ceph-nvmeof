@@ -432,7 +432,7 @@ class SubsystemHostAuth:
 
 
 class NamespaceInfo:
-    def __init__(self, subsys, nsid, bdev, uuid, anagrpid, auto_visible, pool, image,
+    def __init__(self, subsys, nsid, bdev, uuid, anagrpid, auto_visible, pool, data_pool, image,
                  trash_image, read_only):
         self.subsys = subsys
         self.nsid = nsid
@@ -442,6 +442,7 @@ class NamespaceInfo:
         self.anagrpid = anagrpid
         self.host_list = []
         self.pool = pool
+        self.data_pool = data_pool
         self.image = image
         self.trash_image = trash_image
         self.read_only = read_only
@@ -451,7 +452,8 @@ class NamespaceInfo:
         return f"subsys: {self.subsys}, nsid: {self.nsid}, " \
                f"bdev: {self.bdev}, uuid: {self.uuid}, " \
                f"auto_visible: {self.auto_visible}, anagrpid: {self.anagrpid}, " \
-               f"pool: {self.pool}, image: {self.image}, trash_image: {self.trash_image}, " \
+               f"pool: {self.pool}, data_pool: {self.data_pool}, image: {self.image}, " \
+               f"trash_image: {self.trash_image}, " \
                f"read_only: {self.read_only}, image_shrunk: {self.image_was_shrunk}, " \
                f"hosts: {self.host_list}"
 
@@ -506,7 +508,8 @@ class NamespaceInfo:
 
 
 class NamespacesLocalList:
-    EMPTY_NAMESPACE = NamespaceInfo(None, None, None, None, 0, False, None, None, False, False)
+    EMPTY_NAMESPACE = NamespaceInfo(None, None, None, None, 0, False, None,
+                                    None, None, False, False)
 
     def __init__(self):
         self.namespace_list = defaultdict(dict)
@@ -522,12 +525,12 @@ class NamespacesLocalList:
                 self.namespace_list.pop(nqn, None)
 
     def add_namespace(self, nqn, nsid, bdev, uuid, anagrpid, auto_visible,
-                      pool, image, trash_image, read_only):
+                      pool, data_pool, image, trash_image, read_only):
         if not bdev:
             bdev = GatewayService.find_unique_bdev_name(uuid)
         self.namespace_list[nqn][nsid] = NamespaceInfo(nqn, nsid, bdev, uuid, anagrpid,
-                                                       auto_visible, pool, image, trash_image,
-                                                       read_only)
+                                                       auto_visible, pool, data_pool,
+                                                       image, trash_image, read_only)
 
     def find_namespace(self, nqn, nsid, uuid=None, bdev=None) -> NamespaceInfo:
         if nqn is not None and nqn not in self.namespace_list:
@@ -1274,7 +1277,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 self.logger.exception(f"Error setting image identification {img_id_value} for "
                                       f"{rbd_pool}{rbd_image}")
 
-    def create_bdev(self, anagrp: int, name, uuid, rbd_pool_name, rbd_image_name,
+    def create_bdev(self, anagrp: int, name, uuid, rbd_pool_name, rbd_data_pool_name,
+                    rbd_image_name,
                     block_size, create_image, trash_image, rbd_image_size, disable_auto_resize,
                     read_only, context, peer_msg=""):
         """Creates a bdev from an RBD image."""
@@ -1293,46 +1297,83 @@ class GatewayService(pb2_grpc.GatewayServicer):
         else:
             ro_msg = "read write"
 
+        if rbd_data_pool_name:
+            data_pool_msg = f", using data pool {rbd_data_pool_name}, "
+        else:
+            data_pool_msg = ""
+
         self.logger.info(f"Received request to create {ro_msg} bdev {name} from"
-                         f" {rbd_pool_name}/{rbd_image_name} (size {rbd_image_size} bytes)"
+                         f" {rbd_pool_name}/{rbd_image_name} {data_pool_msg}"
+                         f"(size {rbd_image_size} bytes)"
                          f" with block size {block_size}, {cr_img_msg}, {trsh_msg}"
                          f"context={context}{peer_msg}")
 
         if block_size == 0:
             return BdevStatus(status=errno.EINVAL,
-                              error_message=f"Failure creating bdev {name}: block size "
-                                            f"can't be zero")
+                              error_message="Block size can't be zero")
 
         created_rbd_pool = None
         created_rbd_image_name = None
         if create_image:
             if not rbd_pool_name:
                 return BdevStatus(status=errno.ENODEV,
-                                  error_message=f"Failure creating bdev {name}: empty RBD"
-                                                f"pool name")
+                                  error_message="Empty RBD pool name")
             if not rbd_image_name:
                 return BdevStatus(status=errno.ENODEV,
-                                  error_message=f"Failure creating bdev {name}: empty RBD"
-                                                f"image name")
+                                  error_message="Empty RBD image name")
             if rbd_image_size <= 0:
                 return BdevStatus(status=errno.EINVAL,
-                                  error_message=f"Failure creating bdev {name}: image size "
-                                                f"must be positive")
+                                  error_message="Image size must be positive")
             if rbd_image_size % (1024 * 1024):
                 return BdevStatus(status=errno.EINVAL,
-                                  error_message=f"Failure creating bdev {name}: image size "
-                                                f"must be aligned to MiBs")
+                                  error_message="Image size must be aligned to MiBs")
             rc = self.ceph_utils.pool_exists(rbd_pool_name)
             if not rc:
                 return BdevStatus(status=errno.ENODEV,
-                                  error_message=f"Failure creating bdev {name}: RBD pool "
-                                                f"{rbd_pool_name} doesn't exist")
+                                  error_message=f"RBD pool {rbd_pool_name} doesn't exist")
+
+            pool_type = self.ceph_utils.get_pool_type(rbd_pool_name)
+            if pool_type != CephUtils.CephPoolType.REPLICATED:
+                self.logger.error(f"RBD pool {rbd_pool_name} has type {pool_type.name}")
+                return BdevStatus(status=errno.EINVAL,
+                                  error_message=f"RBD pool "
+                                                f"{rbd_pool_name} is not a replicated pool")
+
+            if rbd_data_pool_name:
+                rc = self.ceph_utils.pool_exists(rbd_data_pool_name)
+                if not rc:
+                    return BdevStatus(status=errno.ENODEV,
+                                      error_message=f"RBD data pool "
+                                                    f"{rbd_data_pool_name} doesn't exist")
+                pool_type = self.ceph_utils.get_pool_type(rbd_data_pool_name)
+                if pool_type == CephUtils.CephPoolType.ERASURE:
+                    overwrites = self.ceph_utils.allow_ec_overwrites_is_set(rbd_data_pool_name)
+                    if not overwrites:
+                        self.logger.error(f"RBD data pool {rbd_data_pool_name} doesn't have "
+                                          f"\"allow_ec_overwrites\" set")
+                        return BdevStatus(status=errno.EINVAL,
+                                          error_message=f"RBD data pool {rbd_data_pool_name} "
+                                                        f"doesn't have \"allow_ec_overwrites\" "
+                                                        f"set\nIn order to set it please run "
+                                                        f"'cpeh osd pool set {rbd_data_pool_name}"
+                                                        f" ec_pool_overwrites true'")
+                elif pool_type != CephUtils.CephPoolType.REPLICATED:
+                    self.logger.error(f"RBD data pool {rbd_data_pool_name} has "
+                                      f"type {pool_type.name}")
+                    return BdevStatus(status=errno.EINVAL,
+                                      error_message=f"RBD data pool "
+                                                    f"{rbd_data_pool_name} is not a replicated "
+                                                    f"or erasure coded pool")
 
             try:
-                rc = self.ceph_utils.create_image(rbd_pool_name, rbd_image_name, rbd_image_size)
+                rc = self.ceph_utils.create_image(rbd_pool_name, rbd_data_pool_name,
+                                                  rbd_image_name, rbd_image_size)
                 if rc:
+                    data_pool_msg = ""
+                    if rbd_data_pool_name:
+                        data_pool_msg = f", data pool is {rbd_data_pool_name}"
                     self.logger.info(f"Image {rbd_pool_name}/{rbd_image_name} created, size "
-                                     f"is {rbd_image_size} bytes")
+                                     f"is {rbd_image_size} bytes{data_pool_msg}")
                     created_rbd_pool = rbd_pool_name
                     created_rbd_image_name = rbd_image_name
                 else:
@@ -1357,8 +1398,16 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     msg = str(ex)
                 errmsg = f"Can't create RBD image {rbd_pool_name}/{rbd_image_name}: {msg}"
                 self.logger.exception(errmsg)
-                return BdevStatus(status=errcode,
-                                  error_message=f"Failure creating bdev {name}: {errmsg}")
+                return BdevStatus(status=errcode, error_message=errmsg)
+        else:
+            if not self.ceph_utils.does_image_exist(rbd_pool_name, rbd_image_name):
+                self.logger.error(f"RBD image {rbd_pool_name}/{rbd_image_name} "
+                                  f"does not exist and '--rbd-create-image' "
+                                  f"was not specified")
+                return BdevStatus(status=errno.EEXIST,
+                                  error_message=f"RBD image {rbd_pool_name}/{rbd_image_name} "
+                                                f"does not exist and '--rbd-create-image' "
+                                                f"was not specified")
 
         if disable_auto_resize:
             try:
@@ -1399,7 +1448,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
             status = errno.ENODEV
             if resp:
                 status = resp["code"]
-                errmsg = f"Failure creating bdev {name}: {resp['message']}"
+                errmsg = resp['message']
             if trash_image:
                 self.delete_rbd_image(created_rbd_pool, created_rbd_image_name)
             return BdevStatus(status=status, error_message=errmsg)
@@ -1416,7 +1465,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                   f"from requested name {name}"
 
         return BdevStatus(status=0, error_message=os.strerror(0), bdev_name=name,
-                          rbd_pool=rbd_pool_name, rbd_image_name=rbd_image_name,
+                          rbd_pool=rbd_pool_name,
+                          rbd_image_name=rbd_image_name,
                           trash_image=trash_image)
 
     def resize_bdev(self, bdev_name, new_size, peer_msg=""):
@@ -1963,7 +2013,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
         return errmsg, nqn
 
     def create_namespace(self, subsystem_nqn, bdev_name, nsid, anagrpid, uuid,
-                         auto_visible, rbd_pool, rbd_image_name, trash_image, read_only, context):
+                         auto_visible, rbd_pool, rbd_data_pool, rbd_image_name,
+                         trash_image, read_only, context):
         """Adds a namespace to a subsystem."""
 
         assert self.rpc_lock.locked(), "RPC is unlocked when calling create_namespace()"
@@ -2059,7 +2110,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
             self.subsystem_nsid_bdev_and_uuid.add_namespace(subsystem_nqn, nsid,
                                                             bdev_name, uuid,
                                                             anagrpid, auto_visible,
-                                                            rbd_pool, rbd_image_name,
+                                                            rbd_pool, rbd_data_pool,
+                                                            rbd_image_name,
                                                             trash_image, read_only)
             self.logger.debug(f"subsystem_add_ns: {nsid}")
             self.subsystems_cache.set_subsystems(None)
@@ -2286,6 +2338,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
             anagrp = request.anagrpid
             assert anagrp != 0, "Chosen load balancing group is 0"
             ret_bdev = self.create_bdev(anagrp, bdev_name, request.uuid, request.rbd_pool_name,
+                                        request.rbd_data_pool_name,
                                         request.rbd_image_name, request.block_size, create_image,
                                         request.trash_image, request.size,
                                         request.disable_auto_resize, request.read_only,
@@ -2315,7 +2368,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
             ret_ns = self.create_namespace(request.subsystem_nqn, bdev_name,
                                            request.nsid, anagrp, request.uuid,
                                            not request.no_auto_visible,
-                                           ret_bdev.rbd_pool, ret_bdev.rbd_image_name,
+                                           ret_bdev.rbd_pool, request.rbd_data_pool_name,
+                                           ret_bdev.rbd_image_name,
                                            ret_bdev.trash_image, request.read_only, context)
             if ret_ns.status == 0 and request.nsid and ret_ns.nsid != request.nsid:
                 errmsg = f"Returned ID {ret_ns.nsid} differs from requested one {request.nsid}"
@@ -3139,7 +3193,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                                read_only=find_ret.read_only,
                                                configured_load_balancing_group=lb_group_configured,
                                                cluster_name=cluster_name,
-                                               image_was_shrunk=was_image_shrunk)
+                                               image_was_shrunk=was_image_shrunk,
+                                               rbd_data_pool_name=find_ret.data_pool)
                     with self.rpc_lock:
                         ns_bdev = self.get_bdev_info(bdev_name)
                     if ns_bdev is None:
