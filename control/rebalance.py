@@ -22,6 +22,7 @@ class Rebalance:
         self.logger = gateway_service.logger
         self.gw_srv = gateway_service
         self.ceph_utils = gateway_service.ceph_utils
+        self.ana_grp_location = {}  # fill location of each ana grp for responses of monitor
         self.rebalance_period_sec = gateway_service.config.getint_with_default(
             "gateway",
             "rebalance_period_sec",
@@ -132,6 +133,7 @@ class Rebalance:
         rebalance_attr = ()
         grps_list = self.ceph_utils.get_number_created_gateways(self.gw_srv.gateway_pool,
                                                                 self.gw_srv.gateway_group, False)
+        num_all_active_ana_groups = len(grps_list)
         worker_ana_group = self.ceph_utils.get_rebalance_ana_group()
         self.logger.debug(f"Called rebalance logic: current rebalancing ana "
                           f"group {worker_ana_group}")
@@ -153,9 +155,16 @@ class Rebalance:
                                      f"current load {self.gw_srv.ana_grp_ns_load[ana_grp]}")
                     self.last_scale_down_ts = now
                     invalid_ana_group = ana_grp
-        num_active_ana_groups = len(grps_list)
+        ana_location_dict = self.ceph_utils.get_ana_grp_location()
+        for ana_grp in ana_location_dict:  # always keep updated internal dictionary
+            self.ana_grp_location[ana_grp] = ana_location_dict[ana_grp]
         for ana_grp in self.gw_srv.ana_grp_state:
             if self.gw_srv.ana_grp_state[ana_grp] == pb2.ana_state.OPTIMIZED:
+                location = ana_location_dict[ana_grp]
+                # original location of the ana group, we pass in loop
+                # also valid even if GW in deleting
+                loc_grps_list = self.ceph_utils.get_ana_grp_list_per_location(location)
+                num_active_ana_groups = len(loc_grps_list)
                 if ana_grp not in grps_list:
                     self.logger.info(f"Found optimized ana group {ana_grp} that handles the "
                                      f"group of deleted GW. Number NS in group "
@@ -166,11 +175,13 @@ class Rebalance:
                     else:
                         num = self.gw_srv.ana_grp_ns_load[ana_grp]
                     if num > 0:
-                        min_ana_grp, chosen_nqn = self.find_min_loaded_group(grps_list)
+                        # TODO handle empty loc_grps_list
+                        min_ana_grp, chosen_nqn = self.find_min_loaded_group(loc_grps_list)
                         self.logger.info(f"Start rebalance (scale down) destination ana group "
-                                         f"{min_ana_grp}, subsystem {chosen_nqn}")
+                                         f"{min_ana_grp}, subsystem {chosen_nqn}"
+                                         f"location {location} ")
                         # scale down rebalance
-                        self.ns_rebalance(context, ana_grp, min_ana_grp, 1, "0")
+                        self.ns_rebalance(context, ana_grp, min_ana_grp, 1, "0", location)
                         return 0
                     else:
                         self.logger.info(f"warning: empty group {ana_grp} of Deleting "
@@ -182,14 +193,17 @@ class Rebalance:
                     if not ongoing_scale_down_rebalance \
                        and ((now - self.last_scale_down_ts) > hysteresis) \
                        and (self.gw_srv.ana_grp_state[worker_ana_group] == pb2.ana_state.OPTIMIZED):
-                        # if my optimized ana group == worker-ana-group or worker-ana-group is
-                        # also in optimized state on this GW machine
-
+                        # if this optimized ana group == worker-ana-group
+                        # or (for improve rebalance performance)
+                        # worker-ana-group and this ana-group are in optimized state on this GW
+                        rc = self.periodic_scan_ns_location(context, ana_grp, location)
+                        if not rc:
+                            return rc
                         # need to search  all nqns not only inside the current load
                         for nqn in self.gw_srv.ana_grp_subs_load[ana_grp]:
-                            num_ns_in_nqn = \
-                                self.gw_srv.subsystem_nsid_bdev_and_uuid.get_namespace_count(
-                                    nqn, None, 0)
+                            num_ns_in_nqn = len(
+                                self.gw_srv.subsystem_nsid_bdev_and_uuid.
+                                get_all_namespaces_with_location(location, nqn))
                             target_subs_per_ana = num_ns_in_nqn / num_active_ana_groups
                             self.logger.debug(f"loop: nqn {nqn} ana group {ana_grp} load "
                                               f"{self.gw_srv.ana_grp_subs_load[ana_grp][nqn]}, "
@@ -200,7 +214,7 @@ class Rebalance:
                                                   f"{self.gw_srv.ana_grp_subs_load[ana_grp][nqn]} "
                                                   f"nqn {nqn} ")
                                 min_load, min_ana_grp = \
-                                    self.find_min_loaded_group_in_subsys(nqn, grps_list)
+                                    self.find_min_loaded_group_in_subsys(nqn, loc_grps_list)
 
                                 my_eq_more = (self.gw_srv.ana_grp_subs_load[ana_grp][nqn] - 1) >= \
                                              (self.gw_srv.ana_grp_subs_load[min_ana_grp][nqn] + 1)
@@ -210,9 +224,11 @@ class Rebalance:
                                 if my_eq_more:
                                     self.logger.info(f"Start rebalance (regular) in subsystem "
                                                      f"{nqn}, dest ana {min_ana_grp}, dest ana "
-                                                     f"load per subs {min_load}")
+                                                     f"load per subs {min_load}"
+                                                     f" location {location}")
                                     # regular rebalance
-                                    self.ns_rebalance(context, ana_grp, min_ana_grp, 1, nqn)
+                                    self.ns_rebalance(context, ana_grp, min_ana_grp, 1,
+                                                      nqn, location)
                                     return 0
                                 else:
                                     # add to tuple : ana , min-ana , nqn , worth
@@ -222,7 +238,8 @@ class Rebalance:
                                                       f"{min_ana_grp}, load {min_load} does not "
                                                       f"fit rebalance criteria!")
                                     continue
-            if ongoing_scale_down_rebalance and (num_active_ana_groups == self.ceph_utils.num_gws):
+            if ongoing_scale_down_rebalance \
+               and (num_all_active_ana_groups == self.ceph_utils.num_gws):
                 # this GW feels scale_down condition on ana_grp but no GW in Deleting
                 # state in the current mon.map. So need to change LB group for all NS
                 # related to the invalid group - group that was deleted by GW monitor
@@ -230,9 +247,10 @@ class Rebalance:
                 if (self.gw_srv.ana_grp_state[worker_ana_group]) == pb2.ana_state.OPTIMIZED:
                     min_ana_grp, chosen_nqn = self.find_min_loaded_group(grps_list)
                     if chosen_nqn != "null" and invalid_ana_group != 0:
-                        self.logger.info(f"Start rebalance (deadlock resolving) dest. ana group"
+                        self.logger.info(f"Start rebalance (deadlock resolving) dest. ana group "
                                          f" {min_ana_grp}, subsystem {chosen_nqn}")
-                        self.ns_rebalance(context, invalid_ana_group, min_ana_grp, 1, "0")
+                        location = self.ana_grp_location[invalid_ana_group]
+                        self.ns_rebalance(context, invalid_ana_group, min_ana_grp, 1, "0", location)
                         return 0
                     else:
                         self.logger.info(f"rebalance (deadlock resolving) is not allowed "
@@ -240,22 +258,56 @@ class Rebalance:
                                          f" subsystem {chosen_nqn}")
         # if tuple is not empty
         if rebalance_attr:
+            location = self.ana_grp_location[rebalance_attr[0]]
             self.logger.info(
                 f"Start rebalance (fixing regular) in subsystem "
-                f"ana {rebalance_attr[0]}, dest ana {rebalance_attr[1]} nqn {rebalance_attr[2]}")
-            self.ns_rebalance(context, rebalance_attr[0], rebalance_attr[1], 1, rebalance_attr[2])
+                f"ana {rebalance_attr[0]}, dest ana {rebalance_attr[1]} nqn {rebalance_attr[2]}"
+                f"location {location}")
+            self.ns_rebalance(context, rebalance_attr[0], rebalance_attr[1], 1,
+                              rebalance_attr[2], location)
             return 0
         return 1
 
-    def ns_rebalance(self, context, ana_id, dest_ana_id, num, subs_nqn) -> int:
+    def periodic_scan_ns_location(self, context, ana_id, ana_location) -> int:
+        ns = self.gw_srv.subsystem_nsid_bdev_and_uuid.get_all_namespaces_by_ana_group_id(ana_id)
+        for nsid, subsys in ns:
+            ns_info = self.gw_srv.subsystem_nsid_bdev_and_uuid.find_namespace(subsys, nsid)
+            if ns_info.location != ana_location:
+                self.logger.warning(f"Found nsid {nsid} nqn {subsys} location {ns_info.location}"
+                                    f" ana-location {ana_location} need to change LB group")
+                # rought rebalance
+                loc_grps_list = self.ceph_utils.get_ana_grp_list_per_location(ns_info.location)
+                if len(loc_grps_list) != 0:
+                    min_ana_grp, chosen_nqn = self.find_min_loaded_group(loc_grps_list)
+                    if min_ana_grp == 0:
+                        self.logger.warning("not found the candidate for NS {nsid}")
+                        return 1
+                    self.logger.info(f"Start rebalance to ANA grp with location = ns-location"
+                                     f" destination ana group "
+                                     f"{min_ana_grp}, subsystem {chosen_nqn}"
+                                     f" location {ns_info.location} ")
+                    self.ns_rebalance(context, ana_id, min_ana_grp, 1, "0", ns_info.location)
+                    return 0
+                else:
+                    self.logger.warning(f"Impossible to find correct ANA for ns {nsid}"
+                                        f" nqn {subsys} location {ns_info.location}")
+        return 1
+
+    def ns_rebalance(self, context, ana_id, dest_ana_id, num, subs_nqn, location) -> int:
         now = time.time()
         num_rebalanced = 0
         self.logger.info(f"== rebalance started == for subsystem {subs_nqn}, anagrp {ana_id}, "
-                         f"destination anagrp {dest_ana_id}, num ns {num} time {now} ")
+                         f"dest. anagrp {dest_ana_id}, num ns {num}"
+                         f"location {location} time {now} ")
         ns = self.gw_srv.subsystem_nsid_bdev_and_uuid.get_all_namespaces_by_ana_group_id(ana_id)
         self.logger.debug(f"Doing loop on {ana_id} ")
         for nsid, subsys in ns:
-            self.logger.debug(f"nsid {nsid} for nqn {subsys} to rebalance:")
+            ns_info = self.gw_srv.subsystem_nsid_bdev_and_uuid.find_namespace(subsys, nsid)
+            self.logger.debug(f"nsid {nsid} nqn {subsys} location {ns_info.location} to rebalance:")
+            if ns_info.location != location:
+                self.logger.warning(f"ns with wrong location: {ns_info.location} in ana-grp"
+                                    f" {ana_id} nsid {nsid} nqn {subsys} ")
+                continue
             if subsys == subs_nqn or subs_nqn == "0":
                 self.logger.info(f"nsid for change_load_balancing: {nsid}, "
                                  f"{subsys}, anagrpid: {ana_id}")

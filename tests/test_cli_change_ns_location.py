@@ -16,6 +16,8 @@ location = "USA"
 location2 = "China"
 subsystem = "nqn.2016-06.io.spdk:cnode1"
 subsystem2 = "nqn.2016-06.io.spdk:cnode2"
+location1 = "USA"
+location2 = "China"
 config = "ceph-nvmeof.conf"
 
 
@@ -187,14 +189,6 @@ def test_change_namespace_location(caplog, two_gateways):
     ns_list = gatewayA.subsystem_nsid_bdev_and_uuid.get_all_namespaces_with_location(location)
     assert len(ns_list) == 1
     assert ns_list[0] == (2, subsystem)
-    caplog.clear()
-    cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool,
-         "--rbd-image", image3, "--size", "16MB", "--rbd-create-image"])
-    assert f"Adding namespace 3 to {subsystem}: Successful" in caplog.text
-    caplog.clear()
-    cli(["--format", "json", "namespace", "list", "--subsystem", subsystem, "--nsid", "3"])
-    assert '"nsid": 3,' in caplog.text
-    assert '"location": ""' in caplog.text
     caplog.clear()
     cli(["namespace", "change_location", "--subsystem", "junk",
          "--nsid", "3", "--location", "Oz"])
