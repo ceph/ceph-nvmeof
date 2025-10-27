@@ -42,6 +42,7 @@ class CephUtils:
         self.rebalance_ana_group = 0
         self.num_gws = 0
         self.last_sent = time.time()
+        self.ana_group_to_location: dict[int, str] = {}
 
     def execute_ceph_monitor_command(self, cmd):
         self.logger.debug(f"Execute monitor command: {cmd}")
@@ -83,6 +84,16 @@ class CephUtils:
     def get_num_gws(self):
         return self.num_gws
 
+    def get_ana_grp_location(self):
+        return self.ana_group_to_location
+
+    def get_ana_grp_list_per_location(self, location):
+        ana_group_locaton_list = []
+        for ana_grp in self.anagroup_list:
+            if self.ana_group_to_location[ana_grp] == location:
+                ana_group_locaton_list.append(ana_grp)
+        return ana_group_locaton_list
+
     def get_number_created_gateways(self, pool, group, caching=True):
         now = time.time()
         if caching and ((now - self.last_sent) < 10) and self.anagroup_list:
@@ -108,6 +119,20 @@ class CephUtils:
                     self.num_gws = data.get("num gws", None)
                     self.logger.debug(f"Rebalance ana_group: {self.rebalance_ana_group}, "
                                       f"num-gws: {self.num_gws}")
+
+                    gateways = data.get("Created Gateways:", [])
+                    # self.logger.info(f"gateways: {gateways}")
+                    self.ana_group_to_location: dict[int, str] = {}
+                    for gw in gateways:
+                        try:
+                            ana_id = int(gw["anagrp-id"])
+                            location = (gw["location"])
+                            self.ana_group_to_location[ana_id] = location
+                        except (KeyError, ValueError, TypeError) as e:
+                            self.logger.info(f"ana-location error: gw ,{gw},reason {repr(e)}")
+                            continue
+                    self.logger.info(f"ana-location dict:  {self.ana_group_to_location}")
+
                 else:
                     self.rebalance_supported = False
                 pos = conv_str.find("[")
