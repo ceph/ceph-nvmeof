@@ -178,6 +178,7 @@ def test_change_namespace_lb_group(caplog, two_gateways):
     assert f"create_subsystem {subsystem}: True" in caplog.text
     caplog.clear()
     cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool,
+         "--rbd-data-pool", pool,
          "--rbd-image", image, "--size", "16MB", "--rbd-create-image", "--uuid", uuid,
          "--load-balancing-group", anagrpid, "--force"])
     time.sleep(15)
@@ -185,11 +186,11 @@ def test_change_namespace_lb_group(caplog, two_gateways):
     assert f"get_cluster cluster_name='cluster_context_{anagrpid}_0'" in caplog.text
     assert f"Received request to add namespace to {subsystem}, ana group {anagrpid}, " \
            f"no_auto_visible: False, disable_auto_resize: False, " \
-           f"read_only: False, " \
+           f"read_only: False, location: \"\", " \
            f"context: <grpc._server" in caplog.text
     assert f"Received request to add namespace 1 to {subsystem}, ana group {anagrpid}, " \
            f"no_auto_visible: False, disable_auto_resize: False, " \
-           f"read_only: False, " \
+           f"read_only: False, location: \"\", " \
            f"context: None" in caplog.text
     caplog.clear()
     cli(["namespace", "set_qos", "--subsystem", subsystem, "--nsid", "1",
@@ -198,6 +199,7 @@ def test_change_namespace_lb_group(caplog, two_gateways):
     caplog.clear()
     cli(["--format", "json", "namespace", "list", "--subsystem", subsystem, "--nsid", "1"])
     assert '"nsid": 1,' in caplog.text
+    assert f'"rbd_data_pool_name": "{pool}",' in caplog.text
     assert f'"uuid": "{uuid}",' in caplog.text
     assert f'"load_balancing_group": {anagrpid},' in caplog.text
     assert f'"load_balancing_group": {anagrpid2},' not in caplog.text
@@ -212,6 +214,7 @@ def test_change_namespace_lb_group(caplog, two_gateways):
     cli(["--server-port", "5502", "--format", "json", "namespace", "list",
          "--subsystem", subsystem, "--nsid", "1"])
     assert '"nsid": 1,' in caplog.text
+    assert f'"rbd_data_pool_name": "{pool}",' in caplog.text
     assert f'"uuid": "{uuid}",' in caplog.text
     assert f'"load_balancing_group": {anagrpid},' in caplog.text
     assert f'"load_balancing_group": {anagrpid2},' not in caplog.text
@@ -225,6 +228,7 @@ def test_change_namespace_lb_group(caplog, two_gateways):
     caplog.clear()
     cli(["--format", "json", "namespace", "list", "--subsystem", subsystem, "--nsid", "1"])
     assert '"nsid": 1,' in caplog.text
+    assert f'"rbd_data_pool_name": "{pool}",' in caplog.text
     assert f'"uuid": "{uuid}",' in caplog.text
     assert f'"load_balancing_group": {anagrpid2},' in caplog.text
     assert f'"load_balancing_group": {anagrpid},' not in caplog.text
@@ -232,6 +236,7 @@ def test_change_namespace_lb_group(caplog, two_gateways):
     caplog.clear()
     cli(["--format", "json", "namespace", "list", "--subsystem", subsystem, "--nsid", "1"])
     assert '"nsid": 1,' in caplog.text
+    assert f'"rbd_data_pool_name": "{pool}",' in caplog.text
     assert f'"uuid": "{uuid}",' in caplog.text
     assert f'"load_balancing_group": {anagrpid},' in caplog.text
     assert f'"load_balancing_group": {anagrpid2},' not in caplog.text
@@ -244,6 +249,7 @@ def test_change_namespace_lb_group(caplog, two_gateways):
     caplog.clear()
     cli(["--format", "json", "namespace", "list", "--subsystem", subsystem, "--nsid", "1"])
     assert '"nsid": 1,' in caplog.text
+    assert f'"rbd_data_pool_name": "{pool}",' in caplog.text
     assert f'"uuid": "{uuid}",' in caplog.text
     assert f'"load_balancing_group": {anagrpid2},' in caplog.text
     assert f'"load_balancing_group": {anagrpid},' not in caplog.text
@@ -257,6 +263,7 @@ def test_change_namespace_lb_group(caplog, two_gateways):
     cli(["--server-port", "5502", "--format", "json", "namespace", "list",
          "--subsystem", subsystem, "--nsid", "1"])
     assert '"nsid": 1,' in caplog.text
+    assert f'"rbd_data_pool_name": "{pool}",' in caplog.text
     assert f'"uuid": "{uuid}",' in caplog.text
     assert f'"load_balancing_group": {anagrpid2},' in caplog.text
     assert f'"load_balancing_group": {anagrpid},' not in caplog.text
@@ -275,11 +282,11 @@ def test_change_namespace_lb_group(caplog, two_gateways):
     assert f"get_cluster cluster_name='cluster_context_{anagrpid2}_0'" in caplog.text
     assert f"Received request to add namespace to {subsystem}, ana group {anagrpid2}, " \
            f"no_auto_visible: False, disable_auto_resize: False, " \
-           f"read_only: False, " \
+           f"read_only: False, location: \"\", " \
            f"context: <grpc._server" in caplog.text
     assert f"Received request to add namespace 2 to {subsystem}, ana group {anagrpid2}, " \
            f"no_auto_visible: False, disable_auto_resize: False, " \
-           f"read_only: False, " \
+           f"read_only: False, location: \"\", " \
            f"context: None" in caplog.text
     caplog.clear()
     cli(["--format", "json", "namespace", "list", "--subsystem", subsystem, "--nsid", "2"])

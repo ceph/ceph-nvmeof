@@ -12,6 +12,7 @@ import grpc
 from control.proto import gateway_pb2 as pb2
 from control.proto import gateway_pb2_grpc as pb2_grpc
 import os
+import time
 
 image = "mytestdevimage1"
 image2 = "mytestdevimage2"
@@ -2412,6 +2413,7 @@ class TestImageResize:
              "--rbd-image", image25, "--size", "10MB",
              "--rbd-create-image", "--disable-auto-resize"])
         assert f"Adding namespace 1 to {subsystem11}: Successful" in caplog.text
+        time.sleep(2)
         caplog.clear()
         cli(["--format", "json", "namespace", "list", "--subsystem", subsystem11, "--nsid", "1"])
         assert '"status": 0' in caplog.text

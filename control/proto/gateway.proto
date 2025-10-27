@@ -65,6 +65,9 @@ service Gateway {
 	// Changes namespace's visibility
 	rpc namespace_change_visibility(namespace_change_visibility_req) returns (req_status) {}
 
+	// Changes namespace's location
+	rpc namespace_change_location(namespace_change_location_req) returns (req_status) {}
+
 	// Set namespace's RBD trash image flag
 	rpc namespace_set_rbd_trash_image(namespace_set_rbd_trash_image_req) returns (req_status) {}
 
@@ -156,6 +159,7 @@ message namespace_add_req {
 	optional bool disable_auto_resize = 13;
 	optional bool read_only = 14;
 	optional string rbd_data_pool_name = 15;
+	optional string location = 16;
 }
 
 message namespace_resize_req {
@@ -195,6 +199,12 @@ message namespace_change_visibility_req {
 	uint32 nsid = 2;
 	bool auto_visible = 3;
 	optional bool force = 4;
+}
+
+message namespace_change_location_req {
+	string subsystem_nqn = 1;
+	uint32 nsid = 2;
+	optional string location = 3;
 }
 
 message namespace_set_rbd_trash_image_req {
@@ -601,6 +611,7 @@ message namespace_cli {
         optional uint32 configured_load_balancing_group = 20;
 	optional bool image_was_shrunk = 21;
 	optional string rbd_data_pool_name = 22;
+	optional string location = 23;
 }
 
 message namespaces_info {

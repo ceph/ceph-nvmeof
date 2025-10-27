@@ -1153,6 +1153,11 @@ class GatewayServer:
                     req = json_format.Parse(val, pb2.namespace_change_visibility_req(),
                                             ignore_unknown_fields=True)
                     self.gateway_rpc.namespace_change_visibility(req)
+            elif key.startswith(GatewayState.NAMESPACE_LOCATION_PREFIX):
+                if is_add_req:
+                    req = json_format.Parse(val, pb2.namespace_change_location_req(),
+                                            ignore_unknown_fields=True)
+                    self.gateway_rpc.namespace_change_location(req)
             elif key.startswith(GatewayState.NAMESPACE_TRASH_IMAGE_PREFIX):
                 if is_add_req:
                     req = json_format.Parse(val, pb2.namespace_set_rbd_trash_image_req(),

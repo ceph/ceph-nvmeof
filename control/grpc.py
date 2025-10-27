@@ -433,7 +433,7 @@ class SubsystemHostAuth:
 
 class NamespaceInfo:
     def __init__(self, subsys, nsid, bdev, uuid, anagrpid, auto_visible, pool, data_pool, image,
-                 trash_image, read_only):
+                 trash_image, read_only, location):
         self.subsys = subsys
         self.nsid = nsid
         self.bdev = bdev
@@ -446,6 +446,7 @@ class NamespaceInfo:
         self.image = image
         self.trash_image = trash_image
         self.read_only = read_only
+        self.location = location
         self.image_was_shrunk = False
 
     def __str__(self):
@@ -455,6 +456,7 @@ class NamespaceInfo:
                f"pool: {self.pool}, data_pool: {self.data_pool}, image: {self.image}, " \
                f"trash_image: {self.trash_image}, " \
                f"read_only: {self.read_only}, image_shrunk: {self.image_was_shrunk}, " \
+               f"location: {self.location}, " \
                f"hosts: {self.host_list}"
 
     def empty(self) -> bool:
@@ -478,8 +480,8 @@ class NamespaceInfo:
     def set_visibility(self, auto_visible: bool):
         self.auto_visible = auto_visible
 
-    def set_read_only(self, read_only: bool):
-        self.read_only = read_only
+    def set_location(self, location: str):
+        self.location = location
 
     def is_host_in_namespace(self, host_nqn):
         return host_nqn in self.host_list
@@ -509,7 +511,7 @@ class NamespaceInfo:
 
 class NamespacesLocalList:
     EMPTY_NAMESPACE = NamespaceInfo(None, None, None, None, 0, False, None,
-                                    None, None, False, False)
+                                    None, None, False, False, None)
 
     def __init__(self):
         self.namespace_list = defaultdict(dict)
@@ -525,12 +527,13 @@ class NamespacesLocalList:
                 self.namespace_list.pop(nqn, None)
 
     def add_namespace(self, nqn, nsid, bdev, uuid, anagrpid, auto_visible,
-                      pool, data_pool, image, trash_image, read_only):
+                      pool, data_pool, image, trash_image, read_only, location):
         if not bdev:
             bdev = GatewayService.find_unique_bdev_name(uuid)
         self.namespace_list[nqn][nsid] = NamespaceInfo(nqn, nsid, bdev, uuid, anagrpid,
                                                        auto_visible, pool, data_pool,
-                                                       image, trash_image, read_only)
+                                                       image, trash_image, read_only,
+                                                       location)
 
     def find_namespace(self, nqn, nsid, uuid=None, bdev=None) -> NamespaceInfo:
         if nqn is not None and nqn not in self.namespace_list:
@@ -2014,7 +2017,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
     def create_namespace(self, subsystem_nqn, bdev_name, nsid, anagrpid, uuid,
                          auto_visible, rbd_pool, rbd_data_pool, rbd_image_name,
-                         trash_image, read_only, context):
+                         trash_image, read_only, location, context):
         """Adds a namespace to a subsystem."""
 
         assert self.rpc_lock.locked(), "RPC is unlocked when calling create_namespace()"
@@ -2112,7 +2115,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                                             anagrpid, auto_visible,
                                                             rbd_pool, rbd_data_pool,
                                                             rbd_image_name,
-                                                            trash_image, read_only)
+                                                            trash_image, read_only,
+                                                            location)
             self.logger.debug(f"subsystem_add_ns: {nsid}")
             self.subsystems_cache.set_subsystems(None)
             self.ana_grp_ns_load[anagrpid] += 1
@@ -2252,14 +2256,13 @@ class GatewayService(pb2_grpc.GatewayServicer):
         grps_list = []
         anagrp = 0
         peer_msg = self.get_peer_message(context)
-        nsid_msg = ""
-        if request.nsid:
-            nsid_msg = f"{request.nsid} "
+        nsid_msg = f"{request.nsid} " if request.nsid else ""
+        loc_msg = f'"{request.location}"' if request.location else '""'
         self.logger.info(f"Received request to add namespace {nsid_msg}to "
                          f"{request.subsystem_nqn}, ana group {request.anagrpid}, "
                          f"no_auto_visible: {request.no_auto_visible}, "
                          f"disable_auto_resize: {request.disable_auto_resize}, "
-                         f"read_only: {request.read_only}, "
+                         f"read_only: {request.read_only}, location: {loc_msg}, "
                          f"context: {context}{peer_msg}")
 
         if not request.uuid:
@@ -2370,7 +2373,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                            not request.no_auto_visible,
                                            ret_bdev.rbd_pool, request.rbd_data_pool_name,
                                            ret_bdev.rbd_image_name,
-                                           ret_bdev.trash_image, request.read_only, context)
+                                           ret_bdev.trash_image, request.read_only,
+                                           request.location, context)
             if ret_ns.status == 0 and request.nsid and ret_ns.nsid != request.nsid:
                 errmsg = f"Returned ID {ret_ns.nsid} differs from requested one {request.nsid}"
                 self.logger.error(errmsg)
@@ -2563,7 +2567,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                                     no_auto_visible=ns_entry["no_auto_visible"],
                                                     disable_auto_resize=ns_entry[
                                                     "disable_auto_resize"],
-                                                    read_only=ns_entry["read_only"])
+                                                    read_only=ns_entry["read_only"],
+                                                    location=ns_entry["location"])
                     json_req = json_format.MessageToJson(
                         add_req, preserving_proto_field_name=True,
                         including_default_value_fields=True)
@@ -2600,6 +2605,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
             ns["force"]
         except KeyError:
             ns["force"] = False
+        try:
+            ns["location"]
+        except KeyError:
+            ns["location"] = None
         try:
             ns["rbd_data_pool_name"]
         except KeyError:
@@ -2758,7 +2767,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                                     no_auto_visible=not request.auto_visible,
                                                     disable_auto_resize=ns_entry[
                                                     "disable_auto_resize"],
-                                                    read_only=ns_entry["read_only"])
+                                                    read_only=ns_entry["read_only"],
+                                                    location=ns_entry["location"])
                     json_req = json_format.MessageToJson(
                         add_req, preserving_proto_field_name=True,
                         including_default_value_fields=True)
@@ -2777,6 +2787,109 @@ class GatewayService(pb2_grpc.GatewayServicer):
         err_prefix = f"Failure changing visibility for namespace {request.nsid} " \
                      f"in {request.subsystem_nqn}: "
         return self.execute_grpc_function(self.namespace_change_visibility_safe,
+                                          request, context, err_prefix)
+
+    def namespace_change_location_safe(self, request, context):
+        """Changes namespace location."""
+
+        assert self.rpc_lock.locked(), \
+            "RPC is unlocked when calling namespace_change_location()"
+        peer_msg = self.get_peer_message(context)
+        failure_prefix = f"Failure changing location for namespace {request.nsid} " \
+                         f"in {request.subsystem_nqn}"
+        self.logger.info(f"Received request to change the location of namespace {request.nsid} "
+                         f"in {request.subsystem_nqn} to \"{request.location}\", "
+                         f"context: {context}{peer_msg}")
+
+        if not request.subsystem_nqn:
+            errmsg = "Failure changing location for namespace, missing subsystem NQN"
+            self.logger.error(errmsg)
+            return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
+
+        if not request.nsid:
+            errmsg = f"Failure changing location for namespace in {request.subsystem_nqn}: " \
+                     f"No namespace ID was given"
+            self.logger.error(errmsg)
+            return pb2.req_status(status=errno.ENODEV, error_message=errmsg)
+
+        # If this is not set the subsystem was not created yet
+        if request.subsystem_nqn not in self.subsys_serial:
+            errmsg = f"{failure_prefix}: Can't find subsystem"
+            self.logger.error(errmsg)
+            return pb2.req_status(status=errno.ENOENT, error_message=errmsg)
+
+        find_ret = self.subsystem_nsid_bdev_and_uuid.find_namespace(
+            request.subsystem_nqn, request.nsid)
+        if find_ret.empty():
+            errmsg = f"{failure_prefix}: Can't find namespace"
+            self.logger.error(errmsg)
+            return pb2.req_status(status=errno.ENODEV, error_message=errmsg)
+
+        omap_lock = self.omap_lock.get_omap_lock_to_use(context)
+        with omap_lock:
+            ns_entry = None
+            if context:
+                # notice that the local state might not be up to date in case we're in the middle
+                # of update() but as the context is not None, we are not in an update(), the OMAP
+                # lock made sure that we got here with an updated local state
+                state = self.gateway_state.local.get_state()
+                ns_key = GatewayState.build_namespace_key(request.subsystem_nqn, request.nsid)
+                try:
+                    state_ns = state[ns_key]
+                    ns_entry = json.loads(state_ns)
+                    GatewayService.fill_namespace_missing_fields(ns_entry)
+                    if ns_entry["location"] == request.location:
+                        self.logger.warning(f"No change to namespace {request.nsid} in "
+                                            f"{request.subsystem_nqn} location, nothing to do")
+                        return pb2.req_status(status=0, error_message=os.strerror(0))
+                except Exception:
+                    errmsg = f"{failure_prefix}: Can't find entry for namespace"
+                    self.logger.error(errmsg)
+                    return pb2.req_status(status=errno.ENOENT, error_message=errmsg)
+
+            if context:
+                assert ns_entry, "Namespace entry is None for non-update call"
+                # Update gateway state
+                try:
+                    add_req = pb2.namespace_add_req(rbd_pool_name=ns_entry["rbd_pool_name"],
+                                                    rbd_image_name=ns_entry["rbd_image_name"],
+                                                    rbd_data_pool_name=ns_entry[
+                                                        "rbd_data_pool_name"],
+                                                    subsystem_nqn=ns_entry["subsystem_nqn"],
+                                                    nsid=ns_entry["nsid"],
+                                                    block_size=ns_entry["block_size"],
+                                                    uuid=ns_entry["uuid"],
+                                                    anagrpid=ns_entry["anagrpid"],
+                                                    create_image=ns_entry["create_image"],
+                                                    trash_image=ns_entry["trash_image"],
+                                                    size=int(ns_entry["size"]),
+                                                    force=ns_entry["force"],
+                                                    no_auto_visible=ns_entry["no_auto_visible"],
+                                                    disable_auto_resize=ns_entry[
+                                                    "disable_auto_resize"],
+                                                    read_only=ns_entry["read_only"],
+                                                    location=request.location)
+                    json_req = json_format.MessageToJson(
+                        add_req, preserving_proto_field_name=True,
+                        including_default_value_fields=True)
+                    self.gateway_state.add_namespace(request.subsystem_nqn, request.nsid, json_req)
+                except Exception as ex:
+                    errmsg = f"Error persisting location change for namespace " \
+                             f"{request.nsid} in {request.subsystem_nqn}"
+                    self.logger.exception(errmsg)
+                    errmsg = f"{errmsg}:\n{ex}"
+                    return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
+
+        # this should be done also on update
+        find_ret.set_location(request.location)
+
+        return pb2.req_status(status=0, error_message=os.strerror(0))
+
+    def namespace_change_location(self, request, context=None):
+        """Changes a namespace location."""
+        err_prefix = f"Failure changing location for namespace {request.nsid} " \
+                     f"in {request.subsystem_nqn}: "
+        return self.execute_grpc_function(self.namespace_change_location_safe,
                                           request, context, err_prefix)
 
     def namespace_set_rbd_trash_image_safe(self, request, context=None):
@@ -2875,7 +2988,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                                     no_auto_visible=ns_entry["no_auto_visible"],
                                                     disable_auto_resize=ns_entry[
                                                     "disable_auto_resize"],
-                                                    read_only=ns_entry["read_only"])
+                                                    read_only=ns_entry["read_only"],
+                                                    location=ns_entry["location"])
                     json_req = json_format.MessageToJson(
                         add_req, preserving_proto_field_name=True,
                         including_default_value_fields=True)
@@ -2888,8 +3002,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     errmsg = f"{errmsg}:\n{ex}"
                     return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
 
-            # this should be done also on update
-            find_ret.trash_image = request.trash_image
+        # this should be done also on update
+        find_ret.trash_image = request.trash_image
 
         return pb2.req_status(status=0, error_message=os.strerror(0))
 
@@ -3204,7 +3318,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                                configured_load_balancing_group=lb_group_configured,
                                                cluster_name=cluster_name,
                                                image_was_shrunk=was_image_shrunk,
-                                               rbd_data_pool_name=find_ret.data_pool)
+                                               rbd_data_pool_name=find_ret.data_pool,
+                                               location=find_ret.location)
                     with self.rpc_lock:
                         ns_bdev = self.get_bdev_info(bdev_name)
                     if ns_bdev is None:
