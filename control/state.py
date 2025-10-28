@@ -42,6 +42,7 @@ class GatewayState(ABC):
     NAMESPACE_LB_GROUP_PREFIX = "lbgroup" + OMAP_KEY_DELIMITER
     NAMESPACE_HOST_PREFIX = "ns-host" + OMAP_KEY_DELIMITER
     NAMESPACE_VISIBILITY_PREFIX = "ns-visibility" + OMAP_KEY_DELIMITER
+    NAMESPACE_LOCATION_PREFIX = "ns-location" + OMAP_KEY_DELIMITER
     NAMESPACE_TRASH_IMAGE_PREFIX = "ns-trash-image" + OMAP_KEY_DELIMITER
 
     def is_key_element_valid(s: str) -> bool:
@@ -66,6 +67,13 @@ class GatewayState(ABC):
 
     def build_namespace_visibility_key(subsystem_nqn: str, nsid) -> str:
         key = GatewayState.NAMESPACE_VISIBILITY_PREFIX + subsystem_nqn + \
+            GatewayState.OMAP_KEY_DELIMITER
+        if nsid is not None:
+            key += str(nsid)
+        return key
+
+    def build_namespace_location_key(subsystem_nqn: str, nsid) -> str:
+        key = GatewayState.NAMESPACE_LOCATION_PREFIX + subsystem_nqn + \
             GatewayState.OMAP_KEY_DELIMITER
         if nsid is not None:
             key += str(nsid)
@@ -1216,6 +1224,15 @@ class GatewayStateHandler:
             notify_event.wait(max(update_time - time.time(), 0))
             notify_event.clear()
 
+    def _normalize_json_string(val: str) -> str:
+        return val if val else ""
+
+    def _normalize_json_boolean(val: bool) -> bool:
+        return val if val else False
+
+    def _normalize_json_int(val):
+        return val if val else 0
+
     def _parse_namespace_req(self, val):
         req = None
         try:
@@ -1224,6 +1241,30 @@ class GatewayStateHandler:
                                     ignore_unknown_fields=True)
         except json_format.ParseError:
             self.logger.exception(f"Got exception parsing {val}")
+
+        if req is None:
+            return req
+
+        # Because of Json formatting of empty fields we might get a difference here,
+        # so just use the same values for empty
+        req.rbd_pool_name = GatewayStateHandler._normalize_json_string(req.rbd_pool_name)
+        req.rbd_image_name = GatewayStateHandler._normalize_json_string(req.rbd_image_name)
+        req.subsystem_nqn = GatewayStateHandler._normalize_json_string(req.subsystem_nqn)
+        req.uuid = GatewayStateHandler._normalize_json_string(req.uuid)
+        req.rbd_data_pool_name = GatewayStateHandler._normalize_json_string(req.rbd_data_pool_name)
+        req.location = GatewayStateHandler._normalize_json_string(req.location)
+        req.create_image = GatewayStateHandler._normalize_json_boolean(req.create_image)
+        req.force = GatewayStateHandler._normalize_json_boolean(req.force)
+        req.no_auto_visible = GatewayStateHandler._normalize_json_boolean(req.no_auto_visible)
+        req.trash_image = GatewayStateHandler._normalize_json_boolean(req.trash_image)
+        req.disable_auto_resize = \
+            GatewayStateHandler._normalize_json_boolean(req.disable_auto_resize)
+        req.read_only = GatewayStateHandler._normalize_json_boolean(req.read_only)
+        req.nsid = GatewayStateHandler._normalize_json_int(req.nsid)
+        req.block_size = GatewayStateHandler._normalize_json_int(req.block_size)
+        req.anagrpid = GatewayStateHandler._normalize_json_int(req.anagrpid)
+        req.size = GatewayStateHandler._normalize_json_int(req.size)
+
         return req
 
     def namespace_need_to_be_re_added(self, old_req, new_req) -> bool:
@@ -1231,11 +1272,11 @@ class GatewayStateHandler:
         # are more changes
 
         old = copy.copy(old_req)
-        new = copy.copy(new_req)
-        old.anagrpid = new.anagrpid
-        old.no_auto_visible = new.no_auto_visible
-        old.trash_image = new.trash_image
-        return old != new
+        old.anagrpid = new_req.anagrpid
+        old.no_auto_visible = new_req.no_auto_visible
+        old.trash_image = new_req.trash_image
+        old.location = new_req.location
+        return old != new_req
 
     def namespace_lb_group_id_changed(self, old_req, new_req):
         # If the lb group id field has changed we should use change_lb_group
@@ -1258,6 +1299,17 @@ class GatewayStateHandler:
             return None
 
         return not new_req.no_auto_visible
+
+    def namespace_location_changed(self, old_req, new_req):
+        # If the location field has changed we can use change_location
+        # request instead of re-adding the namespace
+
+        assert old_req != new_req, f"Something was wrong we shouldn't get identical " \
+                                   f"old and new values ({old_req})"
+        if old_req.location == new_req.location:
+            return (False, None)
+
+        return (True, new_req.location)
 
     def namespace_trash_image_changed(self, old_req, new_req):
         # If the RBD trash image flag has changed we can use set_rbd_trash_image
@@ -1293,22 +1345,14 @@ class GatewayStateHandler:
                                    f"old and new values ({old_req})"
         # Because of Json formatting of empty fields we might get a difference here,
         # so just use the same values for empty
-        if not old_req.dhchap_key:
-            old_req.dhchap_key = ""
-        if not new_req.dhchap_key:
-            new_req.dhchap_key = ""
-        if not old_req.key_encrypted:
-            old_req.key_encrypted = False
-        if not new_req.key_encrypted:
-            new_req.key_encrypted = False
-        if not old_req.psk:
-            old_req.psk = ""
-        if not new_req.psk:
-            new_req.psk = ""
-        if not old_req.psk_encrypted:
-            old_req.psk_encrypted = False
-        if not new_req.psk_encrypted:
-            new_req.psk_encrypted = False
+        old_req.dhchap_key = GatewayStateHandler._normalize_json_string(old_req.dhchap_key)
+        new_req.dhchap_key = GatewayStateHandler._normalize_json_string(new_req.dhchap_key)
+        old_req.key_encrypted = GatewayStateHandler._normalize_json_boolean(old_req.key_encrypted)
+        new_req.key_encrypted = GatewayStateHandler._normalize_json_boolean(new_req.key_encrypted)
+        old_req.psk = GatewayStateHandler._normalize_json_string(old_req.psk)
+        new_req.psk = GatewayStateHandler._normalize_json_string(new_req.psk)
+        old_req.psk_encrypted = GatewayStateHandler._normalize_json_boolean(old_req.psk_encrypted)
+        new_req.psk_encrypted = GatewayStateHandler._normalize_json_boolean(new_req.psk_encrypted)
         old_req.dhchap_key = new_req.dhchap_key
         old_req.key_encrypted = new_req.key_encrypted
         if old_req != new_req:
@@ -1343,14 +1387,10 @@ class GatewayStateHandler:
                                    f"and new values ({old_req})"
         # Because of Json formatting of empty fields we might get a difference here,
         # so just use the same values for empty
-        if not old_req.dhchap_key:
-            old_req.dhchap_key = ""
-        if not new_req.dhchap_key:
-            new_req.dhchap_key = ""
-        if not old_req.key_encrypted:
-            old_req.key_encrypted = False
-        if not new_req.key_encrypted:
-            new_req.key_encrypted = False
+        old_req.dhchap_key = GatewayStateHandler._normalize_json_string(old_req.dhchap_key)
+        new_req.dhchap_key = GatewayStateHandler._normalize_json_string(new_req.dhchap_key)
+        old_req.key_encrypted = GatewayStateHandler._normalize_json_boolean(old_req.key_encrypted)
+        new_req.key_encrypted = GatewayStateHandler._normalize_json_boolean(new_req.key_encrypted)
         old_req.dhchap_key = new_req.dhchap_key
         old_req.key_encrypted = new_req.key_encrypted
         if old_req != new_req:
@@ -1494,6 +1534,7 @@ class GatewayStateHandler:
                 # Handle some special cases in which we don't need to delete and re-add
                 ns_lb_group_changed = []
                 ns_visibility_changed = []
+                ns_location_changed = []
                 ns_trash_image_changed = []
                 only_host_key_changed = []
                 only_subsystem_key_changed = []
@@ -1520,6 +1561,13 @@ class GatewayStateHandler:
                             self.logger.debug(f"Found {key} where the visibility has changed. "
                                               f"The new visibility is {new_visibility}")
                             ns_visibility_changed.append((key, new_visibility))
+
+                        (should_process, new_location) = self.namespace_location_changed(old_req,
+                                                                                         new_req)
+                        if should_process:
+                            self.logger.debug(f"Found {key} where the location has changed. "
+                                              f"The new location is {new_location}")
+                            ns_location_changed.append((key, new_location))
 
                         new_trash_image = self.namespace_trash_image_changed(old_req, new_req)
                         if new_trash_image is not None:
@@ -1600,6 +1648,31 @@ class GatewayStateHandler:
                         except Exception:
                             self.logger.exception("Exception formatting change namespace "
                                                   "visibility request")
+
+                for ns_key, new_location in ns_location_changed:
+                    ns_nqn = None
+                    ns_nsid = None
+                    try:
+                        changed.pop(ns_key, None)
+                    except Exception:
+                        self.logger.exception(f"Exception removing {ns_key} from {changed}")
+                    (ns_nqn, ns_nsid) = self.break_namespace_key(ns_key)
+                    if ns_nqn and ns_nsid:
+                        try:
+                            location_key = GatewayState.build_namespace_location_key(ns_nqn,
+                                                                                     ns_nsid)
+                            req = pb2.namespace_change_location_req(
+                                subsystem_nqn=ns_nqn,
+                                nsid=ns_nsid,
+                                location=new_location)
+                            json_req = json_format.MessageToJson(
+                                req,
+                                preserving_proto_field_name=True,
+                                including_default_value_fields=True)
+                            added[location_key] = json_req
+                        except Exception:
+                            self.logger.exception("Exception formatting change namespace "
+                                                  "location request")
 
                 for ns_key, new_trash_image in ns_trash_image_changed:
                     ns_nqn = None
@@ -1685,7 +1758,7 @@ class GatewayStateHandler:
 
                 if len(ns_lb_group_changed) > 0 or len(only_host_key_changed) > 0 or \
                    len(only_subsystem_key_changed) > 0 or len(ns_visibility_changed) > 0 or \
-                   len(ns_trash_image_changed) > 0:
+                   len(ns_location_changed) > 0 or len(ns_trash_image_changed) > 0:
                     grouped_changed = self._group_by_prefix(changed, prefix_list)
 
                     if len(only_subsystem_key_changed) > 0:
@@ -1694,6 +1767,8 @@ class GatewayStateHandler:
                         prefix_list += [GatewayState.NAMESPACE_LB_GROUP_PREFIX]
                     if len(ns_visibility_changed) > 0:
                         prefix_list += [GatewayState.NAMESPACE_VISIBILITY_PREFIX]
+                    if len(ns_location_changed) > 0:
+                        prefix_list += [GatewayState.NAMESPACE_LOCATION_PREFIX]
                     if len(ns_trash_image_changed) > 0:
                         prefix_list += [GatewayState.NAMESPACE_TRASH_IMAGE_PREFIX]
                     if len(only_host_key_changed) > 0:

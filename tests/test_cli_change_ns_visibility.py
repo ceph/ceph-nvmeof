@@ -1,4 +1,3 @@
-import pytest
 from control.server import GatewayServer
 from control.cli import main as cli
 from control.cephutils import CephUtils
@@ -12,9 +11,9 @@ image = "mytestdevimage"
 pool = "rbd"
 subsystem = "nqn.2016-06.io.spdk:cnode1"
 config = "ceph-nvmeof.conf"
+group_name = "GROUPNAME"
 
 
-@pytest.fixture(scope="module")
 def two_gateways(config):
     """Sets up and tears down two Gateways"""
     nameA = "GatewayAA"
@@ -22,7 +21,7 @@ def two_gateways(config):
     sockA = f"spdk_{nameA}.sock"
     sockB = f"spdk_{nameB}.sock"
     config.config["gateway-logs"]["log_level"] = "debug"
-    config.config["gateway"]["group"] = ""
+    config.config["gateway"]["group"] = group_name
     addr = config.get("gateway", "addr")
     configA = copy.deepcopy(config)
     configB = copy.deepcopy(config)
@@ -47,49 +46,53 @@ def two_gateways(config):
         configB.config["spdk"]["tgt_cmd_extra_args"] = "--disable-cpumask-locks"
 
     ceph_utils = CephUtils(config)
-    with (GatewayServer(configA) as gatewayA, GatewayServer(configB) as gatewayB):
-        ceph_utils.execute_ceph_monitor_command(
-            "{" + f'"prefix":"nvme-gw create", "id": "{nameA}", "pool": "{pool}", "group": ""' + "}"
-        )
-        ceph_utils.execute_ceph_monitor_command(
-            "{" + f'"prefix":"nvme-gw create", "id": "{nameB}", "pool": "{pool}", "group": ""' + "}"
-        )
-        gatewayA.serve()
-        gatewayB.serve()
+    gatewayA = GatewayServer(configA)
+    gatewayB = GatewayServer(configB)
+    ceph_utils.execute_ceph_monitor_command(
+        "{" + f'"prefix":"nvme-gw create", "id": "{nameA}", "pool": "{pool}", '
+        f'"group": "{group_name}"' + "}"
+    )
+    ceph_utils.execute_ceph_monitor_command(
+        "{" + f'"prefix":"nvme-gw create", "id": "{nameB}", "pool": "{pool}", '
+        f'"group": "{group_name}"' + "}"
+    )
+    gatewayA.serve()
+    gatewayB.serve()
 
-        channelA = grpc.insecure_channel(f"{addr}:{portA}")
-        stubA = pb2_grpc.GatewayStub(channelA)
-        channelB = grpc.insecure_channel(f"{addr}:{portB}")
-        stubB = pb2_grpc.GatewayStub(channelB)
+    channelA = grpc.insecure_channel(f"{addr}:{portA}")
+    pb2_grpc.GatewayStub(channelA)
+    channelB = grpc.insecure_channel(f"{addr}:{portB}")
+    pb2_grpc.GatewayStub(channelB)
 
-        yield gatewayA, stubA, gatewayB, stubB
-        gatewayA.gateway_rpc.gateway_state.delete_state()
-        gatewayB.gateway_rpc.gateway_state.delete_state()
-        gatewayA.server.stop(grace=1)
-        gatewayB.server.stop(grace=1)
+    return gatewayA, gatewayB
 
 
-def test_change_namespace_visibility(caplog, two_gateways):
-    gatewayA, stubA, gatewayB, stubB = two_gateways
+def test_change_namespace_visibility(config, caplog):
+    gatewayA, gatewayB = two_gateways(config)
     caplog.clear()
     cli(["subsystem", "add", "--subsystem", subsystem, "--no-group-append"])
     assert f"create_subsystem {subsystem}: True" in caplog.text
     caplog.clear()
     cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool,
+         "--rbd-data-pool", pool,
          "--rbd-image", f"{image}", "--size", "16MB", "--rbd-create-image",
-         "--load-balancing-group", "1"])
+         "--load-balancing-group", "1", "--location", "Somewhere"])
     assert f"Adding namespace 1 to {subsystem}: Successful" in caplog.text
     caplog.clear()
     cli(["--format", "json", "namespace", "list", "--subsystem", subsystem, "--nsid", "1"])
     assert '"nsid": 1,' in caplog.text
     assert '"auto_visible": true,' in caplog.text
     assert '"load_balancing_group": 1,' in caplog.text
+    assert f'"rbd_data_pool_name": "{pool}",' in caplog.text
+    assert '"location": "Somewhere",' in caplog.text
     time.sleep(15)
     caplog.clear()
     cli(["--server-port", "5502", "--format", "json", "namespace", "list",
          "--subsystem", subsystem, "--nsid", "1"])
     assert '"nsid": 1,' in caplog.text
     assert '"auto_visible": true,' in caplog.text
+    assert f'"rbd_data_pool_name": "{pool}",' in caplog.text
+    assert '"location": "Somewhere",' in caplog.text
     caplog.clear()
     cli(["namespace", "change_visibility", "--subsystem", subsystem,
          "--nsid", "1", "--auto-visible", "no"])
@@ -126,6 +129,16 @@ def test_change_namespace_visibility(caplog, two_gateways):
     assert '"nsid": 1,' in caplog.text
     assert '"auto_visible":' not in caplog.text or '"auto_visible": false,' in caplog.text
     assert '"read_only": false,' in caplog.text
+    assert f'"rbd_data_pool_name": "{pool}",' in caplog.text
+    assert '"location": "Somewhere",' in caplog.text
+    caplog.clear()
+    cli(["--server-port", "5502", "--format", "json", "namespace", "list",
+         "--subsystem", subsystem, "--nsid", "1"])
+    assert '"nsid": 1,' in caplog.text
+    assert '"auto_visible":' not in caplog.text or '"auto_visible": false,' in caplog.text
+    assert '"read_only": false,' in caplog.text
+    assert f'"rbd_data_pool_name": "{pool}",' in caplog.text
+    assert '"location": "Somewhere",' in caplog.text
     caplog.clear()
     cli(["--server-port", "5502", "namespace", "change_visibility",
          "--subsystem", subsystem, "--nsid", "1", "--auto-visible", "yes"])
@@ -144,3 +157,39 @@ def test_change_namespace_visibility(caplog, two_gateways):
     assert '"nsid": 1,' in caplog.text
     assert '"auto_visible": true,' in caplog.text
     assert '"read_only": false,' in caplog.text
+    assert f'"rbd_data_pool_name": "{pool}",' in caplog.text
+    assert '"location": "Somewhere",' in caplog.text
+    caplog.clear()
+    cli(["--format", "json", "namespace", "list", "--subsystem", subsystem, "--nsid", "1"])
+    assert '"nsid": 1,' in caplog.text
+    assert '"auto_visible": true,' in caplog.text
+    assert '"read_only": false,' in caplog.text
+    assert f'"rbd_data_pool_name": "{pool}",' in caplog.text
+    assert '"location": "Somewhere",' in caplog.text
+
+    gwB = gatewayB.gateway_rpc
+    configB = gwB.config
+    portB = gwB.config.config["gateway"]["port"]
+    addrB = gwB.config.config["gateway"]["addr"]
+    assert portB == "5502"
+    gatewayB.__exit__(None, None, None)
+    print("Restarting gateway B")
+    time.sleep(15)
+    gatewayB = GatewayServer(configB)
+    ceph_utils = CephUtils(configB)
+    ceph_utils.execute_ceph_monitor_command(
+        "{" + f'"prefix":"nvme-gw create", "id": "{gatewayB.name}", "pool": "{pool}", '
+        f'"group": "{group_name}"' + "}"
+    )
+    gatewayB.serve()
+    channelB = grpc.insecure_channel(f"{addrB}:{portB}")
+    pb2_grpc.GatewayStub(channelB)
+    time.sleep(10)
+    caplog.clear()
+    cli(["--server-port", portB, "--format", "json", "namespace", "list",
+         "--subsystem", subsystem, "--nsid", "1"])
+    assert '"nsid": 1,' in caplog.text
+    assert '"auto_visible": true,' in caplog.text
+    assert '"read_only": false,' in caplog.text
+    assert f'"rbd_data_pool_name": "{pool}",' in caplog.text
+    assert '"location": "Somewhere",' in caplog.text

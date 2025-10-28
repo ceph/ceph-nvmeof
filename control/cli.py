@@ -1974,7 +1974,8 @@ class GatewayClient:
                                     trash_image=args.rbd_trash_image_on_delete,
                                     disable_auto_resize=args.disable_auto_resize,
                                     read_only=args.read_only,
-                                    rbd_data_pool_name=args.rbd_data_pool)
+                                    rbd_data_pool_name=args.rbd_data_pool,
+                                    location=args.location)
         try:
             ret = self.stub.namespace_add(req)
         except Exception as ex:
@@ -2215,6 +2216,7 @@ class GatewayClient:
                     if args.verbose:
                         verbose_info = [cluster_name]
                         lb_group += f" ({configured_lb_group})"
+                    location = ns.location if ns.location else "<N/A>"
                     namespaces_list.append([subsys_nqn,
                                             ns.nsid,
                                             break_string(ns.bdev_name, "-", 2),
@@ -2225,6 +2227,7 @@ class GatewayClient:
                                             self.format_size(ns.block_size),
                                             break_string(ns.uuid, "-", 3),
                                             lb_group,
+                                            location,
                                             visibility,
                                             self.get_qos_limit_str_value(ns.rw_ios_per_second),
                                             self.get_qos_limit_str_value(ns.rw_mbytes_per_second),
@@ -2252,6 +2255,7 @@ class GatewayClient:
                                                        "Block\nSize",
                                                        "UUID",
                                                        "Load\nBalancing\nGroup" + configured_txt,
+                                                       "Location",
                                                        "Visibility",
                                                        "R/W IOs\nper\nsecond",
                                                        "R/W MBs\nper\nsecond",
@@ -2681,6 +2685,50 @@ class GatewayClient:
 
         return ret.status
 
+    def ns_change_location(self, args):
+        """Change namespace location."""
+
+        out_func, err_func, _ = self.get_output_functions(args)
+        if args.nsid <= 0:
+            self.cli.parser.error("nsid value must be positive")
+
+        try:
+            change_location_req = pb2.namespace_change_location_req(
+                subsystem_nqn=args.subsystem,
+                nsid=args.nsid,
+                location=args.location)
+            ret = self.stub.namespace_change_location(change_location_req)
+        except Exception as ex:
+            ret = pb2.req_status(status=errno.EINVAL,
+                                 error_message=f"Failure setting namespace location "
+                                               f"to \"{args.location}\":\n{ex}")
+
+        if args.format == "text" or args.format == "plain":
+            if ret.status == 0:
+                if args.location:
+                    out_func(f"Setting location for namespace {args.nsid} in {args.subsystem} "
+                             f"to \"{args.location}\": Successful")
+                else:
+                    out_func(f"Unsetting location for namespace {args.nsid} "
+                             f"in {args.subsystem}: Successful")
+            else:
+                err_func(f"{ret.error_message}")
+        elif args.format == "json" or args.format == "yaml":
+            ret_str = json_format.MessageToJson(ret, indent=4,
+                                                including_default_value_fields=True,
+                                                preserving_proto_field_name=True)
+            if args.format == "json":
+                out_func(ret_str)
+            elif args.format == "yaml":
+                obj = json.loads(ret_str)
+                out_func(yaml.dump(obj))
+        elif args.format == "python":
+            return ret
+        else:
+            assert False
+
+        return ret.status
+
     def ns_set_rbd_trash_image(self, args):
         """Change RBD trash image flag for a namespace."""
 
@@ -2869,6 +2917,9 @@ class GatewayClient:
                  help="Open the namespace in read-only mode",
                  action='store_true',
                  required=False),
+        argument("--location",
+                 help="Namespace's location",
+                 required=False),
     ]
     ns_del_args_list = ns_common_args + [
         argument("--nsid",
@@ -2931,6 +2982,15 @@ class GatewayClient:
                  help="Change visibility of namespace even if there are hosts added "
                       "to it or active connections on the subsystem",
                  action='store_true',
+                 required=False),
+    ]
+    ns_change_location_args_list = ns_common_args + [
+        argument("--nsid",
+                 help="Namespace ID",
+                 type=int,
+                 required=True),
+        argument("--location",
+                 help="Namespace's location",
                  required=False),
     ]
     ns_set_auto_resize_args_list = ns_common_args + [
@@ -3025,6 +3085,9 @@ class GatewayClient:
     ns_actions.append({"name": "change_visibility",
                        "args": ns_change_visibility_args_list,
                        "help": "Change visibility for a namespace"})
+    ns_actions.append({"name": "change_location",
+                       "args": ns_change_location_args_list,
+                       "help": "Change location for a namespace"})
     ns_actions.append({"name": "set_rbd_trash_image",
                        "args": ns_set_rbd_trash_image_args_list,
                        "help": "Set the RBD trash image on delete flag for a namespace"})
@@ -3059,6 +3122,8 @@ class GatewayClient:
             return self.ns_del_host(args)
         elif args.action == "change_visibility":
             return self.ns_change_visibility(args)
+        elif args.action == "change_location":
+            return self.ns_change_location(args)
         elif args.action == "set_rbd_trash_image":
             return self.ns_set_rbd_trash_image(args)
         elif args.action == "set_auto_resize":
