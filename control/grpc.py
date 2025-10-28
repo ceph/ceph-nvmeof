@@ -628,6 +628,27 @@ class NamespacesLocalList:
 
         return ns_list
 
+    def get_all_namespaces_with_location(self, location: str, nqn=None) -> list:
+        if nqn and nqn not in self.namespace_list:
+            return []
+
+        if nqn:
+            subsystems = [nqn]
+        else:
+            subsystems = self.namespace_list.keys()
+
+        ns_list = []
+        for nqn in subsystems:
+            for nsid in self.namespace_list[nqn]:
+                ns = self.namespace_list[nqn][nsid]
+                if ns.empty():
+                    continue
+                if not location and not ns.location:
+                    ns_list.append((nsid, nqn))
+                elif ns.location == location:
+                    ns_list.append((nsid, nqn))
+        return ns_list
+
 
 class ImageIdentification:
     DELIMITER = GatewayState.OMAP_KEY_DELIMITER
