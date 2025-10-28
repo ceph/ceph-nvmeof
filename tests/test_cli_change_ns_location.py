@@ -10,8 +10,10 @@ import os
 
 image = "mytestdevimage"
 image2 = "mytestdevimage2"
+image3 = "mytestdevimage3"
 pool = "rbd"
 subsystem = "nqn.2016-06.io.spdk:cnode1"
+subsystem2 = "nqn.2016-06.io.spdk:cnode2"
 config = "ceph-nvmeof.conf"
 
 
@@ -59,11 +61,11 @@ def two_gateways(config):
         gatewayB.serve()
 
         channelA = grpc.insecure_channel(f"{addr}:{portA}")
-        stubA = pb2_grpc.GatewayStub(channelA)
+        pb2_grpc.GatewayStub(channelA)
         channelB = grpc.insecure_channel(f"{addr}:{portB}")
-        stubB = pb2_grpc.GatewayStub(channelB)
+        pb2_grpc.GatewayStub(channelB)
 
-        yield gatewayA, stubA, gatewayB, stubB
+        yield gatewayA.gateway_rpc, gatewayB.gateway_rpc
         gatewayA.gateway_rpc.gateway_state.delete_state()
         gatewayB.gateway_rpc.gateway_state.delete_state()
         gatewayA.server.stop(grace=1)
@@ -71,7 +73,7 @@ def two_gateways(config):
 
 
 def test_change_namespace_location(caplog, two_gateways):
-    gatewayA, stubA, gatewayB, stubB = two_gateways
+    gatewayA, gatewayB = two_gateways
     caplog.clear()
     cli(["subsystem", "add", "--subsystem", subsystem, "--no-group-append"])
     assert f"create_subsystem {subsystem}: True" in caplog.text
@@ -88,7 +90,7 @@ def test_change_namespace_location(caplog, two_gateways):
     caplog.clear()
     cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool,
          "--rbd-data-poo", pool,
-         "--rbd-image", f"{image}", "--size", "16MB", "--rbd-create-image",
+         "--rbd-image", image, "--size", "16MB", "--rbd-create-image",
          "--location", "USA"])
     assert f"Adding namespace 1 to {subsystem}: Successful" in caplog.text
     caplog.clear()
@@ -113,6 +115,32 @@ def test_change_namespace_location(caplog, two_gateways):
     assert '"nsid": 1,' in caplog.text
     assert '"location": "USA",' in caplog.text
     caplog.clear()
+    cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool,
+         "--rbd-data-poo", pool,
+         "--rbd-image", image2, "--size", "16MB", "--rbd-create-image",
+         "--location", "USA"])
+    assert f"Adding namespace 2 to {subsystem}: Successful" in caplog.text
+    time.sleep(15)
+    caplog.clear()
+    cli(["--server-port", "5502", "--format", "json", "namespace", "list",
+         "--subsystem", subsystem, "--nsid", "2"])
+    assert '"nsid": 2,' in caplog.text
+    assert '"location": "USA",' in caplog.text
+    ns_list = gatewayA.subsystem_nsid_bdev_and_uuid.get_all_namespaces_with_location("Junk")
+    assert len(ns_list) == 0
+    ns_list = gatewayA.subsystem_nsid_bdev_and_uuid.get_all_namespaces_with_location("USA")
+    assert len(ns_list) == 2
+    assert ns_list[0] == (1, subsystem)
+    assert ns_list[1] == (2, subsystem)
+    ns_list = gatewayA.subsystem_nsid_bdev_and_uuid.get_all_namespaces_with_location("USA",
+                                                                                     subsystem)
+    assert len(ns_list) == 2
+    assert ns_list[0] == (1, subsystem)
+    assert ns_list[1] == (2, subsystem)
+    ns_list = gatewayA.subsystem_nsid_bdev_and_uuid.get_all_namespaces_with_location("USA",
+                                                                                     subsystem2)
+    assert len(ns_list) == 0
+    caplog.clear()
     cli(["namespace", "change_location", "--subsystem", subsystem,
          "--nsid", "1", "--location", "China"])
     assert f'Setting location for namespace 1 in {subsystem} to "China": ' \
@@ -136,6 +164,9 @@ def test_change_namespace_location(caplog, two_gateways):
     assert '"nsid": 1,' in caplog.text
     assert '"location": "China",' in caplog.text
     assert f'"rbd_data_pool_name": "{pool}",' in caplog.text
+    ns_list = gatewayA.subsystem_nsid_bdev_and_uuid.get_all_namespaces_with_location("USA")
+    assert len(ns_list) == 1
+    assert ns_list[0] == (2, subsystem)
     caplog.clear()
     cli(["--server-port", "5502", "namespace", "change_location",
          "--subsystem", subsystem, "--nsid", "1", "--location", ""])
@@ -156,17 +187,25 @@ def test_change_namespace_location(caplog, two_gateways):
     assert f'"rbd_data_pool_name": "{pool}",' in caplog.text
     caplog.clear()
     cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool,
-         "--rbd-image", f"{image2}", "--size", "16MB", "--rbd-create-image"])
-    assert f"Adding namespace 2 to {subsystem}: Successful" in caplog.text
+         "--rbd-image", image3, "--size", "16MB", "--rbd-create-image"])
+    assert f"Adding namespace 3 to {subsystem}: Successful" in caplog.text
     caplog.clear()
-    cli(["--format", "json", "namespace", "list", "--subsystem", subsystem, "--nsid", "2"])
-    assert '"nsid": 2,' in caplog.text
+    cli(["--format", "json", "namespace", "list", "--subsystem", subsystem, "--nsid", "3"])
+    assert '"nsid": 3,' in caplog.text
     assert '"location": ""' in caplog.text
     caplog.clear()
     cli(["namespace", "change_location", "--subsystem", "junk",
-         "--nsid", "2", "--location", "Oz"])
-    assert "Failure changing location for namespace 2 in junk: Can't find subsystem"
+         "--nsid", "3", "--location", "Oz"])
+    assert "Failure changing location for namespace 3 in junk: Can't find subsystem"
     caplog.clear()
     cli(["namespace", "change_location", "--subsystem", subsystem,
          "--nsid", "25", "--location", "Oz"])
     assert f"Failure changing location for namespace 25 in {subsystem}: Can't find namespace"
+    ns_list = gatewayA.subsystem_nsid_bdev_and_uuid.get_all_namespaces_with_location(None)
+    assert len(ns_list) == 2
+    assert ns_list[0] == (1, subsystem)
+    assert ns_list[1] == (3, subsystem)
+    ns_list = gatewayA.subsystem_nsid_bdev_and_uuid.get_all_namespaces_with_location("")
+    assert len(ns_list) == 2
+    assert ns_list[0] == (1, subsystem)
+    assert ns_list[1] == (3, subsystem)
