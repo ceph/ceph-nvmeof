@@ -668,72 +668,93 @@ class NamespacesLocalList:
 
 
 class ImageIdentification:
-    DELIMITER = GatewayState.OMAP_KEY_DELIMITER
+    FIELD_DELIMITER = GatewayState.OMAP_KEY_DELIMITER
+    ID_DELIMITER = f"{GatewayState.OMAP_KEY_DELIMITER}" \
+                   f"{GatewayState.OMAP_KEY_DELIMITER}" \
+                   f"{GatewayState.OMAP_KEY_DELIMITER}"
 
-    def __init__(self, group_name, subsys, uuid, fsid=None):
-        group_name_to_use = None
-        if group_name is not None:
-            group_name_to_use = group_name.replace(ImageIdentification.DELIMITER, "-")
-        self.group_name = group_name_to_use
-        self.subsys = subsys
-        self.uuid = uuid
-        self.fsid = fsid
+    def __init__(self, group_name, subsys, uuid, fsid, rbd_id=None):
+        self.group_name = group_name if not group_name else \
+            group_name.replace(ImageIdentification.FIELD_DELIMITER, "-")
+        assert not self.group_name or ImageIdentification.ID_DELIMITER not in self.group_name
+        self.subsys = subsys if not subsys else \
+            subsys.replace(ImageIdentification.FIELD_DELIMITER, "-")
+        assert not self.subsys or ImageIdentification.ID_DELIMITER not in self.subsys
+        self.uuid = uuid if not uuid else \
+            uuid.replace(ImageIdentification.FIELD_DELIMITER, "-")
+        assert not self.uuid or ImageIdentification.ID_DELIMITER not in self.uuid
+        self.fsid = fsid if not fsid else \
+            fsid.replace(ImageIdentification.FIELD_DELIMITER, "-")
+        assert not self.fsid or ImageIdentification.ID_DELIMITER not in self.fsid
+        self.rbd_id = rbd_id if not rbd_id else \
+            rbd_id.replace(ImageIdentification.FIELD_DELIMITER, "-")
+        assert not self.rbd_id or ImageIdentification.ID_DELIMITER not in self.rbd_id
 
     def __str__(self):
-        return f"{self.group_name}{ImageIdentification.DELIMITER}{self.subsys}" \
-               f"{ImageIdentification.DELIMITER}{self.uuid}" \
-               f"{ImageIdentification.DELIMITER}{self.fsid}"
+        return f"{self.group_name}{ImageIdentification.FIELD_DELIMITER}{self.subsys}" \
+               f"{ImageIdentification.FIELD_DELIMITER}{self.uuid}" \
+               f"{ImageIdentification.FIELD_DELIMITER}{self.fsid}" \
+               f"{ImageIdentification.FIELD_DELIMITER}{self.rbd_id}"
 
     def empty(self) -> bool:
-        if self.group_name is not None:
+        if self.group_name:
             return False
-        if self.subsys is not None:
+        if self.subsys:
             return False
-        if self.uuid is not None:
+        if self.uuid:
+            return False
+        if self.fsid:
+            return False
+        if self.rbd_id:
             return False
         return True
 
     def does_fsid_match(self, fsid) -> bool:
-        if fsid is None or self.fsid is None:
-            return False
-        return fsid == self.fsid
+        if not fsid:
+            return not self.fsid
+        return self.fsid == fsid.replace(ImageIdentification.FIELD_DELIMITER, "-")
+
+    def does_rbd_id_match(self, rbd_id) -> bool:
+        if not rbd_id:
+            return not self.rbd_id
+        return self.rbd_id == rbd_id.replace(ImageIdentification.FIELD_DELIMITER, "-")
 
     def is_same_group(self, group_name: str) -> bool:
-        if group_name is None:
-            return self.group_name is None
         if not group_name:
             return not self.group_name
-        group_name_to_use = group_name.replace(ImageIdentification.DELIMITER, "-")
-        return group_name_to_use == self.group_name
+        return self.group_name == group_name.replace(ImageIdentification.FIELD_DELIMITER, "-")
 
     def is_same_uuid(self, uuid: str) -> bool:
-        if uuid is None:
-            return self.uuid is None
         if not uuid:
             return not self.uuid
-        return uuid == self.uuid
+        return self.uuid == uuid.replace(ImageIdentification.FIELD_DELIMITER, "-")
 
     def is_same_image_id(self, img_id) -> bool:
-        if self.fsid is not None and img_id.fsid is not None and self.fsid != img_id.fsid:
+        if self.fsid and img_id.fsid and not self.does_fsid_match(img_id.fsid):
             return False
-        if self.group_name != img_id.group_name:
+        if self.rbd_id and img_id.rbd_id and not self.does_rbd_id_match(img_id.rbd_id):
+            return False
+        if not self.is_same_group(img_id.group_name):
             return False
         if self.subsys != img_id.subsys:
             return False
-        if self.uuid != img_id.uuid:
+        if not self.is_same_uuid(img_id.uuid):
             return False
         return True
 
     @classmethod
     def parse(cls, img_ids: str) -> list:
-        parts = img_ids.split(ImageIdentification.DELIMITER)
-        if len(parts) < 4:
-            parts.append(None)
         ids_list = []
-        while parts:
-            group_name, subsys, uuid, fsid = parts[:4]
-            ids_list.append(ImageIdentification(group_name, subsys, uuid, fsid))
-            parts = parts[4:]
+        ids = img_ids.split(ImageIdentification.ID_DELIMITER)
+        for one_id in ids:
+            parts = one_id.split(ImageIdentification.FIELD_DELIMITER)
+            if len(parts) < 4:
+                parts.append(None)
+            if len(parts) < 5:
+                parts.append(None)
+            assert len(parts) == 5, f"Invalid image id {one_id}"
+            group_name, subsys, uuid, fsid, rbd_id = parts
+            ids_list.append(ImageIdentification(group_name, subsys, uuid, fsid, rbd_id))
 
         return ids_list
 
@@ -1258,11 +1279,21 @@ class GatewayService(pb2_grpc.GatewayServicer):
             else f"{rbd_pool}/{rados_namespace_name}/{rbd_image}"
         if self.fsid is None:
             self.fsid = self.ceph_utils.fetch_ceph_fsid()
-            self.logger.debug(f"Cluster FSID is {self.fsid}")
+            self.logger.debug(f"Cluster's FSID is {self.fsid}")
+        if not self.fsid:
+            self.logger.error("Can't read cluster's FSID, this might affect the prevention "
+                              "of RBD image re-use in namespaces")
         if img_id.fsid is None:
             self.logger.debug(f"No FSID set for image id {img_id}, "
-                              f"will use current FSID {self.fsid}")
+                              f"will use cluster's FSID {self.fsid}")
             img_id.fsid = self.fsid
+        if img_id.rbd_id is None:
+            img_id.rbd_id = self.ceph_utils.get_image_id(rbd_pool, rbd_image, rados_namespace_name)
+        if not img_id.rbd_id:
+            img_path = f"{rbd_pool}/{rados_namespace_name}/{rbd_image}" if rados_namespace_name \
+                else f"{rbd_pool}/{rbd_image}"
+            self.logger.error(f"Can't read the ID of image {img_path}, this might affect "
+                              f"the prevention of RBD image re-use in namespaces")
         img_id_value = ""
         img_ids_list = self.get_image_identification(rbd_pool, rbd_image, rados_namespace_name)
         for one_id in img_ids_list:
@@ -1270,7 +1301,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 self.logger.debug(f"Image id {img_id} already included in "
                                   f"{ImageIdentification.list2string(img_ids_list)}")
                 return
-            img_id_value += f"{one_id}{ImageIdentification.DELIMITER}"
+            img_id_value += f"{one_id}{ImageIdentification.ID_DELIMITER}"
 
         img_id_value += f"{img_id}"
 
@@ -1305,9 +1336,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 self.logger.debug(f"Image id {img_id} was found in "
                                   f"{ImageIdentification.list2string(img_ids_list)}")
                 continue
-            img_id_value += f"{one_id}{ImageIdentification.DELIMITER}"
+            img_id_value += f"{one_id}{ImageIdentification.ID_DELIMITER}"
 
-        img_id_value = img_id_value.removesuffix(ImageIdentification.DELIMITER)
+        img_id_value = img_id_value.removesuffix(ImageIdentification.ID_DELIMITER)
 
         if not img_id_value:
             try:
@@ -1896,6 +1927,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 continue
             try:
                 ns = json.loads(val)
+                GatewayService.fill_namespace_missing_fields(ns)
                 if ns["subsystem_nqn"] == nqn:
                     nsid = ns["nsid"]
                     ns_list.append(nsid)
@@ -2045,24 +2077,31 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         errmsg = ""
         nqn = None
+        pool_name = GatewayStateHandler._normalize_json_string(pool_name)
+        image_name = GatewayStateHandler._normalize_json_string(image_name)
+        rados_namespace_name = GatewayStateHandler._normalize_json_string(rados_namespace_name)
         image_path = f"{pool_name}/{rados_namespace_name}/{image_name}" \
             if rados_namespace_name else f"{pool_name}/{image_name}"
-        # Normalize: treat "" as None
-        check_rados_ns = None if rados_namespace_name == "" else rados_namespace_name
+        rbd_id = self.ceph_utils.get_image_id(pool_name, image_name, rados_namespace_name)
         img_ids_list = self.get_image_identification(pool_name, image_name, rados_namespace_name)
         for img_id in img_ids_list:
-            if not img_id.empty() and img_id.does_fsid_match(self.fsid):
-                if not img_id.is_same_group(self.gateway_group):
-                    grp_txt = f", group {img_id.group_name}" if img_id.group_name else ""
-                    errmsg = f"RBD image {image_path} is already used by a namespace " \
-                             f"in subsystem {img_id.subsys}{grp_txt}"
-                    return errmsg, img_id.subsys
-                if not img_id.is_same_uuid(uuid):
-                    uuid_txt = f"with UUID {img_id.uuid} " if img_id.uuid else ""
-                    grp_txt = f", group {img_id.group_name}" if img_id.group_name else ""
-                    errmsg = f"RBD image {image_path} is already used by a namespace " \
-                             f"{uuid_txt}in subsystem {img_id.subsys}{grp_txt}"
-                    return errmsg, img_id.subsys
+            if img_id.empty():
+                continue
+            if not img_id.does_fsid_match(self.fsid):
+                continue
+            if rbd_id and not img_id.does_rbd_id_match(rbd_id):
+                continue
+            if not img_id.is_same_group(self.gateway_group):
+                grp_txt = f", group {img_id.group_name}" if img_id.group_name else ""
+                errmsg = f"RBD image {image_path} is already used by a namespace " \
+                         f"in subsystem {img_id.subsys}{grp_txt}"
+                return errmsg, img_id.subsys
+            if not img_id.is_same_uuid(uuid):
+                uuid_txt = f"with UUID {img_id.uuid} " if img_id.uuid else ""
+                grp_txt = f", group {img_id.group_name}" if img_id.group_name else ""
+                errmsg = f"RBD image {image_path} is already used by a namespace " \
+                         f"{uuid_txt}in subsystem {img_id.subsys}{grp_txt}"
+                return errmsg, img_id.subsys
 
         state = self.gateway_state.local.get_state()
         for key, val in state.items():
@@ -2070,13 +2109,17 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 continue
             try:
                 ns = json.loads(val)
+                GatewayService.fill_namespace_missing_fields(ns)
                 ns_pool = ns["rbd_pool_name"]
+                ns_pool = GatewayStateHandler._normalize_json_string(ns_pool)
                 ns_image = ns["rbd_image_name"]
-                ns_rados_namespace = ns.get("rados_namespace_name")
+                ns_image = GatewayStateHandler._normalize_json_string(ns_image)
+                ns_rados_namespace = ns["rados_namespace_name"]
+                ns_rados_namespace = GatewayStateHandler._normalize_json_string(ns_rados_namespace)
                 path = f"{ns_pool}/{ns_rados_namespace}/{ns_image}" \
                     if ns_rados_namespace else f"{ns_pool}/{ns_image}"
                 if pool_name and pool_name == ns_pool and image_name and image_name == ns_image \
-                        and check_rados_ns == ns_rados_namespace:
+                        and rados_namespace_name and rados_namespace_name == ns_rados_namespace:
                     nqn = ns["subsystem_nqn"]
                     errmsg = f"RBD image {path} is already used by a namespace " \
                              f"in subsystem {nqn}"
@@ -2504,7 +2547,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
             img_id = ImageIdentification(self.gateway_group,
                                          request.subsystem_nqn,
-                                         request.uuid)
+                                         request.uuid,
+                                         self.fsid)
             self.set_image_identification(request.rbd_pool_name,
                                           request.rbd_image_name,
                                           request.rados_namespace_name,
@@ -3946,7 +3990,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                          find_ret.rados_namespace_name,
                                          ImageIdentification(self.gateway_group,
                                                              request.subsystem_nqn,
-                                                             find_ret.uuid))
+                                                             find_ret.uuid,
+                                                             self.fsid))
         self.subsystem_nsid_bdev_and_uuid.remove_namespace(request.subsystem_nqn, request.nsid)
         if bdev_name:
             ret_del = self.delete_bdev(bdev_name, peer_msg=peer_msg)
