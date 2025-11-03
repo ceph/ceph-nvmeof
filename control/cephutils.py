@@ -364,6 +364,25 @@ class CephUtils:
                                           f"{pool}/{image_name}")
                     raise
 
+    def get_image_id(self, pool: str, image_name: str) -> str:
+        value = None
+        if not self.pool_exists(pool):
+            self.logger.warning(f"Pool {pool} doesn't exist")
+            return None
+
+        with rados.Rados(conffile=self.ceph_conf, rados_id=self.rados_id) as cluster:
+            with cluster.open_ioctx(pool) as ioctx:
+                try:
+                    with rbd.Image(ioctx, image_name) as img:
+                        value = img.id()
+                        self.logger.debug(f"The ID of image {pool}/{image_name} is {value}")
+                except rbd.ImageNotFound:
+                    self.logger.warning(f"Image {pool}/{image_name} doesn't exist")
+                except Exception:
+                    self.logger.exception(f"Error while trying to get the id of image "
+                                          f"{pool}/{image_name}")
+        return value
+
     def get_rbd_exception_details(self, ex):
         ex_details = (None, None)
         if rbd.OSError in type(ex).__bases__:
