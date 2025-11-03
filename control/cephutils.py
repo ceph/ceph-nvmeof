@@ -42,7 +42,7 @@ class CephUtils:
         self.rebalance_ana_group = 0
         self.num_gws = 0
         self.last_sent = time.time()
-        self.ana_group_to_location: dict[int, str] = {}
+        self.ana_group_to_location: dict = {}
 
     def execute_ceph_monitor_command(self, cmd):
         self.logger.debug(f"Execute monitor command: {cmd}")
@@ -89,7 +89,10 @@ class CephUtils:
 
     def get_ana_grp_list_per_location(self, location):
         ana_group_locaton_list = []
+        # anagroup_list does not contain  deleting GW
+        # ana_group_to_location contains all existed GWs
         for ana_grp in self.anagroup_list:
+            self.logger.debug(f"{ana_grp} : {self.ana_group_to_location[ana_grp]} - {location} ")
             if self.ana_group_to_location[ana_grp] == location:
                 ana_group_locaton_list.append(ana_grp)
         return ana_group_locaton_list
@@ -122,11 +125,11 @@ class CephUtils:
 
                     gateways = data.get("Created Gateways:", [])
                     # self.logger.info(f"gateways: {gateways}")
-                    self.ana_group_to_location: dict[int, str] = {}
+                    self.ana_group_to_location: dict = {}
                     for gw in gateways:
                         try:
                             ana_id = int(gw["anagrp-id"])
-                            location = (gw["location"])
+                            location = gw.get("location", "")
                             self.ana_group_to_location[ana_id] = location
                         except (KeyError, ValueError, TypeError) as e:
                             self.logger.info(f"ana-location error: gw ,{gw},reason {repr(e)}")

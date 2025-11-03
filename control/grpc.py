@@ -2330,7 +2330,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         anagrp = 0
         peer_msg = self.get_peer_message(context)
         nsid_msg = f"{request.nsid} " if request.nsid else ""
-        loc_msg = f'"{request.location}"' if request.location else '""'
+        loc_msg = f'"{request.location}"' if request.location else ""
         rados_namespace_msg = ""
         if request.rados_namespace_name:
             rados_namespace_msg = f"rados_namespace_name: {request.rados_namespace_name}, "
@@ -2361,11 +2361,16 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                     f"from image {request.rbd_pool_name}/{request.rbd_image_name}")
 
             grps_list = self.ceph_utils.get_number_created_gateways(self.gateway_pool,
-                                                                    self.gateway_group)
+                                                                    self.gateway_group, False)
+            loc_grps_list = self.ceph_utils.get_ana_grp_list_per_location(loc_msg)
+            if len(loc_grps_list) == 0:
+                errmsg = f"Failure adding namespace, ID {request.nsid} invalid location {loc_msg}"
+                self.logger.error(errmsg)
+                return pb2.nsid_status(status=errno.ENODEV, error_message=errmsg)
             if request.anagrpid == 0:
                 _, anagrp = \
                     self.rebalance.find_min_loaded_group_in_subsys(request.subsystem_nqn,
-                                                                   grps_list)
+                                                                   loc_grps_list)
             if request.nsid:
                 ns = self.subsystem_nsid_bdev_and_uuid.find_namespace(request.subsystem_nqn,
                                                                       request.nsid)
@@ -2916,7 +2921,14 @@ class GatewayService(pb2_grpc.GatewayServicer):
             errmsg = f"{failure_prefix}: Can't find namespace"
             self.logger.error(errmsg)
             return pb2.req_status(status=errno.ENODEV, error_message=errmsg)
-
+        self.ceph_utils.get_number_created_gateways(self.gateway_pool,
+                                                    self.gateway_group, False)
+        loc_grps_list = self.ceph_utils.get_ana_grp_list_per_location(request.location)
+        if len(loc_grps_list) == 0:
+            errmsg = (f"Failure change namespace location, ID {request.nsid}"
+                      f" invalid location {request.location}")
+            self.logger.error(errmsg)
+            return pb2.nsid_status(status=errno.ENODEV, error_message=errmsg)
         omap_lock = self.omap_lock.get_omap_lock_to_use(context)
         with omap_lock:
             ns_entry = None
