@@ -183,11 +183,17 @@ rbd_meta=`make -s exec SVC=ceph OPTS=-T CMD="rbd image-meta get -p ${RBD_POOL} $
 [[ "$rbd_meta" == "${GROUP_NAME}_${NQN}_${UUID6}_${FSID2}_${rbd_id3}" ]]
 
 echo "ℹ️  create a namespace using the same image"
+set +e
 cephnvmf_func --output stdio namespace add --subsystem ${NQN} --rbd-pool ${RBD_POOL} --rbd-image ${RBD_IMAGE_NAME}3 --uuid ${UUID6}
+if [[ $? -eq 0 ]]; then
+    echo "Shouldn't succeed to create a namespace using the same image, even with changed FSID"
+    exit 1
+fi
+set -e
 
 echo "ℹ️  check RBD metadata"
 rbd_meta=`make -s exec SVC=ceph OPTS=-T CMD="rbd image-meta get -p ${RBD_POOL} ${RBD_IMAGE_NAME}3 NVME_IMAGE_IDENTIFICATION" 2> /dev/null`
-[[ "$rbd_meta" == "${GROUP_NAME}_${NQN}_${UUID6}_${FSID2}_${rbd_id3}___${GROUP_NAME}_${NQN}_${UUID6}_${FSID}_${rbd_id3}" ]]
+[[ "$rbd_meta" == "${GROUP_NAME}_${NQN}_${UUID6}_${FSID2}_${rbd_id3}" ]]
 
 echo "ℹ️  create a fourth RBD image"
 make -s exec SVC=ceph OPTS=-T CMD="rbd create -p ${RBD_POOL} ${RBD_IMAGE_NAME}4 --size 10M" 2> /dev/null
@@ -216,16 +222,11 @@ ns_list=$(cephnvmf_func --output stdio --format json namespace list --subsystem 
 [[ `echo $ns_list | jq -r '.namespaces[0].rbd_image_size'` == "10485760" ]]
 [[ `echo $ns_list | jq -r '.namespaces[0].uuid'` == "${UUID5}" ]]
 [[ `echo $ns_list | jq -r '.namespaces[1].nsid'` == "2" ]]
-[[ `echo $ns_list | jq -r '.namespaces[1].rbd_image_name'` == "${RBD_IMAGE_NAME}3" ]]
+[[ `echo $ns_list | jq -r '.namespaces[1].rbd_image_name'` == "${RBD_IMAGE_NAME}4" ]]
 [[ `echo $ns_list | jq -r '.namespaces[1].rbd_pool_name'` == "${RBD_POOL}" ]]
 [[ `echo $ns_list | jq -r '.namespaces[1].rbd_image_size'` == "10485760" ]]
-[[ `echo $ns_list | jq -r '.namespaces[1].uuid'` == "${UUID6}" ]]
-[[ `echo $ns_list | jq -r '.namespaces[2].nsid'` == "3" ]]
-[[ `echo $ns_list | jq -r '.namespaces[2].rbd_image_name'` == "${RBD_IMAGE_NAME}4" ]]
-[[ `echo $ns_list | jq -r '.namespaces[2].rbd_pool_name'` == "${RBD_POOL}" ]]
-[[ `echo $ns_list | jq -r '.namespaces[2].rbd_image_size'` == "10485760" ]]
-[[ `echo $ns_list | jq -r '.namespaces[2].uuid'` == "${UUID7}" ]]
-[[ `echo $ns_list | jq -r '.namespaces[3]'` == "null" ]]
+[[ `echo $ns_list | jq -r '.namespaces[1].uuid'` == "${UUID7}" ]]
+[[ `echo $ns_list | jq -r '.namespaces[2]'` == "null" ]]
 
 echo "ℹ️  check RBD metadata is back"
 rbd_meta=`make -s exec SVC=ceph OPTS=-T CMD="rbd image-meta get -p ${RBD_POOL} ${RBD_IMAGE_NAME}4 NVME_IMAGE_IDENTIFICATION" 2> /dev/null`
@@ -265,18 +266,13 @@ ns_list=$(cephnvmf_func --output stdio --format json namespace list --subsystem 
 [[ `echo $ns_list | jq -r '.namespaces[0].rbd_image_size'` == "10485760" ]]
 [[ `echo $ns_list | jq -r '.namespaces[0].uuid'` == "${UUID5}" ]]
 [[ `echo $ns_list | jq -r '.namespaces[1].nsid'` == "2" ]]
-[[ `echo $ns_list | jq -r '.namespaces[1].rbd_image_name'` == "${RBD_IMAGE_NAME}3" ]]
+[[ `echo $ns_list | jq -r '.namespaces[1].rbd_image_name'` == "${RBD_IMAGE_NAME}4" ]]
 [[ `echo $ns_list | jq -r '.namespaces[1].rbd_pool_name'` == "${RBD_POOL}" ]]
 [[ `echo $ns_list | jq -r '.namespaces[1].rbd_image_size'` == "10485760" ]]
-[[ `echo $ns_list | jq -r '.namespaces[1].uuid'` == "${UUID6}" ]]
+[[ `echo $ns_list | jq -r '.namespaces[1].uuid'` == "${UUID7}" ]]
 [[ `echo $ns_list | jq -r '.namespaces[2].nsid'` == "3" ]]
-[[ `echo $ns_list | jq -r '.namespaces[2].rbd_image_name'` == "${RBD_IMAGE_NAME}4" ]]
+[[ `echo $ns_list | jq -r '.namespaces[2].rbd_image_name'` == "${RBD_IMAGE_NAME}5" ]]
 [[ `echo $ns_list | jq -r '.namespaces[2].rbd_pool_name'` == "${RBD_POOL}" ]]
 [[ `echo $ns_list | jq -r '.namespaces[2].rbd_image_size'` == "10485760" ]]
-[[ `echo $ns_list | jq -r '.namespaces[2].uuid'` == "${UUID7}" ]]
-[[ `echo $ns_list | jq -r '.namespaces[3].nsid'` == "4" ]]
-[[ `echo $ns_list | jq -r '.namespaces[3].rbd_image_name'` == "${RBD_IMAGE_NAME}5" ]]
-[[ `echo $ns_list | jq -r '.namespaces[3].rbd_pool_name'` == "${RBD_POOL}" ]]
-[[ `echo $ns_list | jq -r '.namespaces[3].rbd_image_size'` == "10485760" ]]
-[[ `echo $ns_list | jq -r '.namespaces[3].uuid'` == "${UUID8}" ]]
-[[ `echo $ns_list | jq -r '.namespaces[4]'` == "null" ]]
+[[ `echo $ns_list | jq -r '.namespaces[2].uuid'` == "${UUID8}" ]]
+[[ `echo $ns_list | jq -r '.namespaces[3]'` == "null" ]]

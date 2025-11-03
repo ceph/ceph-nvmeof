@@ -2118,12 +2118,16 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 ns_rados_namespace = GatewayStateHandler._normalize_json_string(ns_rados_namespace)
                 path = f"{ns_pool}/{ns_rados_namespace}/{ns_image}" \
                     if ns_rados_namespace else f"{ns_pool}/{ns_image}"
-                if pool_name and pool_name == ns_pool and image_name and image_name == ns_image \
-                        and rados_namespace_name and rados_namespace_name == ns_rados_namespace:
-                    nqn = ns["subsystem_nqn"]
-                    errmsg = f"RBD image {path} is already used by a namespace " \
-                             f"in subsystem {nqn}"
-                    break
+                if pool_name and pool_name != ns_pool:
+                    continue
+                if image_name and image_name != ns_image:
+                    continue
+                if rados_namespace_name and rados_namespace_name != ns_rados_namespace:
+                    continue
+                nqn = ns["subsystem_nqn"]
+                errmsg = f"RBD image {path} is already used by a namespace " \
+                         f"in subsystem {nqn}"
+                break
             except Exception:
                 self.logger.exception(f"Got exception while parsing {val}, will continue")
                 continue
