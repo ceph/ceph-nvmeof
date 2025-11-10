@@ -5858,7 +5858,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                                  traddr=listener.traddr,
                                                  trsvcid=listener.trsvcid,
                                                  secure=listener.secure,
-                                                 active=active)
+                                                 active=active,
+                                                 manual=True)
                 listeners.append(one_listener)
                 listener_key = (listener["traddr"], listener["trsvcid"], listener.secure)
                 omap_listeners.add(listener_key)
@@ -5866,18 +5867,18 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 self.logger.exception(f"Got exception while parsing {val}")
                 continue
         try:
-            pool = self.config.get("ceph", "pool")
-            group = self.config.get("gateway", "group")
-            nvmemon_listeners = self.ceph_utils.get_gw_listeners(pool, group)
-            if request.subsystem in nvmemon_listeners:
-                subsystem_listeners = nvmemon_listeners[request.subsystem]
-                subsys_key = GatewayState.build_subsystem_key(request.subsystem)
-                if subsys_key not in state:
-                    err_msg = (f"Subsystem {request.subsystem} not found in local gateway state")
-                    raise RuntimeError(err_msg)
-                state_subsys = state[subsys_key]
-                subsystem = json.loads(state_subsys)
-                if subsystem and 'network_mask' in subsystem:
+            subsys_key = GatewayState.build_subsystem_key(request.subsystem)
+            if subsys_key not in state:
+                err_msg = (f"Subsystem {request.subsystem} not found in local gateway state")
+                raise RuntimeError(err_msg)
+            state_subsys = state[subsys_key]
+            subsystem = json.loads(state_subsys)
+            if subsystem and 'network_mask' in subsystem:
+                pool = self.config.get("ceph", "pool")
+                group = self.config.get("gateway", "group")
+                nvmemon_listeners = self.ceph_utils.get_gw_listeners(pool, group)
+                if request.subsystem in nvmemon_listeners:
+                    subsystem_listeners = nvmemon_listeners[request.subsystem]
                     secure = subsystem.get('secure_listeners', False)
                     for _listener in subsystem_listeners:
                         listener = {
@@ -5888,13 +5889,13 @@ class GatewayService(pb2_grpc.GatewayServicer):
                             "traddr": _listener["address"],
                             "secure": secure,
                         }
-                        hostname = GatewayUtils.get_hostname(listener["traddr"], self.logger)
-                        if hostname:
-                            listener["host_name"] = hostname
                         listener_key = (listener["traddr"], listener["trsvcid"],
                                         secure)
                         if listener_key in omap_listeners:
                             continue
+                        hostname = GatewayUtils.get_hostname(listener["traddr"], self.logger)
+                        if hostname:
+                            listener["host_name"] = hostname
                         listener = json_format.Parse(val, pb2.create_listener_req(),
                                                      ignore_unknown_fields=True)
                         active = self._is_active_listener(request.subsystem, listener)
@@ -5904,7 +5905,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                             adrfam=listener.adrfam,
                             traddr=listener.traddr,
                             trsvcid=listener.trsvcid,
-                            secure=secure, active=active)
+                            secure=secure, active=active, manual=False)
                         listeners.append(one_listener)
         except Exception as e:
             errmsg = f"Failure when displaying listener info from 'nvme-gw listeners' cmd: {e}"

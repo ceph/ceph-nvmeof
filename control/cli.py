@@ -1373,6 +1373,7 @@ class GatewayClient:
                     adrfam = self.format_adrfam(adrfam)
                     secure = "Yes" if lstnr.secure else "No"
                     active = "Yes" if lstnr.active else "No"
+                    manual = "Yes" if lstnr.manual else "No"
                     traddr = lstnr.traddr
                     if lstnr.adrfam == pb2.ipv6:
                         traddr = GatewayUtils.escape_address_if_ipv6(traddr)
@@ -1381,7 +1382,8 @@ class GatewayClient:
                                            adrfam,
                                            f"{traddr}:{lstnr.trsvcid}",
                                            secure,
-                                           active])
+                                           active,
+                                           manual])
                 if len(listeners_list) > 0:
                     if args.format == "text":
                         table_format = "fancy_grid"
@@ -1393,7 +1395,8 @@ class GatewayClient:
                                                       "Address Family",
                                                       "Address",
                                                       "Secure",
-                                                      "Active"],
+                                                      "Active",
+                                                      "Manual"],
                                              tablefmt=table_format)
                     out_func(f"Listeners for {args.subsystem}:\n{listeners_out}")
                 else:
