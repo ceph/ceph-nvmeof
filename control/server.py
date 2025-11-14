@@ -104,6 +104,7 @@ class GatewayServer:
     """
 
     MAX_TIME_TO_WAIT_FOR_GATEWAY_EXIT = 30
+    SPDK_PING_INTERVAL_DEFAULT = 2.0
 
     def __init__(self, config: GatewayConfig):
         self.config = config
@@ -672,13 +673,6 @@ class GatewayServer:
             # Notice that some SPDK calls can't be made after framework init
             self._init_framework()
 
-            self.spdk_rpc_ping_client = rpc_client.JSONRPCClient(
-                self.spdk_rpc_socket_path,
-                None,
-                timeout,
-                log_level=protocol_log_level,
-                conn_retries=conn_retries,
-            )
             self.spdk_rpc_subsystems_client = rpc_client.JSONRPCClient(
                 self.spdk_rpc_socket_path,
                 None,
@@ -937,7 +931,7 @@ class GatewayServer:
         spdk_ping_interval_in_seconds = self.config.getfloat_with_default(
             "gateway",
             "spdk_ping_interval_in_seconds",
-            2.0)
+            GatewayServer.SPDK_PING_INTERVAL_DEFAULT)
         if spdk_ping_interval_in_seconds < 0.0:
             self.logger.warning(f"Invalid SPDK ping interval "
                                 f"{spdk_ping_interval_in_seconds}, will reset to 0")
@@ -959,8 +953,7 @@ class GatewayServer:
             timedout = self.server.wait_for_termination(timeout=1)
             if not timedout:
                 break
-            if spdk_ping_interval_in_seconds > 0.0:
-                time.sleep(spdk_ping_interval_in_seconds)
+            time.sleep(spdk_ping_interval_in_seconds)
             alive = self._ping()
             if not alive:
                 consecutive_ping_failures += 1
@@ -977,10 +970,10 @@ class GatewayServer:
     def _ping(self):
         """Confirms communication with SPDK process."""
         try:
-            spdk.rpc.spdk_get_version(self.spdk_rpc_ping_client)
-            return True
+            ret = self.gateway_rpc.list_subsystems(pb2.list_subsystems_req())
+            return ret.status == 0
         except Exception:
-            self.logger.exception("spdk_get_version failed")
+            self.logger.exception("Failure in list_subsystems()")
             return False
 
     def probe_huge_pages(self):
