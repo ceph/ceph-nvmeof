@@ -139,9 +139,16 @@ class Parser:
             help="Path to the server certificate file"
         )
         self.parser.add_argument(
+            "--max-message-length",
+            default=-1,
+            type=int,
+            help="Max message length, in MB",
+        )
+        self.parser.add_argument(
             "--verbose",
             help="Run CLI in verbose mode",
-            action='store_true')
+            action='store_true'
+        )
 
         self.subparsers = self.parser.add_subparsers(title="Commands", dest="subcommand")
 
@@ -197,6 +204,7 @@ class GatewayClient:
 
     SIZE_UNITS = ["K", "M", "G", "T", "P"]
     MAX_MB_PER_SECOND = int(0xffffffffffffffff / (1024 * 1024))
+    MAX_MESSAGE_LENGTH = 8   # max length, in MB
     cli = Parser()
 
     def __init__(self):
@@ -213,17 +221,20 @@ class GatewayClient:
             raise AttributeError("stub is None. Set with connect method.")
         return self._stub
 
-    def connect(self, args, host, port, client_key, client_cert, server_cert):
+    def connect(self, args, host, port, client_key, client_cert, server_cert, msg_len):
         """Connects to server and sets stub."""
         out_func, err_func, _ = self.get_output_functions(args)
         if args.format == "json" or args.format == "yaml" or args.format == "python":
             out_func = None
+        if msg_len < 0:
+            msg_len = GatewayClient.MAX_MESSAGE_LENGTH
 
         # We need to enclose IPv6 addresses in brackets before
         # concatenating a colon and port number to it
         host = GatewayUtils.escape_address_if_ipv6(host)
         server = f"{host}:{port}"
 
+        msg_len *= 1024 * 1024
         if client_key and client_cert:
             # Create credentials for mutual TLS and a secure channel
             if out_func:
@@ -244,10 +255,12 @@ class GatewayClient:
                 private_key=client_key,
                 certificate_chain=client_cert,
             )
-            channel = grpc.secure_channel(server, credentials)
+            channel = grpc.secure_channel(server, credentials,
+                                          options=[('grpc.max_receive_message_length', msg_len)])
         else:
             # Instantiate a channel without credentials
-            channel = grpc.insecure_channel(server)
+            channel = grpc.insecure_channel(server,
+                                            options=[('grpc.max_receive_message_length', msg_len)])
 
         # Bind the client and the server
         self._stub = pb2_grpc.GatewayStub(channel)
@@ -3163,7 +3176,8 @@ def main_common(client, args):
     client_key = args.client_key
     client_cert = args.client_cert
     server_cert = args.server_cert
-    client.connect(args, server_address, server_port, client_key, client_cert, server_cert)
+    msg_len = args.max_message_length
+    client.connect(args, server_address, server_port, client_key, client_cert, server_cert, msg_len)
     call_function = getattr(client, args.func.__name__)
     rc = call_function(args)
     return rc

@@ -105,6 +105,7 @@ class GatewayServer:
 
     MAX_TIME_TO_WAIT_FOR_GATEWAY_EXIT = 30
     SPDK_PING_INTERVAL_DEFAULT = 2.0
+    MAX_MESSAGE_LENGTH_DEFAULT = 8
 
     def __init__(self, config: GatewayConfig):
         self.config = config
@@ -489,7 +490,12 @@ class GatewayServer:
         #  This default value preserves at least 5 workers for I/O bound tasks. It utilizes at
         #  most 32 CPU cores for CPU bound tasks which release the GIL. And it avoids using
         #  very large resources implicitly on many-core machines.
-        server = grpc.server(futures.ThreadPoolExecutor())
+        msgsize = self.config.getint_with_default("gateway",
+                                                  "max_message_length_in_mb",
+                                                  GatewayServer.MAX_MESSAGE_LENGTH_DEFAULT)
+        msgsize *= 1024 * 1024
+        server = grpc.server(futures.ThreadPoolExecutor(),
+                             options=[('grpc.max_send_message_length', msgsize)])
 
         enable_auth = self.config.getboolean("gateway", "enable_auth")
         if enable_auth:
