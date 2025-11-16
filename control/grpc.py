@@ -56,6 +56,31 @@ DEFAULT_MODEL_NUMBER = "Ceph bdev Controller"
 MONITOR_POLLING_RATE_SEC = 2     # monitor polls gw each 2 seconds
 
 
+class SubsystemsCache:
+    def __init__(self):
+        self.cache_lock = threading.Lock()
+        with self.cache_lock:
+            self.subsystems_info = pb2.subsystems_info(subsystems=[])
+
+    def get_subsystems(self) -> pb2.subsystems_info:
+        with self.cache_lock:
+            return self.subsystems_info
+
+    def get_one_subsystem(self, subsys: str) -> list[pb2.subsystem]:
+        if not subsys:
+            return []
+
+        with self.cache_lock:
+            for s in self.subsystems_info.subsystems:
+                if s.nqn == subsys:
+                    return [s]
+        return []
+
+    def set_subsystems(self, subsystems: pb2.subsystems_info):
+        with self.cache_lock:
+            self.subsystems_info = subsystems
+
+
 class BdevStatus:
     def __init__(self, status, error_message, bdev_name="",
                  rbd_pool=None, rbd_image_name=None, trash_image=False):
@@ -421,105 +446,115 @@ class NamespacesLocalList:
 
     def __init__(self):
         self.namespace_list = defaultdict(dict)
+        self.namespace_list_lock = threading.Lock()
 
     def remove_namespace(self, nqn, nsid=None):
-        if nqn in self.namespace_list:
-            if nsid:
-                if nsid in self.namespace_list[nqn]:
-                    self.namespace_list[nqn].pop(nsid, None)
-                    if len(self.namespace_list[nqn]) == 0:
-                        self.namespace_list.pop(nqn, None)    # last ns of subsystem was removed
-            else:
-                self.namespace_list.pop(nqn, None)
+        with self.namespace_list_lock:
+            if nqn in self.namespace_list:
+                if nsid:
+                    if nsid in self.namespace_list[nqn]:
+                        self.namespace_list[nqn].pop(nsid, None)
+                        if len(self.namespace_list[nqn]) == 0:
+                            self.namespace_list.pop(nqn, None)    # last ns of subsystem was removed
+                else:
+                    self.namespace_list.pop(nqn, None)
 
     def add_namespace(self, nqn, nsid, bdev, uuid, anagrpid, auto_visible,
                       pool, image, trash_image):
         if not bdev:
             bdev = GatewayService.find_unique_bdev_name(uuid)
-        self.namespace_list[nqn][nsid] = NamespaceInfo(nsid, bdev, uuid, anagrpid,
-                                                       auto_visible, pool, image, trash_image)
+        with self.namespace_list_lock:
+            self.namespace_list[nqn][nsid] = NamespaceInfo(nsid, bdev, uuid, anagrpid,
+                                                           auto_visible, pool, image, trash_image)
 
     def find_namespace(self, nqn, nsid, uuid=None) -> NamespaceInfo:
-        if nqn not in self.namespace_list:
-            return NamespacesLocalList.EMPTY_NAMESPACE
+        with self.namespace_list_lock:
+            if nqn not in self.namespace_list:
+                return NamespacesLocalList.EMPTY_NAMESPACE
 
-        # if we have nsid, use it as the key
-        if nsid:
-            if nsid in self.namespace_list[nqn]:
-                return self.namespace_list[nqn][nsid]
-            return NamespacesLocalList.EMPTY_NAMESPACE
+            # if we have nsid, use it as the key
+            if nsid:
+                if nsid in self.namespace_list[nqn]:
+                    return self.namespace_list[nqn][nsid]
+                return NamespacesLocalList.EMPTY_NAMESPACE
 
-        if uuid:
-            for ns in self.namespace_list[nqn]:
-                if NamespaceInfo.are_uuids_equal(uuid, self.namespace_list[nqn][ns].uuid):
-                    return self.namespace_list[nqn][ns]
+            if uuid:
+                for ns in self.namespace_list[nqn]:
+                    if NamespaceInfo.are_uuids_equal(uuid, self.namespace_list[nqn][ns].uuid):
+                        return self.namespace_list[nqn][ns]
 
         return NamespacesLocalList.EMPTY_NAMESPACE
 
     def get_namespace_count(self, nqn, auto_visible=None, min_hosts=0) -> int:
-        if nqn and nqn not in self.namespace_list:
-            return 0
+        with self.namespace_list_lock:
+            if nqn and nqn not in self.namespace_list:
+                return 0
 
-        if nqn:
-            subsystems = [nqn]
-        else:
-            subsystems = self.namespace_list.keys()
+            if nqn:
+                subsystems = [nqn]
+            else:
+                subsystems = self.namespace_list.keys()
 
-        ns_count = 0
-        for one_subsys in subsystems:
-            for nsid in self.namespace_list[one_subsys]:
-                ns = self.namespace_list[one_subsys][nsid]
-                if ns.empty():
-                    continue
-                if auto_visible is not None:
-                    if ns.auto_visible == auto_visible and ns.host_count() >= min_hosts:
-                        ns_count += 1
-                else:
-                    if ns.host_count() >= min_hosts:
-                        ns_count += 1
+            ns_count = 0
+            for one_subsys in subsystems:
+                for nsid in self.namespace_list[one_subsys]:
+                    ns = self.namespace_list[one_subsys][nsid]
+                    if ns.empty():
+                        continue
+                    if auto_visible is not None:
+                        if ns.auto_visible == auto_visible and ns.host_count() >= min_hosts:
+                            ns_count += 1
+                    else:
+                        if ns.host_count() >= min_hosts:
+                            ns_count += 1
 
         return ns_count
 
     def get_namespace_infos_for_anagrpid(self, nqn: str, anagrpid: int) -> Iterator[NamespaceInfo]:
         """Yield NamespaceInfo instances for a given nqn and anagrpid."""
-        if nqn in self.namespace_list:
-            for ns_info in self.namespace_list[nqn].values():
-                if ns_info.anagrpid == anagrpid:
-                    yield ns_info
+
+        with self.namespace_list_lock:
+            if nqn in self.namespace_list:
+                for ns_info in self.namespace_list[nqn].values():
+                    if ns_info.anagrpid == anagrpid:
+                        yield ns_info
 
     def get_all_namespaces_by_ana_group_id(self, anagrpid):
         ns_list = []
         # Loop through all nqn values in the namespace list
-        for nqn in self.namespace_list:
+        with self.namespace_list_lock:
+            for nqn in self.namespace_list:
+                for nsid in self.namespace_list[nqn]:
+                    ns = self.namespace_list[nqn][nsid]
+                    if ns.empty():
+                        continue
+                    if ns.anagrpid == anagrpid:
+                        ns_list.append((nsid, nqn))           # list of tupples
+        return ns_list
+
+    def get_ana_group_id_by_nsid_subsys(self, nqn, nsid):
+        with self.namespace_list_lock:
+            if nqn not in self.namespace_list:
+                return 0
+            if nsid not in self.namespace_list[nqn]:
+                return 0
+            ns = self.namespace_list[nqn][nsid]
+            if ns.empty():
+                return 0
+            return ns.anagrpid
+
+    def get_subsys_namespaces_by_ana_group_id(self, nqn, anagrpid):
+        ns_list = []
+        with self.namespace_list_lock:
+            if nqn not in self.namespace_list:
+                return ns_list
+
             for nsid in self.namespace_list[nqn]:
                 ns = self.namespace_list[nqn][nsid]
                 if ns.empty():
                     continue
                 if ns.anagrpid == anagrpid:
-                    ns_list.append((nsid, nqn))           # list of tupples
-        return ns_list
-
-    def get_ana_group_id_by_nsid_subsys(self, nqn, nsid):
-        if nqn not in self.namespace_list:
-            return 0
-        if nsid not in self.namespace_list[nqn]:
-            return 0
-        ns = self.namespace_list[nqn][nsid]
-        if ns.empty():
-            return 0
-        return ns.anagrpid
-
-    def get_subsys_namespaces_by_ana_group_id(self, nqn, anagrpid):
-        ns_list = []
-        if nqn not in self.namespace_list:
-            return ns_list
-
-        for nsid in self.namespace_list[nqn]:
-            ns = self.namespace_list[nqn][nsid]
-            if ns.empty():
-                continue
-            if ns.anagrpid == anagrpid:
-                ns_list.append(ns)
+                    ns_list.append(ns)
 
         return ns_list
 
@@ -657,6 +692,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         self.cluster_allocator = get_cluster_allocator(config, self)
         self.subsys_max_ns = {}
         self.subsys_serial = {}
+        self.subsystems_cache = SubsystemsCache()
         self.host_info = SubsystemHostAuth()
         self.up_and_running = True
         self.rebalance = Rebalance(self)
@@ -4012,36 +4048,57 @@ class GatewayService(pb2_grpc.GatewayServicer):
         peer_msg = self.get_peer_message(context)
         self.logger.info(f"Received request to list hosts for "
                          f"{request.subsystem}, context: {context}{peer_msg}")
-        try:
-            ret = rpc_nvmf.nvmf_get_subsystems(self.spdk_rpc_client, nqn=request.subsystem)
-            self.logger.debug(f"list_hosts: {ret}")
-        except Exception as ex:
-            errmsg = "Failure listing hosts, can't get subsystems"
-            self.logger.exception(errmsg)
-            errmsg = f"{errmsg}:\n{ex}"
-            resp = self.parse_json_exeption(ex)
-            status = errno.EINVAL
-            if resp:
-                status = resp["code"]
-                errmsg = f"Failure listing hosts, can't get subsystems: {resp['message']}"
-            return pb2.hosts_info(status=status, error_message=errmsg, hosts=[])
+        ret = None
+        if not context:
+            ret = self.subsystems_cache.get_one_subsystem(request.subsystem)
+            self.logger.debug(f"list_hosts subsystem (cache): {ret}")
+        if not ret:
+            try:
+                ret = rpc_nvmf.nvmf_get_subsystems(self.spdk_rpc_client, nqn=request.subsystem)
+                self.logger.debug(f"list_hosts: {ret}")
+            except Exception as ex:
+                errmsg = "Failure listing hosts, can't get subsystems"
+                self.logger.exception(errmsg)
+                errmsg = f"{errmsg}:\n{ex}"
+                resp = self.parse_json_exeption(ex)
+                status = errno.EINVAL
+                if resp:
+                    status = resp["code"]
+                    errmsg = f"Failure listing hosts, can't get subsystems: {resp['message']}"
+                return pb2.hosts_info(status=status, error_message=errmsg, hosts=[])
 
+            parsed_ret = []
+            for s in ret:
+                subsys = pb2.subsystem()
+                try:
+                    json_format.Parse(json.dumps(s), subsys, ignore_unknown_fields=True)
+                except Exception:
+                    self.logger.exception(f"Failure listing hosts, can't parse subsystem {s}")
+                    return pb2.hosts_info(status=errno.EINVAL,
+                                          error_message="Failure listing hosts, "
+                                                        "can't parse subsystem",
+                                          hosts=[])
+                parsed_ret.append(subsys)
+            ret = parsed_ret
+
+        if not ret:
+            ret = []
         hosts = []
         allow_any_host = False
         for s in ret:
             try:
-                if s["nqn"] != request.subsystem:
-                    self.logger.warning(f'Got subsystem {s["nqn"]} instead of '
+                if s.nqn != request.subsystem:
+                    self.logger.warning(f'Got subsystem {s.nqn} instead of '
                                         f'{request.subsystem}, ignore')
                     continue
                 try:
-                    allow_any_host = s["allow_any_host"]
-                    host_nqns = s["hosts"]
+                    allow_any_host = s.allow_any_host
+                    host_nqns = s.hosts
                 except Exception:
                     host_nqns = []
                     pass
                 for h in host_nqns:
-                    host_nqn = h["nqn"]
+                    host_nqn = h.nqn
                     psk = self.host_info.is_psk_host(request.subsystem, host_nqn)
                     dhchap = self.host_info.is_dhchap_host(request.subsystem, host_nqn)
                     one_host = pb2.host(nqn=host_nqn, use_psk=psk, use_dhchap=dhchap)
@@ -4101,36 +4158,60 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 errmsg = f"Failure listing connections, can't get controllers: {resp['message']}"
             return pb2.connections_info(status=status, error_message=errmsg, connections=[])
 
-        try:
-            subsys_ret = rpc_nvmf.nvmf_get_subsystems(self.spdk_rpc_client, nqn=request.subsystem)
-            self.logger.debug(f"list_connections subsystems: {subsys_ret}")
-        except Exception as ex:
-            errmsg = "Failure listing connections, can't get subsystems"
-            self.logger.exception(errmsg)
-            errmsg = f"{errmsg}:\n{ex}"
-            resp = self.parse_json_exeption(ex)
-            status = errno.EINVAL
-            if resp:
-                status = resp["code"]
-                errmsg = f"Failure listing connections, can't get subsystems: {resp['message']}"
-            return pb2.connections_info(status=status, error_message=errmsg, connections=[])
+        subsys_ret = None
+        if not context:
+            subsys_ret = self.subsystems_cache.get_one_subsystem(request.subsystem)
+            self.logger.debug(f"list_connections subsystems (cache): {subsys_ret}")
 
+        if not subsys_ret:
+            try:
+                subsys_ret = rpc_nvmf.nvmf_get_subsystems(self.spdk_rpc_client,
+                                                          nqn=request.subsystem)
+                self.logger.debug(f"list_connections subsystems: {subsys_ret}")
+            except Exception as ex:
+                errmsg = "Failure listing connections, can't get subsystems"
+                self.logger.exception(errmsg)
+                errmsg = f"{errmsg}:\n{ex}"
+                resp = self.parse_json_exeption(ex)
+                status = errno.EINVAL
+                if resp:
+                    status = resp["code"]
+                    errmsg = f"Failure listing connections, can't get subsystems: {resp['message']}"
+                return pb2.connections_info(status=status, error_message=errmsg, connections=[])
+
+            parsed_ret = []
+            for s in subsys_ret:
+                subsys = pb2.subsystem()
+                try:
+                    json_format.Parse(json.dumps(s), subsys, ignore_unknown_fields=True)
+                except Exception:
+                    self.logger.exception(f"Failure listing connections, "
+                                          f"can't parse subsystem {s}")
+                    return pb2.connections_info(status=errno.EINVAL,
+                                                error_message="Failure listing connections, "
+                                                              "can't parse subsystem",
+                                                connections=[])
+                parsed_ret.append(subsys)
+            subsys_ret = parsed_ret
+
+        if not subsys_ret:
+            subsys_ret = []
         connections = []
         host_nqns = []
         for s in subsys_ret:
             try:
-                if s["nqn"] != request.subsystem:
-                    self.logger.warning(f'Got subsystem {s["nqn"]} instead of '
+                if s.nqn != request.subsystem:
+                    self.logger.warning(f'Got subsystem {s.nqn} instead of '
                                         f'{request.subsystem}, ignore')
                     continue
                 try:
-                    subsys_hosts = s["hosts"]
+                    subsys_hosts = s.hosts
                 except Exception:
                     subsys_hosts = []
                     pass
                 for h in subsys_hosts:
                     try:
-                        host_nqns.append(h["nqn"])
+                        host_nqns.append(h.nqn)
                     except Exception:
                         pass
                 break
@@ -4746,6 +4827,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
     def list_subsystems_safe(self, request, context):
         """List subsystems."""
 
+        assert self.spdk_rpc_subsystems_lock.locked(), "Subsystems RPC is unlocked when calling " \
+                                                       "list_subsystems_safe()"
         peer_msg = self.get_peer_message(context)
         log_level = logging.INFO if context else logging.DEBUG
         if request.subsystem_nqn:
@@ -4763,11 +4846,13 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                 f"{context}{peer_msg}")
 
         subsystems = []
+        cache_subsystems = []
         try:
             if request.subsystem_nqn:
-                ret = rpc_nvmf.nvmf_get_subsystems(self.spdk_rpc_client, nqn=request.subsystem_nqn)
+                ret = rpc_nvmf.nvmf_get_subsystems(self.spdk_rpc_subsystems_client,
+                                                   nqn=request.subsystem_nqn)
             else:
-                ret = rpc_nvmf.nvmf_get_subsystems(self.spdk_rpc_client)
+                ret = rpc_nvmf.nvmf_get_subsystems(self.spdk_rpc_subsystems_client)
             self.logger.debug(f"list_subsystems: {ret}")
         except Exception as ex:
             errmsg = "Failure listing subsystems"
@@ -4780,11 +4865,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 errmsg = f"Failure listing subsystems: {resp['message']}"
             return pb2.subsystems_info_cli(status=status, error_message=errmsg, subsystems=[])
 
+        if not ret:
+            ret = []
         for s in ret:
             try:
-                if request.serial_number:
-                    if s["serial_number"] != request.serial_number:
-                        continue
                 if s["subtype"] == "NVMe":
                     ns_count = len(s["namespaces"])
                     if not ns_count:
@@ -4794,6 +4878,15 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     s["has_dhchap_key"] = self.host_info.does_subsystem_have_dhchap_key(s["nqn"])
                     s["created_without_key"] = \
                         self.host_info.was_subsystem_created_without_key(s["nqn"])
+                    for n in s["namespaces"]:
+                        bdev = n["bdev_name"]
+                        with self.shared_state_lock:
+                            nonce = self.cluster_nonce[self.bdev_cluster[bdev]]
+                        n["nonce"] = nonce
+                        find_ret = self.subsystem_nsid_bdev_and_uuid.find_namespace(
+                            s["nqn"], n["nsid"])
+                        n["auto_visible"] = find_ret.auto_visible
+                        n["hosts"] = find_ret.host_list
                 else:
                     s["namespace_count"] = 0
                     s["enable_ha"] = False
@@ -4801,59 +4894,29 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 # Parse the JSON dictionary into the protobuf message
                 subsystem = pb2.subsystem_cli()
                 json_format.Parse(json.dumps(s), subsystem, ignore_unknown_fields=True)
-                subsystems.append(subsystem)
+                if not request.serial_number or s["serial_number"] == request.serial_number:
+                    subsystems.append(subsystem)
+                if not request.subsystem_nqn:
+                    cache_subsystem = pb2.subsystem()
+                    json_format.Parse(json.dumps(s), cache_subsystem, ignore_unknown_fields=True)
+                    cache_subsystems.append(cache_subsystem)
             except Exception:
                 self.logger.exception(f"{s=} parse error")
                 pass
+
+        # Only set cache if we've listed all subsystems
+        if not request.subsystem_nqn:
+            self.subsystems_cache.set_subsystems(pb2.subsystems_info(subsystems=cache_subsystems))
 
         return pb2.subsystems_info_cli(status=0, error_message=os.strerror(0),
                                        subsystems=subsystems)
 
-    def get_subsystems_safe(self, request, context):
-        """Gets subsystems."""
-
-        peer_msg = self.get_peer_message(context)
-        self.logger.debug(f"Received request to get subsystems, context: {context}{peer_msg}")
-        subsystems = []
-        try:
-            ret = rpc_nvmf.nvmf_get_subsystems(self.spdk_rpc_subsystems_client)
-        except Exception as ex:
-            self.logger.exception("get_subsystems failed")
-            if context:
-                context.set_code(grpc.StatusCode.INTERNAL)
-                context.set_details(f"{ex}")
-            return pb2.subsystems_info()
-
-        for s in ret:
-            try:
-                s["has_dhchap_key"] = self.host_info.does_subsystem_have_dhchap_key(s["nqn"])
-                ns_key = "namespaces"
-                if ns_key in s:
-                    for n in s[ns_key]:
-                        bdev = n["bdev_name"]
-                        with self.shared_state_lock:
-                            nonce = self.cluster_nonce[self.bdev_cluster[bdev]]
-                        n["nonce"] = nonce
-                        find_ret = self.subsystem_nsid_bdev_and_uuid.find_namespace(s["nqn"],
-                                                                                    n["nsid"])
-                        n["auto_visible"] = find_ret.auto_visible
-                        n["hosts"] = find_ret.host_list
-                # Parse the JSON dictionary into the protobuf message
-                subsystem = pb2.subsystem()
-                json_format.Parse(json.dumps(s), subsystem, ignore_unknown_fields=True)
-                subsystems.append(subsystem)
-            except Exception:
-                self.logger.exception(f"{s=} parse error")
-                pass
-
-        return pb2.subsystems_info(subsystems=subsystems)
-
     def get_subsystems(self, request, context):
-        with self.spdk_rpc_subsystems_lock:
-            return self.get_subsystems_safe(request, context)
+        return self.subsystems_cache.get_subsystems()
 
     def list_subsystems(self, request, context=None):
-        return self.execute_grpc_function(self.list_subsystems_safe, request, context)
+        with self.spdk_rpc_subsystems_lock:
+            return self.list_subsystems_safe(request, context)
 
     def change_subsystem_key_safe(self, request, context):
         """Change subsystem key."""

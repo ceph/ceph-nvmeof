@@ -92,6 +92,10 @@ def verify_namespaces(caplog, gw_port, subsys, first_nsid, last_nsid, grp):
 
 def verify_namespaces_using_get_subsystems(caplog, gw_port, subsys, first_nsid, last_nsid, grp):
     caplog.clear()
+    # call subsystem list first, this will refresh the cache
+    subsys_info = cli_test(["--server-port", gw_port, "subsystem", "list"])
+    assert len(subsys_info.subsystems) == 1
+    caplog.clear()
     subsys_info = cli_test(["--server-port", gw_port, "get_subsystems"])
     assert len(subsys_info.subsystems) == 1
     assert subsys_info.subsystems[0].nqn == subsys
