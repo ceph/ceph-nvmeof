@@ -1938,6 +1938,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
                         errmsg = f"Failure creating auto-listeners for {request.subsystem_nqn} " \
                                  f"subsystem: {rt.error_message}"
                         self.logger.error(errmsg)
+                    else:
+                        self.logger.info(f'Automatically created listener at {ip}:{port} for '
+                                         f'{request.subsystem_nqn}')
         if req_status != 0:
             err_msg = f"Failed to create auto-listeners for subsystem {request.subsystem_nqn}"
             return pb2.req_status(status=status, error_message=err_msg)
