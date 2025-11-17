@@ -2718,12 +2718,10 @@ class GatewayClient:
 
         if args.format == "text" or args.format == "plain":
             if ret.status == 0:
-                if args.location:
-                    out_func(f"Setting location for namespace {args.nsid} in {args.subsystem} "
-                             f"to \"{args.location}\": Successful")
-                else:
-                    out_func(f"Unsetting location for namespace {args.nsid} "
-                             f"in {args.subsystem}: Successful")
+                if not args.location:
+                    args.location = ""
+                out_func(f"Setting location for namespace {args.nsid} in {args.subsystem} "
+                         f"to \"{args.location}\": Successful")
             else:
                 err_func(f"{ret.error_message}")
         elif args.format == "json" or args.format == "yaml":
