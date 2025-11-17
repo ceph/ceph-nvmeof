@@ -64,6 +64,7 @@ class GatewayUtils:
     ALL_SUBSYSTEMS = "*"
     MAX_HOST_NAME_LENGTH = 253
     DOMAIN_LABEL_MAX_LEN = 63
+    MAX_MESSAGE_LENGTH_DEFAULT = 4
 
     # We need to enclose IPv6 addresses in brackets before concatenating
     # a colon and port number to it

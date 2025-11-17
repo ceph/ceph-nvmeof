@@ -140,7 +140,7 @@ class Parser:
         )
         self.parser.add_argument(
             "--max-message-length",
-            default=-1,
+            default=GatewayUtils.MAX_MESSAGE_LENGTH_DEFAULT,
             type=int,
             help="Max message length, in MB",
         )
@@ -204,7 +204,6 @@ class GatewayClient:
 
     SIZE_UNITS = ["K", "M", "G", "T", "P"]
     MAX_MB_PER_SECOND = int(0xffffffffffffffff / (1024 * 1024))
-    MAX_MESSAGE_LENGTH = 8   # max length, in MB
     cli = Parser()
 
     def __init__(self):
@@ -226,8 +225,6 @@ class GatewayClient:
         out_func, err_func, _ = self.get_output_functions(args)
         if args.format == "json" or args.format == "yaml" or args.format == "python":
             out_func = None
-        if msg_len < 0:
-            msg_len = GatewayClient.MAX_MESSAGE_LENGTH
 
         # We need to enclose IPv6 addresses in brackets before
         # concatenating a colon and port number to it

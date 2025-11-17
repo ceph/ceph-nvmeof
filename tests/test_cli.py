@@ -246,6 +246,19 @@ class TestGet:
         assert '"completed_nvme_io": "0"' in caplog.text
         assert '"trtype": "TCP"' in caplog.text
 
+    def test_message_length_too_long(self, caplog, gateway):
+        caplog.clear()
+        try:
+            cli(["--max-message-length", "0", "gateway", "info"])
+            assert False, "Should have thrown an exception"
+        except Exception:
+            pass
+        assert "status = StatusCode.RESOURCE_EXHAUSTED" in caplog.text
+        assert "Received message larger than max" in caplog.text
+        caplog.clear()
+        cli(["--max-message-length", "1", "gateway", "info"])
+        assert "Gateway's port: 5500" in caplog.text
+
 
 class TestCreate:
     def test_create_subsystem(self, caplog, gateway):

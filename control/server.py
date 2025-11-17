@@ -105,7 +105,6 @@ class GatewayServer:
 
     MAX_TIME_TO_WAIT_FOR_GATEWAY_EXIT = 30
     SPDK_PING_INTERVAL_DEFAULT = 2.0
-    MAX_MESSAGE_LENGTH_DEFAULT = 8
 
     def __init__(self, config: GatewayConfig):
         self.config = config
@@ -492,7 +491,7 @@ class GatewayServer:
         #  very large resources implicitly on many-core machines.
         msgsize = self.config.getint_with_default("gateway",
                                                   "max_message_length_in_mb",
-                                                  GatewayServer.MAX_MESSAGE_LENGTH_DEFAULT)
+                                                  GatewayUtils.MAX_MESSAGE_LENGTH_DEFAULT)
         msgsize *= 1024 * 1024
         server = grpc.server(futures.ThreadPoolExecutor(),
                              options=[('grpc.max_send_message_length', msgsize)])
