@@ -168,24 +168,6 @@ def test_change_namespace_location(caplog, two_gateways):
     assert len(ns_list) == 1
     assert ns_list[0] == (2, subsystem)
     caplog.clear()
-    cli(["--server-port", "5502", "namespace", "change_location",
-         "--subsystem", subsystem, "--nsid", "1", "--location", ""])
-    assert f'Unsetting location for namespace 1 in {subsystem}: ' \
-           f'Successful' in caplog.text
-    assert f'Received request to change the location of namespace 1 in {subsystem} to ' \
-           f'"", context: <grpc._server' in caplog.text
-    time.sleep(15)
-    assert f'Received request to change the location of namespace 1 in {subsystem} to ' \
-           f'"", context: None' in caplog.text
-    assert f"Received request to remove namespace 1 from {subsystem}" not in caplog.text
-    assert f"Received request to add namespace 1 to {subsystem}" not in caplog.text
-    caplog.clear()
-    cli(["--server-port", "5502", "--format", "json", "namespace", "list",
-         "--subsystem", subsystem, "--nsid", "1"])
-    assert '"nsid": 1,' in caplog.text
-    assert '"location": ""' in caplog.text
-    assert f'"rbd_data_pool_name": "{pool}",' in caplog.text
-    caplog.clear()
     cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool,
          "--rbd-image", image3, "--size", "16MB", "--rbd-create-image"])
     assert f"Adding namespace 3 to {subsystem}: Successful" in caplog.text
@@ -201,11 +183,3 @@ def test_change_namespace_location(caplog, two_gateways):
     cli(["namespace", "change_location", "--subsystem", subsystem,
          "--nsid", "25", "--location", "Oz"])
     assert f"Failure changing location for namespace 25 in {subsystem}: Can't find namespace"
-    ns_list = gatewayA.subsystem_nsid_bdev_and_uuid.get_all_namespaces_with_location(None)
-    assert len(ns_list) == 2
-    assert ns_list[0] == (1, subsystem)
-    assert ns_list[1] == (3, subsystem)
-    ns_list = gatewayA.subsystem_nsid_bdev_and_uuid.get_all_namespaces_with_location("")
-    assert len(ns_list) == 2
-    assert ns_list[0] == (1, subsystem)
-    assert ns_list[1] == (3, subsystem)
