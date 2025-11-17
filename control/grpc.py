@@ -2271,7 +2271,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     else:
                         errmsg = f"{errmsg}, either delete the namespace or use the \"force\" " \
                                  f"argument,\nyou can find the offending namespace by using " \
-                                 f"the \"namespace list\" CLI command on substsem {ns_nqn}"
+                                 f"the \"namespace list\" CLI command on subsystem {ns_nqn}"
                         self.logger.error(errmsg)
                         return pb2.nsid_status(status=errno.EEXIST, error_message=errmsg)
 
