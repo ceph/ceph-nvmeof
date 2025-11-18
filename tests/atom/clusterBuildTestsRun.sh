@@ -17,6 +17,7 @@ ATOM_SHA=$4
 ACTION_URL=$5
 NIGHTLY=$6
 
+echo "CEPH_SHA found is: $CEPH_SHA"
 RUNNER_FOLDER='/home/cephnvme/actions-runner-ceph-m7'
 BUSY_FILE='/home/cephnvme/busyServer.txt'
 RUNNER_NIGHTLY_FOLDER='/home/cephnvme/actions-runner-ceph-m8'
@@ -76,7 +77,7 @@ if [ "$NIGHTLY" != "nightly" ]; then
         --cli-img=quay.io/ceph/nvmeof-cli:"$VERSION" \
         --initiators=1 \
         --gw-group-num=1 \
-        --gw-num=4 \
+        --gw-num=2 \
         --gw-to-stop-num=1 \
         --gw-scale-down-num=1 \
         --subsystem-num=2 \
