@@ -158,6 +158,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
         cluster_nonce: cluster context nonce map
     """
 
+    MAX_VALUE_FOR_MAX_NAMESPACES_PER_SUBSYSTEM = 2048
+
     def __init__(self, config: GatewayConfig, gateway_state: GatewayStateHandler, rpc_lock, omap_lock: OmapLock, group_id: int, spdk_rpc_client, spdk_rpc_subsystems_client, ceph_utils: CephUtils) -> None:
         """Constructor"""
         self.gw_logger_object = GatewayLogger(config)
@@ -643,6 +645,11 @@ class GatewayService(pb2_grpc.GatewayServicer):
         if not request.enable_ha:
             errmsg = f"{create_subsystem_error_prefix}: HA must be enabled for subsystems"
             self.logger.error(f"{errmsg}")
+            return pb2.subsys_status(status = errno.EINVAL, error_message = errmsg, nqn = request.subsystem_nqn)
+
+        if request.max_namespaces and request.max_namespaces > GatewayService.MAX_VALUE_FOR_MAX_NAMESPACES_PER_SUBSYSTEM:
+            errmsg = f"{create_subsystem_error_prefix}: Max namespaces can't be greater than {GatewayService.MAX_VALUE_FOR_MAX_NAMESPACES_PER_SUBSYSTEM}"
+            self.logger.error(errmsg)
             return pb2.subsys_status(status = errno.EINVAL, error_message = errmsg, nqn = request.subsystem_nqn)
 
         if not request.subsystem_nqn:
