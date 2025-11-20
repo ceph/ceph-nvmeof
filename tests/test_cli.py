@@ -181,12 +181,15 @@ class TestCreate:
         assert f"Invalid NQN" in caplog.text
         assert f"contains invalid characters" in caplog.text
         caplog.clear()
-        cli(["subsystem", "add", "--subsystem", subsystem, "--max-namespaces", "2049", "--no-group-append"])
+        cli(["subsystem", "add", "--subsystem", subsystem, "--max-namespaces", "3700", "--no-group-append"])
+        assert f"Failure creating subsystem {subsystem}: Max namespaces can't be greater than 2048" in caplog.text
+        caplog.clear()
+        cli(["subsystem", "add", "--subsystem", subsystem, "--max-namespaces", "2047", "--no-group-append"])
         assert f"create_subsystem {subsystem}: True" in caplog.text
         cli(["--format", "json", "subsystem", "list"])
         assert f'"serial_number": "{serial}"' not in caplog.text
         assert f'"nqn": "{subsystem}"' in caplog.text
-        assert f'"max_namespaces": 2049' in caplog.text
+        assert f'"max_namespaces": 2047' in caplog.text
         caplog.clear()
         cli(["subsystem", "add", "--subsystem", subsystem2, "--serial-number", serial, "--no-group-append"])
         assert f"create_subsystem {subsystem2}: True" in caplog.text
