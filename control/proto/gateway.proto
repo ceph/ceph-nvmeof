@@ -160,7 +160,7 @@ message namespace_add_req {
 	optional bool read_only = 14;
 	optional string rbd_data_pool_name = 15;
 	optional string location = 16;
-	optional string rados_namespace_name = 17;
+	optional string OBSOLETE_rados_namespace_name = 17;
 }
 
 message namespace_resize_req {
@@ -613,7 +613,7 @@ message namespace_cli {
 	optional bool image_was_shrunk = 21;
 	optional string rbd_data_pool_name = 22;
 	optional string location = 23;
-	optional string rados_namespace_name = 24;
+	optional string OBSOLETE_rados_namespace_name = 24;
 }
 
 message namespaces_info {
