@@ -4000,7 +4000,15 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 errmsg = f"{all_host_failure_prefix}: Can't allow any host access " \
                          f"on a subsystem having a DH-HMAC-CHAP key"
                 self.logger.error(errmsg)
-                return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
+                return pb2.req_status(errno.EACCES, error_message=errmsg)
+            dhchap_host_list = self.host_info.get_hosts_with_dhchap_key(request.subsystem_nqn)
+            if dhchap_host_list:
+                errmsg = f"{all_host_failure_prefix}: Can't allow any host access " \
+                         f"on a subsystem having a host with a DH-HMAC-CHAP key. " \
+                         f"All such hosts need to be removed from the subsystem first " \
+                         f"or their DH-HMAC-CHAP key should be cleared"
+                self.logger.error(errmsg)
+                return pb2.req_status(status=errno.EACCES, error_message=errmsg)
 
         if request.host_nqn != "*" and self.host_info.is_any_host_allowed(request.subsystem_nqn):
             self.logger.warning(f"A specific host {request.host_nqn} was added to subsystem "
@@ -4036,11 +4044,18 @@ class GatewayService(pb2_grpc.GatewayServicer):
             self.logger.error(errmsg)
             return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
 
-        if request.dhchap_key and request.host_nqn == "*":
-            errmsg = f"{all_host_failure_prefix}: DH-HMAC-CHAP key is " \
-                     f"only allowed for specific hosts"
-            self.logger.error(errmsg)
-            return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
+        if request.dhchap_key:
+            if request.host_nqn == "*":
+                errmsg = f"{all_host_failure_prefix}: DH-HMAC-CHAP key is " \
+                         f"only allowed for specific hosts"
+                self.logger.error(errmsg)
+                return pb2.req_status(status=errno.EACCES, error_message=errmsg)
+            elif self.host_info.is_any_host_allowed(request.subsystem_nqn):
+                errmsg = f"{host_failure_prefix}: DH-HMAC-CHAP key is " \
+                         f"not allowed for hosts on subsystems which are open for all hosts. " \
+                         f"You need to remove the open access in order to add the host"
+                self.logger.error(errmsg)
+                return pb2.req_status(status=errno.EACCES, error_message=errmsg)
 
         if self.force_tls and request.host_nqn != "*" and not request.psk:
             errmsg = f"{host_failure_prefix}: host must have a PSK key"
@@ -4490,6 +4505,13 @@ class GatewayService(pb2_grpc.GatewayServicer):
             errmsg = f"{failure_prefix}: Host must have a DH-HMAC-CHAP key if the subsystem has one"
             self.logger.error(errmsg)
             return pb2.req_status(status=errno.ENOKEY, error_message=errmsg)
+
+        if request.dhchap_key and self.host_info.is_any_host_allowed(request.subsystem_nqn):
+            errmsg = f"{failure_prefix}: DH-HMAC-CHAP key is " \
+                     f"not allowed for hosts on subsystems which are open for all hosts. " \
+                     f"You need to remove the open access in order to set a key for the host"
+            self.logger.error(errmsg)
+            return pb2.req_status(status=errno.EACCES, error_message=errmsg)
 
         host_already_exist = self.matching_host_exists(context, request.subsystem_nqn,
                                                        request.host_nqn)
@@ -5654,6 +5676,13 @@ class GatewayService(pb2_grpc.GatewayServicer):
             errmsg = f"{failure_prefix}: Can't change DH-HMAC-CHAP key for a discovery subsystem"
             self.logger.error(errmsg)
             return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
+
+        if request.dhchap_key and self.host_info.is_any_host_allowed(request.subsystem_nqn):
+            errmsg = f"{failure_prefix}: DH-HMAC-CHAP key is " \
+                     f"not allowed for subsystems which are open for all hosts. " \
+                     f"You need to remove the open access in order to set a key for the subsystem"
+            self.logger.error(errmsg)
+            return pb2.req_status(status=errno.EACCES, error_message=errmsg)
 
         omap_lock = self.omap_lock.get_omap_lock_to_use(context)
         with omap_lock:
