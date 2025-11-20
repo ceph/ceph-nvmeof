@@ -139,9 +139,16 @@ class Parser:
             help="Path to the server certificate file"
         )
         self.parser.add_argument(
+            "--max-message-length",
+            default=GatewayUtils.MAX_MESSAGE_LENGTH_DEFAULT,
+            type=int,
+            help="Max message length, in MB",
+        )
+        self.parser.add_argument(
             "--verbose",
             help="Run CLI in verbose mode",
-            action='store_true')
+            action='store_true'
+        )
 
         self.subparsers = self.parser.add_subparsers(title="Commands", dest="subcommand")
 
@@ -213,7 +220,7 @@ class GatewayClient:
             raise AttributeError("stub is None. Set with connect method.")
         return self._stub
 
-    def connect(self, args, host, port, client_key, client_cert, server_cert):
+    def connect(self, args, host, port, client_key, client_cert, server_cert, msg_len):
         """Connects to server and sets stub."""
         out_func, err_func, _ = self.get_output_functions(args)
         if args.format == "json" or args.format == "yaml" or args.format == "python":
@@ -224,6 +231,7 @@ class GatewayClient:
         host = GatewayUtils.escape_address_if_ipv6(host)
         server = f"{host}:{port}"
 
+        msg_len *= 1024 * 1024
         if client_key and client_cert:
             # Create credentials for mutual TLS and a secure channel
             if out_func:
@@ -244,10 +252,12 @@ class GatewayClient:
                 private_key=client_key,
                 certificate_chain=client_cert,
             )
-            channel = grpc.secure_channel(server, credentials)
+            channel = grpc.secure_channel(server, credentials,
+                                          options=[('grpc.max_receive_message_length', msg_len)])
         else:
             # Instantiate a channel without credentials
-            channel = grpc.insecure_channel(server)
+            channel = grpc.insecure_channel(server,
+                                            options=[('grpc.max_receive_message_length', msg_len)])
 
         # Bind the client and the server
         self._stub = pb2_grpc.GatewayStub(channel)
@@ -2708,12 +2718,10 @@ class GatewayClient:
 
         if args.format == "text" or args.format == "plain":
             if ret.status == 0:
-                if args.location:
-                    out_func(f"Setting location for namespace {args.nsid} in {args.subsystem} "
-                             f"to \"{args.location}\": Successful")
-                else:
-                    out_func(f"Unsetting location for namespace {args.nsid} "
-                             f"in {args.subsystem}: Successful")
+                if not args.location:
+                    args.location = ""
+                out_func(f"Setting location for namespace {args.nsid} in {args.subsystem} "
+                         f"to \"{args.location}\": Successful")
             else:
                 err_func(f"{ret.error_message}")
         elif args.format == "json" or args.format == "yaml":
@@ -3163,7 +3171,8 @@ def main_common(client, args):
     client_key = args.client_key
     client_cert = args.client_cert
     server_cert = args.server_cert
-    client.connect(args, server_address, server_port, client_key, client_cert, server_cert)
+    msg_len = args.max_message_length
+    client.connect(args, server_address, server_port, client_key, client_cert, server_cert, msg_len)
     call_function = getattr(client, args.func.__name__)
     rc = call_function(args)
     return rc
