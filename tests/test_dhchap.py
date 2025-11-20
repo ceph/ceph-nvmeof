@@ -16,6 +16,7 @@ subsystem4 = "nqn.2016-06.io.spdk:cnode4"
 subsystem5 = "nqn.2016-06.io.spdk:cnode5"
 subsystem6 = "nqn.2016-06.io.spdk:cnode6"
 subsystem7 = "nqn.2016-06.io.spdk:cnode7"
+subsystem9 = "nqn.2016-06.io.spdk:cnode9"
 hostnqn1 = "nqn.2014-08.org.nvmexpress:uuid:22207d09-d8af-4ed2-84ec-a6d80b0cf7eb"
 hostnqn2 = "nqn.2014-08.org.nvmexpress:uuid:22207d09-d8af-4ed2-84ec-a6d80b0cf7ec"
 hostnqn4 = "nqn.2014-08.org.nvmexpress:uuid:6488a49c-dfa3-11d4-ac31-b232c6c68a8a"
@@ -33,6 +34,8 @@ hostnqn15 = "nqn.2014-08.org.nvmexpress:uuid:22207d09-d8af-4ed2-84ec-a6d80b0cf7f
 hostnqn16 = "nqn.2014-08.org.nvmexpress:uuid:22207d09-d8af-4ed2-84ec-a6d80b0cf7fa"
 hostnqn17 = "nqn.2014-08.org.nvmexpress:uuid:22207d09-d8af-4ed2-84ec-a6d80b0cf7fb"
 hostnqn18 = "nqn.2014-08.org.nvmexpress:uuid:22207d09-d8af-4ed2-84ec-a6d80b0cf7fc"
+hostnqn19 = "nqn.2014-08.org.nvmexpress:uuid:22207d09-d8af-4ed2-84ec-a6d80b0cf7fd"
+hostnqn20 = "nqn.2014-08.org.nvmexpress:uuid:22207d09-d8af-4ed2-84ec-a6d80b0cf7fe"
 
 discovery_nqn = "nqn.2014-08.org.nvmexpress.discovery"
 
@@ -48,6 +51,8 @@ hostdhchap8 = "DHHC-1:01:eNNXGjidEHHStbUi2Gmpps0JcnofReFfy+NaulguGgt327hz:"
 hostdhchap9 = "DHHC-1:01:KD+sfH3/o2bRQoV0ESjBUywQlMnSaYpZISUbVa0k0nsWpNST:"
 hostdhchap10 = "DHHC-1:00:rWf0ZFYO7IgWGttM8w6jUrAY4cTQyqyXPdmxHeOSve3w5QU9:"
 hostdhchap11 = "DHHC-1:02:j3uUz05r5aQy42vX4tDXqVf9HgUPPdEp3kXTgUWl9EphsG7jwpr9KSIt3bmRLXBijPTIDQ==:"
+hostdhchap12 = "DHHC-1:00:H27KJjCURbgMdd8GvwtlwuOJPvb47lYaQ25FbAHU93QetO/G:"
+hostdhchap13 = "DHHC-1:00:yHe1wb+oNGR/PB8WQJYBTok32yKwKWpphbGaXLa8WjOW1bYE:"
 
 badhostdhchap1 = "xDHHC-1:01:eNNXGjidEHHStbUi2Gmpps0JcnofReFfy+NaulguGgt327hz:"
 badhostdhchap2 = "DHHC-1:01eNNXGjidEHHStbUi2Gmpps0JcnofReFfy+NaulguGgt327hz:"
@@ -396,6 +401,34 @@ def test_add_host_bad_keys(caplog, gateway):
          "--dhchap-key", badhostdhchap13])
     assert f'Failure adding host {hostnqn15} to {subsystem}: Invalid DH-HMAC-CHAP key ' \
            f'"{badhostdhchap13}": CRC-32 checksums mismatch' in caplog.text
+
+
+def test_add_host_with_key_to_open_subsystem(caplog, gateway):
+    cli(["subsystem", "add", "--subsystem", subsystem9, "--no-group-append"])
+    assert f"Adding subsystem {subsystem9}: Successful" in caplog.text
+    cli(["host", "add", "--subsystem", subsystem9, "--host-nqn", "*"])
+    assert f"Allowing open host access to {subsystem9}: Successful" in caplog.text
+    cli(["host", "add", "--subsystem", subsystem9, "--host-nqn", hostnqn19,
+         "--dhchap-key", hostdhchap12])
+    assert f'Failure adding host {hostnqn19} to {subsystem9}: DH-HMAC-CHAP key ' \
+           f'is not allowed for hosts on subsystems which are open for all hosts.' in caplog.text
+    cli(["host", "add", "--subsystem", subsystem9, "--host-nqn", hostnqn19])
+    assert f"Adding host {hostnqn19} to {subsystem9}: Successful" in caplog.text
+    cli(["host", "change_key", "--subsystem", subsystem9, "--host-nqn", hostnqn19,
+         "--dhchap-key", hostdhchap12])
+    assert f"Failure changing DH-HMAC-CHAP key for host {hostnqn19} on " \
+           f"subsystem {subsystem9}: DH-HMAC-CHAP key is not allowed for hosts on subsystems " \
+           f"which are open for all hosts." in caplog.text
+    cli(["host", "del", "--subsystem", subsystem9, "--host-nqn", "*"])
+    assert f"Disabling open host access to {subsystem9}: Successful" in caplog.text
+    cli(["host", "change_key", "--subsystem", subsystem9, "--host-nqn", hostnqn19,
+         "--dhchap-key", hostdhchap12])
+    assert f"Changing key for host {hostnqn19} on subsystem {subsystem9}: Successful" in caplog.text
+    cli(["host", "add", "--subsystem", subsystem9, "--host-nqn", hostnqn20,
+         "--dhchap-key", hostdhchap13])
+    assert f"Adding host {hostnqn20} to {subsystem9}: Successful" in caplog.text
+    cli(["subsystem", "del", "--subsystem", subsystem9])
+    assert f"Deleting subsystem {subsystem9}: Successful" in caplog.text
 
 
 def test_dhchap_subsystem_key(caplog, gateway):
