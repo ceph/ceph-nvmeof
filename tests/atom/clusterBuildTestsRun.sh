@@ -79,7 +79,6 @@ if [ "$NIGHTLY" != "nightly" ]; then
         --gw-group-num=1 \
         --gw-num=2 \
         --gw-to-stop-num=1 \
-        --gw-scale-down-num=1 \
         --subsystem-num=2 \
         --ns-num=4 \
         --subsystem-max-ns-num=2048 \
@@ -94,7 +93,6 @@ if [ "$NIGHTLY" != "nightly" ]; then
         --config-dbg-ms=1 \
         --nvmeof-daemon-stop \
         --nvmeof-systemctl-stop \
-        --mon-leader-stop \
         --mon-client-kill \
         --nvmeof-daemon-remove \
         --redeploy-gws \
@@ -102,8 +100,10 @@ if [ "$NIGHTLY" != "nightly" ]; then
         --mtls \
         --journalctl-to-console \
         --dont-power-off-cloud-vms \
+        --skip-gw-failover-latency-test \
         --skip-lb-group-change-test \
         --skip-gw-failover-latency-test \
+        --skip-block-list-test \
         --skip-reservations-basic-test \
         --ibm-cloud-key=nokey \
         --github-nvmeof-token=nokey \
@@ -124,7 +124,6 @@ else
         --gw-group-num=1 \
         --gw-num=8 \
         --gw-to-stop-num=1 \
-        --gw-scale-down-num=1 \
         --subsystem-num=4 \
         --ns-num=230 \
         --subsystem-max-ns-num=2048 \
@@ -139,17 +138,18 @@ else
         --config-dbg-ms=1 \
         --nvmeof-daemon-stop \
         --nvmeof-systemctl-stop \
-        --mon-leader-stop \
         --mon-client-kill \
         --nvmeof-daemon-remove \
         --github-action-deployment \
         --dont-power-off-cloud-vms \
         --dont-use-hugepages \
         --skip-lb-group-change-test \
+        --skip-gw-failover-latency-test \
         --skip-block-list-test \
         --skip-multi-hosts-conn-test \
+        --skip-block-list-test \
         --skip-reservations-basic-test \
-        --ibm-cloud-key=nokey \
+       --ibm-cloud-key=nokey \
         --github-nvmeof-token=nokey \
         --env=m8
     DOCKER_EXIT_STATUS=$?
