@@ -1249,8 +1249,6 @@ class GatewayStateHandler:
         # so just use the same values for empty
         req.rbd_pool_name = GatewayStateHandler._normalize_json_string(req.rbd_pool_name)
         req.rbd_image_name = GatewayStateHandler._normalize_json_string(req.rbd_image_name)
-        req.rados_namespace_name = GatewayStateHandler._normalize_json_string(
-            req.rados_namespace_name)
         req.subsystem_nqn = GatewayStateHandler._normalize_json_string(req.subsystem_nqn)
         req.uuid = GatewayStateHandler._normalize_json_string(req.uuid)
         req.rbd_data_pool_name = GatewayStateHandler._normalize_json_string(req.rbd_data_pool_name)
