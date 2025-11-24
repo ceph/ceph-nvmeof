@@ -230,7 +230,20 @@ def test_big_omap(caplog, two_gateways):
         f'"group": "{group_name}"' + "}"
     )
     gatewayB.serve()
+    caplog.clear()
+    time.sleep(1)
+    cli(["--server-port", portB, "--format", "json", "gateway", "info"])
+    assert '"gateway_initialization_over": false,' in caplog.text
     time.sleep(waitForUpdate + sleep_delta)
+    while True:
+        retries = 5
+        caplog.clear()
+        cli(["--server-port", portB, "--format", "json", "gateway", "info"])
+        if '"gateway_initialization_over": true,' in caplog.text:
+            break
+        retries -= 1
+        assert retries > 0, "Gateway is not fully initialized after restart"
+        time.sleep(sleep_delta)
     print("Verify resources after gateway restart")
     while True:
         retries = 3

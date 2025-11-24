@@ -394,6 +394,8 @@ class GatewayClient:
                     out_func(f"Gateway's group: {gw_info.group}")
                 if gw_info.hostname:
                     out_func(f"Gateway's host name: {gw_info.hostname}")
+                if not gw_info.gateway_initialization_over:
+                    out_func("Gateway's initialization is still in progress")
                 out_func(f"Gateway's load balancing group: {gw_info.load_balancing_group}")
                 out_func(f"Gateway's address: {gw_info.addr}")
                 out_func(f"Gateway's port: {gw_info.port}")
@@ -1692,7 +1694,7 @@ class GatewayClient:
             if hosts_info.status == 0:
                 hosts_list = []
                 if hosts_info.allow_any_host:
-                    hosts_list.append(["Any host", "n/a"])
+                    hosts_list.append(["Any host", "n/a", "n/a"])
                 has_timeout = False
                 for h in hosts_info.hosts:
                     if h.disconnected_due_to_keepalive_timeout:
