@@ -104,6 +104,7 @@ if [ "$NIGHTLY" != "nightly" ]; then
         --dont-power-off-cloud-vms \
         --skip-lb-group-change-test \
         --skip-gw-failover-latency-test \
+        --skip-reservations-basic-test \
         --ibm-cloud-key=nokey \
         --github-nvmeof-token=nokey \
         --env=m7; exit \$?" 2>&1 | tee "$TEMP_OUTPUT"
