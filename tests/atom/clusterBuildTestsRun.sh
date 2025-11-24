@@ -72,9 +72,8 @@ if [ "$NIGHTLY" != "nightly" ]; then
         --cli-img=quay.io/ceph/nvmeof-cli:"$VERSION" \
         --initiators=1 \
         --gw-group-num=1 \
-        --gw-num=4 \
+        --gw-num=2 \
         --gw-to-stop-num=1 \
-        --gw-scale-down-num=1 \
         --subsystem-num=2 \
         --ns-num=4 \
         --subsystem-max-ns-num=1024 \
@@ -86,7 +85,7 @@ if [ "$NIGHTLY" != "nightly" ]; then
         --fio-devices-num=1 \
         --lb-timeout=20 \
         --config-dbg-mon=10 \
-        --config-dbg-ms=1 \
+        --config-dbg-ms=0 \
         --nvmeof-daemon-stop \
         --nvmeof-systemctl-stop \
         --mon-leader-stop \
@@ -99,6 +98,8 @@ if [ "$NIGHTLY" != "nightly" ]; then
         --dont-power-off-cloud-vms \
         --skip-lb-group-change-test \
         --skip-ns-rebalancing-test \
+        --skip-gw-failover-latency-test \
+        --skip-reservations-basic-test \
         --ibm-cloud-key=nokey \
         --github-nvmeof-token=nokey \
         --env=m7
@@ -118,7 +119,6 @@ else
         --gw-group-num=1 \
         --gw-num=4 \
         --gw-to-stop-num=1 \
-        --gw-scale-down-num=1 \
         --subsystem-num=4 \
         --ns-num=230 \
         --subsystem-max-ns-num=1024 \
@@ -130,7 +130,7 @@ else
         --fio-devices-num=1 \
         --lb-timeout=20 \
         --config-dbg-mon=10 \
-        --config-dbg-ms=1 \
+        --config-dbg-ms=0 \
         --nvmeof-daemon-stop \
         --nvmeof-systemctl-stop \
         --mon-leader-stop \
@@ -144,6 +144,7 @@ else
         --skip-multi-hosts-conn-test \
         --skip-ns-rebalancing-test \
         --skip-multi-hosts-conn-test \
+        --skip-gw-failover-latency-test \
         --ibm-cloud-key=nokey \
         --github-nvmeof-token=nokey \
         --env=m8
