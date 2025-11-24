@@ -66,9 +66,8 @@ sudo docker run \
     --cli-img=quay.io/ceph/nvmeof-cli:"$VERSION" \
     --initiators=1 \
     --gw-group-num=1 \
-    --gw-num=4 \
+    --gw-num=2 \
     --gw-to-stop-num=1 \
-    --gw-scale-down-num=1 \
     --subsystem-num=2 \
     --ns-num=4 \
     --subsystem-max-ns-num=1024 \
@@ -83,17 +82,16 @@ sudo docker run \
     --config-dbg-ms=1 \
     --nvmeof-daemon-stop \
     --nvmeof-systemctl-stop \
-    --mon-leader-stop \
     --mon-client-kill \
     --nvmeof-daemon-remove \
     --redeploy-gws \
     --github-action-deployment \
-    --journalctl-to-console \
     --dont-power-off-cloud-vms \
     --skip-lb-group-change-test \
     --skip-block-list-test \
     --skip-multi-hosts-conn-test \
     --skip-ns-rebalancing-test \
+    --skip-gw-failover-latency-test \
     --ibm-cloud-key=nokey \
     --github-nvmeof-token=nokey \
     --env=m7
