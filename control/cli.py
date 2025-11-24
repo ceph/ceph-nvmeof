@@ -2233,6 +2233,9 @@ class GatewayClient:
                         verbose_info = [cluster_name]
                         lb_group += f" ({configured_lb_group})"
                     location = ns.location if ns.location else "<N/A>"
+                    qos_str = f"{self.get_qos_limit_str_value(ns.rw_mbytes_per_second)}\n" \
+                              f"{self.get_qos_limit_str_value(ns.r_mbytes_per_second)}\n" \
+                              f"{self.get_qos_limit_str_value(ns.w_mbytes_per_second)}"
                     namespaces_list.append([subsys_nqn,
                                             ns.nsid,
                                             break_string(ns.bdev_name, "-", 2),
@@ -2245,10 +2248,7 @@ class GatewayClient:
                                             location,
                                             visibility,
                                             self.get_qos_limit_str_value(ns.rw_ios_per_second),
-                                            self.get_qos_limit_str_value(ns.rw_mbytes_per_second),
-                                            self.get_qos_limit_str_value(ns.r_mbytes_per_second),
-                                            self.get_qos_limit_str_value(
-                                                ns.w_mbytes_per_second)] + verbose_info)
+                                            qos_str] + verbose_info)
 
                 if len(namespaces_list) > 0:
                     if args.format == "text":
@@ -2272,10 +2272,9 @@ class GatewayClient:
                                                        "Load\nBalancing\nGroup" + configured_txt,
                                                        "Location",
                                                        "Visibility",
-                                                       "R/W IOs\nper\nsecond",
-                                                       "R/W MBs\nper\nsecond",
-                                                       "Read MBs\nper\nsecond",
-                                                       "Write MBs\nper\nsecond"] + verbose_headers,
+                                                       "IOs per\nsecond",
+                                                       "R/W, R, W MBs\n"
+                                                       "per second"] + verbose_headers,
                                               tablefmt=table_format)
                     if args.nsid:
                         prefix = f"Namespace {args.nsid} in"
