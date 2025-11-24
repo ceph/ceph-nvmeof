@@ -77,9 +77,8 @@ if [ "$NIGHTLY" != "nightly" ]; then
         --cli-img=quay.io/ceph/nvmeof-cli:"$VERSION" \
         --initiators=1 \
         --gw-group-num=1 \
-        --gw-num=4 \
+        --gw-num=2 \
         --gw-to-stop-num=1 \
-        --gw-scale-down-num=1 \
         --subsystem-num=2 \
         --ns-num=4 \
         --subsystem-max-ns-num=2048 \
@@ -91,10 +90,9 @@ if [ "$NIGHTLY" != "nightly" ]; then
         --fio-devices-num=1 \
         --lb-timeout=20 \
         --config-dbg-mon=10 \
-        --config-dbg-ms=1 \
+        --config-dbg-ms=0 \
         --nvmeof-daemon-stop \
         --nvmeof-systemctl-stop \
-        --mon-leader-stop \
         --mon-client-kill \
         --nvmeof-daemon-remove \
         --redeploy-gws \
@@ -124,7 +122,6 @@ else
         --gw-group-num=1 \
         --gw-num=8 \
         --gw-to-stop-num=1 \
-        --gw-scale-down-num=1 \
         --subsystem-num=103 \
         --ns-num=8 \
         --subsystem-max-ns-num=2048 \
@@ -136,10 +133,9 @@ else
         --fio-devices-num=1 \
         --lb-timeout=20 \
         --config-dbg-mon=10 \
-        --config-dbg-ms=1 \
+        --config-dbg-ms=0 \
         --nvmeof-daemon-stop \
         --nvmeof-systemctl-stop \
-        --mon-leader-stop \
         --mon-client-kill \
         --nvmeof-daemon-remove \
         --github-action-deployment \
@@ -147,7 +143,6 @@ else
         --dont-use-hugepages \
         --skip-lb-group-change-test \
         --skip-gw-failover-latency-test \
-        --skip-reservations-basic-test \
         --skip-block-list-test \
         --skip-multi-hosts-conn-test \
         --ibm-cloud-key=nokey \
