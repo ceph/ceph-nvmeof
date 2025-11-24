@@ -1125,8 +1125,12 @@ class GatewayStateHandler:
                                                                      "break_update_interval_sec",
                                                                      25)
         self.update_is_active_lock = threading.Lock()
+        self.first_update_over = False
         self.id_text = id_text
         self.up_and_running = True
+
+    def is_initialization_over(self) -> bool:
+        return self.first_update_over
 
     def add_namespace(self, subsystem_nqn: str, nsid: str, val: str):
         """Adds a namespace to the state data store."""
@@ -1796,6 +1800,11 @@ class GatewayStateHandler:
                 self.omap.set_local_version(omap_version)
                 self.logger.info(f"Update complete ({local_version} -> {omap_version}) "
                                  f"({self.id_text}).")
+
+        if not self.first_update_over:
+            self.first_update_over = True
+            self.logger.info(f"Initialization is over ({self.id_text}).")
+
         return True
 
     def _group_by_prefix(self, state_update, prefix_list):

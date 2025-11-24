@@ -6344,6 +6344,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         cli_version_string = request.cli_version
         addr = self.config.get_with_default("gateway", "addr", "")
         port = self.config.get_with_default("gateway", "port", "")
+        initialization_over = self.gateway_state.is_initialization_over()
         ret = pb2.gateway_info(cli_version=request.cli_version,
                                version=gw_version_string,
                                spdk_version=spdk_version_string,
@@ -6359,6 +6360,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                max_namespaces_per_subsystem=self.max_namespaces_per_subsystem,
                                max_hosts_per_subsystem=self.max_hosts_per_subsystem,
                                max_hosts=self.max_hosts,
+                               gateway_initialization_over=initialization_over,
                                status=0,
                                error_message=os.strerror(0))
         cli_ver = self.parse_version(cli_version_string)
