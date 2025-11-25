@@ -2143,7 +2143,7 @@ class GatewayClient:
         int_size *= multiply
         return int_size
 
-    def ns_list(self, args):
+    def ns_list(self, args, show_hosts=False):
         """Lists namespaces on a subsystem."""
 
         out_func, err_func, _ = self.get_output_functions(args)
@@ -2156,7 +2156,7 @@ class GatewayClient:
         try:
             namespaces_info = self.stub.list_namespaces(pb2.list_namespaces_req(
                 subsystem=args.subsystem,
-                nsid=args.nsid, uuid=args.uuid))
+                nsid=args.nsid, uuid=args.uuid, show_hosts=show_hosts))
         except Exception as ex:
             namespaces_info = pb2.namespaces_info(
                 status=errno.EINVAL,
@@ -2215,7 +2215,7 @@ class GatewayClient:
                         if len(ns.hosts) > 0:
                             visibility = ""
                             for hst in ns.hosts:
-                                visibility += "· " + break_string(hst, ":", 2) + "\n"
+                                visibility += hst + "\n"
                         else:
                             visibility = "Restrictive"
 
@@ -2236,19 +2236,24 @@ class GatewayClient:
                     qos_str = f"{self.get_qos_limit_str_value(ns.rw_mbytes_per_second)}\n" \
                               f"{self.get_qos_limit_str_value(ns.r_mbytes_per_second)}\n" \
                               f"{self.get_qos_limit_str_value(ns.w_mbytes_per_second)}"
-                    namespaces_list.append([subsys_nqn,
-                                            ns.nsid,
-                                            break_string(ns.bdev_name, "-", 2),
-                                            f"{img_path}{data_pool_msg}",
-                                            f"{ro_msg}{trash_msg}{auto_resize_msg}",
-                                            self.format_size(ns.rbd_image_size),
-                                            self.format_size(ns.block_size),
-                                            break_string(ns.uuid, "-", 3),
-                                            lb_group,
-                                            location,
-                                            visibility,
-                                            self.get_qos_limit_str_value(ns.rw_ios_per_second),
-                                            qos_str] + verbose_info)
+                    if show_hosts:
+                        namespaces_list.append([subsys_nqn,
+                                                ns.nsid,
+                                                visibility])
+                    else:
+                        namespaces_list.append([subsys_nqn,
+                                                ns.nsid,
+                                                break_string(ns.bdev_name, "-", 2),
+                                                f"{img_path}{data_pool_msg}",
+                                                f"{ro_msg}{trash_msg}{auto_resize_msg}",
+                                                self.format_size(ns.rbd_image_size),
+                                                self.format_size(ns.block_size),
+                                                break_string(ns.uuid, "-", 3),
+                                                lb_group,
+                                                location,
+                                                visibility,
+                                                self.get_qos_limit_str_value(ns.rw_ios_per_second),
+                                                qos_str] + verbose_info)
 
                 if len(namespaces_list) > 0:
                     if args.format == "text":
@@ -2260,21 +2265,27 @@ class GatewayClient:
                     if args.verbose:
                         verbose_headers = ["Cluster\nName"]
                         configured_txt = "\n(Configured)"
+                    if show_hosts:
+                        headers = ["NQN",
+                                   "NSID",
+                                   "Visibility"]
+                    else:
+                        headers = ["NQN",
+                                   "NSID",
+                                   "Bdev\nName",
+                                   "RBD\nImage",
+                                   "Mode",
+                                   "Image\nSize",
+                                   "Block\nSize",
+                                   "UUID",
+                                   "Load\nBalancing\nGroup" + configured_txt,
+                                   "Location",
+                                   "Visibility",
+                                   "IOs per\nsecond",
+                                   "R/W, R, W MBs\n"
+                                   "per second"] + verbose_headers
                     namespaces_out = tabulate(namespaces_list,
-                                              headers=["NQN",
-                                                       "NSID",
-                                                       "Bdev\nName",
-                                                       "RBD\nImage",
-                                                       "Mode",
-                                                       "Image\nSize",
-                                                       "Block\nSize",
-                                                       "UUID",
-                                                       "Load\nBalancing\nGroup" + configured_txt,
-                                                       "Location",
-                                                       "Visibility",
-                                                       "IOs per\nsecond",
-                                                       "R/W, R, W MBs\n"
-                                                       "per second"] + verbose_headers,
+                                              headers=headers,
                                               tablefmt=table_format)
                     if args.nsid:
                         prefix = f"Namespace {args.nsid} in"
@@ -3055,6 +3066,11 @@ class GatewayClient:
                       "has no access to the subsystem",
                  action='store_true', required=False),
     ]
+    ns_list_hosts_args_list = [
+        argument("--subsystem", "-n", help="Subsystem NQN"),
+        argument("--nsid", help="Namespace ID", type=int),
+        argument("--uuid", "-u", help="UUID"),
+    ]
     ns_del_host_args_list = ns_common_args + [
         argument("--nsid", help="Namespace ID", type=int, required=True),
         argument("--host-nqn", "-t", help="Host NQN list", nargs="+", required=True),
@@ -3098,6 +3114,9 @@ class GatewayClient:
     ns_actions.append({"name": "del_host",
                        "args": ns_del_host_args_list,
                        "help": "Delete a host from a namespace"})
+    ns_actions.append({"name": "list_hosts",
+                       "args": ns_list_hosts_args_list,
+                       "help": "List namespace's hosts"})
     ns_actions.append({"name": "change_visibility",
                        "args": ns_change_visibility_args_list,
                        "help": "Change visibility for a namespace"})
@@ -3125,7 +3144,7 @@ class GatewayClient:
         elif args.action == "resize":
             return self.ns_resize(args)
         elif args.action == "list":
-            return self.ns_list(args)
+            return self.ns_list(args, False)
         elif args.action == "get_io_stats":
             return self.ns_get_io_stats(args)
         elif args.action == "change_load_balancing_group":
@@ -3136,6 +3155,8 @@ class GatewayClient:
             return self.ns_add_host(args)
         elif args.action == "del_host":
             return self.ns_del_host(args)
+        elif args.action == "list_hosts":
+            return self.ns_list(args, True)
         elif args.action == "change_visibility":
             return self.ns_change_visibility(args)
         elif args.action == "change_location":
