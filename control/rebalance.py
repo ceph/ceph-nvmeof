@@ -95,6 +95,8 @@ class Rebalance:
                 if nqn in self.gw_srv.ana_grp_subs_load[ana_grp]:
                     if self.gw_srv.ana_grp_subs_load[ana_grp][nqn] < min_load:
                         min_load = self.gw_srv.ana_grp_subs_load[ana_grp][nqn]
+                        self.logger.debug(f"min load candidate: ana {ana_grp}"
+                                          f" nqn {nqn} load {min_load}")
                         min_groups = {ana_grp}
                     elif self.gw_srv.ana_grp_subs_load[ana_grp][nqn] == min_load:
                         min_groups.add(ana_grp)
