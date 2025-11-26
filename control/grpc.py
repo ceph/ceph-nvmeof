@@ -2641,7 +2641,13 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                       error_message=change_lb_group_failure_prefix)
             # change LB success - need to update the data structures
             self.ana_grp_ns_load[anagrpid] -= 1   # decrease loading of previous "old" ana group
-            self.ana_grp_subs_load[anagrpid][request.subsystem_nqn] -= 1
+            try:
+                self.ana_grp_subs_load[anagrpid][request.subsystem_nqn] -= 1
+            except Exception as ex:
+                self.logger.error(f"entry does not exist in ana_grp_subs_load array: ANA grp:"
+                                  f" {anagrpid} nqn: {request.subsystem_nqn} {ex} ")
+                assert False, "ana_grp_subs_load dictionary should be initialized"
+
             self.logger.debug(f"updated load in grp {anagrpid} = {self.ana_grp_ns_load[anagrpid]} ")
             self.ana_grp_ns_load[request.anagrpid] += 1
             if request.anagrpid in self.ana_grp_subs_load:
