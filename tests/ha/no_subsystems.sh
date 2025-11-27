@@ -15,7 +15,7 @@ NQN="nqn.2016-06.io.spdk:cnode1"
  verify_gw_exists_and_no_subs()
  {
      IP=$1
-     subs=$(docker compose run -T --rm nvmeof-cli --server-address $IP --server-port 5500 --output stdio --format json get_subsystems)
+     subs=$(docker compose run -T --rm nvmeof-cli --server-address $IP --server-port 5500 --output stdio --format json subsystem list)
      echo "show subsystems after del : $subs"
      if echo "$subs" | grep -q '"subsystems": \[\]'; then
        echo "The string contains 'subsystems:[]' on GW  ip $IP"
@@ -42,7 +42,7 @@ NQN="nqn.2016-06.io.spdk:cnode1"
      docker compose  run --rm nvmeof-cli --server-address $ip2 --server-port 5500 listener add  --subsystem $NQN --host-name $GW2_NAME --traddr $ip2 --trsvcid 4420
 
      sleep 5
-     subs=$(docker compose run -T --rm nvmeof-cli --server-address $ip --server-port 5500 --output stdio --format json get_subsystems)
+     subs=$(docker compose run -T --rm nvmeof-cli --server-address $ip --server-port 5500 --output stdio --format json subsystem list)
 
      echo "subsystems $subs"
      #test that ana group is Active

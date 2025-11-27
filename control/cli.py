@@ -139,9 +139,16 @@ class Parser:
             help="Path to the server certificate file"
         )
         self.parser.add_argument(
+            "--max-message-length",
+            default=GatewayUtils.MAX_MESSAGE_LENGTH_DEFAULT,
+            type=int,
+            help="Max message length, in MB",
+        )
+        self.parser.add_argument(
             "--verbose",
             help="Run CLI in verbose mode",
-            action='store_true')
+            action='store_true'
+        )
 
         self.subparsers = self.parser.add_subparsers(title="Commands", dest="subcommand")
 
@@ -213,7 +220,7 @@ class GatewayClient:
             raise AttributeError("stub is None. Set with connect method.")
         return self._stub
 
-    def connect(self, args, host, port, client_key, client_cert, server_cert):
+    def connect(self, args, host, port, client_key, client_cert, server_cert, msg_len):
         """Connects to server and sets stub."""
         out_func, err_func, _ = self.get_output_functions(args)
         if args.format == "json" or args.format == "yaml" or args.format == "python":
@@ -224,6 +231,7 @@ class GatewayClient:
         host = GatewayUtils.escape_address_if_ipv6(host)
         server = f"{host}:{port}"
 
+        msg_len *= 1024 * 1024
         if client_key and client_cert:
             # Create credentials for mutual TLS and a secure channel
             if out_func:
@@ -244,10 +252,12 @@ class GatewayClient:
                 private_key=client_key,
                 certificate_chain=client_cert,
             )
-            channel = grpc.secure_channel(server, credentials)
+            channel = grpc.secure_channel(server, credentials,
+                                          options=[('grpc.max_receive_message_length', msg_len)])
         else:
             # Instantiate a channel without credentials
-            channel = grpc.insecure_channel(server)
+            channel = grpc.insecure_channel(server,
+                                            options=[('grpc.max_receive_message_length', msg_len)])
 
         # Bind the client and the server
         self._stub = pb2_grpc.GatewayStub(channel)
@@ -384,6 +394,8 @@ class GatewayClient:
                     out_func(f"Gateway's group: {gw_info.group}")
                 if gw_info.hostname:
                     out_func(f"Gateway's host name: {gw_info.hostname}")
+                if not gw_info.gateway_initialization_over:
+                    out_func("Gateway's initialization is still in progress")
                 out_func(f"Gateway's load balancing group: {gw_info.load_balancing_group}")
                 out_func(f"Gateway's address: {gw_info.addr}")
                 out_func(f"Gateway's port: {gw_info.port}")
@@ -1682,7 +1694,7 @@ class GatewayClient:
             if hosts_info.status == 0:
                 hosts_list = []
                 if hosts_info.allow_any_host:
-                    hosts_list.append(["Any host", "n/a"])
+                    hosts_list.append(["Any host", "n/a", "n/a"])
                 has_timeout = False
                 for h in hosts_info.hosts:
                     if h.disconnected_due_to_keepalive_timeout:
@@ -2131,7 +2143,7 @@ class GatewayClient:
         int_size *= multiply
         return int_size
 
-    def ns_list(self, args):
+    def ns_list(self, args, show_hosts=False):
         """Lists namespaces on a subsystem."""
 
         out_func, err_func, _ = self.get_output_functions(args)
@@ -2144,7 +2156,7 @@ class GatewayClient:
         try:
             namespaces_info = self.stub.list_namespaces(pb2.list_namespaces_req(
                 subsystem=args.subsystem,
-                nsid=args.nsid, uuid=args.uuid))
+                nsid=args.nsid, uuid=args.uuid, show_hosts=show_hosts))
         except Exception as ex:
             namespaces_info = pb2.namespaces_info(
                 status=errno.EINVAL,
@@ -2203,7 +2215,7 @@ class GatewayClient:
                         if len(ns.hosts) > 0:
                             visibility = ""
                             for hst in ns.hosts:
-                                visibility += "· " + break_string(hst, ":", 2) + "\n"
+                                visibility += hst + "\n"
                         else:
                             visibility = "Restrictive"
 
@@ -2221,22 +2233,27 @@ class GatewayClient:
                         verbose_info = [cluster_name]
                         lb_group += f" ({configured_lb_group})"
                     location = ns.location if ns.location else "<N/A>"
-                    namespaces_list.append([subsys_nqn,
-                                            ns.nsid,
-                                            break_string(ns.bdev_name, "-", 2),
-                                            f"{img_path}{data_pool_msg}",
-                                            f"{ro_msg}{trash_msg}{auto_resize_msg}",
-                                            self.format_size(ns.rbd_image_size),
-                                            self.format_size(ns.block_size),
-                                            break_string(ns.uuid, "-", 3),
-                                            lb_group,
-                                            location,
-                                            visibility,
-                                            self.get_qos_limit_str_value(ns.rw_ios_per_second),
-                                            self.get_qos_limit_str_value(ns.rw_mbytes_per_second),
-                                            self.get_qos_limit_str_value(ns.r_mbytes_per_second),
-                                            self.get_qos_limit_str_value(
-                                                ns.w_mbytes_per_second)] + verbose_info)
+                    qos_str = f"{self.get_qos_limit_str_value(ns.rw_mbytes_per_second)}\n" \
+                              f"{self.get_qos_limit_str_value(ns.r_mbytes_per_second)}\n" \
+                              f"{self.get_qos_limit_str_value(ns.w_mbytes_per_second)}"
+                    if show_hosts:
+                        namespaces_list.append([subsys_nqn,
+                                                ns.nsid,
+                                                visibility])
+                    else:
+                        namespaces_list.append([subsys_nqn,
+                                                ns.nsid,
+                                                break_string(ns.bdev_name, "-", 2),
+                                                f"{img_path}{data_pool_msg}",
+                                                f"{ro_msg}{trash_msg}{auto_resize_msg}",
+                                                self.format_size(ns.rbd_image_size),
+                                                self.format_size(ns.block_size),
+                                                break_string(ns.uuid, "-", 3),
+                                                lb_group,
+                                                location,
+                                                visibility,
+                                                self.get_qos_limit_str_value(ns.rw_ios_per_second),
+                                                qos_str] + verbose_info)
 
                 if len(namespaces_list) > 0:
                     if args.format == "text":
@@ -2248,22 +2265,27 @@ class GatewayClient:
                     if args.verbose:
                         verbose_headers = ["Cluster\nName"]
                         configured_txt = "\n(Configured)"
+                    if show_hosts:
+                        headers = ["NQN",
+                                   "NSID",
+                                   "Visibility"]
+                    else:
+                        headers = ["NQN",
+                                   "NSID",
+                                   "Bdev\nName",
+                                   "RBD\nImage",
+                                   "Mode",
+                                   "Image\nSize",
+                                   "Block\nSize",
+                                   "UUID",
+                                   "Load\nBalancing\nGroup" + configured_txt,
+                                   "Location",
+                                   "Visibility",
+                                   "IOs per\nsecond",
+                                   "R/W, R, W MBs\n"
+                                   "per second"] + verbose_headers
                     namespaces_out = tabulate(namespaces_list,
-                                              headers=["NQN",
-                                                       "NSID",
-                                                       "Bdev\nName",
-                                                       "RBD\nImage",
-                                                       "Mode",
-                                                       "Image\nSize",
-                                                       "Block\nSize",
-                                                       "UUID",
-                                                       "Load\nBalancing\nGroup" + configured_txt,
-                                                       "Location",
-                                                       "Visibility",
-                                                       "R/W IOs\nper\nsecond",
-                                                       "R/W MBs\nper\nsecond",
-                                                       "Read MBs\nper\nsecond",
-                                                       "Write MBs\nper\nsecond"] + verbose_headers,
+                                              headers=headers,
                                               tablefmt=table_format)
                     if args.nsid:
                         prefix = f"Namespace {args.nsid} in"
@@ -2708,12 +2730,10 @@ class GatewayClient:
 
         if args.format == "text" or args.format == "plain":
             if ret.status == 0:
-                if args.location:
-                    out_func(f"Setting location for namespace {args.nsid} in {args.subsystem} "
-                             f"to \"{args.location}\": Successful")
-                else:
-                    out_func(f"Unsetting location for namespace {args.nsid} "
-                             f"in {args.subsystem}: Successful")
+                if not args.location:
+                    args.location = ""
+                out_func(f"Setting location for namespace {args.nsid} in {args.subsystem} "
+                         f"to \"{args.location}\": Successful")
             else:
                 err_func(f"{ret.error_message}")
         elif args.format == "json" or args.format == "yaml":
@@ -3046,6 +3066,11 @@ class GatewayClient:
                       "has no access to the subsystem",
                  action='store_true', required=False),
     ]
+    ns_list_hosts_args_list = [
+        argument("--subsystem", "-n", help="Subsystem NQN"),
+        argument("--nsid", help="Namespace ID", type=int),
+        argument("--uuid", "-u", help="UUID"),
+    ]
     ns_del_host_args_list = ns_common_args + [
         argument("--nsid", help="Namespace ID", type=int, required=True),
         argument("--host-nqn", "-t", help="Host NQN list", nargs="+", required=True),
@@ -3089,6 +3114,9 @@ class GatewayClient:
     ns_actions.append({"name": "del_host",
                        "args": ns_del_host_args_list,
                        "help": "Delete a host from a namespace"})
+    ns_actions.append({"name": "list_hosts",
+                       "args": ns_list_hosts_args_list,
+                       "help": "List namespace's hosts"})
     ns_actions.append({"name": "change_visibility",
                        "args": ns_change_visibility_args_list,
                        "help": "Change visibility for a namespace"})
@@ -3116,7 +3144,7 @@ class GatewayClient:
         elif args.action == "resize":
             return self.ns_resize(args)
         elif args.action == "list":
-            return self.ns_list(args)
+            return self.ns_list(args, False)
         elif args.action == "get_io_stats":
             return self.ns_get_io_stats(args)
         elif args.action == "change_load_balancing_group":
@@ -3127,6 +3155,8 @@ class GatewayClient:
             return self.ns_add_host(args)
         elif args.action == "del_host":
             return self.ns_del_host(args)
+        elif args.action == "list_hosts":
+            return self.ns_list(args, True)
         elif args.action == "change_visibility":
             return self.ns_change_visibility(args)
         elif args.action == "change_location":
@@ -3163,7 +3193,8 @@ def main_common(client, args):
     client_key = args.client_key
     client_cert = args.client_cert
     server_cert = args.server_cert
-    client.connect(args, server_address, server_port, client_key, client_cert, server_cert)
+    msg_len = args.max_message_length
+    client.connect(args, server_address, server_port, client_key, client_cert, server_cert, msg_len)
     call_function = getattr(client, args.func.__name__)
     rc = call_function(args)
     return rc

@@ -153,7 +153,6 @@ else
         --skip-gw-failover-latency-test \
         --skip-block-list-test \
         --skip-multi-hosts-conn-test \
-        --skip-reservations-basic-test \
         --ibm-cloud-key=nokey \
         --github-nvmeof-token=nokey \
         --encryption-key \

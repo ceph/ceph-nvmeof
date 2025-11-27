@@ -265,6 +265,7 @@ message list_namespaces_req {
 	string subsystem = 1;
 	optional uint32 nsid = 2;
 	optional string uuid = 3;
+	optional bool show_hosts = 4;
 }
 
 message add_host_req {
@@ -488,6 +489,7 @@ message gateway_info {
 	optional uint32 max_hosts_per_subsystem = 15;
 	optional uint32 max_namespaces_per_subsystem = 16;
 	optional uint32 max_hosts = 17;
+        optional bool gateway_initialization_over = 18;
 }
 
 message cli_version {
