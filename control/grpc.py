@@ -1805,9 +1805,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
             if not key.startswith(self.gateway_state.local.NAMESPACE_PREFIX):
                 continue
             try:
-                ns = json.loads(val)
-                if ns["subsystem_nqn"] == nqn:
-                    nsid = ns["nsid"]
+                ns = json_format.Parse(val, pb2.namespace_add_req(),
+                                       ignore_unknown_fields=True)
+                if ns.subsystem_nqn == nqn:
+                    nsid = ns.nsid
                     ns_list.append(nsid)
             except Exception:
                 self.logger.exception(f"Got exception trying to get subsystem {nqn} namespaces")
@@ -1821,8 +1822,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
             if not key.startswith(self.gateway_state.local.LISTENER_PREFIX):
                 continue
             try:
-                lsnr = json.loads(val)
-                if lsnr["nqn"] == nqn:
+                lsnr = json_format.Parse(val, pb2.create_listener_req(),
+                                         ignore_unknown_fields=True)
+                if lsnr.nqn == nqn:
                     return True
             except Exception:
                 self.logger.exception(f"Got exception trying to get subsystem {nqn} listener")
@@ -1977,15 +1979,15 @@ class GatewayService(pb2_grpc.GatewayServicer):
             if not key.startswith(self.gateway_state.local.NAMESPACE_PREFIX):
                 continue
             try:
-                ns = json.loads(val)
-                GatewayService.fill_namespace_missing_fields(ns)
-                ns_pool = ns["rbd_pool_name"]
-                ns_image = ns["rbd_image_name"]
+                ns = json_format.Parse(val, pb2.namespace_add_req(),
+                                       ignore_unknown_fields=True)
+                ns_pool = ns.rbd_pool_name
+                ns_image = ns.rbd_image_name
                 if pool_name and pool_name != ns_pool:
                     continue
                 if image_name and image_name != ns_image:
                     continue
-                nqn = ns["subsystem_nqn"]
+                nqn = ns.subsystem_nqn
                 errmsg = f"RBD image {ns_pool}/{ns_image} is already used by a namespace " \
                          f"in subsystem {nqn}"
                 break
@@ -2458,15 +2460,15 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 ns_key = GatewayState.build_namespace_key(request.subsystem_nqn, request.nsid)
                 try:
                     state_ns = state[ns_key]
-                    ns_entry = json.loads(state_ns)
-                    GatewayService.fill_namespace_missing_fields(ns_entry)
+                    ns_entry = json_format.Parse(state_ns, pb2.namespace_add_req(),
+                                                 ignore_unknown_fields=True)
                 except Exception:
                     errmsg = f"{change_lb_group_failure_prefix}: Can't find entry for " \
                              f"namespace {request.nsid} in {request.subsystem_nqn}"
                     self.logger.error(errmsg)
                     return pb2.req_status(status=errno.ENOENT, error_message=errmsg)
                 if not request.auto_lb_logic:
-                    anagrp = ns_entry["anagrpid"]
+                    anagrp = ns_entry.anagrpid
                     gw_id = self.ceph_utils.get_gw_id_owner_ana_group(
                         self.gateway_pool, self.gateway_group, anagrp)
                     self.logger.debug(f"Load balancing group of ns#{request.nsid} - {anagrp} is "
@@ -2525,23 +2527,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 assert ns_entry, "Namespace entry is None for non-update call"
                 # Update gateway state
                 try:
-                    add_req = pb2.namespace_add_req(rbd_pool_name=ns_entry["rbd_pool_name"],
-                                                    rbd_image_name=ns_entry["rbd_image_name"],
-                                                    subsystem_nqn=ns_entry["subsystem_nqn"],
-                                                    nsid=ns_entry["nsid"],
-                                                    block_size=ns_entry["block_size"],
-                                                    uuid=ns_entry["uuid"],
-                                                    anagrpid=request.anagrpid,
-                                                    create_image=ns_entry["create_image"],
-                                                    trash_image=ns_entry["trash_image"],
-                                                    size=int(ns_entry["size"]),
-                                                    force=ns_entry["force"],
-                                                    no_auto_visible=ns_entry["no_auto_visible"],
-                                                    disable_auto_resize=ns_entry[
-                                                    "disable_auto_resize"],
-                                                    read_only=ns_entry["read_only"])
+                    ns_entry.anagrpid = request.anagrpid
                     json_req = json_format.MessageToJson(
-                        add_req, preserving_proto_field_name=True,
+                        ns_entry, preserving_proto_field_name=True,
                         including_default_value_fields=True)
                     self.gateway_state.add_namespace(request.subsystem_nqn,
                                                      request.nsid, json_req)
@@ -2553,29 +2541,6 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
 
         return pb2.req_status(status=0, error_message=os.strerror(0))
-
-    @staticmethod
-    def fill_namespace_missing_fields(ns: pb2.namespace_add_req):
-        try:
-            ns["trash_image"]
-        except KeyError:
-            ns["trash_image"] = False
-        try:
-            ns["no_auto_visible"]
-        except KeyError:
-            ns["no_auto_visible"] = False
-        try:
-            ns["disable_auto_resize"]
-        except KeyError:
-            ns["disable_auto_resize"] = False
-        try:
-            ns["read_only"]
-        except KeyError:
-            ns["read_only"] = False
-        try:
-            ns["force"]
-        except KeyError:
-            ns["force"] = False
 
     def namespace_change_load_balancing_group(self, request, context=None):
         """Changes a namespace load balancing group."""
@@ -2671,9 +2636,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 ns_key = GatewayState.build_namespace_key(request.subsystem_nqn, request.nsid)
                 try:
                     state_ns = state[ns_key]
-                    ns_entry = json.loads(state_ns)
-                    GatewayService.fill_namespace_missing_fields(ns_entry)
-                    if ns_entry["no_auto_visible"] == (not request.auto_visible):
+                    ns_entry = json_format.Parse(state_ns, pb2.namespace_add_req(),
+                                                 ignore_unknown_fields=True)
+                    if ns_entry.no_auto_visible == (not request.auto_visible):
                         self.logger.warning(f"No change to namespace {request.nsid} in "
                                             f"{request.subsystem_nqn} visibility, nothing to do")
                         return pb2.req_status(status=0, error_message=os.strerror(0))
@@ -2714,23 +2679,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 assert ns_entry, "Namespace entry is None for non-update call"
                 # Update gateway state
                 try:
-                    add_req = pb2.namespace_add_req(rbd_pool_name=ns_entry["rbd_pool_name"],
-                                                    rbd_image_name=ns_entry["rbd_image_name"],
-                                                    subsystem_nqn=ns_entry["subsystem_nqn"],
-                                                    nsid=ns_entry["nsid"],
-                                                    block_size=ns_entry["block_size"],
-                                                    uuid=ns_entry["uuid"],
-                                                    anagrpid=ns_entry["anagrpid"],
-                                                    create_image=ns_entry["create_image"],
-                                                    trash_image=ns_entry["trash_image"],
-                                                    size=int(ns_entry["size"]),
-                                                    force=ns_entry["force"],
-                                                    no_auto_visible=not request.auto_visible,
-                                                    disable_auto_resize=ns_entry[
-                                                    "disable_auto_resize"],
-                                                    read_only=ns_entry["read_only"])
+                    ns_entry.no_auto_visible = not request.auto_visible
                     json_req = json_format.MessageToJson(
-                        add_req, preserving_proto_field_name=True,
+                        ns_entry, preserving_proto_field_name=True,
                         including_default_value_fields=True)
                     self.gateway_state.add_namespace(request.subsystem_nqn, request.nsid, json_req)
                 except Exception as ex:
@@ -2812,9 +2763,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 ns_key = GatewayState.build_namespace_key(request.subsystem_nqn, request.nsid)
                 try:
                     state_ns = state[ns_key]
-                    ns_entry = json.loads(state_ns)
-                    GatewayService.fill_namespace_missing_fields(ns_entry)
-                    if ns_entry["trash_image"] == request.trash_image:
+                    ns_entry = json_format.Parse(state_ns, pb2.namespace_add_req(),
+                                                 ignore_unknown_fields=True)
+                    if ns_entry.trash_image == request.trash_image:
                         self.logger.warning(f"Namespace {request.nsid} in {request.subsystem_nqn} "
                                             f"already has the RBD trash image flag set to the "
                                             f"requested value, nothing to do")
@@ -2829,23 +2780,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 assert ns_entry, "Namespace entry is None"
                 # Update gateway state
                 try:
-                    add_req = pb2.namespace_add_req(rbd_pool_name=ns_entry["rbd_pool_name"],
-                                                    rbd_image_name=ns_entry["rbd_image_name"],
-                                                    subsystem_nqn=ns_entry["subsystem_nqn"],
-                                                    nsid=ns_entry["nsid"],
-                                                    block_size=ns_entry["block_size"],
-                                                    uuid=ns_entry["uuid"],
-                                                    anagrpid=ns_entry["anagrpid"],
-                                                    create_image=ns_entry["create_image"],
-                                                    trash_image=request.trash_image,
-                                                    size=int(ns_entry["size"]),
-                                                    force=ns_entry["force"],
-                                                    no_auto_visible=ns_entry["no_auto_visible"],
-                                                    disable_auto_resize=ns_entry[
-                                                    "disable_auto_resize"],
-                                                    read_only=ns_entry["read_only"])
+                    ns_entry.trash_image = request.trash_image
                     json_req = json_format.MessageToJson(
-                        add_req, preserving_proto_field_name=True,
+                        ns_entry, preserving_proto_field_name=True,
                         including_default_value_fields=True)
                     self.gateway_state.add_namespace(request.subsystem_nqn, request.nsid, json_req)
                     self.subsystems_cache.set_subsystems(None)
@@ -3326,15 +3263,28 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                            error_message=f"{failure_prefix}: Error "
                                                          f"parsing returned stats:\n{exmsg}")
 
+    @staticmethod
+    def is_optional_field_in_message(request, fld):
+        try:
+            assert request.DESCRIPTOR.fields_by_name[fld].has_presence, \
+                f"Field {fld} is not optional"
+            if request.HasField(fld):
+                return True
+        except AssertionError:
+            raise
+        except Exception:
+            pass
+        return False
+
     def get_qos_limits_string(self, request):
         limits_to_set = ""
-        if request.HasField("rw_ios_per_second"):
+        if GatewayService.is_optional_field_in_message(request, "rw_ios_per_second"):
             limits_to_set += f" R/W IOs per second: {request.rw_ios_per_second}"
-        if request.HasField("rw_mbytes_per_second"):
+        if GatewayService.is_optional_field_in_message(request, "rw_mbytes_per_second"):
             limits_to_set += f" R/W megabytes per second: {request.rw_mbytes_per_second}"
-        if request.HasField("r_mbytes_per_second"):
+        if GatewayService.is_optional_field_in_message(request, "r_mbytes_per_second"):
             limits_to_set += f" Read megabytes per second: {request.r_mbytes_per_second}"
-        if request.HasField("w_mbytes_per_second"):
+        if GatewayService.is_optional_field_in_message(request, "w_mbytes_per_second"):
             limits_to_set += f" Write megabytes per second: {request.w_mbytes_per_second}"
 
         return limits_to_set
@@ -3401,23 +3351,25 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                 f"for QOS changes")
             pass
 
-        if request.HasField("rw_ios_per_second"):
+        if GatewayService.is_optional_field_in_message(request, "rw_ios_per_second"):
             if request.rw_ios_per_second % 1000 != 0:
                 rounded_rate = int((request.rw_ios_per_second + 1000) / 1000) * 1000
                 self.logger.warning(f"IOs per second {request.rw_ios_per_second} will be "
                                     f"rounded up to {rounded_rate}")
 
-        if request.HasField("rw_mbytes_per_second"):
+        if GatewayService.is_optional_field_in_message(request, "rw_mbytes_per_second"):
             if request.rw_mbytes_per_second > max_mb_per_second:
                 self.logger.warning(f"Read/Write megabytes per second "
                                     f"{request.rw_mbytes_per_second} is too big, "
                                     f"it will be truncated to {max_mb_per_second}")
-        if request.HasField("r_mbytes_per_second"):
+
+        if GatewayService.is_optional_field_in_message(request, "r_mbytes_per_second"):
             if request.r_mbytes_per_second > max_mb_per_second:
                 self.logger.warning(f"Read megabytes per second "
                                     f"{request.r_mbytes_per_second} is too big, "
                                     f"it will be truncated to {max_mb_per_second}")
-        if request.HasField("w_mbytes_per_second"):
+
+        if GatewayService.is_optional_field_in_message(request, "w_mbytes_per_second"):
             if request.w_mbytes_per_second > max_mb_per_second:
                 self.logger.warning(f"Write megabytes per second "
                                     f"{request.w_mbytes_per_second} is too big, "
@@ -3425,51 +3377,56 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         set_qos_limits_args = {}
         set_qos_limits_args["name"] = bdev_name
-        if request.HasField("rw_ios_per_second"):
+        if GatewayService.is_optional_field_in_message(request, "rw_ios_per_second"):
             set_qos_limits_args["rw_ios_per_sec"] = request.rw_ios_per_second
-        if request.HasField("rw_mbytes_per_second"):
+        if GatewayService.is_optional_field_in_message(request, "rw_mbytes_per_second"):
             set_qos_limits_args["rw_mbytes_per_sec"] = request.rw_mbytes_per_second
-        if request.HasField("r_mbytes_per_second"):
+        if GatewayService.is_optional_field_in_message(request, "r_mbytes_per_second"):
             set_qos_limits_args["r_mbytes_per_sec"] = request.r_mbytes_per_second
-        if request.HasField("w_mbytes_per_second"):
+        if GatewayService.is_optional_field_in_message(request, "w_mbytes_per_second"):
             set_qos_limits_args["w_mbytes_per_sec"] = request.w_mbytes_per_second
         if self.spdk_qos_timeslice:
             set_qos_limits_args["timeslice_in_usecs"] = self.spdk_qos_timeslice
 
         ns_qos_entry = None
-        if context:
-            state = self.gateway_state.local.get_state()
-            ns_qos_key = GatewayState.build_namespace_qos_key(request.subsystem_nqn, request.nsid)
-            try:
-                state_ns_qos = state[ns_qos_key]
-                ns_qos_entry = json.loads(state_ns_qos)
-            except Exception:
-                self.logger.info(f"No previous QOS limits found, this is the first time the "
-                                 f"limits are set for namespace {request.nsid} on "
-                                 f"{request.subsystem_nqn}")
-
+        ns_qos_key = GatewayState.build_namespace_qos_key(request.subsystem_nqn, request.nsid)
         omap_lock = self.omap_lock.get_omap_lock_to_use(context)
         with omap_lock:
+            if context:
+                state = self.gateway_state.local.get_state()
+                try:
+                    state_ns_qos = state[ns_qos_key]
+                    ns_qos_entry = json_format.Parse(state_ns_qos, pb2.namespace_set_qos_req(),
+                                                     ignore_unknown_fields=True)
+                except Exception:
+                    self.logger.info(f"No previous QOS limits found, this is the first time the "
+                                     f"limits are set for namespace {request.nsid} on "
+                                     f"{request.subsystem_nqn}")
+
             # Merge current limits with previous ones, if exist
             if ns_qos_entry:
                 assert context, "Shouldn't get here on an update"
-                if not request.HasField("rw_ios_per_second") and ns_qos_entry.get(
-                        "rw_ios_per_second") is not None:
-                    request.rw_ios_per_second = int(ns_qos_entry["rw_ios_per_second"])
-                if not request.HasField("rw_mbytes_per_second") and ns_qos_entry.get(
-                        "rw_mbytes_per_second") is not None:
-                    request.rw_mbytes_per_second = int(ns_qos_entry["rw_mbytes_per_second"])
-                if not request.HasField("r_mbytes_per_second") and ns_qos_entry.get(
-                        "r_mbytes_per_second") is not None:
-                    request.r_mbytes_per_second = int(ns_qos_entry["r_mbytes_per_second"])
-                if not request.HasField("w_mbytes_per_second") and ns_qos_entry.get(
-                        "w_mbytes_per_second") is not None:
-                    request.w_mbytes_per_second = int(ns_qos_entry["w_mbytes_per_second"])
+                if not GatewayService.is_optional_field_in_message(request, "rw_ios_per_second"):
+                    if GatewayService.is_optional_field_in_message(ns_qos_entry,
+                                                                   "rw_ios_per_second"):
+                        request.rw_ios_per_second = ns_qos_entry.rw_ios_per_second
+                if not GatewayService.is_optional_field_in_message(request, "rw_mbytes_per_second"):
+                    if GatewayService.is_optional_field_in_message(ns_qos_entry,
+                                                                   "rw_mbytes_per_second"):
+                        request.rw_mbytes_per_second = ns_qos_entry.rw_mbytes_per_second
+                if not GatewayService.is_optional_field_in_message(request, "r_mbytes_per_second"):
+                    if GatewayService.is_optional_field_in_message(ns_qos_entry,
+                                                                   "r_mbytes_per_second"):
+                        request.r_mbytes_per_second = ns_qos_entry.r_mbytes_per_second
+                if not GatewayService.is_optional_field_in_message(request, "w_mbytes_per_second"):
+                    if GatewayService.is_optional_field_in_message(ns_qos_entry,
+                                                                   "w_mbytes_per_second"):
+                        request.w_mbytes_per_second = ns_qos_entry.w_mbytes_per_second
 
-                limits_to_set = self.get_qos_limits_string(request)
-                self.logger.debug(f"After merging current QOS limits with previous ones for "
-                                  f"namespace {request.nsid} on {request.subsystem_nqn},"
-                                  f"{limits_to_set}")
+            limits_to_set = self.get_qos_limits_string(request)
+            self.logger.debug(f"After merging current QOS limits with previous ones for "
+                              f"namespace {request.nsid} on {request.subsystem_nqn},"
+                              f"{limits_to_set}")
             try:
                 ret = rpc_bdev.bdev_set_qos_limit(
                     self.spdk_rpc_client,
@@ -3964,8 +3921,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
         for key, val in state.items():
             if key.startswith(host_key_prefix):
                 try:
-                    host = json.loads(val)
-                    host_nqn = host["host_nqn"]
+                    host = json_format.Parse(val, pb2.add_host_req(), ignore_unknown_fields=True)
+                    host_nqn = host.host_nqn
                     hosts.append(host_nqn)
                 except Exception:
                     self.logger.exception(f"Error parsing {val}")
@@ -5231,17 +5188,18 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 if not key.startswith(listener_prefix):
                     continue
                 try:
-                    listener = json.loads(val)
-                    listener_nqn = listener["nqn"]
+                    listener = json_format.Parse(val, pb2.create_listener_req(),
+                                                 ignore_unknown_fields=True)
+                    listener_nqn = listener.nqn
                     if listener_nqn != nqn:
                         self.logger.warning(f"Got subsystem {listener_nqn} "
                                             f"instead of {nqn}, ignore")
                         continue
-                    if listener["traddr"] != traddr:
+                    elif listener.traddr != traddr:
                         continue
-                    if listener["trsvcid"] != port:
+                    elif listener.trsvcid != port:
                         continue
-                    listener_hosts.append(listener["host_name"])
+                    listener_hosts.append(listener.host_name)
                 except Exception:
                     self.logger.exception(f"Got exception while parsing {val}")
                     continue
@@ -5421,34 +5379,42 @@ class GatewayService(pb2_grpc.GatewayServicer):
             if not key.startswith(listener_prefix):
                 continue
             try:
-                listener = json.loads(val)
-                nqn = listener["nqn"]
+                listener = json_format.Parse(val, pb2.create_listener_req(),
+                                             ignore_unknown_fields=True)
+                nqn = listener.nqn
                 if nqn != request.subsystem:
                     self.logger.warning(f"Got subsystem {nqn} instead of "
                                         f"{request.subsystem}, ignore")
                     continue
-                secure = False
-                if "secure" in listener:
-                    secure = listener["secure"]
+                try:
+                    adrfam = listener.adrfam
+                    if isinstance(adrfam, int):
+                        adrfam = GatewayEnumUtils.get_key_from_value(pb2.AddressFamily, adrfam)
+                except KeyError:
+                    adrfam = GatewayEnumUtils.get_key_from_value(pb2.AddressFamily, 0)
+                    self.logger.debug(f"Missing adrfam in entry use default value: {adrfam}")
+                adrfam = adrfam.lower()
+                secure = listener.secure
                 active = False
                 if request.subsystem in self.subsystem_listeners:
-                    lookfor = (listener["adrfam"].lower(), listener["traddr"],
-                               int(listener["trsvcid"]), secure, False)
+                    traddr = GatewayUtils.unescape_address_if_ipv6(listener.traddr, adrfam)
+                    lookfor = (adrfam, traddr,
+                               int(listener.trsvcid), secure, False)
                     if lookfor in self.subsystem_listeners[request.subsystem]:
                         active = False
                     else:
-                        lookfor = (listener["adrfam"].lower(), listener["traddr"],
-                                   int(listener["trsvcid"]), secure, True)
+                        lookfor = (adrfam, traddr,
+                                   int(listener.trsvcid), secure, True)
                         if lookfor in self.subsystem_listeners[request.subsystem]:
                             active = True
                         else:
                             self.logger.warning(f"Can't find listener "
                                                 f"{listener} in local list")
-                one_listener = pb2.listener_info(host_name=listener["host_name"],
+                one_listener = pb2.listener_info(host_name=listener.host_name,
                                                  trtype="TCP",
-                                                 adrfam=listener["adrfam"],
-                                                 traddr=listener["traddr"],
-                                                 trsvcid=listener["trsvcid"],
+                                                 adrfam=listener.adrfam,
+                                                 traddr=listener.traddr,
+                                                 trsvcid=listener.trsvcid,
                                                  secure=secure, active=active)
                 listeners.append(one_listener)
             except Exception:
@@ -5753,7 +5719,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 subsys_key = GatewayState.build_subsystem_key(request.subsystem_nqn)
                 try:
                     state_subsys = state[subsys_key]
-                    subsys_entry = json.loads(state_subsys)
+                    subsys_entry = json_format.Parse(state_subsys, pb2.create_subsystem_req(),
+                                                     ignore_unknown_fields=True)
                 except Exception:
                     errmsg = f"{failure_prefix}: Can't find entry for subsystem " \
                              f"{request.subsystem_nqn}"
@@ -5781,16 +5748,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
                             key_encrypted = False
                             self.host_info.set_subsystem_created_without_key(request.subsystem_nqn)
 
-                    create_req = pb2.create_subsystem_req(
-                        subsystem_nqn=request.subsystem_nqn,
-                        serial_number=subsys_entry["serial_number"],
-                        max_namespaces=subsys_entry["max_namespaces"],
-                        enable_ha=subsys_entry["enable_ha"],
-                        no_group_append=subsys_entry["no_group_append"],
-                        dhchap_key=dhchap_key_for_omap,
-                        key_encrypted=key_encrypted)
+                    subsys_entry.dhchap_key = dhchap_key_for_omap
+                    subsys_entry.key_encrypted = key_encrypted
                     json_req = json_format.MessageToJson(
-                        create_req, preserving_proto_field_name=True,
+                        subsys_entry, preserving_proto_field_name=True,
                         including_default_value_fields=True)
                     self.gateway_state.add_subsystem(request.subsystem_nqn, json_req)
                 except Exception as ex:
@@ -5876,14 +5837,14 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         assert self.rpc_lock.locked(), "RPC is unlocked when calling set_spdk_nvmf_logs_safe()"
         peer_msg = self.get_peer_message(context)
-        if request.HasField("log_level"):
+        if GatewayService.is_optional_field_in_message(request, "log_level"):
             log_level = GatewayEnumUtils.get_key_from_value(pb2.LogLevel, request.log_level)
             if log_level is None:
                 errmsg = f"Unknown log level {request.log_level}"
                 self.logger.error(errmsg)
                 return pb2.req_status(status=errno.ENOKEY, error_message=errmsg)
 
-        if request.HasField("print_level"):
+        if GatewayService.is_optional_field_in_message(request, "print_level"):
             print_level = GatewayEnumUtils.get_key_from_value(pb2.LogLevel, request.print_level)
             if print_level is None:
                 errmsg = f"Unknown print level {request.print_level}"

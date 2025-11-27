@@ -41,6 +41,7 @@ image26 = "mytestdevimage26"
 image27 = "mytestdevimage27"
 image28 = "mytestdevimage28"
 image29 = "mytestdevimage29"
+image30 = "mytestdevimage30"
 pool = "rbd"
 subsystem = "nqn.2016-06.io.spdk:cnode1"
 subsystem2 = "nqn.2016-06.io.spdk:cnode2"
@@ -431,6 +432,39 @@ class TestCreate:
         assert ret.status != 0
         assert "Failure adding namespace" in caplog.text
         assert "block size can't be zero" in caplog.text
+
+    def test_changing_namespace_with_no_size(self, caplog, gateway):
+        gw, stub = gateway
+        caplog.clear()
+        cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool,
+             "--rbd-image", image30, "--size", "16MB",
+             "--rbd-create-image", "--force"])
+        assert f"Adding namespace 1 to {subsystem}: Successful" in caplog.text
+        caplog.clear()
+        cli(["namespace", "del", "--subsystem", subsystem, "--nsid", "1"])
+        assert f"Deleting namespace 1 from {subsystem}: Successful" in caplog.text
+        caplog.clear()
+        add_namespace_req = pb2.namespace_add_req(subsystem_nqn=subsystem,
+                                                  rbd_pool_name=pool,
+                                                  rbd_image_name=image30,
+                                                  block_size=512,
+                                                  create_image=False,
+                                                  force=True)
+        ret = stub.namespace_add(add_namespace_req)
+        assert ret.status == 0
+        caplog.clear()
+        cli(["namespace", "change_visibility", "--subsystem", subsystem, "--nsid", "1",
+             "--auto-visible", "no"])
+        assert f'Changing visibility of namespace 1 in {subsystem} to ' \
+               f'"visible to selected hosts": Successful' in caplog.text
+        caplog.clear()
+        cli(["namespace", "change_visibility", "--subsystem", subsystem, "--nsid", "1",
+             "--auto-visible", "yes"])
+        assert f'Changing visibility of namespace 1 in {subsystem} to ' \
+               f'"visible to all hosts": Successful' in caplog.text
+        caplog.clear()
+        cli(["namespace", "del", "--subsystem", subsystem, "--nsid", "1"])
+        assert f"Deleting namespace 1 from {subsystem}: Successful" in caplog.text
 
     def test_add_namespace_double_uuid(self, caplog, gateway):
         caplog.clear()
