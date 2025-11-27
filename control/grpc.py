@@ -3241,7 +3241,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
             else:
                 nsid_msg = f"namespace with ID {request.nsid}"
         self.logger.info(f"Received request to list {nsid_msg} for {request.subsystem}, "
-                         f"show_hosts: {request.show_hosts}, context: {context}{peer_msg}")
+                         f"context: {context}{peer_msg}")
 
         if not request.subsystem:
             request.subsystem = GatewayUtils.ALL_SUBSYSTEMS
@@ -3318,13 +3318,12 @@ class GatewayService(pb2_grpc.GatewayServicer):
                         except KeyError:
                             cluster_name = None
 
-                    hosts = find_ret.host_list if request.show_hosts else []
                     one_ns = pb2.namespace_cli(nsid=nsid,
                                                bdev_name=bdev_name,
                                                uuid=n["uuid"],
                                                load_balancing_group=lb_group,
                                                auto_visible=find_ret.auto_visible,
-                                               hosts=hosts,
+                                               hosts=find_ret.host_list,
                                                ns_subsystem_nqn=subsys_nqn,
                                                trash_image=find_ret.trash_image,
                                                read_only=find_ret.read_only,
