@@ -75,22 +75,23 @@ discovery_nqn = "nqn.2014-08.org.nvmexpress.discovery"
 uuid = "948878ee-c3b2-4d58-a29b-2cff713fc02d"
 uuid2 = "948878ee-c3b2-4d58-a29b-2cff713fc02e"
 host_list = ["nqn.2016-06.io.spdk:host1", "*"]
-host1 = "nqn.2016-06.io.spdk:host1"
-host2 = "nqn.2016-06.io.spdk:host2"
-host3 = "nqn.2016-06.io.spdk:host3"
-host4 = "nqn.2016-06.io.spdk:host4"
-host5 = "nqn.2016-06.io.spdk:host5"
-host6 = "nqn.2016-06.io.spdk:host6"
-host7 = "nqn.2016-06.io.spdk:host7"
-host8 = "nqn.2016-06.io.spdk:host8"
-host9 = "nqn.2016-06.io.spdk:host9"
-host10 = "nqn.2016-06.io.spdk:host10"
-host11 = "nqn.2016-06.io.spdk:host11"
-host12 = "nqn.2016-06.io.spdk:host12"
-host13 = "nqn.2016-06.io.spdk:host13"
-host14 = "nqn.2016-06.io.spdk:host14"
-host15 = "nqn.2016-06.io.spdk:host15"
-hostxx = "nqn.2016-06.io.spdk:hostXX"
+hostprefix = "nqn.2016-06.io.spdk:host"
+host1 = hostprefix + "1"
+host2 = hostprefix + "2"
+host3 = hostprefix + "3"
+host4 = hostprefix + "4"
+host5 = hostprefix + "5"
+host6 = hostprefix + "6"
+host7 = hostprefix + "7"
+host8 = hostprefix + "8"
+host9 = hostprefix + "9"
+host10 = hostprefix + "10"
+host11 = hostprefix + "11"
+host12 = hostprefix + "12"
+host13 = hostprefix + "13"
+host14 = hostprefix + "14"
+host15 = hostprefix + "15"
+hostxx = hostprefix + "XX"
 nsid = "1"
 anagrpid = "1"
 anagrpid2 = "2"
@@ -1022,13 +1023,23 @@ class TestCreate:
         cli(["--format", "json", "namespace", "list", "--subsystem", subsystem, "--nsid", "9"])
         assert '"nsid": 9,' in caplog.text
         assert '"auto_visible":' not in caplog.text or '"auto_visible": false' in caplog.text
-        assert '"hosts": []' in caplog.text
         caplog.clear()
-        cli(["--format", "json", "namespace", "list_hosts",
+        cli(["--format", "plain", "namespace", "list", "--subsystem", subsystem, "--nsid", "9"])
+        pos = caplog.text.find("control.cli:cli.py")
+        assert pos >= 0
+        partial_text = caplog.text[pos:]
+        assert f"Namespace 9 in subsystem {subsystem}" in partial_text
+        assert hostprefix not in partial_text
+        assert "Restrictive" in partial_text
+        caplog.clear()
+        cli(["--format", "plain", "namespace", "list_hosts",
              "--subsystem", subsystem, "--nsid", "9"])
-        assert '"nsid": 9,' in caplog.text
-        assert f'"{host8}"' in caplog.text
-        assert '"hosts": []' not in caplog.text
+        pos = caplog.text.find("control.cli:cli.py")
+        assert pos >= 0
+        partial_text = caplog.text[pos:]
+        assert f"Namespace 9 in subsystem {subsystem}" in partial_text
+        assert host8 in partial_text
+        assert "Restrictive" not in partial_text
 
     def test_del_namespace_host(self, caplog, gateway):
         caplog.clear()
@@ -1060,32 +1071,35 @@ class TestCreate:
         assert f"Failure deleting host {host8} from namespace 9 on {subsystemX}: " \
                f"Can't find subsystem" in caplog.text
         caplog.clear()
-        cli(["--format", "json", "namespace", "list", "--subsystem", subsystem, "--nsid", "9"])
-        assert '"nsid": 9,' in caplog.text
-        assert '"auto_visible":' not in caplog.text or '"auto_visible": false' in caplog.text
-        assert f'"{host8}"' not in caplog.text
-        assert '"hosts": []' in caplog.text
-        caplog.clear()
         cli(["--format", "json", "namespace", "list_hosts",
              "--subsystem", subsystem, "--nsid", "9"])
-        assert '"nsid": 9,' in caplog.text
-        assert f'"{host8}"' in caplog.text
-        assert '"hosts": []' not in caplog.text
+        pos = caplog.text.find("control.cli:cli.py")
+        assert pos >= 0
+        partial_text = caplog.text[pos:]
+        assert '"nsid": 9,' in partial_text
+        assert f'"{host8}"' in partial_text
+        assert '"hosts": []' not in partial_text
         caplog.clear()
         cli(["namespace", "del_host", "--subsystem", subsystem, "--nsid", "9", "--host-nqn", host8])
         assert f"Deleting host {host8} from namespace 9 on {subsystem}: Successful" in caplog.text
         caplog.clear()
         cli(["--format", "json", "namespace", "list", "--subsystem", subsystem, "--nsid", "9"])
-        assert '"nsid": 9,' in caplog.text
-        assert '"auto_visible":' not in caplog.text or '"auto_visible": false' in caplog.text
-        assert f'"{host8}"' not in caplog.text
-        assert '"hosts": []' in caplog.text
+        pos = caplog.text.find("control.cli:cli.py")
+        assert pos >= 0
+        partial_text = caplog.text[pos:]
+        assert '"nsid": 9,' in partial_text
+        assert '"auto_visible":' not in partial_text or '"auto_visible": false' in partial_text
+        assert host8 not in partial_text
+        assert '"hosts": []' in partial_text
         caplog.clear()
         cli(["--format", "json", "namespace", "list_hosts",
              "--subsystem", subsystem, "--nsid", "9"])
-        assert '"nsid": 9,' in caplog.text
-        assert f'"{host8}"' not in caplog.text
-        assert '"hosts": []' in caplog.text
+        pos = caplog.text.find("control.cli:cli.py")
+        assert pos >= 0
+        partial_text = caplog.text[pos:]
+        assert '"nsid": 9,' in partial_text
+        assert f'"{host8}"' not in partial_text
+        assert '"hosts": []' in partial_text
         caplog.clear()
         cli(["namespace", "del_host", "--subsystem", subsystem, "--nsid", "9",
              "--host-nqn", hostxx])
@@ -1112,18 +1126,25 @@ class TestCreate:
         cli(["--format", "json", "namespace", "list", "--subsystem", subsystem, "--nsid", "9"])
         assert '"nsid": 9,' in caplog.text
         assert '"auto_visible":' not in caplog.text or '"auto_visible": false' in caplog.text
-        assert f'"{host8}"' not in caplog.text
-        assert f'"{host9}"' not in caplog.text
-        assert f'"{host10}"' not in caplog.text
-        assert '"hosts": []' in caplog.text
         caplog.clear()
-        cli(["--format", "json", "namespace", "list_hosts",
+        cli(["--format", "plain", "namespace", "list", "--subsystem", subsystem, "--nsid", "9"])
+        pos = caplog.text.find("control.cli:cli.py")
+        assert pos >= 0
+        partial_text = caplog.text[pos:]
+        assert f"Namespace 9 in subsystem {subsystem}" in partial_text
+        assert hostprefix not in partial_text
+        assert "Restrictive" in partial_text
+        caplog.clear()
+        cli(["--format", "plain", "namespace", "list_hosts",
              "--subsystem", subsystem, "--nsid", "9"])
-        assert '"nsid": 9,' in caplog.text
-        assert f'"{host8}"' in caplog.text
-        assert f'"{host9}"' in caplog.text
-        assert f'"{host10}"' in caplog.text
-        assert '"hosts": []' not in caplog.text
+        pos = caplog.text.find("control.cli:cli.py")
+        assert pos >= 0
+        partial_text = caplog.text[pos:]
+        assert f"Namespace 9 in subsystem {subsystem}" in partial_text
+        assert host8 in partial_text
+        assert host9 in partial_text
+        assert host10 in partial_text
+        assert "Restrictive" not in partial_text
 
     def test_list_hosts(self, caplog, gateway):
         caplog.clear()

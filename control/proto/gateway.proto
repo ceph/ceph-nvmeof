@@ -265,7 +265,6 @@ message list_namespaces_req {
 	string subsystem = 1;
 	optional uint32 nsid = 2;
 	optional string uuid = 3;
-	optional bool show_hosts = 4;
 }
 
 message add_host_req {

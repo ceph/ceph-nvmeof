@@ -2156,7 +2156,7 @@ class GatewayClient:
         try:
             namespaces_info = self.stub.list_namespaces(pb2.list_namespaces_req(
                 subsystem=args.subsystem,
-                nsid=args.nsid, uuid=args.uuid, show_hosts=show_hosts))
+                nsid=args.nsid, uuid=args.uuid))
         except Exception as ex:
             namespaces_info = pb2.namespaces_info(
                 status=errno.EINVAL,
@@ -2176,6 +2176,7 @@ class GatewayClient:
                         return errno.ENODEV
                 namespaces_list = []
                 for ns in namespaces_info.namespaces:
+                    ns_host_list = ns.hosts if show_hosts else []
                     if args.subsystem == GatewayUtils.ALL_SUBSYSTEMS:
                         if not ns.ns_subsystem_nqn:
                             err_func(f"Got namespace with ID {ns.nsid} on an unknown subsystem")
@@ -2212,12 +2213,12 @@ class GatewayClient:
                     if ns.auto_visible:
                         visibility = "All Hosts"
                     else:
-                        if len(ns.hosts) > 0:
+                        if len(ns_host_list) > 0:
                             visibility = ""
-                            for hst in ns.hosts:
+                            for hst in ns_host_list:
                                 visibility += hst + "\n"
                         else:
-                            visibility = "Restrictive"
+                            visibility = "None" if show_hosts else "Restrictive"
 
                     ro_msg = "Read-Only" if ns.read_only else "Read-Write"
                     trash_msg = "\nTrash on delete" if ns.trash_image else ""
@@ -2268,7 +2269,7 @@ class GatewayClient:
                     if show_hosts:
                         headers = ["NQN",
                                    "NSID",
-                                   "Visibility"]
+                                   "Hosts"]
                     else:
                         headers = ["NQN",
                                    "NSID",
