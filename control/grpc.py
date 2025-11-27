@@ -3514,6 +3514,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 f"Field {fld} is not optional"
             if request.HasField(fld):
                 return True
+        except AssertionError:
+            raise
         except Exception:
             pass
         return False
