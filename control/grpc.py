@@ -381,19 +381,15 @@ class SubsystemHostAuth:
         with self.host_ka_timeout_lock:
             self.host_ka_timeout[subsys].add(hostnqn)
 
-    def reset_host_keepalive_timeout_disconnection(self, subsys, hostnqn):
+    def reset_host_keepalive_timeout_disconnection(self, subsys, hostnqn=None):
         with self.host_ka_timeout_lock:
-            if subsys not in self.host_ka_timeout:
-                return
             self.host_ka_timeout[subsys].discard(hostnqn)
+            if hostnqn is None or not self.host_ka_timeout[subsys]:
+                self.host_ka_timeout.pop(subsys, None)
 
     def was_host_disconnected_due_to_keepalive_timeout(self, subsys, hostnqn) -> bool:
         with self.host_ka_timeout_lock:
-            if subsys not in self.host_ka_timeout:
-                return False
-            if hostnqn not in self.host_ka_timeout[subsys]:
-                return False
-        return True
+            return hostnqn in self.host_ka_timeout[subsys]
 
     def allow_any_host(self, subsys):
         self.subsys_allow_any_hosts[subsys] = True
@@ -907,9 +903,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
                             (hostnqn,
                              subsysnqn,
                              timeout) = n_ctx.split(GatewayState.OMAP_KEY_DELIMITER)
-                            self.logger.warning(f"Host {hostnqn} was disconnected from subsystem "
-                                                f"{subsysnqn} due to keep alive timeout after "
-                                                f"{timeout} milliseconds")
+                            self.logger.warning(f"Host {hostnqn} was disconnected from "
+                                                f"subsystem {subsysnqn} due to keep alive "
+                                                f"timeout after {timeout} milliseconds")
                             self.host_info.set_host_keepalive_timeout_disconnection(subsysnqn,
                                                                                     hostnqn)
                         elif n["type"] == GatewayService.SPDK_RBD_IMAGE_SHRINK_NOTIFICATION:
@@ -4745,18 +4741,20 @@ class GatewayService(pb2_grpc.GatewayServicer):
         log_level = logging.INFO if context else logging.DEBUG
         self.logger.log(log_level,
                         f"Received request to list connections for {request.subsystem}, "
-                        f"context: {context}{peer_msg}")
+                        f"clear_alerts: {request.clear_alerts}, context: {context}{peer_msg}")
 
         if not request.subsystem:
             request.subsystem = GatewayUtils.ALL_SUBSYSTEMS
 
         if request.subsystem != GatewayUtils.ALL_SUBSYSTEMS:
-            return self.list_connection_for_one_subsystem(request.subsystem)
+            return self.list_connection_for_one_subsystem(request.subsystem,
+                                                          request.clear_alerts)
 
         subsystems = list(self.subsys_serial.keys())
         connections = []
         for subsys in subsystems:
-            connections_info = self.list_connection_for_one_subsystem(subsys)
+            connections_info = self.list_connection_for_one_subsystem(subsys,
+                                                                      request.clear_alerts)
             if connections_info.status != 0:
                 self.logger.warning(f"Failed listing connections for {subsys}, "
                                     f"will continue with the other subsystems")
@@ -4771,13 +4769,13 @@ class GatewayService(pb2_grpc.GatewayServicer):
             return False
         if hostnqn == "*":
             return False
-        connections = self.list_connection_for_one_subsystem(subsystem)
+        connections = self.list_connection_for_one_subsystem(subsystem, False)
         for one_conn in connections.connections:
             if one_conn.connected and one_conn.nqn == hostnqn:
                 return True
         return False
 
-    def list_connection_for_one_subsystem(self, subsystem):
+    def list_connection_for_one_subsystem(self, subsystem, clear_alerts):
         assert self.rpc_lock.locked(), \
             "RPC is unlocked when calling list_connection_for_one_subsystem()"
         try:
@@ -4942,11 +4940,15 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                       disconnected_due_to_keepalive_timeout=was_ka_timeout)
             connections.append(one_conn)
 
+        if clear_alerts:
+            self.host_info.reset_host_keepalive_timeout_disconnection(subsystem)
+
         return pb2.connections_info(status=0, error_message=os.strerror(0),
                                     subsystem_nqn=subsystem, connections=connections)
 
     def list_connections(self, request, context=None):
-        return self.execute_grpc_function(self.list_connections_safe, request, context)
+        err_prefix = "Failure listing connections: "
+        return self.execute_grpc_function(self.list_connections_safe, request, context, err_prefix)
 
     def create_listener_safe(self, request, context):
         """Creates a listener for a subsystem at a given IP/Port."""

@@ -282,6 +282,7 @@ message list_hosts_req {
 
 message list_connections_req {
 	string subsystem = 1;
+	optional bool clear_alerts = 2;
 }
 
 message create_listener_req {
