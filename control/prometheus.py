@@ -167,7 +167,6 @@ class NVMeOFCollector:
         self.spdk_thread_stats = {}
         self.subsystems = []
         self.connections = {}
-        self.hosts = {}
         self.method_timings = {}
 
         # Cache for connection map
@@ -247,27 +246,14 @@ class NVMeOFCollector:
         """Fetch connection information for all defined subsystems"""
         connection_map = {}
         for subsys in subsystem_list:
-            resp = self.gateway_rpc.list_connections(pb2.list_connections_req(subsystem=subsys.nqn))
+            resp = self.gateway_rpc.list_connections(pb2.list_connections_req(
+                subsystem=subsys.nqn, clear_alerts=True))
             if resp.status != 0:
                 logger.error(f"Exporter failed to fetch connection info for "
                              f"{subsys.nqn}: {resp.error_message}")
                 continue
             connection_map[subsys.nqn] = resp
         return connection_map
-
-    @timer
-    def _get_host_map(self, subsystem_list):
-        """Fetch host information for all defined subsystems"""
-        host_map = {}
-        for subsys in subsystem_list:
-            resp = self.gateway_rpc.list_hosts(pb2.list_hosts_req(subsystem=subsys.nqn,
-                                                                  clear_alerts=True))
-            if resp.status != 0:
-                logger.error(f"Exporter failed to fetch host info for "
-                             f"{subsys.nqn}: {resp.error_message}")
-                continue
-            host_map[subsys.nqn] = resp
-        return host_map
 
     def _get_data(self):
         """Gather data from the SPDK"""
@@ -281,8 +267,6 @@ class NVMeOFCollector:
         logger.debug("Done with _get_subsystems()")
         self.connections = self._get_connection_map(self.subsystems)
         logger.debug("Done with _get_connection_map()")
-        self.hosts = self._get_host_map(self.subsystems)
-        logger.debug("Done with _get_host_map()")
 
     def _log_timings(self):
         """Log timing for each method"""
@@ -292,7 +276,6 @@ class NVMeOFCollector:
         logger.debug(f"_get_spdk_thread_stats(): {t.get('_get_spdk_thread_stats', 0):.2f}s")
         logger.debug(f"_get_subsystems(): {t.get('_get_subsystems', 0):.2f}s")
         logger.debug(f"_get_connection_map(): {t.get('_get_connection_map', 0):.2f}s")
-        logger.debug(f"_get_host_map(): {t.get('_get_host_map', 0):.2f}s")
 
     @ttl
     def collect(self):
@@ -532,30 +515,23 @@ class NVMeOFCollector:
                     str(ns.anagrpid)
                 ], 1)
 
+            conn_list = []
             try:
-                conn_info = self.connections[nqn]
+                conn_list = self.connections[nqn].connections
             except KeyError:
                 logger.debug(f"couldn't find {nqn} in connection list, skipping")
-                continue
-            for conn in conn_info.connections:
+            for conn in conn_list:
                 host_connection_state.add_metric([
                     self.gw_metadata.name,
                     nqn,
                     conn.nqn,
                     f"{conn.traddr}:{conn.trsvcid}" if conn.connected else "<n/a>"
                 ], 1 if conn.connected else 0)
-
-            try:
-                host_info = self.hosts[nqn]
-            except KeyError:
-                logger.debug(f"couldn't find {nqn} in host list, skipping")
-                continue
-            for host in host_info.hosts:
                 host_keep_alive_timeout.add_metric([
                     self.gw_metadata.name,
                     nqn,
-                    host.nqn
-                ], 1 if host.disconnected_due_to_keepalive_timeout else 0)
+                    conn.nqn
+                ], 1 if conn.disconnected_due_to_keepalive_timeout else 0)
 
         yield subsystem_metadata
         yield subsystem_listeners

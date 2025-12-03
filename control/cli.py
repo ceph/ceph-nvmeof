@@ -1810,7 +1810,8 @@ class GatewayClient:
         if not args.subsystem:
             args.subsystem = GatewayUtils.ALL_SUBSYSTEMS
         try:
-            list_req = pb2.list_connections_req(subsystem=args.subsystem)
+            list_req = pb2.list_connections_req(subsystem=args.subsystem,
+                                                clear_alerts=args.clear_alerts)
             connections_info = self.stub.list_connections(list_req)
         except Exception as ex:
             connections_info = pb2.connections_info(status=errno.EINVAL,
@@ -1898,6 +1899,10 @@ class GatewayClient:
         argument("--subsystem",
                  "-n",
                  help="Subsystem NQN",
+                 required=False),
+        argument("--clear-alerts",
+                 help="Clear any connection alert signal after getting its value",
+                 action='store_true',
                  required=False),
     ]
     connection_actions = []
