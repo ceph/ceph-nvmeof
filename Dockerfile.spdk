@@ -21,6 +21,7 @@ ARG SPDK_CEPH_VERSION \
     SPDK_CONFIGURE_ARGS \
     SPDK_TARGET_ARCH \
     SPDK_MAKEFLAGS \
+    SPDK_GIT_COMMIT \
     ACCEL_CONFIG_SRC
 
 RUN <<EOF
@@ -31,6 +32,7 @@ RUN <<EOF
     echo SPDK_TARGET_ARCH=$SPDK_TARGET_ARCH
     echo SPDK_MAKEFLAGS=$SPDK_MAKEFLAGS
     echo CEPH_CLUSTER_CEPH_REPO_BASEURL=$CEPH_CLUSTER_CEPH_REPO_BASEURL
+    echo SPDK_GIT_COMMIT=$SPDK_GIT_COMMIT
     echo ACCEL_CONFIG_SRC=$ACCEL_CONFIG_SRC
     echo ======================================================================
 EOF
@@ -112,6 +114,7 @@ RUN \
     SPDK_VERSION=${SPDK_VERSION:?} \
     RPM_RELEASE=0 \
     MAKEFLAGS=$SPDK_MAKEFLAGS \
+    SPDK_GIT_COMMIT=$SPDK_GIT_COMMIT \
     rpmbuild/rpm.sh $SPDK_CONFIGURE_ARGS --target-arch="${SPDK_TARGET_ARCH:?}"
 
 # build bdevperf example, will not be a part of generated rpm
