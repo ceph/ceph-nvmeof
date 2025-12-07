@@ -27,12 +27,6 @@ from base64 import b64decode
 from binascii import Error
 from binascii import crc32
 
-from spdk.rpc import spdk_get_version
-import spdk.rpc.bdev as rpc_bdev
-import spdk.rpc.nvmf as rpc_nvmf
-import spdk.rpc.notify as rpc_notify
-import spdk.rpc.keyring as rpc_keyring
-import spdk.rpc.log as rpc_log
 from spdk.rpc.client import JSONRPCException
 from google.protobuf import json_format
 from google.protobuf.empty_pb2 import Empty
@@ -919,8 +913,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         while self.up_and_running:
             with self.rpc_lock:
-                notifications = rpc_notify.notify_get_notifications(
-                    self.spdk_rpc_client, id=spdk_notification_last_id_read + 1)
+                notifications = self.spdk_rpc_client.notify_get_notifications(
+                    id=spdk_notification_last_id_read + 1)
             if notifications:
                 self.logger.debug(f"spdk_notifications: {notifications}")
                 for n in notifications:
@@ -1076,7 +1070,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         assert self.rpc_lock.locked(), "RPC is unlocked when calling keyring_file_remove_key()"
         key_list = []
         try:
-            key_list = rpc_keyring.keyring_get_keys(self.spdk_rpc_client)
+            key_list = self.spdk_rpc_client.keyring_get_keys()
         except Exception:
             self.logger.exception("Can't list keyring keys")
             key_list = []
@@ -1092,7 +1086,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         if key_exists:
             try:
-                rpc_keyring.keyring_file_remove_key(self.spdk_rpc_client, key_name)
+                self.spdk_rpc_client.keyring_file_remove_key(name=key_name)
             except Exception:
                 self.logger.exception(f"Can't remove key {key_name}")
                 pass
@@ -1115,7 +1109,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         assert self.rpc_lock.locked(), "RPC is unlocked when calling " \
                                        "remove_all_subsystem_keys_from_keyring()"
         try:
-            key_list = rpc_keyring.keyring_get_keys(self.spdk_rpc_client)
+            key_list = self.spdk_rpc_client.keyring_get_keys()
         except Exception:
             self.logger.exception("Can't list keyring keys")
             return
@@ -1139,7 +1133,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
             if should_remove:
                 try:
-                    rpc_keyring.keyring_file_remove_key(self.spdk_rpc_client, key_name)
+                    self.spdk_rpc_client.keyring_file_remove_key(name=key_name)
                 except Exception:
                     self.logger.exception(f"Can't remove key {key_name}")
                     pass
@@ -1489,8 +1483,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         assert self.rpc_lock.locked(), "RPC is unlocked when calling bdev_rbd_create()"
         try:
             cluster_name = self.cluster_allocator.get_cluster(anagrp)
-            bdev_name = rpc_bdev.bdev_rbd_create(
-                self.spdk_rpc_client,
+            bdev_name = self.spdk_rpc_client.bdev_rbd_create(
                 name=name,
                 cluster_name=cluster_name,
                 rados_namespace_name=rados_namespace_name,
@@ -1583,8 +1576,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 pass
 
         try:
-            ret = rpc_bdev.bdev_rbd_resize(
-                self.spdk_rpc_client,
+            ret = self.spdk_rpc_client.bdev_rbd_resize(
                 name=bdev_name,
                 new_size=new_size,
             )
@@ -1614,10 +1606,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         self.logger.info(f"Received request to delete bdev {bdev_name}{peer_msg}")
         try:
-            ret = rpc_bdev.bdev_rbd_delete(
-                self.spdk_rpc_client,
-                bdev_name,
-            )
+            ret = self.spdk_rpc_client.bdev_rbd_delete(name=bdev_name)
             if not recycling_mode:
                 del self.bdev_params[bdev_name]
             with self.shared_state_lock:
@@ -1818,8 +1807,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     return pb2.subsys_status(status=errno.EEXIST,
                                              error_message=errmsg,
                                              nqn=request.subsystem_nqn)
-                ret = rpc_nvmf.nvmf_create_subsystem(
-                    self.spdk_rpc_client,
+                ret = self.spdk_rpc_client.nvmf_create_subsystem(
                     nqn=request.subsystem_nqn,
                     serial_number=request.serial_number,
                     model_number=DEFAULT_MODEL_NUMBER,
@@ -1954,10 +1942,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         omap_lock = self.omap_lock.get_omap_lock_to_use(context)
         with omap_lock:
             try:
-                ret = rpc_nvmf.nvmf_delete_subsystem(
-                    self.spdk_rpc_client,
-                    nqn=request.subsystem_nqn,
-                )
+                ret = self.spdk_rpc_client.nvmf_delete_subsystem(nqn=request.subsystem_nqn)
                 self.subsys_max_ns.pop(request.subsystem_nqn)
                 self.subsys_serial.pop(request.subsystem_nqn)
                 if request.subsystem_nqn in self.subsystem_listeners:
@@ -2196,15 +2181,16 @@ class GatewayService(pb2_grpc.GatewayServicer):
             return pb2.req_status(status=errno.E2BIG, error_message=errmsg)
 
         try:
-            nsid = rpc_nvmf.nvmf_subsystem_add_ns(
-                self.spdk_rpc_client,
+            nsid = self.spdk_rpc_client.nvmf_subsystem_add_ns(
                 nqn=subsystem_nqn,
-                bdev_name=bdev_name,
-                nsid=nsid,
-                anagrpid=anagrpid,
-                uuid=uuid,
-                no_auto_visible=not auto_visible,
-                ptpl_file="PTPL",
+                namespace={
+                    "bdev_name": bdev_name,
+                    "nsid": nsid,
+                    "anagrpid": anagrpid,
+                    "uuid": uuid,
+                    "no_auto_visible": not auto_visible,
+                    "ptpl_file": "PTPL"
+                },
             )
             self.subsystem_nsid_bdev_and_uuid.add_namespace(subsystem_nqn, nsid,
                                                             bdev_name, uuid,
@@ -2303,8 +2289,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                 if cluster in awaited_cluster_contexts:
                                     # this cluster context was already awaited
                                     continue
-                                if not rpc_bdev.bdev_rbd_wait_for_latest_osdmap(
-                                        self.spdk_rpc_client, name=cluster):
+                                if not self.spdk_rpc_client.bdev_rbd_wait_for_latest_osdmap(
+                                        name=cluster):
                                     raise Exception(f"bdev_rbd_wait_for_latest_osdmap({cluster=})"
                                                     f" error")
                                 self.logger.debug(f"set_ana_state "
@@ -2316,13 +2302,12 @@ class GatewayService(pb2_grpc.GatewayServicer):
                         (adrfam, traddr, trsvcid, secure, active) = listener
                         if not active:
                             continue
-                        ret = rpc_nvmf.nvmf_subsystem_listener_set_ana_state(
-                            self.spdk_rpc_client,
+                        ret = self.spdk_rpc_client.nvmf_subsystem_listener_set_ana_state(
                             nqn=nqn,
-                            trtype="TCP",
-                            traddr=traddr,
-                            trsvcid=str(trsvcid),
-                            adrfam=adrfam,
+                            listen_address={"trtype": "TCP",
+                                            "traddr": traddr,
+                                            "trsvcid": str(trsvcid),
+                                            "adrfam": adrfam},
                             ana_state=ana_state,
                             anagrpid=grp_id)
                         if ana_state == "inaccessible":
@@ -2615,8 +2600,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
             try:
                 anagrpid = self.subsystem_nsid_bdev_and_uuid.get_ana_group_id_by_nsid_subsys(
                     request.subsystem_nqn, request.nsid)
-                ret = rpc_nvmf.nvmf_subsystem_set_ns_ana_group(
-                    self.spdk_rpc_client,
+                ret = self.spdk_rpc_client.nvmf_subsystem_set_ns_ana_group(
                     nqn=request.subsystem_nqn,
                     nsid=request.nsid,
                     anagrpid=request.anagrpid,
@@ -2690,7 +2674,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         assert subsys, "Subsystem NQN is empty"
         assert self.rpc_lock.locked(), "RPC is unlocked when calling subsystem_has_connections()"
         try:
-            ctrl_ret = rpc_nvmf.nvmf_subsystem_get_controllers(self.spdk_rpc_client, nqn=subsys)
+            ctrl_ret = self.spdk_rpc_client.nvmf_subsystem_get_controllers(nqn=subsys)
         except Exception:
             return False
         if not ctrl_ret:
@@ -2784,8 +2768,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     self.logger.error(errmsg)
                     return pb2.req_status(status=errno.ENOENT, error_message=errmsg)
             try:
-                ret = rpc_nvmf.nvmf_subsystem_set_ns_visibility(
-                    self.spdk_rpc_client,
+                ret = self.spdk_rpc_client.nvmf_subsystem_set_ns_visibility(
                     nqn=request.subsystem_nqn,
                     nsid=request.nsid,
                     auto_visible=request.auto_visible,
@@ -3178,8 +3161,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
             return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
 
         try:
-            ret = rpc_nvmf.nvmf_subsystem_remove_ns(
-                self.spdk_rpc_client,
+            ret = self.spdk_rpc_client.nvmf_subsystem_remove_ns(
                 nqn=subsystem_nqn,
                 nsid=nsid,
             )
@@ -3211,7 +3193,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         assert self.rpc_lock.locked(), "RPC is unlocked when calling get_bdev_info()"
         ret_bdev = None
         try:
-            bdevs = rpc_bdev.bdev_get_bdevs(self.spdk_rpc_client, name=bdev_name)
+            bdevs = self.spdk_rpc_client.bdev_get_bdevs(name=bdev_name)
             self.logger.debug(f"bdev_get_bdevs: {bdevs}")
             if (len(bdevs) > 1):
                 self.logger.warning(f"Got {len(bdevs)} bdevs for bdev name {bdev_name}, "
@@ -3245,10 +3227,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
         with self.rpc_lock:
             try:
                 if request.subsystem == GatewayUtils.ALL_SUBSYSTEMS:
-                    ret = rpc_nvmf.nvmf_get_subsystems(self.spdk_rpc_client)
+                    ret = self.spdk_rpc_client.nvmf_get_subsystems()
                 else:
-                    ret = rpc_nvmf.nvmf_get_subsystems(self.spdk_rpc_client,
-                                                       nqn=request.subsystem)
+                    ret = self.spdk_rpc_client.nvmf_get_subsystems(nqn=request.subsystem)
                 self.logger.debug(f"list_namespaces: {ret}")
             except Exception as ex:
                 errmsg = "Failure listing namespaces"
@@ -3426,10 +3407,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 return pb2.namespace_io_stats_info(status=errno.ENODEV, error_message=errmsg)
 
             try:
-                ret = rpc_bdev.bdev_get_iostat(
-                    self.spdk_rpc_client,
-                    name=bdev_name,
-                )
+                ret = self.spdk_rpc_client.bdev_get_iostat(name=bdev_name)
                 self.logger.debug(f"get_bdev_iostat {bdev_name}: {ret}")
             except Exception as ex:
                 self.logger.exception(failure_prefix)
@@ -3669,9 +3647,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                               f"namespace {request.nsid} on {request.subsystem_nqn},"
                               f"{limits_to_set}")
             try:
-                ret = rpc_bdev.bdev_set_qos_limit(
-                    self.spdk_rpc_client,
-                    **set_qos_limits_args)
+                ret = self.spdk_rpc_client.bdev_set_qos_limit(**set_qos_limits_args)
                 self.logger.debug(f"bdev_set_qos_limit {bdev_name}: {ret}")
             except Exception as ex:
                 errmsg = f"Failure setting QOS limits for namespace {request.nsid} " \
@@ -3992,9 +3968,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         omap_lock = self.omap_lock.get_omap_lock_to_use(context)
         with omap_lock:
-            ret = rpc_nvmf.nvmf_ns_visible(
-                True,
-                self.spdk_rpc_client,
+            ret = self.spdk_rpc_client.nvmf_ns_add_host(
                 nqn=request.subsystem_nqn,
                 nsid=request.nsid,
                 host=request.host_nqn
@@ -4112,9 +4086,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         omap_lock = self.omap_lock.get_omap_lock_to_use(context)
         with omap_lock:
-            ret = rpc_nvmf.nvmf_ns_visible(
-                False,
-                self.spdk_rpc_client,
+            ret = self.spdk_rpc_client.nvmf_ns_remove_host(
                 nqn=request.subsystem_nqn,
                 nsid=request.nsid,
                 host=request.host_nqn
@@ -4214,7 +4186,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         assert self.rpc_lock.locked(), "RPC is unlocked when calling _add_key_to_keyring()"
         keys = []
         try:
-            keys = rpc_keyring.keyring_get_keys(self.spdk_rpc_client)
+            keys = self.spdk_rpc_client.keyring_get_keys()
         except Exception:
             self.logger.exception("Can't list keyring keys")
             keys = []
@@ -4234,13 +4206,13 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 self.logger.exception(f"Can't remove file {old_filename}")
                 pass
             try:
-                rpc_keyring.keyring_file_remove_key(self.spdk_rpc_client, keyname)
+                self.spdk_rpc_client.keyring_file_remove_key(name=keyname)
             except Exception:
                 self.logger.exception(f"Can't remove {keytype} key {keyname}")
                 pass
 
         try:
-            ret = rpc_keyring.keyring_file_add_key(self.spdk_rpc_client, keyname, filename)
+            ret = self.spdk_rpc_client.keyring_file_add_key(name=keyname, path=filename)
             self.logger.debug(f"keyring_file_add_key {keyname} and file {filename}: {ret}")
             self.logger.info(f"Added {keytype} key {keyname} to keyring")
         except Exception:
@@ -4497,10 +4469,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
         with omap_lock:
             try:
                 if request.host_nqn == "*":  # Allow any host access to subsystem
-                    ret = rpc_nvmf.nvmf_subsystem_allow_any_host(
-                        self.spdk_rpc_client,
+                    ret = self.spdk_rpc_client.nvmf_subsystem_allow_any_host(
                         nqn=request.subsystem_nqn,
-                        disable=False,
+                        allow_any_host=True,
                     )
                     self.logger.debug(f"add_host *: {ret}")
                     self.host_info.allow_any_host(request.subsystem_nqn)
@@ -4509,8 +4480,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     self._add_key_to_keyring("DH-HMAC-CHAP", dhchap_file, dhchap_key_name)
                     self._add_key_to_keyring("DH-HMAC-CHAP controller",
                                              dhchap_ctrlr_file, dhchap_ctrlr_key_name)
-                    ret = rpc_nvmf.nvmf_subsystem_add_host(
-                        self.spdk_rpc_client,
+                    ret = self.spdk_rpc_client.nvmf_subsystem_add_host(
                         nqn=request.subsystem_nqn,
                         host=request.host_nqn,
                         psk=psk_key_name,
@@ -4647,10 +4617,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     self.logger.info(
                         f"Received request to disable open host access to"
                         f" {request.subsystem_nqn}, context: {context}{peer_msg}")
-                    ret = rpc_nvmf.nvmf_subsystem_allow_any_host(
-                        self.spdk_rpc_client,
+                    ret = self.spdk_rpc_client.nvmf_subsystem_allow_any_host(
                         nqn=request.subsystem_nqn,
-                        disable=True,
+                        allow_any_host=False,
                     )
                     self.logger.debug(f"remove_host *: {ret}")
                     self.host_info.disallow_any_host(request.subsystem_nqn)
@@ -4663,8 +4632,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                         errmsg = f"{host_failure_prefix}: Host is not found"
                         self.logger.error(errmsg)
                         return pb2.req_status(status=errno.ENOENT, error_message=errmsg)
-                    ret = rpc_nvmf.nvmf_subsystem_remove_host(
-                        self.spdk_rpc_client,
+                    ret = self.spdk_rpc_client.nvmf_subsystem_remove_host(
                         nqn=request.subsystem_nqn,
                         host=request.host_nqn,
                     )
@@ -4878,10 +4846,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 self._add_key_to_keyring("DH-HMAC-CHAP", dhchap_file, dhchap_key_name)
                 self._add_key_to_keyring("DH-HMAC-CHAP controller",
                                          dhchap_ctrlr_file, dhchap_ctrlr_key_name)
-                ret = rpc_nvmf.nvmf_subsystem_set_keys(
-                    self.spdk_rpc_client,
-                    request.subsystem_nqn,
-                    request.host_nqn,
+                ret = self.spdk_rpc_client.nvmf_subsystem_set_keys(
+                    nqn=request.subsystem_nqn,
+                    host=request.host_nqn,
                     dhchap_key=dhchap_key_name,
                     dhchap_ctrlr_key=dhchap_ctrlr_key_name,
                 )
@@ -4954,7 +4921,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
             self.logger.debug(f"list_hosts subsystem (cache): {ret}")
         if not ret:
             try:
-                ret = rpc_nvmf.nvmf_get_subsystems(self.spdk_rpc_client, nqn=request.subsystem)
+                ret = self.spdk_rpc_client.nvmf_get_subsystems(nqn=request.subsystem)
                 self.logger.debug(f"list_hosts subsystem: {ret}")
             except Exception as ex:
                 errmsg = "Failure listing hosts, can't get subsystem"
@@ -5068,7 +5035,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         assert self.rpc_lock.locked(), \
             "RPC is unlocked when calling list_connection_for_one_subsystem()"
         try:
-            qpair_ret = rpc_nvmf.nvmf_subsystem_get_qpairs(self.spdk_rpc_client, nqn=subsystem)
+            qpair_ret = self.spdk_rpc_client.nvmf_subsystem_get_qpairs(nqn=subsystem)
             self.logger.debug(f"list_connections get_qpairs: {qpair_ret}")
         except Exception as ex:
             errmsg = f"Failure listing connections for {subsystem}, can't get qpairs"
@@ -5083,7 +5050,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
             return pb2.connections_info(status=status, error_message=errmsg, connections=[])
 
         try:
-            ctrl_ret = rpc_nvmf.nvmf_subsystem_get_controllers(self.spdk_rpc_client, nqn=subsystem)
+            ctrl_ret = self.spdk_rpc_client.nvmf_subsystem_get_controllers(nqn=subsystem)
             self.logger.debug(f"list_connections get_controllers: {ctrl_ret}")
         except Exception as ex:
             errmsg = f"Failure listing connections for {subsystem}, can't get controllers"
@@ -5104,7 +5071,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         if not subsys_ret:
             try:
-                subsys_ret = rpc_nvmf.nvmf_get_subsystems(self.spdk_rpc_client, nqn=subsystem)
+                subsys_ret = self.spdk_rpc_client.nvmf_get_subsystems(nqn=subsystem)
                 self.logger.debug(f"list_connections subsystems: {subsys_ret}")
             except Exception as ex:
                 errmsg = f"Failure listing connections for {subsystem}, can't get subsystem"
@@ -5327,12 +5294,11 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         add_listener_args = {}
         add_listener_args["nqn"] = request.nqn
-        add_listener_args["trtype"] = "TCP"
-        add_listener_args["traddr"] = traddr
-        add_listener_args["trsvcid"] = str(request.trsvcid)
-        add_listener_args["adrfam"] = adrfam
-        if request.secure:
-            add_listener_args["secure_channel"] = True
+        add_listener_args["listen_address"] = {"trtype": "TCP",
+                                               "traddr": traddr,
+                                               "trsvcid": str(request.trsvcid),
+                                               "adrfam": adrfam}
+        add_listener_args["secure_channel"] = request.secure
 
         listener_created = False
         omap_lock = self.omap_lock.get_omap_lock_to_use(context)
@@ -5373,8 +5339,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                             self.logger.error(errmsg)
                             return pb2.req_status(status=errno.EADDRNOTAVAIL, error_message=errmsg)
 
-                    ret = rpc_nvmf.nvmf_subsystem_add_listener(self.spdk_rpc_client,
-                                                               **add_listener_args)
+                    ret = self.spdk_rpc_client.nvmf_subsystem_add_listener(**add_listener_args)
                     self.logger.debug(f"create_listener: {ret}")
                     listener_created = ret
                 except Exception as ex:
@@ -5406,14 +5371,13 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     self.logger.debug(f"create_listener nvmf_subsystem_listener_set_ana_state "
                                       f"{request=} set inaccessible for all ana groups")
                     _ana_state = "inaccessible"
-                    ret = rpc_nvmf.nvmf_subsystem_listener_set_ana_state(
-                        self.spdk_rpc_client,
+                    ret = self.spdk_rpc_client.nvmf_subsystem_listener_set_ana_state(
                         nqn=request.nqn,
                         ana_state=_ana_state,
-                        trtype="TCP",
-                        traddr=traddr,
-                        trsvcid=str(request.trsvcid),
-                        adrfam=adrfam)
+                        listen_address={"trtype": "TCP",
+                                        "traddr": traddr,
+                                        "trsvcid": str(request.trsvcid),
+                                        "adrfam": adrfam})
                     self.logger.debug(f"create_listener "
                                       f"nvmf_subsystem_listener_set_ana_state response {ret=}")
 
@@ -5429,18 +5393,17 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                                       f"{request.nqn} "
                                                       f"ana state: {_ana_state} for "
                                                       f"group: {ana_grp}")
-                                    ret = rpc_nvmf.nvmf_subsystem_listener_set_ana_state(
-                                        self.spdk_rpc_client,
+                                    rc = self.spdk_rpc_client.nvmf_subsystem_listener_set_ana_state(
                                         nqn=request.nqn,
                                         ana_state=_ana_state,
-                                        trtype="TCP",
-                                        traddr=traddr,
-                                        trsvcid=str(request.trsvcid),
-                                        adrfam=adrfam,
+                                        listen_address={"trtype": "TCP",
+                                                        "traddr": traddr,
+                                                        "trsvcid": str(request.trsvcid),
+                                                        "adrfam": adrfam},
                                         anagrpid=ana_grp)
                                     self.logger.debug(f"create_listener "
                                                       f"nvmf_subsystem_listener_set_ana_state "
-                                                      f"response {ret=}")
+                                                      f"response {rc=}")
 
                 except Exception as ex:
                     errmsg = f"{create_listener_error_prefix}: Error setting ANA state"
@@ -5623,13 +5586,12 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
                 if request.host_name == self.host_name or request.force:
                     if is_active:
-                        ret = rpc_nvmf.nvmf_subsystem_remove_listener(
-                            self.spdk_rpc_client,
+                        ret = self.spdk_rpc_client.nvmf_subsystem_remove_listener(
                             nqn=request.nqn,
-                            trtype="TCP",
-                            traddr=traddr,
-                            trsvcid=str(request.trsvcid),
-                            adrfam=adrfam,
+                            listen_address={"trtype": "TCP",
+                                            "traddr": traddr,
+                                            "trsvcid": str(request.trsvcid),
+                                            "adrfam": adrfam}
                         )
                         self.logger.debug(f"delete_listener: {ret}")
                     if request.nqn in self.subsystem_listeners:
@@ -5756,8 +5718,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                               gw_listeners=[])
 
         try:
-            ret = rpc_nvmf.nvmf_subsystem_get_listeners(self.spdk_rpc_client,
-                                                        nqn=request.subsystem_nqn)
+            ret = self.spdk_rpc_client.nvmf_subsystem_get_listeners(nqn=request.subsystem_nqn)
             self.logger.debug(f"get_listeners: {ret}")
         except Exception as ex:
             errmsg = "Failure listing gateway listeners"
@@ -5871,10 +5832,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
         cache_subsystems = []
         try:
             if request.subsystem_nqn:
-                ret = rpc_nvmf.nvmf_get_subsystems(self.spdk_rpc_subsystems_client,
-                                                   nqn=request.subsystem_nqn)
+                ret = self.spdk_rpc_subsystems_client.nvmf_get_subsystems(nqn=request.subsystem_nqn)
             else:
-                ret = rpc_nvmf.nvmf_get_subsystems(self.spdk_rpc_subsystems_client)
+                ret = self.spdk_rpc_subsystems_client.nvmf_get_subsystems()
             self.logger.debug(f"list_subsystems: {ret}")
         except Exception as ex:
             errmsg = "Failure listing subsystems"
@@ -6082,13 +6042,14 @@ class GatewayService(pb2_grpc.GatewayServicer):
                          f"all_log_flags: {request.all_log_flags}{peer_msg}")
         log_flags = []
         try:
-            nvmf_log_flags = {key: value for key, value in rpc_log.log_get_flags(
-                self.spdk_rpc_client).items() if request.all_log_flags or key.startswith('nvmf')}
+            nvmf_log_flags = {key: value for key,
+                              value in self.spdk_rpc_client.log_get_flags().items()
+                              if request.all_log_flags or key.startswith('nvmf')}
             for flag, flagvalue in nvmf_log_flags.items():
                 pb2_log_flag = pb2.spdk_log_flag_info(name=flag, enabled=flagvalue)
                 log_flags.append(pb2_log_flag)
-            spdk_log_level = rpc_log.log_get_level(self.spdk_rpc_client)
-            spdk_log_print_level = rpc_log.log_get_print_level(self.spdk_rpc_client)
+            spdk_log_level = self.spdk_rpc_client.log_get_level()
+            spdk_log_print_level = self.spdk_rpc_client.log_get_print_level()
             self.logger.debug(f"spdk log flags: {nvmf_log_flags}, "
                               f"spdk log level: {spdk_log_level}, "
                               f"spdk log print level: {spdk_log_print_level}")
@@ -6141,25 +6102,25 @@ class GatewayService(pb2_grpc.GatewayServicer):
                          f"print_level: {print_level}, extra: {request.extra_log_flags}{peer_msg}")
 
         try:
-            nvmf_log_flags = [key for key in rpc_log.log_get_flags(self.spdk_rpc_client).keys()
+            nvmf_log_flags = [key for key in self.spdk_rpc_client.log_get_flags().keys()
                               if key.startswith('nvmf')]
             nvmf_log_flags += request.extra_log_flags
-            ret = [rpc_log.log_set_flag(
-                self.spdk_rpc_client, flag=flag) for flag in nvmf_log_flags]
+            ret = [self.spdk_rpc_client.log_set_flag(
+                flag=flag) for flag in nvmf_log_flags]
             self.logger.debug(f"Set SPDK log flags {nvmf_log_flags} to TRUE: {ret}")
             if log_level is not None:
-                ret_log = rpc_log.log_set_level(self.spdk_rpc_client, level=log_level)
+                ret_log = self.spdk_rpc_client.log_set_level(level=log_level)
                 self.logger.debug(f"Set log level to {log_level}: {ret_log}")
             if print_level is not None:
-                ret_print = rpc_log.log_set_print_level(
-                    self.spdk_rpc_client, level=print_level)
+                ret_print = self.spdk_rpc_client.log_set_print_level(
+                    level=print_level)
                 self.logger.debug(f"Set log print level to {print_level}: {ret_print}")
         except Exception as ex:
             errmsg = "Failure setting SPDK log levels"
             self.logger.exception(errmsg)
             errmsg = "{errmsg}:\n{ex}"
             for flag in nvmf_log_flags:
-                rpc_log.log_clear_flag(self.spdk_rpc_client, flag=flag)
+                self.spdk_rpc_client.log_clear_flag(flag=flag)
             resp = self.parse_json_exeption(ex)
             status = errno.EINVAL
             if resp:
@@ -6192,14 +6153,14 @@ class GatewayService(pb2_grpc.GatewayServicer):
                          f"extra: {request.extra_log_flags}{peer_msg}")
 
         try:
-            nvmf_log_flags = [key for key in rpc_log.log_get_flags(self.spdk_rpc_client).keys()
+            nvmf_log_flags = [key for key in self.spdk_rpc_client.log_get_flags().keys()
                               if key.startswith('nvmf')]
             nvmf_log_flags += request.extra_log_flags
-            ret = [rpc_log.log_clear_flag(self.spdk_rpc_client, flag=flag)
+            ret = [self.spdk_rpc_client.log_clear_flag(flag=flag)
                    for flag in nvmf_log_flags]
             self.logger.debug(f"Set SPDK log flags {nvmf_log_flags} to FALSE: {ret}")
-            logs_level = [rpc_log.log_set_level(self.spdk_rpc_client, level='NOTICE'),
-                          rpc_log.log_set_print_level(self.spdk_rpc_client, level='INFO')]
+            logs_level = [self.spdk_rpc_client.log_set_level(level='NOTICE'),
+                          self.spdk_rpc_client.log_set_print_level(level='INFO')]
             ret.extend(logs_level)
         except Exception as ex:
             errmsg = "Failure in disable SPDK log flags"
@@ -6246,7 +6207,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         gw_version_string = os.getenv("NVMEOF_VERSION")
         if not self.spdk_version:
             try:
-                ret = spdk_get_version(self.spdk_rpc_client)
+                ret = self.spdk_rpc_client.spdk_get_version()
                 if ret:
                     self.spdk_version = ret["version"]
             except Exception:
@@ -6318,7 +6279,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         peer_msg = self.get_peer_message(context)
         self.logger.info(f"Received request to get gateway's NVMf statistics{peer_msg}")
         try:
-            gw_stats = rpc_nvmf.nvmf_get_stats(self.spdk_rpc_client)
+            gw_stats = self.spdk_rpc_client.nvmf_get_stats()
             self.logger.debug(f"nvmf_get_stats: {gw_stats}")
         except Exception as ex:
             self.logger.exception(error_prefix)
