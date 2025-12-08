@@ -48,33 +48,13 @@ setup: ## Configure huge-pages (requires sudo/root password)
 build pull logs down: SVC ?= ceph spdk bdevperf nvmeof nvmeof-devel nvmeof-cli discovery
 
 build: export NVMEOF_GIT_REPO != git remote get-url origin
-build: export NVMEOF_GIT_BRANCH != git rev-parse --abbrev-ref HEAD
+build: export NVMEOF_GIT_BRANCH != git name-rev --name-only HEAD
 build: export NVMEOF_GIT_COMMIT != git rev-parse HEAD
 build: export SPDK_GIT_REPO != git -C spdk remote get-url origin
-build: export SPDK_GIT_BRANCH != git -C spdk rev-parse --abbrev-ref HEAD
+build: export SPDK_GIT_BRANCH != git -C spdk name-rev --name-only HEAD
 build: export SPDK_GIT_COMMIT != git rev-parse HEAD:spdk
 build: export BUILD_DATE != date -u +"%Y-%m-%d %H:%M:%S %Z"
 build: export NVMEOF_GIT_MODIFIED_FILES != git status -s | grep -e "^ *M" | sed 's/^ *M //' | xargs
-build: constfile
-
-constfile:
-	@echo "class GatewayConstants:" > control/constants.py
-	@echo "    NVMEOF_GIT_REPO = \"${NVMEOF_GIT_REPO}\"" >> control/constants.py
-	@echo "    NVMEOF_GIT_BRANCH = \"${NVMEOF_GIT_BRANCH}\"" >> control/constants.py
-	@echo "    NVMEOF_GIT_COMMIT = \"${NVMEOF_GIT_COMMIT}\""  >> control/constants.py
-	@echo "    NVMEOF_VERSION = \"${NVMEOF_VERSION}\""  >> control/constants.py
-	@echo "    SPDK_GIT_REPO = \"${SPDK_GIT_REPO}\""  >> control/constants.py
-	@echo "    SPDK_GIT_BRANCH = \"${SPDK_GIT_BRANCH}\""  >> control/constants.py
-	@echo "    SPDK_GIT_COMMIT = \"${SPDK_GIT_COMMIT}\""  >> control/constants.py
-	@echo "    NVMEOF_SPDK_VERSION = \"${NVMEOF_SPDK_VERSION}\""  >> control/constants.py
-	@echo "    BUILD_DATE = \"${BUILD_DATE}\""  >> control/constants.py
-	@echo "    TARGET_PLATFORM = \"${TARGET_PLATFORM}\""  >> control/constants.py
-	@echo "    SPDK_TARGET_ARCH = \"${SPDK_TARGET_ARCH}\""  >> control/constants.py
-	@echo "    SPDK_MAKEFLAGS = \"${SPDK_MAKEFLAGS}\""  >> control/constants.py
-	@echo "    SPDK_PKGDEP_ARGS = \"${SPDK_PKGDEP_ARGS}\""  >> control/constants.py
-	@echo "    SPDK_CONFIGURE_ARGS = \"${SPDK_CONFIGURE_ARGS}\""  >> control/constants.py
-	@echo "    NVMEOF_CEPH_VERSION = \"${NVMEOF_CEPH_VERSION}\""  >> control/constants.py
-	@echo "    CEPH_CLUSTER_CEPH_REPO_BASEURL = \"${CEPH_CLUSTER_CEPH_REPO_BASEURL}\""  >> control/constants.py
 
 # Variables
 SHAMAN_FETCH_ATTEMPTS := 3
@@ -108,7 +88,7 @@ up:
 clean: $(CLEAN) setup  ## Clean-up environment
 clean: override HUGEPAGES = 0
 clean:
-	/usr/bin/rm -f control/proto/gateway_pb2_grpc.py control/proto/gateway_pb2.py control/proto/gateway_pb2.pyi control/proto/monitor_pb2_grpc.py control/proto/monitor_pb2.py control/proto/monitor_pb2.pyi control/constants.py
+	/usr/bin/rm -f control/proto/gateway_pb2_grpc.py control/proto/gateway_pb2.py control/proto/gateway_pb2.pyi control/proto/monitor_pb2_grpc.py control/proto/monitor_pb2.py control/proto/monitor_pb2.pyi
 
 update-lockfile: run ## Update dependencies in lockfile (pdm.lock)
 update-lockfile: SVC=nvmeof-builder-base
