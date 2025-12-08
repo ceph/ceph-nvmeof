@@ -125,7 +125,7 @@ class GatewayUtils:
                 return ret[0]
         except Exception as e:
             logger.error(f'error in get_hostname: {e}')
-            return ''
+        return ''
 
     def is_valid_rev_domain(rev_domain):
         domain_parts = rev_domain.split(".")

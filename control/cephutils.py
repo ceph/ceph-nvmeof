@@ -62,6 +62,10 @@ class CephUtils:
             self.logger.debug(f"nvme-listeners string: {str}")
             rply = self.execute_ceph_monitor_command(str)
             self.logger.debug(f"reply \"{rply}\"")
+            if rply and rply[0] != 0:
+                self.logger.warning("'nvme-gw listeners' mon command failed. \
+                                    It might not be supported in current ceph version.")
+                return []
             conv_str = rply[1].decode()
             data = json.loads(conv_str)
             return data["Created listeners"]

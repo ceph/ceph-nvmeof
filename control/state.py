@@ -1568,6 +1568,7 @@ class GatewayStateHandler:
                 GatewayState.NAMESPACE_HOST_PREFIX,
                 GatewayState.NAMESPACE_REFRESH_SIZE_PREFIX,
                 GatewayState.LISTENER_PREFIX,
+                GatewayState.SUBSYSTEM_NETWORK_MASK,
             ]
 
             if not self.omap.ioctx:
@@ -1888,8 +1889,6 @@ class GatewayStateHandler:
                    len(ns_auto_resize_changed) > 0 or len(auto_listener_add) > 0:
                     grouped_changed = self._group_by_prefix(changed, prefix_list)
 
-                    if len(auto_listener_add) > 0:
-                        prefix_list += [GatewayState.SUBSYSTEM_NETWORK_MASK]
                     if len(only_subsystem_key_changed) > 0:
                         prefix_list += [GatewayState.SUBSYSTEM_KEY_PREFIX]
                     if len(ns_lb_group_changed) > 0:

@@ -58,7 +58,8 @@ class TestAutoListener:
              '--network-mask', f'{addr}/24'])
         assert f"Adding subsystem {subsystem}: Successful" in caplog.text
         assert "ipv4" in caplog.text.lower()
-        assert f"Automatically created listener at {addr}:4420 for {subsystem}"
+        assert (f"Automatically created listener at {addr}:4420 for {subsystem}"
+                in caplog.text)
 
     def test_auto_listener_secure(self, caplog, gateway):
         caplog.clear()
@@ -66,7 +67,8 @@ class TestAutoListener:
              '--network-mask', f'{addr}/24', '--secure-listeners'])
         assert f"Adding subsystem {subsystem2}: Successful" in caplog.text
         assert "ipv4" in caplog.text.lower()
-        assert f"Automatically created listener at {addr}:4420 for {subsystem2}"
+        assert (f"Automatically created listener at {addr}:4420 for {subsystem2}"
+                in caplog.text)
 
     def test_auto_listener_ipv6(self, caplog, gateway):
         caplog.clear()
@@ -74,7 +76,8 @@ class TestAutoListener:
              '--network-mask', f'{addr_ipv6}/120'])
         assert f"Adding subsystem {subsystem3}: Successful" in caplog.text
         assert "ipv6" in caplog.text.lower()
-        assert f"Automatically created listener at {addr_ipv6}:4420 for {subsystem3}"
+        assert (f"Automatically created listener at [{addr_ipv6}]:4420 for {subsystem3}"
+                in caplog.text)
 
     def test_auto_listener_list_ipv4(self, caplog, gateway):
         cli(["subsystem", "list"])
