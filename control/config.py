@@ -10,6 +10,8 @@
 import configparser
 import os
 
+from .constants import GatewayConstants
+
 
 class GatewayConfig:
     """Loads and returns config file settings.
@@ -115,3 +117,15 @@ class GatewayConfig:
         if git_spdk_commit:
             logger.info(f"SPDK Git commit: {git_spdk_commit}")
         self.env_shown = True
+
+    def display_gateway_constants(self, logger):
+        logger.info(
+            "====================================== Gateway constants "
+            "===============================================")
+        for k, v in vars(GatewayConstants).items():
+            if k.startswith("_"):
+                continue
+            logger.info(f"{k}: {v}")
+        logger.info(
+            "========================================================="
+            "===============================================")
