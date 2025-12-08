@@ -2,6 +2,7 @@ import copy
 import grpc
 import json
 import time
+import os
 from google.protobuf import json_format
 from control.server import GatewayServer
 from control.cephutils import CephUtils
@@ -27,7 +28,10 @@ def setup_config(config, gw1_name, gw2_name, gw_group, update_notify, update_int
     configA.config["gateway"]["omap_file_lock_duration"] = str(lock_duration)
     configA.config["gateway"]["enable_spdk_discovery_controller"] = "True"
     configA.config["spdk"]["rpc_socket_name"] = sock1_name
-    configA.config["spdk"]["tgt_cmd_extra_args"] = "-m 0x03"
+    if os.cpu_count() >= 4:
+        configA.config["spdk"]["tgt_cmd_extra_args"] = "--lcores (0-1)"
+    else:
+        configA.config["spdk"]["tgt_cmd_extra_args"] = "--disable-cpumask-locks"
     configB = copy.deepcopy(configA)
     portA = configA.getint("gateway", "port")
     configA.config["gateway"]["port"] = str(portA)
@@ -35,7 +39,10 @@ def setup_config(config, gw1_name, gw2_name, gw_group, update_notify, update_int
     configB.config["gateway"]["name"] = gw2_name
     configB.config["gateway"]["port"] = str(portB)
     configB.config["spdk"]["rpc_socket_name"] = sock2_name
-    configB.config["spdk"]["tgt_cmd_extra_args"] = "-m 0x0C"
+    if os.cpu_count() >= 4:
+        configB.config["spdk"]["tgt_cmd_extra_args"] = "--lcores (2-3)"
+    else:
+        configB.config["spdk"]["tgt_cmd_extra_args"] = "--disable-cpumask-locks"
 
     return configA, configB
 

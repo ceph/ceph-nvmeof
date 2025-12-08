@@ -62,11 +62,6 @@ def sigchld_handler(signum, frame):
     raise SystemExit(f"Gateway subprocess terminated {pid=} {exit_code=}")
 
 
-def int_to_bitmask(n):
-    """Converts an integer n to a bitmask string"""
-    return f"0x{hex((1 << n) - 1)[2:].upper()}"
-
-
 def cpumask_set(args):
     """Check if reactor cpu mask is set in command line args"""
 
@@ -77,6 +72,21 @@ def cpumask_set(args):
     # Check for the presence of "--cpumask="
     for arg in args:
         if arg.startswith('--cpumask='):
+            return True
+
+    return False
+
+
+def core_list_set(args):
+    """Check if core list is set in command line args"""
+
+    # Check "--lcores" is in the arguments
+    if "--lcores" in args:
+        return True
+
+    # Check for the presence of "--lcores="
+    for arg in args:
+        if arg.startswith('--lcores='):
             return True
 
     return False
@@ -600,11 +610,11 @@ class GatewayServer:
             self.probe_huge_pages()
 
         # If not provided in configuration,
-        # calculate cpu mask available for spdk reactors
-        if not cpumask_set(cmd):
-            cpu_mask = f"-m {int_to_bitmask(min(4, os.cpu_count()))}"
-            self.logger.info(f"SPDK autodetecting cpu_mask: {cpu_mask}")
-            cmd += shlex.split(cpu_mask)
+        # calculate core list available for spdk reactors, mask and list are mutually exclusive
+        if not cpumask_set(cmd) and not core_list_set(cmd):
+            core_list = f"--lcores (0-{min(4, os.cpu_count()) - 1})"
+            self.logger.info(f"SPDK autodetecting core list: {core_list}")
+            cmd += shlex.split(core_list)
 
         self.spdk_log_file = None
         self.spdk_log_file_path = None

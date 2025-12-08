@@ -32,7 +32,7 @@ def setup_config(config, gw1_name, gw2_name, gw_group, update_notify, update_int
     configA.config["gateway"]["enable_spdk_discovery_controller"] = "True"
     configA.config["spdk"]["rpc_socket_name"] = sock1_name
     if os.cpu_count() >= 4:
-        configA.config["spdk"]["tgt_cmd_extra_args"] = "-m 0x03"
+        configA.config["spdk"]["tgt_cmd_extra_args"] = "--lcores (0-1)"
     else:
         configA.config["spdk"]["tgt_cmd_extra_args"] = "--disable-cpumask-locks"
     configB = copy.deepcopy(configA)
@@ -44,7 +44,7 @@ def setup_config(config, gw1_name, gw2_name, gw_group, update_notify, update_int
     configB.config["gateway"]["port"] = str(portB)
     configB.config["spdk"]["rpc_socket_name"] = sock2_name
     if os.cpu_count() >= 4:
-        configB.config["spdk"]["tgt_cmd_extra_args"] = "-m 0x0C"
+        configB.config["spdk"]["tgt_cmd_extra_args"] = "--lcores (2-3)"
     else:
         configB.config["spdk"]["tgt_cmd_extra_args"] = "--disable-cpumask-locks"
 
