@@ -3,7 +3,6 @@ from control.server import GatewayServer
 from control.cli import main as cli
 from control.cli import main_test as cli_test
 from control.cephutils import CephUtils
-import spdk.rpc.nvmf as rpc_nvmf
 import grpc
 from control.proto import gateway_pb2_grpc as pb2_grpc
 import copy
@@ -108,7 +107,7 @@ def verify_namespaces_using_get_subsystems(caplog, gw_port, subsys, first_nsid, 
 def verify_namespaces_using_spdk_get_subsystems(caplog, gw, subsys, first_nsid, last_nsid, grp):
     caplog.clear()
     with gw.rpc_lock:
-        subsys_info = rpc_nvmf.nvmf_get_subsystems(gw.gateway_rpc.spdk_rpc_client)
+        subsys_info = gw.gateway_rpc.spdk_rpc_client.nvmf_get_subsystems()
     assert len(subsys_info) == 1
     assert subsys_info[0]["nqn"] == subsys
     assert len(subsys_info[0]["namespaces"]) >= last_nsid

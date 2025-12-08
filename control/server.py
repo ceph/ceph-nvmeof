@@ -19,13 +19,7 @@ import time
 from concurrent import futures
 from google.protobuf import json_format
 
-import spdk.rpc
 import spdk.rpc.client as rpc_client
-import spdk.rpc.nvmf as rpc_nvmf
-import spdk.rpc.iobuf as rpc_iobuf
-import spdk.rpc.dsa as rpc_dsa
-import spdk.rpc.sock as rpc_sock
-import spdk.rpc.bdev as rpc_bdev_rbd
 
 from .proto import gateway_pb2 as pb2
 from .proto import gateway_pb2_grpc as pb2_grpc
@@ -442,7 +436,7 @@ class GatewayServer:
         assert self.gateway_rpc is None, \
             "A call to SPDK without a lock when the gateway is running"
         try:
-            rpc_nvmf.nvmf_delete_subsystem(self.spdk_rpc_client, GatewayUtils.DISCOVERY_NQN)
+            self.spdk_rpc_client.nvmf_delete_subsystem(nqn=GatewayUtils.DISCOVERY_NQN)
         except Exception:
             self.logger.exception("Delete Discovery subsystem returned with error")
             raise
@@ -708,7 +702,7 @@ class GatewayServer:
             self._create_transport(trtype.lower())
 
         try:
-            return_version = spdk.rpc.spdk_get_version(self.spdk_rpc_client)
+            return_version = self.spdk_rpc_client.spdk_get_version()
             try:
                 version_string = return_version["version"]
                 self.logger.info(f"Started SPDK with version \"{version_string}\"")
@@ -835,7 +829,7 @@ class GatewayServer:
         """Sets SPDK's max subsystems attribute."""
 
         try:
-            rpc_nvmf.nvmf_set_max_subsystems(self.spdk_rpc_client, max_subsystems=max_subsystems)
+            self.spdk_rpc_client.nvmf_set_max_subsystems(max_subsystems=max_subsystems)
         except Exception:
             self.logger.exception(f"Failure setting max subsystems {max_subsystems}")
             pass
@@ -853,7 +847,7 @@ class GatewayServer:
             return
 
         try:
-            rpc_iobuf.iobuf_set_options(self.spdk_rpc_client, **args)
+            self.spdk_rpc_client.iobuf_set_options(**args)
         except Exception:
             self.logger.exception("IObuf set options returned with error")
             pass
@@ -862,9 +856,8 @@ class GatewayServer:
         """Set SSL tickets number for ssl socket implementation."""
 
         try:
-            rpc_sock.sock_impl_set_options(self.spdk_rpc_client,
-                                           impl_name="ssl",
-                                           num_ssl_tickets=tickets_number)
+            self.spdk_rpc_client.sock_impl_set_options(impl_name="ssl",
+                                                       num_ssl_tickets=tickets_number)
         except Exception:
             self.logger.exception("sock_impl_set_options returned with error")
             pass
@@ -876,7 +869,7 @@ class GatewayServer:
         self.logger.debug(f"initialize_rbd_crc32c: rbd_with_crc32c: {rbd_with_crc32c}")
 
         try:
-            rpc_bdev_rbd.bdev_rbd_set_with_crc32c(self.spdk_rpc_client, enable=rbd_with_crc32c)
+            self.spdk_rpc_client.bdev_rbd_set_with_crc32c(enable=rbd_with_crc32c)
             self.logger.info(f"Set RBD CRC32C usage to: {rbd_with_crc32c}")
         except Exception:
             self.logger.exception("Failed to set RBD CRC32C configuration")
@@ -894,7 +887,7 @@ class GatewayServer:
         """Initializes dsa accel module offload."""
         try:
             if self.config.getboolean_with_default("spdk", "enable_dsa_acceleration", True):
-                res = rpc_dsa.dsa_scan_accel_module(self.spdk_rpc_client, config_kernel_mode=True)
+                res = self.spdk_rpc_client.dsa_scan_accel_module(config_kernel_mode=True)
                 self.logger.debug(f"dsa_scan_accel_module: {res=}")
             else:
                 self.logger.info("DSA acceleration module scanning is disabled")
@@ -904,7 +897,7 @@ class GatewayServer:
 
     def _init_framework(self):
         try:
-            spdk.rpc.framework_start_init(self.spdk_rpc_client)
+            self.spdk_rpc_client.framework_start_init()
         except Exception:
             self.logger.exception("Failed to initialize framework")
             raise
@@ -925,7 +918,7 @@ class GatewayServer:
                 raise
 
         try:
-            rpc_nvmf.nvmf_create_transport(self.spdk_rpc_client, **args)
+            self.spdk_rpc_client.nvmf_create_transport(**args)
         except Exception:
             self.logger.exception(f"Create Transport {trtype} returned with error")
             raise

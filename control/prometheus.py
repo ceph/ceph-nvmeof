@@ -13,7 +13,6 @@ import threading
 import inspect
 import types
 import math
-import spdk.rpc as rpc
 
 from .proto import gateway_pb2 as pb2
 from prometheus_client.core import REGISTRY, GaugeMetricFamily
@@ -215,7 +214,7 @@ class NVMeOFCollector:
     @timer
     def _get_bdev_info(self):
         try:
-            return rpc.bdev.bdev_get_bdevs(self.spdk_rpc_client)
+            return self.spdk_rpc_client.bdev_get_bdevs()
         except Exception:
             logger.exception("Error trying to call bdev_get_bdevs()")
             return []
@@ -223,7 +222,7 @@ class NVMeOFCollector:
     @timer
     def _get_bdev_io_stats(self):
         try:
-            return rpc.bdev.bdev_get_iostat(self.spdk_rpc_client)
+            return self.spdk_rpc_client.bdev_get_iostat()
         except Exception:
             logger.exception("Error trying to call bdev_get_iostat()")
             return {}
@@ -231,7 +230,7 @@ class NVMeOFCollector:
     @timer
     def _get_spdk_thread_stats(self):
         try:
-            return rpc.app.thread_get_stats(self.spdk_rpc_client)
+            return self.spdk_rpc_client.thread_get_stats()
         except Exception:
             logger.exception("Error trying to call thread_get_stats()")
             return {}
