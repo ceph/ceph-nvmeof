@@ -6,8 +6,6 @@ from control.cli import main_test as cli_test
 from control.cephutils import CephUtils
 from control.utils import GatewayUtils
 from control.utils import GatewayEnumUtils
-import spdk.rpc.bdev as rpc_bdev
-from spdk.rpc import spdk_get_version
 import grpc
 from control.proto import gateway_pb2 as pb2
 from control.proto import gateway_pb2_grpc as pb2_grpc
@@ -212,7 +210,7 @@ class TestGet:
         spdk_ver = None
         with gw.rpc_lock:
             try:
-                spdk_ver = spdk_get_version(gw.spdk_rpc_client)
+                spdk_ver = gw.spdk_rpc_client.spdk_get_version()
                 spdk_ver = spdk_ver["version"]
             except Exception:
                 spdk_ver = None
@@ -2069,7 +2067,7 @@ class TestDelete:
         assert bdev_name
         bdev_found = False
         with gw.rpc_lock:
-            bdev_list = rpc_bdev.bdev_get_bdevs(gw.spdk_rpc_client)
+            bdev_list = gw.spdk_rpc_client.bdev_get_bdevs()
         for b in bdev_list:
             try:
                 if bdev_name == b["name"]:
@@ -2091,7 +2089,7 @@ class TestDelete:
         assert f"Deleting namespace 6 from {subsystem}: Successful" in caplog.text
         bdev_found = False
         with gw.rpc_lock:
-            bdev_list = rpc_bdev.bdev_get_bdevs(gw.spdk_rpc_client)
+            bdev_list = gw.spdk_rpc_client.bdev_get_bdevs()
         for b in bdev_list:
             try:
                 if bdev_name == b["name"]:
