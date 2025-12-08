@@ -7,4 +7,3 @@ server.crt
 server.key
 client.crt
 client.key
-control/constants.py
