@@ -65,7 +65,7 @@ def gateway(config):
     config.config["gateway-logs"]["log_level"] = "debug"
     config.config["gateway"]["group"] = ""
     if os.cpu_count() >= 4:
-        config.config["spdk"]["tgt_cmd_extra_args"] = "-m 0x03"
+        config.config["spdk"]["tgt_cmd_extra_args"] = "--lcores (0-1)"
     else:
         config.config["spdk"]["tgt_cmd_extra_args"] = "--disable-cpumask-locks"
     ceph_utils = CephUtils(config)
@@ -105,7 +105,7 @@ def gateway_no_encryption_key(config):
     config.config["gateway"]["group"] = ""
     config.config["gateway"]["encryption_key"] = "/etc/ceph/NOencryption.key"
     if os.cpu_count() >= 4:
-        config.config["spdk"]["tgt_cmd_extra_args"] = "-m 0x0C"
+        config.config["spdk"]["tgt_cmd_extra_args"] = "--lcores (2-3)"
     else:
         config.config["spdk"]["tgt_cmd_extra_args"] = "--disable-cpumask-locks"
     ceph_utils = CephUtils(config)
