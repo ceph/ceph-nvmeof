@@ -9,5 +9,6 @@ else
     test_dir=$(dirname $0)
 fi
 
-export NVMEOF_CONFIG=./tests/ceph-nvmeof.crc32c.conf
+export NVMEOF_CONFIG=./tests/ceph-nvmeof.nocrc.conf
 $test_dir/start_up.sh
+
