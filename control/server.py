@@ -865,7 +865,7 @@ class GatewayServer:
     def _initialize_rbd_crc32c(self):
         """Initialize RBD CRC32C configuration."""
 
-        rbd_with_crc32c = self.config.getboolean_with_default("spdk", "rbd_with_crc32c", False)
+        rbd_with_crc32c = self.config.getboolean_with_default("spdk", "rbd_with_crc32c", True)
         self.logger.debug(f"initialize_rbd_crc32c: rbd_with_crc32c: {rbd_with_crc32c}")
 
         try:
