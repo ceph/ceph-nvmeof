@@ -2551,6 +2551,15 @@ class GatewayService(pb2_grpc.GatewayServicer):
             self.logger.error(errmsg)
             return pb2.req_status(status=errno.ENODEV, error_message=errmsg)
 
+        find_ret = self.subsystem_nsid_bdev_and_uuid.find_namespace(
+            request.subsystem_nqn, request.nsid)
+
+        if find_ret.empty():
+            errmsg = f"{change_lb_group_failure_prefix}: Namespace not found"
+            self.logger.error(errmsg)
+            return pb2.req_status(status=errno.ENODEV, error_message=errmsg)
+        anagrpid = find_ret.anagrpid
+
         # below checks are legal only if command is initiated by local cli or is sent from
         # the local rebalance logic.
         if context:
@@ -2563,18 +2572,15 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 self.logger.error(errmsg)
                 return pb2.req_status(status=errno.ENODEV, error_message=errmsg)
 
-        find_ret = self.subsystem_nsid_bdev_and_uuid.find_namespace(
-            request.subsystem_nqn, request.nsid)
-
         omap_lock = self.omap_lock.get_omap_lock_to_use(context)
         with omap_lock:
             ns_entry = None
+            ns_key = GatewayState.build_namespace_key(request.subsystem_nqn, request.nsid)
             if context:
                 # notice that the local state might not be up to date in case we're in the
                 # middle of update() but as the context is not None, we are not in an update(),
                 # the omap lock made sure that we got here with an updated local state
                 state = self.gateway_state.local.get_state()
-                ns_key = GatewayState.build_namespace_key(request.subsystem_nqn, request.nsid)
                 try:
                     state_ns = state[ns_key]
                     ns_entry = json_format.Parse(state_ns, pb2.namespace_add_req(),
@@ -2584,6 +2590,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                              f"namespace {request.nsid} in {request.subsystem_nqn}"
                     self.logger.error(errmsg)
                     return pb2.req_status(status=errno.ENOENT, error_message=errmsg)
+                assert ns_entry, "Namespace entry is empty"
                 if not request.auto_lb_logic:
                     anagrp = ns_entry.anagrpid
                     gw_id = self.ceph_utils.get_gw_id_owner_ana_group(
@@ -2596,10 +2603,32 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                  f"there.\nThis gateway name is {self.gateway_name}"
                         self.logger.error(errmsg)
                         return pb2.req_status(status=errno.EEXIST, error_message=errmsg)
+            elif not anagrpid:
+                # we shouldn't get a zero group id
+                self.logger.error("We read a load balancing group id of 0 from the local list. "
+                                  "Will try to get it from OMAP")
+                # we are in the middle of an update, so we can't rely on the local state
+                state = self.gateway_state.omap.get_state()
+                try:
+                    state_ns = state[ns_key]
+                    ns_entry = json_format.Parse(state_ns, pb2.namespace_add_req(),
+                                                 ignore_unknown_fields=True)
+                except Exception:
+                    self.logger.exception(f"Can't find entry for "
+                                          f"namespace {request.nsid} in "
+                                          f"{request.subsystem_nqn}")
+                    errmsg = f"{change_lb_group_failure_prefix}: Can't find " \
+                             f"namespace entry in OMAP file"
+                    return pb2.req_status(status=errno.ENOENT, error_message=errmsg)
+
+            # either we're in an update or not, we need to deal with a 0 group id
+            if not anagrpid:
+                assert ns_entry and ns_entry.anagrpid != 0, "Couldn't get load " \
+                                                            "balancing group id"
+                anagrpid = ns_entry.anagrpid
+                self.logger.debug(f"Read a load balancing group of {anagrpid} from the OMAP file")
 
             try:
-                anagrpid = self.subsystem_nsid_bdev_and_uuid.get_ana_group_id_by_nsid_subsys(
-                    request.subsystem_nqn, request.nsid)
                 ret = self.spdk_rpc_client.nvmf_subsystem_set_ns_ana_group(
                     nqn=request.subsystem_nqn,
                     nsid=request.nsid,
@@ -2620,6 +2649,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 self.logger.error(change_lb_group_failure_prefix)
                 return pb2.req_status(status=errno.EINVAL,
                                       error_message=change_lb_group_failure_prefix)
+
             # change LB success - need to update the data structures
             self.ana_grp_ns_load[anagrpid] -= 1   # decrease loading of previous "old" ana group
             try:
