@@ -1113,6 +1113,24 @@ class GatewayServer:
                 else:
                     # Do nothing, this is covered by the delete namespace code
                     pass
+            elif key.startswith(GatewayState.NAMESPACE_REFRESH_SIZE_PREFIX):
+                if is_add_req:
+                    (ns_nqn, ns_nsid) = self.gateway_state.break_namespace_refresh_size_key(key)
+                    if not ns_nqn or not ns_nsid:
+                        self.logger.error(f"Error parsing key {key} to get subsystem "
+                                          f"NQN and namespace ID")
+                    elif self.gateway_state.is_initialization_over():
+                        req = pb2.namespace_resize_req(subsystem_nqn=ns_nqn,
+                                                       nsid=ns_nsid,
+                                                       new_size=0)
+                        self.gateway_rpc.namespace_resize(req)
+                    else:
+                        # No need to refresh size if the gateway is still coming up
+                        self.logger.info(f"Will not refresh size of namespace {ns_nsid} in "
+                                         f"subsystem {ns_nqn} as the gateway is coming up")
+                else:
+                    # Do nothing, this is covered by the delete namespace code
+                    pass
             elif key.startswith(GatewayState.HOST_PREFIX):
                 if is_add_req:
                     req = json_format.Parse(val, pb2.add_host_req(),
@@ -1179,6 +1197,11 @@ class GatewayServer:
                     req = json_format.Parse(val, pb2.namespace_set_rbd_trash_image_req(),
                                             ignore_unknown_fields=True)
                     self.gateway_rpc.namespace_set_rbd_trash_image(req)
+            elif key.startswith(GatewayState.NAMESPACE_AUTO_RESIZE_PREFIX):
+                if is_add_req:
+                    req = json_format.Parse(val, pb2.namespace_set_auto_resize_req(),
+                                            ignore_unknown_fields=True)
+                    self.gateway_rpc.namespace_set_auto_resize(req)
             elif key.startswith(GatewayState.NAMESPACE_HOST_PREFIX):
                 if is_add_req:
                     req = json_format.Parse(val, pb2.namespace_add_host_req(),
