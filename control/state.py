@@ -43,6 +43,8 @@ class GatewayState(ABC):
     NAMESPACE_HOST_PREFIX = "ns-host" + OMAP_KEY_DELIMITER
     NAMESPACE_VISIBILITY_PREFIX = "ns-visibility" + OMAP_KEY_DELIMITER
     NAMESPACE_TRASH_IMAGE_PREFIX = "ns-trash-image" + OMAP_KEY_DELIMITER
+    NAMESPACE_AUTO_RESIZE_PREFIX = "ns-auto-resize" + OMAP_KEY_DELIMITER
+    NAMESPACE_REFRESH_SIZE_PREFIX = "ns-refresh-size" + OMAP_KEY_DELIMITER
 
     def is_key_element_valid(s: str) -> bool:
         if not isinstance(s, str):
@@ -73,6 +75,20 @@ class GatewayState(ABC):
 
     def build_namespace_trash_image_key(subsystem_nqn: str, nsid) -> str:
         key = GatewayState.NAMESPACE_TRASH_IMAGE_PREFIX + subsystem_nqn + \
+            GatewayState.OMAP_KEY_DELIMITER
+        if nsid is not None:
+            key += str(nsid)
+        return key
+
+    def build_namespace_auto_resize_key(subsystem_nqn: str, nsid) -> str:
+        key = GatewayState.NAMESPACE_AUTO_RESIZE_PREFIX + subsystem_nqn + \
+            GatewayState.OMAP_KEY_DELIMITER
+        if nsid is not None:
+            key += str(nsid)
+        return key
+
+    def build_namespace_refresh_size_key(subsystem_nqn: str, nsid: str) -> str:
+        key = GatewayState.NAMESPACE_REFRESH_SIZE_PREFIX + subsystem_nqn + \
             GatewayState.OMAP_KEY_DELIMITER
         if nsid is not None:
             key += str(nsid)
@@ -166,6 +182,8 @@ class GatewayState(ABC):
                 self._remove_key(key)
             elif key.startswith(GatewayState.build_namespace_host_key(subsystem_nqn, nsid, "")):
                 self._remove_key(key)
+            elif key.startswith(GatewayState.build_namespace_refresh_size_key(subsystem_nqn, nsid)):
+                self._remove_key(key)
 
     def add_namespace_qos(self, subsystem_nqn: str, nsid: str, val: str):
         """Adds namespace's QOS settings to the state data store."""
@@ -175,6 +193,17 @@ class GatewayState(ABC):
     def remove_namespace_qos(self, subsystem_nqn: str, nsid: str):
         """Removes namespace's QOS settings from the state data store."""
         key = GatewayState.build_namespace_qos_key(subsystem_nqn, nsid)
+        self._remove_key(key)
+
+    def add_namespace_refresh_size(self, subsystem_nqn: str, nsid: str):
+        """Adds namespace's refresh size request to the state data store."""
+
+        key = GatewayState.build_namespace_refresh_size_key(subsystem_nqn, nsid)
+        self._add_key(key, str(time.time()))
+
+    def remove_namespace_refresh_size(self, subsystem_nqn: str, nsid: str):
+        """Removes namespace's refresh size request from the state data store."""
+        key = GatewayState.build_namespace_refresh_size_key(subsystem_nqn, nsid)
         self._remove_key(key)
 
     def add_namespace_host(self, subsystem_nqn: str, nsid: str, host: str, val: str):
@@ -206,6 +235,8 @@ class GatewayState(ABC):
             elif key.startswith(GatewayState.build_namespace_qos_key(subsystem_nqn, None)):
                 self._remove_key(key)
             elif key.startswith(GatewayState.build_namespace_host_key(subsystem_nqn, None, "")):
+                self._remove_key(key)
+            elif key.startswith(GatewayState.build_namespace_refresh_size_key(subsystem_nqn, None)):
                 self._remove_key(key)
             elif key.startswith(GatewayState.build_host_key(subsystem_nqn, None)):
                 self._remove_key(key)
@@ -1117,8 +1148,12 @@ class GatewayStateHandler:
                                                                      "break_update_interval_sec",
                                                                      25)
         self.update_is_active_lock = threading.Lock()
+        self.first_update_over = False
         self.id_text = id_text
         self.up_and_running = True
+
+    def is_initialization_over(self) -> bool:
+        return self.first_update_over
 
     def add_namespace(self, subsystem_nqn: str, nsid: str, val: str):
         """Adds a namespace to the state data store."""
@@ -1139,6 +1174,16 @@ class GatewayStateHandler:
         """Removes namespace's QOS settings from the state data store."""
         self.omap.remove_namespace_qos(subsystem_nqn, nsid)
         self.local.remove_namespace_qos(subsystem_nqn, nsid)
+
+    def add_namespace_refresh_size(self, subsystem_nqn: str, nsid: str):
+        """Adds namespace's refresh size request to the state data store."""
+        self.omap.add_namespace_refresh_size(subsystem_nqn, nsid)
+        self.local.add_namespace_refresh_size(subsystem_nqn, nsid)
+
+    def remove_namespace_refresh_size(self, subsystem_nqn: str, nsid: str):
+        """Removes namespace's refresh size request from the state data store."""
+        self.omap.remove_namespace_refresh_size(subsystem_nqn, nsid)
+        self.local.remove_namespace_refresh_size(subsystem_nqn, nsid)
 
     def add_namespace_host(self, subsystem_nqn: str, nsid: str, host: str, val: str):
         """Adds namespace's host to the state data store."""
@@ -1231,11 +1276,11 @@ class GatewayStateHandler:
         # are more changes
 
         old = copy.copy(old_req)
-        new = copy.copy(new_req)
-        old.anagrpid = new.anagrpid
-        old.no_auto_visible = new.no_auto_visible
-        old.trash_image = new.trash_image
-        return old != new
+        old.anagrpid = new_req.anagrpid
+        old.no_auto_visible = new_req.no_auto_visible
+        old.trash_image = new_req.trash_image
+        old.disable_auto_resize = new_req.disable_auto_resize
+        return old != new_req
 
     def namespace_lb_group_id_changed(self, old_req, new_req):
         # If the lb group id field has changed we should use change_lb_group
@@ -1269,6 +1314,17 @@ class GatewayStateHandler:
             return None
 
         return new_req.trash_image
+
+    def namespace_auto_resize_changed(self, old_req, new_req):
+        # If the auto resize disabled flag has changed we can use set_auto_resize
+        # request instead of re-adding the namespace
+
+        assert old_req != new_req, f"Something was wrong we shouldn't get identical " \
+                                   f"old and new values ({old_req})"
+        if old_req.disable_auto_resize == new_req.disable_auto_resize:
+            return None
+
+        return new_req.disable_auto_resize
 
     def host_only_key_changed(self, old_val, new_val):
         # If only the dhchap key has changed we can use change_key request
@@ -1358,28 +1414,37 @@ class GatewayStateHandler:
             return (False, None, False)
         return (True, new_req.dhchap_key, new_req.key_encrypted)
 
-    def break_namespace_key(self, ns_key: str):
-        if not ns_key.startswith(GatewayState.NAMESPACE_PREFIX):
-            self.logger.warning(f"Invalid namespace key \"{ns_key}\", can't find key parts")
+    def break_namespace_attribute_key(self, prefix: str, ns_key: str):
+        if not ns_key.startswith(prefix):
+            self.logger.warning(f"Invalid namespace attribute key \"{ns_key}\", "
+                                f"can't find key parts")
             return (None, None)
-        key_end = ns_key[len(GatewayState.NAMESPACE_PREFIX):]
+        key_end = ns_key[len(prefix):]
         key_parts = key_end.split(GatewayState.OMAP_KEY_DELIMITER)
         if len(key_parts) != 2:
-            self.logger.warning(f"Invalid namespace key \"{ns_key}\", can't find key parts")
+            self.logger.warning(f"Invalid namespace attribute key \"{ns_key}\", "
+                                f"can't find key parts")
             return (None, None)
         if not GatewayUtils.is_valid_nqn(key_parts[0]):
             self.logger.warning(f"Invalid NQN \"{key_parts[0]}\" found for namespace "
-                                f"key \"{ns_key}\", can't find key parts")
+                                f"attribute key \"{ns_key}\", can't find key parts")
             return (None, None)
         nqn = key_parts[0]
         try:
             nsid = int(key_parts[1])
         except ValueError:
             self.logger.exception(f"Invalid NSID \"{key_parts[1]}\" found for namespace "
-                                  f"key \"{ns_key}\", can't find key parts")
+                                  f"attribute key \"{ns_key}\", can't find key parts")
             return (None, None)
 
         return (nqn, nsid)
+
+    def break_namespace_key(self, ns_key: str):
+        return self.break_namespace_attribute_key(GatewayState.NAMESPACE_PREFIX, ns_key)
+
+    def break_namespace_refresh_size_key(self, ns_key: str):
+        return self.break_namespace_attribute_key(GatewayState.NAMESPACE_REFRESH_SIZE_PREFIX,
+                                                  ns_key)
 
     def break_host_key(self, host_key: str):
         if not host_key.startswith(GatewayState.HOST_PREFIX):
@@ -1444,6 +1509,7 @@ class GatewayStateHandler:
                 GatewayState.NAMESPACE_PREFIX,
                 GatewayState.NAMESPACE_QOS_PREFIX,
                 GatewayState.NAMESPACE_HOST_PREFIX,
+                GatewayState.NAMESPACE_REFRESH_SIZE_PREFIX,
                 GatewayState.LISTENER_PREFIX,
             ]
 
@@ -1495,6 +1561,7 @@ class GatewayStateHandler:
                 ns_lb_group_changed = []
                 ns_visibility_changed = []
                 ns_trash_image_changed = []
+                ns_auto_resize_changed = []
                 only_host_key_changed = []
                 only_subsystem_key_changed = []
                 for key in changed.keys():
@@ -1528,6 +1595,13 @@ class GatewayStateHandler:
                                               f"The new flag is {new_trash_image}")
                             ns_trash_image_changed.append((key, new_trash_image))
 
+                        new_disable_auto_resize = self.namespace_auto_resize_changed(old_req,
+                                                                                     new_req)
+                        if new_disable_auto_resize is not None:
+                            self.logger.debug(f"Found {key} where the auto resize "
+                                              f"flag has changed. "
+                                              f"The new flag is {new_disable_auto_resize}")
+                            ns_auto_resize_changed.append((key, new_disable_auto_resize))
                     elif key.startswith(GatewayState.HOST_PREFIX):
                         (should_process,
                          new_dhchap_key,
@@ -1626,6 +1700,31 @@ class GatewayStateHandler:
                             self.logger.exception("Exception formatting set namespace "
                                                   "RBD trash image request")
 
+                for ns_key, new_disable_auto_resize in ns_auto_resize_changed:
+                    ns_nqn = None
+                    ns_nsid = None
+                    try:
+                        changed.pop(ns_key, None)
+                    except Exception:
+                        self.logger.exception(f"Exception removing {ns_key} from {changed}")
+                    (ns_nqn, ns_nsid) = self.break_namespace_key(ns_key)
+                    if ns_nqn and ns_nsid:
+                        try:
+                            auto_resize_key = GatewayState.build_namespace_auto_resize_key(ns_nqn,
+                                                                                           ns_nsid)
+                            req = pb2.namespace_set_auto_resize_req(
+                                subsystem_nqn=ns_nqn,
+                                nsid=ns_nsid,
+                                auto_resize=not new_disable_auto_resize)
+                            json_req = json_format.MessageToJson(
+                                req,
+                                preserving_proto_field_name=True,
+                                including_default_value_fields=True)
+                            added[auto_resize_key] = json_req
+                        except Exception:
+                            self.logger.exception("Exception formatting set namespace "
+                                                  "auto resize flag request")
+
                 for host_key, new_dhchap_key, new_key_encrypted in only_host_key_changed:
                     subsys_nqn = None
                     host_nqn = None
@@ -1685,7 +1784,8 @@ class GatewayStateHandler:
 
                 if len(ns_lb_group_changed) > 0 or len(only_host_key_changed) > 0 or \
                    len(only_subsystem_key_changed) > 0 or len(ns_visibility_changed) > 0 or \
-                   len(ns_trash_image_changed) > 0:
+                   len(ns_trash_image_changed) > 0 or \
+                   len(ns_auto_resize_changed) > 0:
                     grouped_changed = self._group_by_prefix(changed, prefix_list)
 
                     if len(only_subsystem_key_changed) > 0:
@@ -1696,6 +1796,8 @@ class GatewayStateHandler:
                         prefix_list += [GatewayState.NAMESPACE_VISIBILITY_PREFIX]
                     if len(ns_trash_image_changed) > 0:
                         prefix_list += [GatewayState.NAMESPACE_TRASH_IMAGE_PREFIX]
+                    if len(ns_auto_resize_changed) > 0:
+                        prefix_list += [GatewayState.NAMESPACE_AUTO_RESIZE_PREFIX]
                     if len(only_host_key_changed) > 0:
                         prefix_list += [GatewayState.HOST_KEY_PREFIX]
                     grouped_added = self._group_by_prefix(added, prefix_list)
@@ -1719,6 +1821,10 @@ class GatewayStateHandler:
                 self.omap.set_local_version(omap_version)
                 self.logger.info(f"Update complete ({local_version} -> {omap_version}) "
                                  f"({self.id_text}).")
+        if not self.first_update_over:
+            self.first_update_over = True
+            self.logger.info(f"Initialization is over ({self.id_text}).")
+
         return True
 
     def _group_by_prefix(self, state_update, prefix_list):

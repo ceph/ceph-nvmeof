@@ -403,7 +403,7 @@ class SubsystemHostAuth:
 
 class NamespaceInfo:
     def __init__(self, subsys, nsid, bdev, uuid, anagrpid, auto_visible, pool, image,
-                 trash_image, read_only):
+                 trash_image, read_only, auto_resize):
         self.subsys = subsys
         self.nsid = nsid
         self.bdev = bdev
@@ -415,6 +415,7 @@ class NamespaceInfo:
         self.image = image
         self.trash_image = trash_image
         self.read_only = read_only
+        self.auto_resize = auto_resize
         self.image_was_shrunk = False
 
     def __str__(self):
@@ -422,7 +423,8 @@ class NamespaceInfo:
                f"bdev: {self.bdev}, uuid: {self.uuid}, " \
                f"auto_visible: {self.auto_visible}, anagrpid: {self.anagrpid}, " \
                f"pool: {self.pool}, image: {self.image}, trash_image: {self.trash_image}, " \
-               f"read_only: {self.read_only}, " \
+               f"read_only: {self.read_only}, image_shrunk: {self.image_was_shrunk}, " \
+               f"auto_resize: {self.auto_resize}, " \
                f"hosts: {self.host_list}"
 
     def empty(self) -> bool:
@@ -476,7 +478,8 @@ class NamespaceInfo:
 
 
 class NamespacesLocalList:
-    EMPTY_NAMESPACE = NamespaceInfo(None, None, None, None, 0, False, None, None, False, False)
+    EMPTY_NAMESPACE = NamespaceInfo(None, None, None, None, 0, False, None, None,
+                                    False, False, False)
 
     def __init__(self):
         self.namespace_list = defaultdict(dict)
@@ -494,13 +497,13 @@ class NamespacesLocalList:
                     self.namespace_list.pop(nqn, None)
 
     def add_namespace(self, nqn, nsid, bdev, uuid, anagrpid, auto_visible,
-                      pool, image, trash_image, read_only):
+                      pool, image, trash_image, read_only, auto_resize):
         if not bdev:
             bdev = GatewayService.find_unique_bdev_name(uuid)
         with self.namespace_list_lock:
             self.namespace_list[nqn][nsid] = NamespaceInfo(nqn, nsid, bdev, uuid, anagrpid,
                                                            auto_visible, pool, image,
-                                                           trash_image, read_only)
+                                                           trash_image, read_only, auto_resize)
 
     def find_namespace(self, nqn, nsid, uuid=None, bdev=None) -> NamespaceInfo:
         with self.namespace_list_lock:
@@ -1972,7 +1975,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
         return errmsg, nqn
 
     def create_namespace(self, subsystem_nqn, bdev_name, nsid, anagrpid, uuid,
-                         auto_visible, rbd_pool, rbd_image_name, trash_image, read_only, context):
+                         auto_visible, rbd_pool, rbd_image_name,
+                         trash_image, read_only, auto_resize, context):
         """Adds a namespace to a subsystem."""
 
         assert self.rpc_lock.locked(), "RPC is unlocked when calling create_namespace()"
@@ -2002,6 +2006,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
             rbd_msg = f"RBD image {rbd_pool}/{rbd_image_name}, "
         self.logger.info(f"Received request to add {bdev_name} to {subsystem_nqn} with load "
                          f"balancing group id {anagrpid}{nsid_msg}, auto_visible: {auto_visible}, "
+                         f"auto_resize: {auto_resize}, "
                          f"{rbd_msg}context: {context}{peer_msg}")
 
         if subsystem_nqn not in self.subsys_serial:
@@ -2069,7 +2074,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                                             bdev_name, uuid,
                                                             anagrpid, auto_visible,
                                                             rbd_pool, rbd_image_name,
-                                                            trash_image, read_only)
+                                                            trash_image, read_only,
+                                                            auto_resize)
             self.logger.debug(f"subsystem_add_ns: {nsid}")
             self.ana_grp_ns_load[anagrpid] += 1
             if anagrpid in self.ana_grp_subs_load:
@@ -2323,7 +2329,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                            request.nsid, anagrp, request.uuid,
                                            not request.no_auto_visible,
                                            ret_bdev.rbd_pool, ret_bdev.rbd_image_name,
-                                           ret_bdev.trash_image, request.read_only, context)
+                                           ret_bdev.trash_image, request.read_only,
+                                           not request.disable_auto_resize,
+                                           context)
             if ret_ns.status == 0 and request.nsid and ret_ns.nsid != request.nsid:
                 errmsg = f"Returned ID {ret_ns.nsid} differs from requested one {request.nsid}"
                 self.logger.error(errmsg)
@@ -2848,13 +2856,58 @@ class GatewayService(pb2_grpc.GatewayServicer):
             self.logger.error(errmsg)
             return pb2.req_status(status=errno.ENODEV, error_message=errmsg)
 
-        try:
-            self._set_image_auto_resize(find_ret.pool, find_ret.image, request.auto_resize)
-        except Exception:
-            errmsg = f"Error setting auto resize flag for image " \
-                     f"{find_ret.pool}/{find_ret.image}"
-            self.logger.exception(f"{errmsg}")
-            return pb2.req_status(status=errno.EIO, error_message=errmsg)
+        if context:
+            # As all gateways use the same RBD image, do it only once
+            try:
+                self._set_image_auto_resize(find_ret.pool, find_ret.image, request.auto_resize)
+            except Exception:
+                errmsg = f"Error setting auto resize flag for image " \
+                         f"{find_ret.pool}/{find_ret.image}"
+                self.logger.exception(f"{errmsg}")
+                return pb2.req_status(status=errno.EIO, error_message=errmsg)
+
+            ns_entry = None
+            ns_key = GatewayState.build_namespace_key(request.subsystem_nqn, request.nsid)
+            omap_lock = self.omap_lock.get_omap_lock_to_use(context)
+            with omap_lock:
+
+                if request.auto_resize:
+                    # If auto resize is enabled, we no need to send explicit refresh size requests
+                    try:
+                        self.gateway_state.remove_namespace_refresh_size(request.subsystem_nqn,
+                                                                         str(request.nsid))
+                    except Exception:
+                        pass
+
+                # notice that the local state might not be up to date in case we're in the middle
+                # of update() but as the context is not None, we are not in an update(), the OMAP
+                # lock made sure that we got here with an updated local state
+                state = self.gateway_state.local.get_state()
+                try:
+                    state_ns = state[ns_key]
+                    ns_entry = json_format.Parse(state_ns, pb2.namespace_add_req(),
+                                                 ignore_unknown_fields=True)
+                except Exception:
+                    errmsg = f"{failure_prefix}: Can't find entry for namespace"
+                    self.logger.error(errmsg)
+                    return pb2.req_status(status=errno.ENOENT, error_message=errmsg)
+
+                assert ns_entry, "Namespace entry is None for non-update call"
+                # Update gateway state
+                try:
+                    ns_entry.disable_auto_resize = not request.auto_resize
+                    json_req = json_format.MessageToJson(
+                        ns_entry, preserving_proto_field_name=True,
+                        including_default_value_fields=True)
+                    self.gateway_state.add_namespace(request.subsystem_nqn, request.nsid, json_req)
+                except Exception as ex:
+                    errmsg = f"Error persisting auto resize flag change for namespace " \
+                             f"{request.nsid} in {request.subsystem_nqn}"
+                    self.logger.exception(errmsg)
+                    errmsg = f"{errmsg}:\n{ex}"
+                    return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
+
+        find_ret.auto_resize = request.auto_resize
 
         return pb2.req_status(status=0, error_message=os.strerror(0))
 
@@ -2878,6 +2931,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
         # Update gateway state
         try:
             self.gateway_state.remove_namespace_qos(nqn, str(nsid))
+        except Exception:
+            pass
+        try:
+            self.gateway_state.remove_namespace_refresh_size(nqn, str(nsid))
         except Exception:
             pass
         find_ret = self.subsystem_nsid_bdev_and_uuid.find_namespace(nqn, nsid)
@@ -3480,15 +3537,30 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         ret = self.resize_bdev(bdev_name, request.new_size, peer_msg)
 
-        if ret.status == 0:
-            errmsg = os.strerror(0)
-            find_ret.set_image_was_shrunk(False)
-        else:
+        if ret.status != 0:
             errmsg = f"Failure resizing namespace {request.nsid} on " \
                      f"{request.subsystem_nqn}: {ret.error_message}"
             self.logger.error(errmsg)
+            return pb2.req_status(status=ret.status, error_message=errmsg)
 
-        return pb2.req_status(status=ret.status, error_message=errmsg)
+        if request.new_size > 0:
+            find_ret.set_image_was_shrunk(False)
+
+        # If auto resize is disabled, we need to trigger a size refresh for other gateways
+        if context and not find_ret.auto_resize:
+            omap_lock = self.omap_lock.get_omap_lock_to_use(context)
+            with omap_lock:
+                try:
+                    self.gateway_state.add_namespace_refresh_size(request.subsystem_nqn,
+                                                                  request.nsid)
+                except Exception as ex:
+                    errmsg = f"Error persisting refresh size for namespace {request.nsid} " \
+                             f"on {request.subsystem_nqn}"
+                    self.logger.exception(errmsg)
+                    errmsg = f"{errmsg}:\n{ex}"
+                    return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
+
+        return pb2.req_status(status=0, error_message=os.strerror(0))
 
     def namespace_resize(self, request, context=None):
         """Resize a namespace."""
