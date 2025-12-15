@@ -912,7 +912,7 @@ class TestCreate:
             rc = int(str(sysex))
             pass
         assert "error: argument --auto-visible: invalid choice: 'junk' " \
-               "(choose from 'yes', 'no')" in caplog.text
+               "(choose from 'yes', 'no', 'true', 'false', '1', '0')" in caplog.text
         assert rc == 2
         caplog.clear()
         rc = 0
@@ -1855,7 +1855,7 @@ class TestCreate:
         except SystemExit as sysex:
             rc = int(str(sysex))
             pass
-        assert "error: argument --adrfam/-f: invalid choice: 'JUNK'" in caplog.text
+        assert "error: argument --adrfam/-f: invalid choice: 'junk'" in caplog.text
         assert rc == 2
 
     @pytest.mark.parametrize("listener", listener_list_discovery)
@@ -2292,13 +2292,13 @@ class TestGwLogLevel:
         except SystemExit as sysex:
             rc = int(str(sysex))
             pass
-        assert "error: argument --level/-l: invalid choice: 'JUNK'" in caplog.text
+        assert "error: argument --level/-l: invalid choice: 'junk'" in caplog.text
         assert rc == 2
         caplog.clear()
         cli(["--format", "json", "gw", "get_log_level"])
         assert '"log_level": "critical"' in caplog.text
         caplog.clear()
-        cli(["--log-level", "critical", "gw", "set_log_level", "--level", "DEBUG"])
+        cli(["--log-level", "critical", "gw", "set_log_level", "--level", "DEbUg"])
         assert 'Set gateway log level to "debug": Successful' not in caplog.text
         caplog.clear()
         cli(["gw", "get_log_level"])
@@ -2364,7 +2364,7 @@ class TestSPDKLOg:
         except SystemExit as sysex:
             rc = int(str(sysex))
             pass
-        assert "error: argument --level/-l: invalid choice: 'JUNK'" in caplog.text
+        assert "error: argument --level/-l: invalid choice: 'junk'" in caplog.text
         assert rc == 2
         caplog.clear()
         cli(["spdk_log_level", "set", "--extra-log-flags", "virtio", "vmd"])
@@ -2594,7 +2594,7 @@ class TestImageResize:
             rc = int(str(sysex))
             pass
         assert "error: argument --auto-resize-enabled: invalid choice: 'junk' " \
-               "(choose from 'yes', 'no')" in caplog.text
+               "(choose from 'yes', 'no', 'true', 'false', '1', '0')" in caplog.text
         assert rc == 2
         caplog.clear()
         cli(["namespace", "set_auto_resize", "--subsystem", subsystem11, "--nsid", "1",

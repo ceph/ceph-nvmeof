@@ -26,8 +26,6 @@ from .proto import gateway_pb2 as pb2
 from .utils import GatewayUtils
 from .utils import GatewayEnumUtils
 
-BASE_GATEWAY_VERSION = "1.1.0"
-
 
 def errprint(msg):
     print(msg, file=sys.stderr)
@@ -95,21 +93,21 @@ class Parser:
         self.parser.add_argument(
             "--format",
             help="CLI output format",
-            type=str,
+            type=str.lower,
             default="text",
             choices=["text", "json", "yaml", "plain", "python"],
             required=False)
         self.parser.add_argument(
             "--output",
             help="CLI output method",
-            type=str,
+            type=str.lower,
             default="log",
             choices=["log", "stdio"],
             required=False)
         self.parser.add_argument(
             "--log-level",
             help="CLI log level",
-            type=str,
+            type=str.lower,
             default="info",
             choices=get_enum_keys_list(pb2.GwLogLevel, False),
             required=False)
@@ -357,18 +355,11 @@ class GatewayClient:
         req = pb2.get_gateway_info_req(cli_version=ver)
         gw_info = self.stub.get_gateway_info(req)
         if gw_info.status == 0:
-            base_ver = self.parse_version_string(BASE_GATEWAY_VERSION)
-            assert base_ver is not None
             gw_ver = self.parse_version_string(gw_info.version)
             if gw_ver is None:
                 gw_info.status = errno.EINVAL
                 gw_info.bool_status = False
                 gw_info.error_message = f"Can't parse gateway version \"{gw_info.version}\"."
-            elif gw_ver < base_ver:
-                gw_info.status = errno.EINVAL
-                gw_info.bool_status = False
-                gw_info.error_message = f"Can't work with gateway version older " \
-                                        f"than {BASE_GATEWAY_VERSION}"
         return gw_info
 
     def gw_info(self, args):
@@ -683,7 +674,7 @@ class GatewayClient:
 
     gw_set_log_level_args = [
         argument("--level", "-l", help="Gateway log level", required=True,
-                 type=str, choices=get_enum_keys_list(pb2.GwLogLevel, False)),
+                 type=str.lower, choices=get_enum_keys_list(pb2.GwLogLevel, False)),
     ]
     gw_listener_info_args = [
         argument("--subsystem",
@@ -861,9 +852,9 @@ class GatewayClient:
     ]
     spdk_log_set_args = [
         argument("--level", "-l", help="SPDK log level", required=False,
-                 type=str, choices=get_enum_keys_list(pb2.LogLevel)),
+                 type=str.lower, choices=get_enum_keys_list(pb2.LogLevel)),
         argument("--print", "-p", help="SPDK log print level", required=False,
-                 type=str, choices=get_enum_keys_list(pb2.LogLevel)),
+                 type=str.lower, choices=get_enum_keys_list(pb2.LogLevel)),
         argument("--extra-log-flags", "-e", help="Extra log flags to set, not NVMF ones",
                  type=str, nargs="+", required=False),
     ]
@@ -1445,6 +1436,7 @@ class GatewayClient:
                  "-f",
                  help="Address family",
                  default="",
+                 type=str.lower,
                  choices=get_enum_keys_list(pb2.AddressFamily)),
         argument("--secure",
                  help="Use secure channel",
@@ -1469,6 +1461,7 @@ class GatewayClient:
                  "-f",
                  help="Address family",
                  default="",
+                 type=str.lower,
                  choices=get_enum_keys_list(pb2.AddressFamily)),
         argument("--force",
                  help="Delete listener even if there are active connections for the address, "
@@ -2677,7 +2670,9 @@ class GatewayClient:
         if args.nsid <= 0:
             self.cli.parser.error("nsid value must be positive")
 
-        auto_visible = args.auto_visible == "yes"
+        auto_visible = args.auto_visible == "yes" or \
+            args.auto_visible == "true" or \
+            args.auto_visible == "1"
 
         try:
             change_visibility_req = pb2.namespace_change_visibility_req(
@@ -2765,7 +2760,9 @@ class GatewayClient:
         if args.nsid <= 0:
             self.cli.parser.error("nsid value must be positive")
 
-        trash_image = args.rbd_trash_image_on_delete == "yes"
+        trash_image = args.rbd_trash_image_on_delete == "yes" or \
+            args.rbd_trash_image_on_delete == "true" or \
+            args.rbd_trash_image_on_delete == "1"
 
         try:
             set_trash_image_req = pb2.namespace_set_rbd_trash_image_req(
@@ -2810,7 +2807,9 @@ class GatewayClient:
         if args.nsid <= 0:
             self.cli.parser.error("nsid value must be positive")
 
-        auto_resize = args.auto_resize_enabled == "yes"
+        auto_resize = args.auto_resize_enabled == "yes" or \
+            args.auto_resize_enabled == "true" or \
+            args.auto_resize_enabled == "1"
 
         try:
             set_auto_resize_req = pb2.namespace_set_auto_resize_req(
@@ -3009,7 +3008,8 @@ class GatewayClient:
                  required=True),
         argument("--auto-visible",
                  help="Visible to all hosts if yes, otherwise visible to selected hosts only",
-                 choices=["yes", "no"],
+                 type=str.lower,
+                 choices=["yes", "no", "true", "false", "1", "0"],
                  required=True),
         argument("--force",
                  help="Change visibility of namespace even if there are hosts added "
@@ -3033,7 +3033,8 @@ class GatewayClient:
                  required=True),
         argument("--auto-resize-enabled",
                  help="Enable or disable auto resize of namespace when RBD image is resized",
-                 choices=["yes", "no"],
+                 type=str.lower,
+                 choices=["yes", "no", "true", "false", "1", "0"],
                  required=True),
     ]
     ns_refresh_size_args_list = ns_common_args + [
@@ -3089,7 +3090,8 @@ class GatewayClient:
         argument("--rbd-trash-image-on-delete",
                  help="When deleting the namespace, trash associated RBD image. "
                       "Only applies to images created automatically by the gateway",
-                 choices=["yes", "no"],
+                 type=str.lower,
+                 choices=["yes", "no", "true", "false", "1", "0"],
                  required=True),
     ]
     ns_actions = []
