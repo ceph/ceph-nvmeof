@@ -106,7 +106,7 @@ def test_multi_gateway_namespace_ids(config, image, caplog):
         assert ret_subsystem.status == 0
         assert f"create_subsystem {subsystem}: True" in caplog.text
         assert f"Failure creating subsystem {subsystem}" not in caplog.text
-        time.sleep(10)
+        time.sleep(20)
         caplog.clear()
         # Send requests to create a namespace on GatewayA
         namespace_req = pb2.namespace_add_req(subsystem_nqn=subsystem,
@@ -118,7 +118,7 @@ def test_multi_gateway_namespace_ids(config, image, caplog):
                                               force=True)
         ret_ns = stubA.namespace_add(namespace_req)
         assert ret_ns.status == 0
-        time.sleep(10)
+        time.sleep(20)
         namespace_req2 = pb2.namespace_add_req(subsystem_nqn=subsystem,
                                                rbd_pool_name=pool,
                                                rbd_image_name=f"{image}EEE",
@@ -128,7 +128,7 @@ def test_multi_gateway_namespace_ids(config, image, caplog):
                                                force=True)
         ret_ns = stubA.namespace_add(namespace_req2)
         assert ret_ns.status == 0
-        time.sleep(10)
+        time.sleep(20)
 
         namespace_list_req = pb2.list_namespaces_req(subsystem=subsystem)
         listA = json.loads(json_format.MessageToJson(
@@ -144,7 +144,7 @@ def test_multi_gateway_namespace_ids(config, image, caplog):
         uuidA2 = listA["namespaces"][1]["uuid"]
         imgA1 = listA["namespaces"][0]["rbd_image_name"]
         imgA2 = listA["namespaces"][1]["rbd_image_name"]
-        time.sleep(10)
+        time.sleep(20)
         listB = json.loads(json_format.MessageToJson(
             stubB.list_namespaces(namespace_list_req),
             preserving_proto_field_name=True, including_default_value_fields=True))
@@ -185,7 +185,7 @@ def test_multi_gateway_namespace_ids(config, image, caplog):
         gatewayB.serve()
         channelB = grpc.insecure_channel(f"{addr}:{portB}")
         stubB = pb2_grpc.GatewayStub(channelB)
-        time.sleep(10)
+        time.sleep(20)
         listB = json.loads(json_format.MessageToJson(
             stubB.list_namespaces(namespace_list_req),
             preserving_proto_field_name=True, including_default_value_fields=True))
