@@ -179,7 +179,7 @@ def test_change_rbd_image_trash(caplog, two_gateways):
         rc = int(str(sysex))
         pass
     assert "error: argument --rbd-trash-image-on-delete: invalid choice: 'junk' (choose from " \
-           "'yes', 'no')" in caplog.text
+           "'yes', 'no', 'true', 'false', '1', '0')" in caplog.text
     assert rc == 2
     caplog.clear()
     cli(["namespace", "set_rbd_trash_image", "--subsystem", subsystem,
