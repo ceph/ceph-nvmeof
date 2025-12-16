@@ -1489,7 +1489,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
             bdev_name = self.spdk_rpc_client.bdev_rbd_create(
                 name=name,
                 cluster_name=cluster_name,
-                rados_namespace_name=rados_namespace_name,
+                namespace_name=rados_namespace_name,
                 pool_name=rbd_pool_name,
                 rbd_name=rbd_image_name,
                 block_size=block_size,
@@ -1551,7 +1551,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 rbd_info = drv_specific_info["rbd"]
                 rbd_pool_name = rbd_info["pool_name"]
                 rbd_image_name = rbd_info["rbd_name"]
-                rados_namespace_name = rbd_info["rados_namespace_name"]
+                rados_namespace_name = rbd_info["namespace_name"]
             except KeyError as err:
                 self.logger.warning(f"Key {err} is not found, will not check size for shrinkage")
                 pass
@@ -3405,7 +3405,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                             rbd_info = drv_specific_info["rbd"]
                             one_ns.rbd_image_name = rbd_info["rbd_name"]
                             one_ns.rbd_pool_name = rbd_info["pool_name"]
-                            one_ns.rados_namespace_name = rbd_info["rados_namespace_name"]
+                            one_ns.rados_namespace_name = rbd_info["namespace_name"]
                             one_ns.block_size = ns_bdev["block_size"]
                             image_size = ns_bdev["block_size"] * ns_bdev["num_blocks"]
                             assigned_limits = ns_bdev["assigned_rate_limits"]
