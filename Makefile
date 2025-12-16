@@ -62,8 +62,16 @@ SHAMAN_FETCH_ATTEMPTS := 3
 # Fetch and export CEPH_CLUSTER_CEPH_REPO_BASEURL with retries
 build: export CEPH_CLUSTER_CEPH_REPO_BASEURL != \
 	for i in $$(seq 1 $(SHAMAN_FETCH_ATTEMPTS)); do \
+		sha1="$(CEPH_SHA)"; \
+		if [ "$$sha1" = "latest" ]; then \
+			idx=$$((i - 1)); \
+			sha1=$$(curl -s \
+				"https://shaman.ceph.com/api/search/?status=ready&project=ceph&ref=$(CEPH_BRANCH)&flavor=default&distros=centos/9/$(ceph_repo_arch)" \
+				| jq -r "sort_by(.modified) | reverse | .[$$idx].sha1"); \
+			>&2 echo "Attempt ($$i): Using 'latest' SHA1 for arch=$(ceph_repo_arch), branch=$(CEPH_BRANCH): $$sha1"; \
+		fi; \
 		>&2 echo "Attempt ($$i): Fetching URL for arch=$(ceph_repo_arch), branch=$(CEPH_BRANCH), sha=$(CEPH_SHA)..."; \
-		url=$$(curl -s https://shaman.ceph.com/api/repos/ceph/$(CEPH_BRANCH)/$(CEPH_SHA)/centos/9/ | jq -r '.[] | select(.status == "ready" and .archs[] == "$(ceph_repo_arch)") | .url'); \
+		url=$$(curl -s "https://shaman.ceph.com/api/repos/ceph/$(CEPH_BRANCH)/$$sha1/centos/9/" | jq -r '.[] | select(.status == "ready" and .archs[] == "$(ceph_repo_arch)") | .url'); \
 		if [ -n "$$url" ]; then \
 			>&2 echo "Success: Retrieved URL for arch=$(ceph_repo_arch), branch=$(CEPH_BRANCH), sha=$(CEPH_SHA): $$url"; \
 			echo "$$url"; \
