@@ -28,6 +28,7 @@ import selectors
 import os
 from dataclasses import dataclass, field
 from ctypes import LittleEndianStructure, c_ubyte, c_uint8, c_uint16, c_uint32, c_uint64
+from .cephutils import CephUtils
 
 
 # NVMe tcp pdu type
@@ -328,6 +329,7 @@ class DiscoveryService:
     def __init__(self, config):
         self.version = 1
         self.config = config
+        self.ceph_utils = CephUtils(self.config)
         self.lock = threading.Lock()
         self.omap_state = OmapGatewayState(self.config, None, f"discovery-{socket.gethostname()}")
         self.omap_state.abort_on_error = False    # No need to crash on OMAP read lock failure
@@ -748,6 +750,9 @@ class DiscoveryService:
             self.logger.error("Error getting current state.")
             return -1
         listeners = self._get_vals(my_omap_dict, GatewayState.LISTENER_PREFIX)
+        pool = self.config.get("ceph", "pool")
+        group = self.config.get("gateway", "group")
+        nvmemon_listeners = self.ceph_utils.get_gw_listeners(pool, group)
         hosts = self._get_vals(my_omap_dict, GatewayState.HOST_PREFIX)
         if len(self_conn.nvmeof_connect_data_hostnqn) != 256:
             self.logger.error("error hostnqn.")
@@ -795,11 +800,23 @@ class DiscoveryService:
         if len(allow_listeners) == 0:
             for host in hosts:
                 if host["host_nqn"] == '*' or host["host_nqn"] == hostnqn:
-                    for listener in listeners:
-                        # TODO: It is better to change nqn in the "listener"
-                        # to subsystem_nqn to avoid confusion
-                        if host["subsystem_nqn"] == listener["nqn"]:
+                    subsystem_nqn = host["subsystem_nqn"]
+                    if nvmemon_listeners and (subsystem_nqn in nvmemon_listeners):
+                        subsystem_listeners = nvmemon_listeners[subsystem_nqn]
+                        for _listener in subsystem_listeners:
+                            listener = {
+                                "adrfam": _listener["address_family"],
+                                "trsvcid": _listener["svcid"],
+                                "nqn": subsystem_nqn,
+                                "traddr": _listener["address"],
+                            }
                             allow_listeners += [listener,]
+                    else:
+                        for listener in listeners:
+                            # TODO: It is better to change nqn in the "listener"
+                            # to subsystem_nqn to avoid confusion
+                            if host["subsystem_nqn"] == listener["nqn"]:
+                                allow_listeners += [listener,]
             self_conn.allow_listeners = allow_listeners
 
         # Prepare all log page data segments
