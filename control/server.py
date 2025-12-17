@@ -1094,6 +1094,12 @@ class GatewayServer:
                                             pb2.delete_subsystem_req(),
                                             ignore_unknown_fields=True)
                     self.gateway_rpc.delete_subsystem(req)
+            elif key.startswith(GatewayState.SUBSYSTEM_NETWORK_MASK):
+                if is_add_req:
+                    req = json_format.Parse(val,
+                                            pb2.create_subsystem_req(),
+                                            ignore_unknown_fields=True)
+                    self.gateway_rpc.create_auto_listeners(req)
             elif key.startswith(GatewayState.NAMESPACE_PREFIX):
                 if is_add_req:
                     req = json_format.Parse(val, pb2.namespace_add_req(),
