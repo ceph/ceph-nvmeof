@@ -903,7 +903,9 @@ class GatewayClient:
                                        max_namespaces=args.max_namespaces,
                                        enable_ha=True,
                                        no_group_append=args.no_group_append,
-                                       dhchap_key=args.dhchap_key)
+                                       dhchap_key=args.dhchap_key,
+                                       network_mask=args.network_mask,
+                                       secure_listeners=args.secure_listeners)
         try:
             ret = self.stub.create_subsystem(req)
         except Exception as ex:
@@ -1138,6 +1140,13 @@ class GatewayClient:
                  "-k",
                  help="Subsystem DH-HMAC-CHAP key",
                  required=False),
+        argument("--network-mask",
+                 help="For this subnet, automatically create listeners for this subsystem",
+                 required=False),
+        argument("--secure-listeners",
+                 help="Make all the auto-listeners for this subsystem secure",
+                 action='store_true',
+                 required=False),
     ]
     subsys_del_args = [
         argument("--subsystem",
@@ -1364,6 +1373,7 @@ class GatewayClient:
                     adrfam = self.format_adrfam(adrfam)
                     secure = "Yes" if lstnr.secure else "No"
                     active = "Yes" if lstnr.active else "No"
+                    manual = "Yes" if lstnr.manual else "No"
                     traddr = lstnr.traddr
                     if lstnr.adrfam == pb2.ipv6:
                         traddr = GatewayUtils.escape_address_if_ipv6(traddr)
@@ -1372,7 +1382,8 @@ class GatewayClient:
                                            adrfam,
                                            f"{traddr}:{lstnr.trsvcid}",
                                            secure,
-                                           active])
+                                           active,
+                                           manual])
                 if len(listeners_list) > 0:
                     if args.format == "text":
                         table_format = "fancy_grid"
@@ -1384,7 +1395,8 @@ class GatewayClient:
                                                       "Address Family",
                                                       "Address",
                                                       "Secure",
-                                                      "Active"],
+                                                      "Active",
+                                                      "Manual"],
                                              tablefmt=table_format)
                     out_func(f"Listeners for {args.subsystem}:\n{listeners_out}")
                 else:

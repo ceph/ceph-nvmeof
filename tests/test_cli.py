@@ -1743,6 +1743,7 @@ class TestCreate:
         assert self._adrfam2string(listeners.listeners[0].adrfam) == listener_list[0][5].lower()
         assert listeners.listeners[0].active
         assert not listeners.listeners[0].secure
+        assert listeners.listeners[0].manual
 
         assert listeners.listeners[1].host_name == host_name
         assert listeners.listeners[1].traddr == listener_list[1][1]
@@ -1750,6 +1751,7 @@ class TestCreate:
         assert self._adrfam2string(listeners.listeners[1].adrfam) == "ipv4"
         assert listeners.listeners[1].active
         assert not listeners.listeners[1].secure
+        assert listeners.listeners[1].manual
 
         assert listeners.listeners[2].host_name == host_name
         assert listeners.listeners[2].traddr == listener_list_ipv6[0][1]
@@ -1758,6 +1760,7 @@ class TestCreate:
             self._adrfam2string(listeners.listeners[2].adrfam) == listener_list_ipv6[0][5].lower()
         assert listeners.listeners[2].active
         assert not listeners.listeners[2].secure
+        assert listeners.listeners[2].manual
 
         assert listeners.listeners[3].host_name == host_name
         assert listeners.listeners[3].traddr == listener_list_ipv6[1][1]
@@ -1766,6 +1769,7 @@ class TestCreate:
             self._adrfam2string(listeners.listeners[3].adrfam) == listener_list_ipv6[1][5].lower()
         assert listeners.listeners[3].active
         assert not listeners.listeners[3].secure
+        assert listeners.listeners[3].manual
 
         assert listeners.listeners[4].host_name == host_name
         assert listeners.listeners[4].traddr == listener_list_no_port[0][1]
@@ -1773,6 +1777,7 @@ class TestCreate:
         assert self._adrfam2string(listeners.listeners[4].adrfam) == "ipv4"
         assert listeners.listeners[4].active
         assert not listeners.listeners[4].secure
+        assert listeners.listeners[4].manual
 
         assert listeners.listeners[5].host_name == host_name
         assert listeners.listeners[5].traddr == listener_list_no_adrfam[0][1]
@@ -1780,6 +1785,7 @@ class TestCreate:
         assert self._adrfam2string(listeners.listeners[5].adrfam) == "ipv4"
         assert listeners.listeners[5].active
         assert not listeners.listeners[5].secure
+        assert listeners.listeners[5].manual
 
     def test_list_listeners_bad_subsys(self, caplog, gateway):
         caplog.clear()

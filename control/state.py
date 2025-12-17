@@ -34,6 +34,7 @@ class GatewayState(ABC):
     OMAP_KEY_DELIMITER = "_"
     NAMESPACE_PREFIX = "namespace" + OMAP_KEY_DELIMITER
     SUBSYSTEM_PREFIX = "subsystem" + OMAP_KEY_DELIMITER
+    SUBSYSTEM_NETWORK_MASK = "network-mask-subsystem" + OMAP_KEY_DELIMITER
     SUBSYSTEM_KEY_PREFIX = "key-subsystem" + OMAP_KEY_DELIMITER
     HOST_PREFIX = "host" + OMAP_KEY_DELIMITER
     HOST_KEY_PREFIX = "key-host" + OMAP_KEY_DELIMITER
@@ -133,6 +134,9 @@ class GatewayState(ABC):
 
     def build_subsystem_key_key(subsystem_nqn: str) -> str:
         return GatewayState.SUBSYSTEM_KEY_PREFIX + subsystem_nqn
+
+    def build_subsystem_network_mask_key(subsystem_nqn: str) -> str:
+        return GatewayState.SUBSYSTEM_NETWORK_MASK + subsystem_nqn
 
     def build_partial_listener_key(subsystem_nqn: str, host: str) -> str:
         key = GatewayState.LISTENER_PREFIX + subsystem_nqn + GatewayState.OMAP_KEY_DELIMITER
@@ -1419,6 +1423,16 @@ class GatewayStateHandler:
             return (False, None, False)
         return (True, new_req.dhchap_key, new_req.key_encrypted)
 
+    def _parse_subsystem_req(self, val):
+        req = None
+        try:
+            req = json_format.Parse(val,
+                                    pb2.create_subsystem_req(),
+                                    ignore_unknown_fields=True)
+        except json_format.ParseError:
+            self.logger.exception(f"Got exception parsing {val}")
+        return req
+
     def subsystem_only_key_changed(self, old_val, new_val):
         # If only the dhchap key field has changed we can use change_key
         # request instead of re-adding the subsystem
@@ -1554,6 +1568,7 @@ class GatewayStateHandler:
                 GatewayState.NAMESPACE_HOST_PREFIX,
                 GatewayState.NAMESPACE_REFRESH_SIZE_PREFIX,
                 GatewayState.LISTENER_PREFIX,
+                GatewayState.SUBSYSTEM_NETWORK_MASK,
             ]
 
             if not self.omap.ioctx:
@@ -1608,6 +1623,7 @@ class GatewayStateHandler:
                 ns_auto_resize_changed = []
                 only_host_key_changed = []
                 only_subsystem_key_changed = []
+                auto_listener_add = []
                 for key in changed.keys():
                     if key.startswith(GatewayState.NAMESPACE_PREFIX):
                         old_req = self._parse_namespace_req(local_state_dict[key])
@@ -1675,6 +1691,11 @@ class GatewayStateHandler:
                             only_subsystem_key_changed.append((key,
                                                                new_dhchap_key,
                                                                new_key_encrypted))
+                for key in added.keys():
+                    if key.startswith(GatewayState.SUBSYSTEM_PREFIX):
+                        subsystem = self._parse_subsystem_req(omap_state_dict[key])
+                        if subsystem.network_mask:
+                            auto_listener_add.append(subsystem)
 
                 for ns_key, new_lb_grp in ns_lb_group_changed:
                     ns_nqn = None
@@ -1857,11 +1878,15 @@ class GatewayStateHandler:
                         except Exception:
                             self.logger.exception("Exception formatting change subsystem "
                                                   "key request")
-
+                for subsystem_req in auto_listener_add:
+                    subsystem_nqn = subsystem_req.subsystem_nqn
+                    autolistener_key = GatewayState.build_subsystem_network_mask_key(subsystem_nqn)
+                    json_req = json_format.MessageToJson(subsystem_req)
+                    added[autolistener_key] = json_req
                 if len(ns_lb_group_changed) > 0 or len(only_host_key_changed) > 0 or \
                    len(only_subsystem_key_changed) > 0 or len(ns_visibility_changed) > 0 or \
                    len(ns_location_changed) > 0 or len(ns_trash_image_changed) > 0 or \
-                   len(ns_auto_resize_changed) > 0:
+                   len(ns_auto_resize_changed) > 0 or len(auto_listener_add) > 0:
                     grouped_changed = self._group_by_prefix(changed, prefix_list)
 
                     if len(only_subsystem_key_changed) > 0:
