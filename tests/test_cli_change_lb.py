@@ -186,7 +186,7 @@ def test_change_namespace_lb_group(caplog, two_gateways):
          "--load-balancing-group", anagrpid, "--force"])
     time.sleep(15)
     assert f"Adding namespace 1 to {subsystem}: Successful" in caplog.text
-    assert f"get_cluster cluster_name='cluster_context_{anagrpid}_0'" in caplog.text
+    assert f"Allocated cluster name='cluster_{anagrpid}'" in caplog.text
     assert f"Received request to add namespace to {subsystem}, ana group {anagrpid}, " \
            f"no_auto_visible: False, disable_auto_resize: False, " \
            f"read_only: False, " \
@@ -276,7 +276,7 @@ def test_change_namespace_lb_group(caplog, two_gateways):
          "--load-balancing-group", anagrpid2, "--force"])
     time.sleep(15)
     assert f"Adding namespace 2 to {subsystem}: Successful" in caplog.text
-    assert f"get_cluster cluster_name='cluster_context_{anagrpid2}_0'" in caplog.text
+    assert f"Allocated cluster name='cluster_{anagrpid2}'" in caplog.text
     assert f"Received request to add namespace to {subsystem}, ana group {anagrpid2}, " \
            f"no_auto_visible: False, disable_auto_resize: False, " \
            f"read_only: False, " \

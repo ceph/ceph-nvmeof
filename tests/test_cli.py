@@ -518,8 +518,8 @@ class TestCreate:
              "--rbd-image", image2, "--uuid", uuid, "--size", "16MB", "--rbd-create-image",
              "--load-balancing-group", anagrpid, "--force"])
         assert f"Adding namespace 1 to {subsystem}: Successful" in caplog.text
-        assert f"Allocated cluster name='cluster_context_{anagrpid}_0'" in caplog.text
-        assert f"get_cluster cluster_name='cluster_context_{anagrpid}_0'" in caplog.text
+        assert f"Allocated cluster name='cluster_{anagrpid}'" in caplog.text
+        assert "get_cluster cluster_name" not in caplog.text
         assert "no_auto_visible: False" in caplog.text
         caplog.clear()
         cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool,
@@ -1699,7 +1699,7 @@ class TestCreate:
         cli(["--verbose", "namespace", "list", "--nsid", "1"])
         assert "Cluster" in caplog.text
         assert "(Configured)" in caplog.text
-        assert "cluster_context_1_0" in caplog.text
+        assert "cluster_1" in caplog.text
         assert f"{image2}" in caplog.text
         assert f"{image15}" in caplog.text
         assert "1 (1)" in caplog.text
@@ -1926,7 +1926,8 @@ class TestCreateWithAna:
         cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool,
              "--rbd-image", image, "--load-balancing-group", anagrpid, "--force", "--nsid", "10"])
         assert f"Adding namespace 10 to {subsystem}: Successful" in caplog.text
-        assert f"get_cluster cluster_name='cluster_context_{anagrpid}_0'" in caplog.text
+        assert f"Allocated cluster name='cluster_{anagrpid}'" in caplog.text
+        assert f"cluster_name cluster_{anagrpid}\n" in caplog.text
         caplog.clear()
         cli(["--format", "json", "namespace", "list", "--subsystem", subsystem, "--nsid", "10"])
         assert f'"load_balancing_group": {anagrpid}' in caplog.text
