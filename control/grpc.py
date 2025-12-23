@@ -5476,7 +5476,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     errmsg = f"Listener not created as gateway's host name " \
                              f"{self.host_name} differs from requested host " \
                              f"{request.host_name}"
-                    self.logger.debug(errmsg)
+                    self.logger.info(errmsg)
                     return pb2.req_status(status=0, error_message=errmsg)
 
             assert (not request.verify_host_name) or request.host_name == self.host_name
