@@ -627,6 +627,8 @@ class NICS:
         return False
 
     def get_ips_in_subnet(self, subnet):
+        if not subnet:
+            return []
         subnet_ = ipaddress.ip_network(subnet, strict=False)
         found_ips = []
         for dev in self.adapters:
