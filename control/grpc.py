@@ -1159,7 +1159,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
         """
 
         if not self.up_and_running:
-            errmsg = "Gateway is going down"
+            self.logger.debug(f"Gateway {self.gateway_name} is going down "
+                              f"while executing {func.__name__}()")
+            errmsg = f"Gateway {self.gateway_name} is going down"
             self.logger.error(errmsg)
             return pb2.req_status(status=errno.ESHUTDOWN, error_message=errmsg)
 
