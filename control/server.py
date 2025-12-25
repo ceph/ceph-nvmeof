@@ -996,6 +996,14 @@ class GatewayServer:
 
     def gateway_rpc_caller(self, requests, is_add_req, break_interval):
         """Passes RPC requests to gateway service."""
+
+        def is_a_visibility_change_key(key: str):
+            if key.startswith(GatewayState.NAMESPACE_VISIBILITY_ON_PREFIX):
+                return True
+            elif key.startswith(GatewayState.NAMESPACE_VISIBILITY_OFF_PREFIX):
+                return True
+            return False
+
         start_time = 0
         for key, val in requests.items():
             start_time = self._sleep_if_needed(break_interval, start_time)
@@ -1095,7 +1103,7 @@ class GatewayServer:
                     req = json_format.Parse(val, pb2.namespace_change_load_balancing_group_req(),
                                             ignore_unknown_fields=True)
                     self.gateway_rpc.namespace_change_load_balancing_group(req)
-            elif key.startswith(GatewayState.NAMESPACE_VISIBILITY_PREFIX):
+            elif is_a_visibility_change_key(key):
                 if is_add_req:
                     req = json_format.Parse(val, pb2.namespace_change_visibility_req(),
                                             ignore_unknown_fields=True)

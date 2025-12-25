@@ -40,7 +40,8 @@ class GatewayState(ABC):
     NAMESPACE_QOS_PREFIX = "qos" + OMAP_KEY_DELIMITER
     NAMESPACE_LB_GROUP_PREFIX = "lbgroup" + OMAP_KEY_DELIMITER
     NAMESPACE_HOST_PREFIX = "ns-host" + OMAP_KEY_DELIMITER
-    NAMESPACE_VISIBILITY_PREFIX = "ns-visibility" + OMAP_KEY_DELIMITER
+    NAMESPACE_VISIBILITY_ON_PREFIX = "ns-visibility-on" + OMAP_KEY_DELIMITER
+    NAMESPACE_VISIBILITY_OFF_PREFIX = "ns-visibility-off" + OMAP_KEY_DELIMITER
     NAMESPACE_TRASH_IMAGE_PREFIX = "ns-trash-image" + OMAP_KEY_DELIMITER
 
     def is_key_element_valid(s: str) -> bool:
@@ -63,12 +64,23 @@ class GatewayState(ABC):
             key += str(nsid)
         return key
 
-    def build_namespace_visibility_key(subsystem_nqn: str, nsid) -> str:
-        key = GatewayState.NAMESPACE_VISIBILITY_PREFIX + subsystem_nqn + \
+    def build_namespace_visibility_on_key(subsystem_nqn: str, nsid) -> str:
+        key = GatewayState.NAMESPACE_VISIBILITY_ON_PREFIX + subsystem_nqn + \
             GatewayState.OMAP_KEY_DELIMITER
         if nsid is not None:
             key += str(nsid)
         return key
+
+    def build_namespace_visibility_off_key(subsystem_nqn: str, nsid) -> str:
+        key = GatewayState.NAMESPACE_VISIBILITY_OFF_PREFIX + subsystem_nqn + \
+            GatewayState.OMAP_KEY_DELIMITER
+        if nsid is not None:
+            key += str(nsid)
+        return key
+
+    def build_namespace_visibility_key(visibility: bool, subsystem_nqn: str, nsid) -> str:
+        return GatewayState.build_namespace_visibility_on_key(subsystem_nqn, nsid) if visibility \
+            else GatewayState.build_namespace_visibility_off_key(subsystem_nqn, nsid)
 
     def build_namespace_trash_image_key(subsystem_nqn: str, nsid) -> str:
         key = GatewayState.NAMESPACE_TRASH_IMAGE_PREFIX + subsystem_nqn + \
@@ -165,10 +177,6 @@ class GatewayState(ABC):
                 self._remove_key(key)
             elif key.startswith(GatewayState.build_namespace_host_key(subsystem_nqn, nsid, "")):
                 self._remove_key(key)
-            elif key.startswith(GatewayState.build_namespace_visibility_key(subsystem_nqn, nsid)):
-                self._remove_key(key)
-            elif key.startswith(GatewayState.build_namespace_lbgroup_key(subsystem_nqn, nsid)):
-                self._remove_key(key)
 
     def add_namespace_qos(self, subsystem_nqn: str, nsid: str, val: str):
         """Adds namespace's QOS settings to the state data store."""
@@ -209,10 +217,6 @@ class GatewayState(ABC):
             elif key.startswith(GatewayState.build_namespace_qos_key(subsystem_nqn, None)):
                 self._remove_key(key)
             elif key.startswith(GatewayState.build_namespace_host_key(subsystem_nqn, None, "")):
-                self._remove_key(key)
-            elif key.startswith(GatewayState.build_namespace_visibility_key(subsystem_nqn, None)):
-                self._remove_key(key)
-            elif key.startswith(GatewayState.build_namespace_lbgroup_key(subsystem_nqn, None)):
                 self._remove_key(key)
             elif key.startswith(GatewayState.build_host_key(subsystem_nqn, None)):
                 self._remove_key(key)
@@ -1432,7 +1436,9 @@ class GatewayStateHandler:
                 GatewayState.HOST_PREFIX,
                 GatewayState.NAMESPACE_PREFIX,
                 GatewayState.NAMESPACE_QOS_PREFIX,
+                GatewayState.NAMESPACE_VISIBILITY_OFF_PREFIX,
                 GatewayState.NAMESPACE_HOST_PREFIX,
+                GatewayState.NAMESPACE_VISIBILITY_ON_PREFIX,
                 GatewayState.LISTENER_PREFIX,
             ]
 
@@ -1572,8 +1578,10 @@ class GatewayStateHandler:
                         self.logger.exception(f"Exception removing {ns_key} from {changed}")
                     if ns_nqn and ns_nsid:
                         try:
-                            visibility_key = GatewayState.build_namespace_visibility_key(ns_nqn,
-                                                                                         ns_nsid)
+                            visibility_key = GatewayState.build_namespace_visibility_key(
+                                new_visibility,
+                                ns_nqn,
+                                ns_nsid)
                             req = pb2.namespace_change_visibility_req(
                                 subsystem_nqn=ns_nqn,
                                 nsid=ns_nsid,
@@ -1679,8 +1687,6 @@ class GatewayStateHandler:
                         prefix_list += [GatewayState.SUBSYSTEM_KEY_PREFIX]
                     if len(only_lb_group_changed) > 0:
                         prefix_list += [GatewayState.NAMESPACE_LB_GROUP_PREFIX]
-                    if len(only_visibility_changed) > 0:
-                        prefix_list += [GatewayState.NAMESPACE_VISIBILITY_PREFIX]
                     if len(only_trash_image_changed) > 0:
                         prefix_list += [GatewayState.NAMESPACE_TRASH_IMAGE_PREFIX]
                     if len(only_host_key_changed) > 0:
@@ -1695,7 +1701,9 @@ class GatewayStateHandler:
                 # Handle OMAP removals and remove outdated changed components
                 grouped_removed.update(grouped_changed)
                 if grouped_removed:
-                    self._update_call_rpc(grouped_removed, False, prefix_list)
+                    prefix_list_copy = prefix_list.copy()
+                    self._adjust_prefix_list_for_removal(prefix_list_copy)
+                    self._update_call_rpc(grouped_removed, False, prefix_list_copy)
                 # Handle OMAP additions and add updated changed components
                 grouped_added.update(grouped_changed)
                 if grouped_added:
@@ -1707,6 +1715,15 @@ class GatewayStateHandler:
                 self.logger.info(f"Update complete ({local_version} -> {omap_version}) "
                                  f"({self.id_text}).")
         return True
+
+    def _adjust_prefix_list_for_removal(self, prefixes):
+        """Before reversing prefix list for removal, we need to adjust namespace visibility"""
+        assert GatewayState.NAMESPACE_VISIBILITY_ON_PREFIX in prefixes
+        assert GatewayState.NAMESPACE_VISIBILITY_OFF_PREFIX in prefixes
+        prefixes.remove(GatewayState.NAMESPACE_VISIBILITY_ON_PREFIX)
+        prefixes.remove(GatewayState.NAMESPACE_VISIBILITY_OFF_PREFIX)
+        prefixes.insert(0, GatewayState.NAMESPACE_VISIBILITY_ON_PREFIX)
+        prefixes.append(GatewayState.NAMESPACE_VISIBILITY_OFF_PREFIX)
 
     def _group_by_prefix(self, state_update, prefix_list):
         """Groups state update by key prefixes."""
