@@ -42,6 +42,9 @@ class Rebalance:
         """Periodically calls for auto rebalance."""
         self.logger.debug(f"Rebalance thread id is {self.auto_rebalance.native_id}")
         while (self.rebalance_period_sec > 0):
+            if not self.gw_srv.up_and_running:
+                self.logger.debug("Gateway is going down, quit rebalance thread")
+                return
             while self.gw_srv.gateway_state.update_is_active_lock.locked():
                 time.sleep(0.5)         # wait until update is over
 
