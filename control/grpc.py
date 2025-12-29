@@ -5595,10 +5595,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         for s in ret:
             try:
                 if s["subtype"] == "NVMe":
-                    ns_count = len(s["namespaces"])
-                    if not ns_count:
-                        self.subsystem_nsid_bdev_and_uuid.remove_namespace(s["nqn"])
-                    s["namespace_count"] = ns_count
+                    s["namespace_count"] = len(s["namespaces"])
                     s["enable_ha"] = True
                     s["has_dhchap_key"] = self.host_info.does_subsystem_have_dhchap_key(s["nqn"])
                     s["created_without_key"] = \
