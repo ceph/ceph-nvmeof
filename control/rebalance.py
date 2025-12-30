@@ -43,9 +43,6 @@ class Rebalance:
         """Periodically calls for auto rebalance."""
         self.logger.debug(f"Rebalance thread id is {self.auto_rebalance.native_id}")
         while (self.rebalance_period_sec > 0):
-            if not self.gw_srv.up_and_running:
-                self.logger.debug("Gateway is going down, quit rebalance thread")
-                return
             while self.gw_srv.gateway_state.update_is_active_lock.locked():
                 time.sleep(0.5)         # wait until update is over
 
@@ -165,6 +162,10 @@ class Rebalance:
                 # also valid even if GW in deleting
                 loc_grps_list = self.ceph_utils.get_ana_grp_list_per_location(location)
                 num_active_ana_groups = len(loc_grps_list)
+                if num_active_ana_groups == 0:
+                    self.logger.warning(f"Found active ana group {ana_grp} belonging "
+                                        f"to the invalid location {location}")
+                    return 1
                 if ana_grp not in grps_list:
                     self.logger.info(f"Found optimized ana group {ana_grp} that handles the "
                                      f"group of deleted GW. Number NS in group "
@@ -175,7 +176,6 @@ class Rebalance:
                     else:
                         num = self.gw_srv.ana_grp_ns_load[ana_grp]
                     if num > 0:
-                        # TODO handle empty loc_grps_list
                         min_ana_grp, chosen_nqn = self.find_min_loaded_group(loc_grps_list)
                         self.logger.info(f"Start rebalance (scale down) destination ana group "
                                          f"{min_ana_grp}, subsystem {chosen_nqn}"
@@ -245,17 +245,18 @@ class Rebalance:
                 # related to the invalid group - group that was deleted by GW monitor
                 self.logger.info(f"Detected deleted LB group {invalid_ana_group}")
                 if (self.gw_srv.ana_grp_state[worker_ana_group]) == pb2.ana_state.OPTIMIZED:
-                    min_ana_grp, chosen_nqn = self.find_min_loaded_group(grps_list)
-                    if chosen_nqn != "null" and invalid_ana_group != 0:
+                    location = self.ana_grp_location[invalid_ana_group]
+                    loc_grps_list = self.ceph_utils.get_ana_grp_list_per_location(location)
+                    min_ana_grp, chosen_nqn = self.find_min_loaded_group(loc_grps_list)
+                    if min_ana_grp != 0 and chosen_nqn != "null" and invalid_ana_group != 0:
                         self.logger.info(f"Start rebalance (deadlock resolving) dest. ana group "
                                          f" {min_ana_grp}, subsystem {chosen_nqn}")
-                        location = self.ana_grp_location[invalid_ana_group]
                         self.ns_rebalance(context, invalid_ana_group, min_ana_grp, 1, "0", location)
                         return 0
                     else:
-                        self.logger.info(f"rebalance (deadlock resolving) is not allowed "
-                                         f" invalid group {invalid_ana_group},"
-                                         f" subsystem {chosen_nqn}")
+                        self.logger.warning(f"rebalance (deadlock resolving) is not allowed "
+                                            f" invalid group {invalid_ana_group},"
+                                            f" subsystem {chosen_nqn}")
         # if tuple is not empty
         if rebalance_attr:
             location = self.ana_grp_location[rebalance_attr[0]]

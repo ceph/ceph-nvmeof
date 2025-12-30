@@ -2406,7 +2406,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
             self.logger.error(errmsg)
             return pb2.nsid_status(status=errno.EINVAL, error_message=errmsg)
 
-        grps_list = []
+        loc_grps_list = []
         anagrp = 0
         peer_msg = self.get_peer_message(context)
         nsid_msg = f"{request.nsid} " if request.nsid else ""
@@ -2440,12 +2440,12 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 self.logger.warning(f"Failed to delete reservation_key "
                                     f"from image {request.rbd_pool_name}/{request.rbd_image_name}")
 
-            grps_list = self.ceph_utils.get_number_created_gateways(self.gateway_pool,
-                                                                    self.gateway_group, False)
+            self.ceph_utils.get_number_created_gateways(self.gateway_pool,
+                                                        self.gateway_group, True)
             loc_grps_list = self.ceph_utils.get_ana_grp_list_per_location(request.location)
             if len(loc_grps_list) == 0:
-                errmsg = f"Failure adding namespace, ID {request.nsid} invalid location" \
-                         f" {request.location}"
+                errmsg = f"Failure adding namespace {nsid_msg}to {request.subsystem_nqn}: " \
+                         f"Invalid location {request.location}"
                 self.logger.error(errmsg)
                 return pb2.nsid_status(status=errno.ENODEV, error_message=errmsg)
             if request.anagrpid == 0:
@@ -2493,8 +2493,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
             else:                          # new namespace
                 # If an explicit load balancing group was passed, make sure it exists
                 if request.anagrpid != 0:
-                    if request.anagrpid not in grps_list:
-                        self.logger.debug(f"Load balancing groups: {grps_list}")
+                    if request.anagrpid not in loc_grps_list:
+                        self.logger.debug(f"Load balancing groups: {loc_grps_list}")
                         errmsg = f"Failure adding namespace {nsid_msg}to " \
                                  f"{request.subsystem_nqn}: Load balancing group " \
                                  f"{request.anagrpid} doesn't exist"
