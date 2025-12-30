@@ -172,6 +172,7 @@ class CephUtils:
             except Exception:
                 self.logger.exception("Failure get number created gateways")
                 self.anagroup_list = []
+                self.rebalance_supported = False
 
             return self.anagroup_list
 
