@@ -7,7 +7,6 @@ function cephnvmf_func()
 
 . .env
 RBD_DATA_POOL="rbd_data"
-LOC="UnderTheBed"
 UUID="398c0838-8963-4673-a92e-55a65ca7847a"
 UUID2="398c0838-8963-4673-a92e-55a65ca7847b"
 UUID3="398c0838-8963-4673-a92e-55a65ca7847c"
@@ -15,21 +14,17 @@ UUID3="398c0838-8963-4673-a92e-55a65ca7847c"
 set -e
 set -x
 
-GW_NAME=`cephnvmf_func --output stdio --format json gw info | jq -r '.name'`
 GROUP_NAME=`cephnvmf_func --output stdio --format json gw info | jq -r '.group' | tr _ -`
 GROUP_NAME2=${GROUP_NAME}2
 
 echo "ℹ️  get FSID"
 FSID=`make -s exec SVC=ceph OPTS=-T CMD="ceph fsid"`
 
-echo "ℹ️  set gateway's location"
-make -s exec SVC=ceph OPTS=-T CMD="ceph nvme-gw set-location ${GW_NAME} ${RBD_POOL} ${GROUP_NAME} ${LOC}"
-
 echo "ℹ️  create resources, group ${GROUP_NAME}"
 make -s exec SVC=ceph OPTS=-T CMD="ceph osd pool create ${RBD_DATA_POOL} erasure" 2> /dev/null
 make -s exec SVC=ceph OPTS=-T CMD="ceph osd pool set ${RBD_DATA_POOL} allow_ec_overwrites true" 2> /dev/null
 cephnvmf_func subsystem add --subsystem ${NQN} --no-group-append
-cephnvmf_func namespace add --subsystem ${NQN} --rbd-pool ${RBD_POOL} --rbd-data-pool ${RBD_DATA_POOL} --rbd-image ${RBD_IMAGE_NAME} --size ${RBD_IMAGE_SIZE} --rbd-create-image --uuid ${UUID} --location ${LOC}
+cephnvmf_func namespace add --subsystem ${NQN} --rbd-pool ${RBD_POOL} --rbd-data-pool ${RBD_DATA_POOL} --rbd-image ${RBD_IMAGE_NAME} --size ${RBD_IMAGE_SIZE} --rbd-create-image --uuid ${UUID}
 
 echo "ℹ️  list namespaces"
 ns_list=$(cephnvmf_func --output stdio --format json namespace list --subsystem ${NQN})
@@ -41,7 +36,6 @@ ns_list=$(cephnvmf_func --output stdio --format json namespace list --subsystem 
 [[ `echo $ns_list | jq -r '.namespaces[0].rbd_data_pool_name'` == "${RBD_DATA_POOL}" ]]
 [[ `echo $ns_list | jq -r '.namespaces[0].rbd_image_size'` == "10485760" ]]
 [[ `echo $ns_list | jq -r '.namespaces[0].uuid'` == "${UUID}" ]]
-[[ `echo $ns_list | jq -r '.namespaces[0].location'` == "${LOC}" ]]
 [[ `echo $ns_list | jq -r '.namespaces[1]'` == "null" ]]
 
 echo "ℹ️  get RBD id"
