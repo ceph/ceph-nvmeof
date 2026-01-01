@@ -15,7 +15,7 @@ UUID3="398c0838-8963-4673-a92e-55a65ca7847c"
 set -e
 set -x
 
-GW_NAME=`cephnvmf_func --output stdio --format json gw info | jq -r '.name'
+GW_NAME=`cephnvmf_func --output stdio --format json gw info | jq -r '.name'`
 GROUP_NAME=`cephnvmf_func --output stdio --format json gw info | jq -r '.group' | tr _ -`
 GROUP_NAME2=${GROUP_NAME}2
 
