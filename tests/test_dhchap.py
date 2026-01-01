@@ -87,7 +87,7 @@ def gateway(config):
     config.config["gateway-logs"]["log_level"] = "debug"
     config.config["gateway"]["group"] = ""
     if os.cpu_count() >= 4:
-        config.config["spdk"]["tgt_cmd_extra_args"] = "-m 0x01"
+        config.config["spdk"]["tgt_cmd_extra_args"] = "--lcores 0"
     else:
         config.config["spdk"]["tgt_cmd_extra_args"] = "--disable-cpumask-locks"
     ceph_utils = CephUtils(config)
@@ -127,7 +127,7 @@ def gateway_encryption_disabled(config):
     config.config["gateway"]["group"] = ""
     config.config["gateway"]["enable_key_encryption"] = "False"
     if os.cpu_count() >= 4:
-        config.config["spdk"]["tgt_cmd_extra_args"] = "-m 0x02"
+        config.config["spdk"]["tgt_cmd_extra_args"] = "--lcores 1"
     else:
         config.config["spdk"]["tgt_cmd_extra_args"] = "--disable-cpumask-locks"
     ceph_utils = CephUtils(config)
@@ -167,7 +167,7 @@ def gateway_no_encryption_key(config):
     config.config["gateway"]["enable_key_encryption"] = "True"
     config.config["gateway"]["encryption_key"] = "/etc/ceph/NOencryption.key"
     if os.cpu_count() >= 4:
-        config.config["spdk"]["tgt_cmd_extra_args"] = "-m 0x04"
+        config.config["spdk"]["tgt_cmd_extra_args"] = "--lcores 2"
     else:
         config.config["spdk"]["tgt_cmd_extra_args"] = "--disable-cpumask-locks"
     ceph_utils = CephUtils(config)
@@ -207,7 +207,7 @@ def gateway_no_key_encryption_disabled(config):
     config.config["gateway"]["enable_key_encryption"] = "False"
     config.config["gateway"]["encryption_key"] = "/etc/ceph/NOencryption.key"
     if os.cpu_count() >= 4:
-        config.config["spdk"]["tgt_cmd_extra_args"] = "-m 0x08"
+        config.config["spdk"]["tgt_cmd_extra_args"] = "--lcores 3"
     else:
         config.config["spdk"]["tgt_cmd_extra_args"] = "--disable-cpumask-locks"
     ceph_utils = CephUtils(config)
@@ -1004,12 +1004,13 @@ def test_encryption_disabled(caplog, gateway_encryption_disabled):
     cli(["subsystem", "add", "--subsystem", subsystem3, "--dhchap-key", hostdhchap9,
          "--no-group-append"])
     assert f"Received request to create subsystem {subsystem3}, enable_ha: True, " \
-           f"max_namespaces: 0, no group append: True, context: <grpc._server" in caplog.text
+           f"max_namespaces: 0, no group append: True, network mask: , " \
+           "secure listeners: False, context: <grpc._server" in caplog.text
     assert f"create_subsystem {subsystem3}: True" in caplog.text
     time.sleep(15)
     lookfor = f"Received request to create subsystem {subsystem3}, enable_ha: True, " \
               f"max_namespaces: {gw_encryption_disabled.MAX_NAMESPACES_PER_SUBSYSTEM_DEFAULT}" \
-              f", no group append: True, context: None"
+              f", no group append: True, network mask: , secure listeners: False, context: None"
     assert lookfor in caplog.text
     pos = caplog.text.find(lookfor)
     assert pos >= 0

@@ -9,7 +9,6 @@ from control.server import GatewayServer
 from control.cephutils import CephUtils
 from control.proto import gateway_pb2 as pb2
 from control.proto import gateway_pb2_grpc as pb2_grpc
-import spdk.rpc.bdev as rpc_bdev
 
 image = "mytestdevimage"
 pool = "rbd"
@@ -33,7 +32,7 @@ def setup_config(config, gw1_name, gw2_name, gw_group, update_notify, update_int
     configA.config["gateway"]["enable_spdk_discovery_controller"] = "True"
     configA.config["spdk"]["rpc_socket_name"] = sock1_name
     if os.cpu_count() >= 4:
-        configA.config["spdk"]["tgt_cmd_extra_args"] = "-m 0x03"
+        configA.config["spdk"]["tgt_cmd_extra_args"] = "--lcores (0-1)"
     else:
         configA.config["spdk"]["tgt_cmd_extra_args"] = "--disable-cpumask-locks"
     configB = copy.deepcopy(configA)
@@ -45,7 +44,7 @@ def setup_config(config, gw1_name, gw2_name, gw_group, update_notify, update_int
     configB.config["gateway"]["port"] = str(portB)
     configB.config["spdk"]["rpc_socket_name"] = sock2_name
     if os.cpu_count() >= 4:
-        configB.config["spdk"]["tgt_cmd_extra_args"] = "-m 0x0C"
+        configB.config["spdk"]["tgt_cmd_extra_args"] = "--lcores (2-3)"
     else:
         configB.config["spdk"]["tgt_cmd_extra_args"] = "--disable-cpumask-locks"
 
@@ -280,9 +279,9 @@ def test_multi_gateway_omap_reread(config, conn_omap_reread, caplog):
     assert "The file is not current, will reload it and try again" not in caplog.text
 
     with gatewayA.rpc_lock:
-        bdevsA = rpc_bdev.bdev_get_bdevs(gatewayA.spdk_rpc_client)
+        bdevsA = gatewayA.spdk_rpc_client.bdev_get_bdevs()
     with gatewayB.rpc_lock:
-        bdevsB = rpc_bdev.bdev_get_bdevs(gatewayB.spdk_rpc_client)
+        bdevsB = gatewayB.spdk_rpc_client.bdev_get_bdevs()
     # GW-B should have the bdev created on GW-A after reading the OMAP file plus
     #      the two we created on it
     # GW-A should only have the bdev created on it as we didn't update it after

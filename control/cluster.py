@@ -9,7 +9,6 @@ from abc import ABC, abstractmethod
 from .config import GatewayConfig
 from collections import defaultdict
 from typing import Dict
-import spdk.rpc.bdev as rpc_bdev
 
 
 # Interface for cluster allocation strategy
@@ -38,8 +37,7 @@ class ClusterAllocationStrategy(ABC):
 
     def _alloc_cluster(self, name: str) -> str:
         """Allocates a new Rados cluster context with SPDK"""
-        nonce = rpc_bdev.bdev_rbd_register_cluster(
-            self.gs.spdk_rpc_client,
+        nonce = self.gs.spdk_rpc_client.bdev_rbd_register_cluster(
             name=name,
             user_id=self.rados_id,
             core_mask=self.librbd_core_mask,
@@ -49,7 +47,7 @@ class ClusterAllocationStrategy(ABC):
 
     def _free_cluster(self, name: str) -> str:
         """Unregister SPDK Rados cluster context"""
-        ret = rpc_bdev.bdev_rbd_unregister_cluster(self.gs.spdk_rpc_client, name=name)
+        ret = self.gs.spdk_rpc_client.bdev_rbd_unregister_cluster(name=name)
         self.gs.logger.info(f"Free cluster {name=} {ret=}")
         assert ret
 

@@ -3,7 +3,6 @@ from control.server import GatewayServer
 from control.cli import main as cli
 from control.cli import main_test as cli_test
 from control.cephutils import CephUtils
-import spdk.rpc.nvmf as rpc_nvmf
 import grpc
 from control.proto import gateway_pb2_grpc as pb2_grpc
 import copy
@@ -38,7 +37,7 @@ def two_gateways(config):
     configA.config["gateway"]["override_hostname"] = nameA
     configA.config["spdk"]["rpc_socket_name"] = sockA
     if os.cpu_count() >= 4:
-        configA.config["spdk"]["tgt_cmd_extra_args"] = "-m 0x03"
+        configA.config["spdk"]["tgt_cmd_extra_args"] = "--lcores (0-1)"
     else:
         configA.config["spdk"]["tgt_cmd_extra_args"] = "--disable-cpumask-locks"
     portA = configA.getint("gateway", "port")
@@ -50,7 +49,7 @@ def two_gateways(config):
     configB.config["gateway"]["port"] = str(portB)
     configB.config["discovery"]["port"] = str(discPortB)
     if os.cpu_count() >= 4:
-        configB.config["spdk"]["tgt_cmd_extra_args"] = "-m 0x0C"
+        configB.config["spdk"]["tgt_cmd_extra_args"] = "--lcores (2-3)"
     else:
         configB.config["spdk"]["tgt_cmd_extra_args"] = "--disable-cpumask-locks"
 
@@ -108,7 +107,7 @@ def verify_namespaces_using_get_subsystems(caplog, gw_port, subsys, first_nsid, 
 def verify_namespaces_using_spdk_get_subsystems(caplog, gw, subsys, first_nsid, last_nsid, grp):
     caplog.clear()
     with gw.rpc_lock:
-        subsys_info = rpc_nvmf.nvmf_get_subsystems(gw.gateway_rpc.spdk_rpc_client)
+        subsys_info = gw.gateway_rpc.spdk_rpc_client.nvmf_get_subsystems()
     assert len(subsys_info) == 1
     assert subsys_info[0]["nqn"] == subsys
     assert len(subsys_info[0]["namespaces"]) >= last_nsid
@@ -187,7 +186,7 @@ def test_change_namespace_lb_group(caplog, two_gateways):
          "--load-balancing-group", anagrpid, "--force"])
     time.sleep(15)
     assert f"Adding namespace 1 to {subsystem}: Successful" in caplog.text
-    assert f"get_cluster cluster_name='cluster_context_{anagrpid}_0'" in caplog.text
+    assert f"Allocated cluster name='cluster_{anagrpid}'" in caplog.text
     assert f"Received request to add namespace to {subsystem}, ana group {anagrpid}, " \
            f"no_auto_visible: False, disable_auto_resize: False, " \
            f"read_only: False, location: \"\", " \
@@ -283,7 +282,7 @@ def test_change_namespace_lb_group(caplog, two_gateways):
          "--load-balancing-group", anagrpid2, "--force"])
     time.sleep(15)
     assert f"Adding namespace 2 to {subsystem}: Successful" in caplog.text
-    assert f"get_cluster cluster_name='cluster_context_{anagrpid2}_0'" in caplog.text
+    assert f"Allocated cluster name='cluster_{anagrpid2}'" in caplog.text
     assert f"Received request to add namespace to {subsystem}, ana group {anagrpid2}, " \
            f"no_auto_visible: False, disable_auto_resize: False, " \
            f"read_only: False, location: \"\", " \

@@ -248,6 +248,8 @@ message create_subsystem_req {
 	optional bool no_group_append = 5;
 	optional string dhchap_key = 6;
 	optional bool key_encrypted = 7;
+	optional string network_mask = 8;
+	optional bool secure_listeners = 9;
 }
 
 message delete_subsystem_req {
@@ -265,7 +267,6 @@ message list_namespaces_req {
 	string subsystem = 1;
 	optional uint32 nsid = 2;
 	optional string uuid = 3;
-	optional bool show_hosts = 4;
 }
 
 message add_host_req {
@@ -295,6 +296,7 @@ message list_hosts_req {
 
 message list_connections_req {
 	string subsystem = 1;
+	optional bool clear_alerts = 2;
 }
 
 message create_listener_req {
@@ -534,6 +536,7 @@ message listener_info {
 	uint32 trsvcid = 5;
 	optional bool secure = 6;
 	optional bool active = 7;
+	optional bool manual = 8;	
 }
 
 message listeners_info {

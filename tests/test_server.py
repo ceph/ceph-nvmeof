@@ -51,7 +51,7 @@ class TestServer(unittest.TestCase):
         config_spdk_exception = copy.deepcopy(self.config)
 
         # invalid arg, spdk would exit with code 1 at start up
-        config_spdk_exception.config["spdk"]["tgt_cmd_extra_args"] = "-m 0x343435545"
+        config_spdk_exception.config["spdk"]["tgt_cmd_extra_args"] = "--lcores (0-10000000)"
 
         with self.assertRaises(SystemExit) as cm:
             with GatewayServer(config_spdk_exception) as gateway:

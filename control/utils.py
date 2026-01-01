@@ -17,6 +17,7 @@ import logging.handlers
 import gzip
 import shutil
 import netifaces
+import ipaddress
 from typing import Tuple, List
 from cryptography.fernet import Fernet
 import cryptography.exceptions
@@ -116,6 +117,15 @@ class GatewayUtils:
                 return False
 
         return True
+
+    def get_hostname(ip_addr: str, logger) -> str:
+        try:
+            ret = socket.gethostbyaddr(ip_addr)
+            if ret:
+                return ret[0]
+        except Exception as e:
+            logger.error(f'error in get_hostname: {e}')
+        return ''
 
     def is_valid_rev_domain(rev_domain):
         domain_parts = rev_domain.split(".")
@@ -615,6 +625,20 @@ class NICS:
                 if "addr" in v6addr and v6addr["addr"] == addr:
                     return True
         return False
+
+    def get_ips_in_subnet(self, subnet):
+        subnet_ = ipaddress.ip_network(subnet, strict=False)
+        found_ips = []
+        for dev in self.adapters:
+            nic = self.adapters[dev]
+            if isinstance(subnet_, ipaddress.IPv4Network):
+                host_ips = nic.ipv4_addresses
+            elif isinstance(subnet_, ipaddress.IPv6Network):
+                host_ips = nic.ipv6_addresses
+            for ip in host_ips:
+                if ipaddress.ip_address(ip) in subnet_:
+                    found_ips.append(ip)
+        return found_ips
 
 
 class NIC:

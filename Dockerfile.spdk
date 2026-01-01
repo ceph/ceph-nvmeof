@@ -209,10 +209,14 @@ ENV BDEVPERF_IO_BS="4096"
 # for available types
 ENV BDEVPERF_IO_TYPE="verify"
 
+# Core list
+ENV BDEVPERF_CORE_LIST="0"
+
 COPY --from=build /src/build/examples/bdevperf /usr/local/bin/bdevperf
 COPY --from=build /src/examples/bdev/bdevperf/bdevperf.py /usr/libexec/spdk/scripts/bdevperf.py
 RUN echo "#!/bin/sh -x"                                                 > /entrypoint
 RUN echo "bdevperf -z -r \$BDEVPERF_SOCKET \\"                         >> /entrypoint
+RUN echo "         --lcores \$BDEVPERF_CORE_LIST \\"                   >> /entrypoint
 RUN echo "         -q \$BDEVPERF_IO_QUEUE -o \$BDEVPERF_IO_BS \\"      >> /entrypoint
 RUN echo "         -w \$BDEVPERF_IO_TYPE -t \$BDEVPERF_TEST_DURATION"  >> /entrypoint
 RUN chmod 755 /entrypoint

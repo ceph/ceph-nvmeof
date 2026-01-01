@@ -1,3 +1,7 @@
+#!/bin/sh
+
+set -ex
+
 # Check if GITHUB_WORKSPACE is defined
 if [ -n "$GITHUB_WORKSPACE" ]; then
     test_dir="$GITHUB_WORKSPACE/tests/ha"
@@ -5,4 +9,5 @@ else
     test_dir=$(dirname $0)
 fi
 
-$test_dir/wait_gateways.sh 2
+export NVMEOF_CONFIG=./tests/ceph-nvmeof.crc32c.conf
+$test_dir/start_up.sh

@@ -6,8 +6,6 @@ from control.cli import main_test as cli_test
 from control.cephutils import CephUtils
 from control.utils import GatewayUtils
 from control.utils import GatewayEnumUtils
-import spdk.rpc.bdev as rpc_bdev
-from spdk.rpc import spdk_get_version
 import grpc
 from control.proto import gateway_pb2 as pb2
 from control.proto import gateway_pb2_grpc as pb2_grpc
@@ -43,6 +41,7 @@ image26 = "mytestdevimage26"
 image27 = "mytestdevimage27"
 image28 = "mytestdevimage28"
 image29 = "mytestdevimage29"
+image30 = "mytestdevimage30"
 pool = "rbd"
 subsystem = "nqn.2016-06.io.spdk:cnode1"
 subsystem2 = "nqn.2016-06.io.spdk:cnode2"
@@ -74,22 +73,23 @@ discovery_nqn = "nqn.2014-08.org.nvmexpress.discovery"
 uuid = "948878ee-c3b2-4d58-a29b-2cff713fc02d"
 uuid2 = "948878ee-c3b2-4d58-a29b-2cff713fc02e"
 host_list = ["nqn.2016-06.io.spdk:host1", "*"]
-host1 = "nqn.2016-06.io.spdk:host1"
-host2 = "nqn.2016-06.io.spdk:host2"
-host3 = "nqn.2016-06.io.spdk:host3"
-host4 = "nqn.2016-06.io.spdk:host4"
-host5 = "nqn.2016-06.io.spdk:host5"
-host6 = "nqn.2016-06.io.spdk:host6"
-host7 = "nqn.2016-06.io.spdk:host7"
-host8 = "nqn.2016-06.io.spdk:host8"
-host9 = "nqn.2016-06.io.spdk:host9"
-host10 = "nqn.2016-06.io.spdk:host10"
-host11 = "nqn.2016-06.io.spdk:host11"
-host12 = "nqn.2016-06.io.spdk:host12"
-host13 = "nqn.2016-06.io.spdk:host13"
-host14 = "nqn.2016-06.io.spdk:host14"
-host15 = "nqn.2016-06.io.spdk:host15"
-hostxx = "nqn.2016-06.io.spdk:hostXX"
+hostprefix = "nqn.2016-06.io.spdk:host"
+host1 = hostprefix + "1"
+host2 = hostprefix + "2"
+host3 = hostprefix + "3"
+host4 = hostprefix + "4"
+host5 = hostprefix + "5"
+host6 = hostprefix + "6"
+host7 = hostprefix + "7"
+host8 = hostprefix + "8"
+host9 = hostprefix + "9"
+host10 = hostprefix + "10"
+host11 = hostprefix + "11"
+host12 = hostprefix + "12"
+host13 = hostprefix + "13"
+host14 = hostprefix + "14"
+host15 = hostprefix + "15"
+hostxx = hostprefix + "XX"
 nsid = "1"
 anagrpid = "1"
 anagrpid2 = "2"
@@ -210,7 +210,7 @@ class TestGet:
         spdk_ver = None
         with gw.rpc_lock:
             try:
-                spdk_ver = spdk_get_version(gw.spdk_rpc_client)
+                spdk_ver = gw.spdk_rpc_client.spdk_get_version()
                 spdk_ver = spdk_ver["version"]
             except Exception:
                 spdk_ver = None
@@ -460,6 +460,39 @@ class TestCreate:
         assert "Failure adding namespace" in caplog.text
         assert "Block size can't be zero" in caplog.text
 
+    def test_changing_namespace_with_no_size(self, caplog, gateway):
+        gw, stub = gateway
+        caplog.clear()
+        cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool,
+             "--rbd-image", image30, "--size", "16MB",
+             "--rbd-create-image", "--force"])
+        assert f"Adding namespace 1 to {subsystem}: Successful" in caplog.text
+        caplog.clear()
+        cli(["namespace", "del", "--subsystem", subsystem, "--nsid", "1"])
+        assert f"Deleting namespace 1 from {subsystem}: Successful" in caplog.text
+        caplog.clear()
+        add_namespace_req = pb2.namespace_add_req(subsystem_nqn=subsystem,
+                                                  rbd_pool_name=pool,
+                                                  rbd_image_name=image30,
+                                                  block_size=512,
+                                                  create_image=False,
+                                                  force=True)
+        ret = stub.namespace_add(add_namespace_req)
+        assert ret.status == 0
+        caplog.clear()
+        cli(["namespace", "change_visibility", "--subsystem", subsystem, "--nsid", "1",
+             "--auto-visible", "no"])
+        assert f'Changing visibility of namespace 1 in {subsystem} to ' \
+               f'"visible to selected hosts": Successful' in caplog.text
+        caplog.clear()
+        cli(["namespace", "change_visibility", "--subsystem", subsystem, "--nsid", "1",
+             "--auto-visible", "yes"])
+        assert f'Changing visibility of namespace 1 in {subsystem} to ' \
+               f'"visible to all hosts": Successful' in caplog.text
+        caplog.clear()
+        cli(["namespace", "del", "--subsystem", subsystem, "--nsid", "1"])
+        assert f"Deleting namespace 1 from {subsystem}: Successful" in caplog.text
+
     def test_add_namespace_double_uuid(self, caplog, gateway):
         caplog.clear()
         cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool,
@@ -500,8 +533,8 @@ class TestCreate:
              "--rbd-image", image2, "--uuid", uuid, "--size", "16MB", "--rbd-create-image",
              "--load-balancing-group", anagrpid, "--force"])
         assert f"Adding namespace 1 to {subsystem}: Successful" in caplog.text
-        assert f"Allocated cluster name='cluster_context_{anagrpid}_0'" in caplog.text
-        assert f"get_cluster cluster_name='cluster_context_{anagrpid}_0'" in caplog.text
+        assert f"Allocated cluster name='cluster_{anagrpid}'" in caplog.text
+        assert "get_cluster cluster_name" not in caplog.text
         assert "no_auto_visible: False" in caplog.text
         caplog.clear()
         cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool,
@@ -879,7 +912,7 @@ class TestCreate:
             rc = int(str(sysex))
             pass
         assert "error: argument --auto-visible: invalid choice: 'junk' " \
-               "(choose from 'yes', 'no')" in caplog.text
+               "(choose from 'yes', 'no', 'true', 'false', '1', '0')" in caplog.text
         assert rc == 2
         caplog.clear()
         rc = 0
@@ -988,13 +1021,23 @@ class TestCreate:
         cli(["--format", "json", "namespace", "list", "--subsystem", subsystem, "--nsid", "9"])
         assert '"nsid": 9,' in caplog.text
         assert '"auto_visible":' not in caplog.text or '"auto_visible": false' in caplog.text
-        assert '"hosts": []' in caplog.text
         caplog.clear()
-        cli(["--format", "json", "namespace", "list_hosts",
+        cli(["--format", "plain", "namespace", "list", "--subsystem", subsystem, "--nsid", "9"])
+        pos = caplog.text.find("control.cli:cli.py")
+        assert pos >= 0
+        partial_text = caplog.text[pos:]
+        assert f"Namespace 9 in subsystem {subsystem}" in partial_text
+        assert hostprefix not in partial_text
+        assert "Restrictive" in partial_text
+        caplog.clear()
+        cli(["--format", "plain", "namespace", "list_hosts",
              "--subsystem", subsystem, "--nsid", "9"])
-        assert '"nsid": 9,' in caplog.text
-        assert f'"{host8}"' in caplog.text
-        assert '"hosts": []' not in caplog.text
+        pos = caplog.text.find("control.cli:cli.py")
+        assert pos >= 0
+        partial_text = caplog.text[pos:]
+        assert f"Namespace 9 in subsystem {subsystem}" in partial_text
+        assert host8 in partial_text
+        assert "Restrictive" not in partial_text
 
     def test_del_namespace_host(self, caplog, gateway):
         caplog.clear()
@@ -1026,32 +1069,35 @@ class TestCreate:
         assert f"Failure deleting host {host8} from namespace 9 on {subsystemX}: " \
                f"Can't find subsystem" in caplog.text
         caplog.clear()
-        cli(["--format", "json", "namespace", "list", "--subsystem", subsystem, "--nsid", "9"])
-        assert '"nsid": 9,' in caplog.text
-        assert '"auto_visible":' not in caplog.text or '"auto_visible": false' in caplog.text
-        assert f'"{host8}"' not in caplog.text
-        assert '"hosts": []' in caplog.text
-        caplog.clear()
         cli(["--format", "json", "namespace", "list_hosts",
              "--subsystem", subsystem, "--nsid", "9"])
-        assert '"nsid": 9,' in caplog.text
-        assert f'"{host8}"' in caplog.text
-        assert '"hosts": []' not in caplog.text
+        pos = caplog.text.find("control.cli:cli.py")
+        assert pos >= 0
+        partial_text = caplog.text[pos:]
+        assert '"nsid": 9,' in partial_text
+        assert f'"{host8}"' in partial_text
+        assert '"hosts": []' not in partial_text
         caplog.clear()
         cli(["namespace", "del_host", "--subsystem", subsystem, "--nsid", "9", "--host-nqn", host8])
         assert f"Deleting host {host8} from namespace 9 on {subsystem}: Successful" in caplog.text
         caplog.clear()
         cli(["--format", "json", "namespace", "list", "--subsystem", subsystem, "--nsid", "9"])
-        assert '"nsid": 9,' in caplog.text
-        assert '"auto_visible":' not in caplog.text or '"auto_visible": false' in caplog.text
-        assert f'"{host8}"' not in caplog.text
-        assert '"hosts": []' in caplog.text
+        pos = caplog.text.find("control.cli:cli.py")
+        assert pos >= 0
+        partial_text = caplog.text[pos:]
+        assert '"nsid": 9,' in partial_text
+        assert '"auto_visible":' not in partial_text or '"auto_visible": false' in partial_text
+        assert host8 not in partial_text
+        assert '"hosts": []' in partial_text
         caplog.clear()
         cli(["--format", "json", "namespace", "list_hosts",
              "--subsystem", subsystem, "--nsid", "9"])
-        assert '"nsid": 9,' in caplog.text
-        assert f'"{host8}"' not in caplog.text
-        assert '"hosts": []' in caplog.text
+        pos = caplog.text.find("control.cli:cli.py")
+        assert pos >= 0
+        partial_text = caplog.text[pos:]
+        assert '"nsid": 9,' in partial_text
+        assert f'"{host8}"' not in partial_text
+        assert '"hosts": []' in partial_text
         caplog.clear()
         cli(["namespace", "del_host", "--subsystem", subsystem, "--nsid", "9",
              "--host-nqn", hostxx])
@@ -1078,18 +1124,25 @@ class TestCreate:
         cli(["--format", "json", "namespace", "list", "--subsystem", subsystem, "--nsid", "9"])
         assert '"nsid": 9,' in caplog.text
         assert '"auto_visible":' not in caplog.text or '"auto_visible": false' in caplog.text
-        assert f'"{host8}"' not in caplog.text
-        assert f'"{host9}"' not in caplog.text
-        assert f'"{host10}"' not in caplog.text
-        assert '"hosts": []' in caplog.text
         caplog.clear()
-        cli(["--format", "json", "namespace", "list_hosts",
+        cli(["--format", "plain", "namespace", "list", "--subsystem", subsystem, "--nsid", "9"])
+        pos = caplog.text.find("control.cli:cli.py")
+        assert pos >= 0
+        partial_text = caplog.text[pos:]
+        assert f"Namespace 9 in subsystem {subsystem}" in partial_text
+        assert hostprefix not in partial_text
+        assert "Restrictive" in partial_text
+        caplog.clear()
+        cli(["--format", "plain", "namespace", "list_hosts",
              "--subsystem", subsystem, "--nsid", "9"])
-        assert '"nsid": 9,' in caplog.text
-        assert f'"{host8}"' in caplog.text
-        assert f'"{host9}"' in caplog.text
-        assert f'"{host10}"' in caplog.text
-        assert '"hosts": []' not in caplog.text
+        pos = caplog.text.find("control.cli:cli.py")
+        assert pos >= 0
+        partial_text = caplog.text[pos:]
+        assert f"Namespace 9 in subsystem {subsystem}" in partial_text
+        assert host8 in partial_text
+        assert host9 in partial_text
+        assert host10 in partial_text
+        assert "Restrictive" not in partial_text
 
     def test_list_hosts(self, caplog, gateway):
         caplog.clear()
@@ -1690,6 +1743,7 @@ class TestCreate:
         assert self._adrfam2string(listeners.listeners[0].adrfam) == listener_list[0][5].lower()
         assert listeners.listeners[0].active
         assert not listeners.listeners[0].secure
+        assert listeners.listeners[0].manual
 
         assert listeners.listeners[1].host_name == host_name
         assert listeners.listeners[1].traddr == listener_list[1][1]
@@ -1697,6 +1751,7 @@ class TestCreate:
         assert self._adrfam2string(listeners.listeners[1].adrfam) == "ipv4"
         assert listeners.listeners[1].active
         assert not listeners.listeners[1].secure
+        assert listeners.listeners[1].manual
 
         assert listeners.listeners[2].host_name == host_name
         assert listeners.listeners[2].traddr == listener_list_ipv6[0][1]
@@ -1705,6 +1760,7 @@ class TestCreate:
             self._adrfam2string(listeners.listeners[2].adrfam) == listener_list_ipv6[0][5].lower()
         assert listeners.listeners[2].active
         assert not listeners.listeners[2].secure
+        assert listeners.listeners[2].manual
 
         assert listeners.listeners[3].host_name == host_name
         assert listeners.listeners[3].traddr == listener_list_ipv6[1][1]
@@ -1713,6 +1769,7 @@ class TestCreate:
             self._adrfam2string(listeners.listeners[3].adrfam) == listener_list_ipv6[1][5].lower()
         assert listeners.listeners[3].active
         assert not listeners.listeners[3].secure
+        assert listeners.listeners[3].manual
 
         assert listeners.listeners[4].host_name == host_name
         assert listeners.listeners[4].traddr == listener_list_no_port[0][1]
@@ -1720,6 +1777,7 @@ class TestCreate:
         assert self._adrfam2string(listeners.listeners[4].adrfam) == "ipv4"
         assert listeners.listeners[4].active
         assert not listeners.listeners[4].secure
+        assert listeners.listeners[4].manual
 
         assert listeners.listeners[5].host_name == host_name
         assert listeners.listeners[5].traddr == listener_list_no_adrfam[0][1]
@@ -1727,6 +1785,7 @@ class TestCreate:
         assert self._adrfam2string(listeners.listeners[5].adrfam) == "ipv4"
         assert listeners.listeners[5].active
         assert not listeners.listeners[5].secure
+        assert listeners.listeners[5].manual
 
     def test_list_listeners_bad_subsys(self, caplog, gateway):
         caplog.clear()
@@ -1802,7 +1861,7 @@ class TestCreate:
         except SystemExit as sysex:
             rc = int(str(sysex))
             pass
-        assert "error: argument --adrfam/-f: invalid choice: 'JUNK'" in caplog.text
+        assert "error: argument --adrfam/-f: invalid choice: 'junk'" in caplog.text
         assert rc == 2
 
     @pytest.mark.parametrize("listener", listener_list_discovery)
@@ -1872,7 +1931,7 @@ class TestCreate:
         cli(["--verbose", "namespace", "list", "--nsid", "1"])
         assert "Cluster" in caplog.text
         assert "(Configured)" in caplog.text
-        assert "cluster_context_1_0" in caplog.text
+        assert "cluster_1" in caplog.text
         assert f"{image2}" in caplog.text
         assert f"{image15}" in caplog.text
         assert "1 (1)" in caplog.text
@@ -2014,7 +2073,7 @@ class TestDelete:
         assert bdev_name
         bdev_found = False
         with gw.rpc_lock:
-            bdev_list = rpc_bdev.bdev_get_bdevs(gw.spdk_rpc_client)
+            bdev_list = gw.spdk_rpc_client.bdev_get_bdevs()
         for b in bdev_list:
             try:
                 if bdev_name == b["name"]:
@@ -2036,7 +2095,7 @@ class TestDelete:
         assert f"Deleting namespace 6 from {subsystem}: Successful" in caplog.text
         bdev_found = False
         with gw.rpc_lock:
-            bdev_list = rpc_bdev.bdev_get_bdevs(gw.spdk_rpc_client)
+            bdev_list = gw.spdk_rpc_client.bdev_get_bdevs()
         for b in bdev_list:
             try:
                 if bdev_name == b["name"]:
@@ -2102,7 +2161,8 @@ class TestCreateWithAna:
         cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool,
              "--rbd-image", image, "--load-balancing-group", anagrpid, "--force", "--nsid", "10"])
         assert f"Adding namespace 10 to {subsystem}: Successful" in caplog.text
-        assert f"get_cluster cluster_name='cluster_context_{anagrpid}_0'" in caplog.text
+        assert f"Allocated cluster name='cluster_{anagrpid}'" in caplog.text
+        assert f"cluster_name cluster_{anagrpid}\n" in caplog.text
         caplog.clear()
         cli(["--format", "json", "namespace", "list", "--subsystem", subsystem, "--nsid", "10"])
         assert f'"load_balancing_group": {anagrpid}' in caplog.text
@@ -2239,13 +2299,13 @@ class TestGwLogLevel:
         except SystemExit as sysex:
             rc = int(str(sysex))
             pass
-        assert "error: argument --level/-l: invalid choice: 'JUNK'" in caplog.text
+        assert "error: argument --level/-l: invalid choice: 'junk'" in caplog.text
         assert rc == 2
         caplog.clear()
         cli(["--format", "json", "gw", "get_log_level"])
         assert '"log_level": "critical"' in caplog.text
         caplog.clear()
-        cli(["--log-level", "critical", "gw", "set_log_level", "--level", "DEBUG"])
+        cli(["--log-level", "critical", "gw", "set_log_level", "--level", "DEbUg"])
         assert 'Set gateway log level to "debug": Successful' not in caplog.text
         caplog.clear()
         cli(["gw", "get_log_level"])
@@ -2311,7 +2371,7 @@ class TestSPDKLOg:
         except SystemExit as sysex:
             rc = int(str(sysex))
             pass
-        assert "error: argument --level/-l: invalid choice: 'JUNK'" in caplog.text
+        assert "error: argument --level/-l: invalid choice: 'junk'" in caplog.text
         assert rc == 2
         caplog.clear()
         cli(["spdk_log_level", "set", "--extra-log-flags", "virtio", "vmd"])
@@ -2541,7 +2601,7 @@ class TestImageResize:
             rc = int(str(sysex))
             pass
         assert "error: argument --auto-resize-enabled: invalid choice: 'junk' " \
-               "(choose from 'yes', 'no')" in caplog.text
+               "(choose from 'yes', 'no', 'true', 'false', '1', '0')" in caplog.text
         assert rc == 2
         caplog.clear()
         cli(["namespace", "set_auto_resize", "--subsystem", subsystem11, "--nsid", "1",
