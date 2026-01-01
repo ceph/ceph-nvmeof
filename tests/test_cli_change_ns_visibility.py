@@ -14,6 +14,7 @@ subsystem = "nqn.2016-06.io.spdk:cnode1"
 hostnqn = "nqn.2016-06.io.spdk:host1"
 config = "ceph-nvmeof.conf"
 group_name = "GROUPNAME"
+location = "Somewhere"
 
 
 @pytest.fixture(scope="module")
@@ -61,6 +62,14 @@ def two_gateways(config):
         "{" + f'"prefix":"nvme-gw create", "id": "{nameB}", "pool": "{pool}", '
         f'"group": "{group_name}"' + "}"
     )
+    ceph_utils.execute_ceph_monitor_command(
+        "{" + f'"prefix":"nvme-gw set-location", "id": "{nameA}", "pool": "{pool}", '
+        f'"group": "{group_name}", "location": "{location}"' + "}"
+    )
+    ceph_utils.execute_ceph_monitor_command(
+        "{" + f'"prefix":"nvme-gw set-location", "id": "{nameB}", "pool": "{pool}", '
+        f'"group": "{group_name}", "location": "{location}"' + "}"
+    )
     gatewayA.serve()
     gatewayB.serve()
 
@@ -81,7 +90,7 @@ def test_change_namespace_visibility(caplog, two_gateways):
     cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool,
          "--rbd-data-pool", pool,
          "--rbd-image", f"{image}", "--size", "16MB", "--rbd-create-image",
-         "--load-balancing-group", "1", "--location", "Somewhere"])
+         "--load-balancing-group", "1", "--location", location])
     assert f"Adding namespace 1 to {subsystem}: Successful" in caplog.text
     caplog.clear()
     cli(["--format", "json", "namespace", "list", "--subsystem", subsystem, "--nsid", "1"])
@@ -89,7 +98,7 @@ def test_change_namespace_visibility(caplog, two_gateways):
     assert '"auto_visible": true' in caplog.text
     assert '"load_balancing_group": 1,' in caplog.text
     assert f'"rbd_data_pool_name": "{pool}",' in caplog.text
-    assert '"location": "Somewhere",' in caplog.text
+    assert f'"location": "{location}",' in caplog.text
     time.sleep(90)
     caplog.clear()
     cli(["--server-port", "5502", "--format", "json", "namespace", "list",
@@ -97,7 +106,7 @@ def test_change_namespace_visibility(caplog, two_gateways):
     assert '"nsid": 1,' in caplog.text
     assert '"auto_visible": true' in caplog.text
     assert f'"rbd_data_pool_name": "{pool}",' in caplog.text
-    assert '"location": "Somewhere",' in caplog.text
+    assert f'"location": "{location}",' in caplog.text
     caplog.clear()
     cli(["namespace", "change_visibility", "--subsystem", subsystem,
          "--nsid", "1", "--auto-visible", "no"])
@@ -135,7 +144,7 @@ def test_change_namespace_visibility(caplog, two_gateways):
     assert '"auto_visible":' not in caplog.text or '"auto_visible": false' in caplog.text
     assert '"read_only": false,' in caplog.text
     assert f'"rbd_data_pool_name": "{pool}",' in caplog.text
-    assert '"location": "Somewhere",' in caplog.text
+    assert f'"location": "{location}",' in caplog.text
     caplog.clear()
     cli(["--server-port", "5502", "--format", "json", "namespace", "list",
          "--subsystem", subsystem, "--nsid", "1"])
@@ -143,7 +152,7 @@ def test_change_namespace_visibility(caplog, two_gateways):
     assert '"auto_visible":' not in caplog.text or '"auto_visible": false' in caplog.text
     assert '"read_only": false,' in caplog.text
     assert f'"rbd_data_pool_name": "{pool}",' in caplog.text
-    assert '"location": "Somewhere",' in caplog.text
+    assert f'"location": "{location}",' in caplog.text
     caplog.clear()
     cli(["--server-port", "5502", "namespace", "change_visibility",
          "--subsystem", subsystem, "--nsid", "1", "--auto-visible", "yes"])
@@ -163,14 +172,14 @@ def test_change_namespace_visibility(caplog, two_gateways):
     assert '"auto_visible": true' in caplog.text
     assert '"read_only": false,' in caplog.text
     assert f'"rbd_data_pool_name": "{pool}",' in caplog.text
-    assert '"location": "Somewhere",' in caplog.text
+    assert f'"location": "{location}",' in caplog.text
     caplog.clear()
     cli(["--format", "json", "namespace", "list", "--subsystem", subsystem, "--nsid", "1"])
     assert '"nsid": 1,' in caplog.text
     assert '"auto_visible": true' in caplog.text
     assert '"read_only": false,' in caplog.text
     assert f'"rbd_data_pool_name": "{pool}",' in caplog.text
-    assert '"location": "Somewhere",' in caplog.text
+    assert f'"location": "{location}",' in caplog.text
 
     gwB = gatewayB.gateway_rpc
     configB = gwB.config
@@ -199,7 +208,7 @@ def test_change_namespace_visibility(caplog, two_gateways):
     assert '"auto_visible": true' in caplog.text
     assert '"read_only": false,' in caplog.text
     assert f'"rbd_data_pool_name": "{pool}",' in caplog.text
-    assert '"location": "Somewhere",' in caplog.text
+    assert f'"location": "{location}",' in caplog.text
 
 
 def test_change_namespace_visibility_with_hosts(caplog, two_gateways):

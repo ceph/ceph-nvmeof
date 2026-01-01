@@ -15,11 +15,15 @@ UUID3="398c0838-8963-4673-a92e-55a65ca7847c"
 set -e
 set -x
 
+GW_NAME=`cephnvmf_func --output stdio --format json gw info | jq -r '.name'
 GROUP_NAME=`cephnvmf_func --output stdio --format json gw info | jq -r '.group' | tr _ -`
 GROUP_NAME2=${GROUP_NAME}2
 
 echo "ℹ️  get FSID"
 FSID=`make -s exec SVC=ceph OPTS=-T CMD="ceph fsid"`
+
+echo "ℹ️  set gateway's location"
+make -s exec SVC=ceph OPTS=-T CMD="ceph nvme-gw set-location ${GW_NAME} ${RBD_POOL} ${GROUP_NAME} ${LOC}"
 
 echo "ℹ️  create resources, group ${GROUP_NAME}"
 make -s exec SVC=ceph OPTS=-T CMD="ceph osd pool create ${RBD_DATA_POOL} erasure" 2> /dev/null
