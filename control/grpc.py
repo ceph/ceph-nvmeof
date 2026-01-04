@@ -825,7 +825,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         self.max_hosts_per_namespace = self.config.getint_with_default(
             "gateway",
             "max_hosts_per_namespace",
-            8)
+            16)
         self.max_namespaces_with_netmask = self.config.getint_with_default(
             "gateway",
             "max_namespaces_with_netmask",
