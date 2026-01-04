@@ -20,6 +20,7 @@ location = "Somewhere"
 @pytest.fixture(scope="module")
 def two_gateways(config):
     """Sets up and tears down two Gateways"""
+    global location
     nameA = "GatewayAA"
     nameB = "GatewayBB"
     sockA = f"spdk_{nameA}.sock"
@@ -62,14 +63,19 @@ def two_gateways(config):
         "{" + f'"prefix":"nvme-gw create", "id": "{nameB}", "pool": "{pool}", '
         f'"group": "{group_name}"' + "}"
     )
-    ceph_utils.execute_ceph_monitor_command(
+    rc = ceph_utils.execute_ceph_monitor_command(
         "{" + f'"prefix":"nvme-gw set-location", "id": "{nameA}", "pool": "{pool}", '
         f'"group": "{group_name}", "location": "{location}"' + "}"
     )
-    ceph_utils.execute_ceph_monitor_command(
-        "{" + f'"prefix":"nvme-gw set-location", "id": "{nameB}", "pool": "{pool}", '
-        f'"group": "{group_name}", "location": "{location}"' + "}"
-    )
+    if rc[0]:
+        location = ""
+        print("set-location is not implemented in Ceph, will use default")
+    else:
+        rc = ceph_utils.execute_ceph_monitor_command(
+            "{" + f'"prefix":"nvme-gw set-location", "id": "{nameB}", "pool": "{pool}", '
+            f'"group": "{group_name}", "location": "{location}"' + "}"
+        )
+        assert rc[0] == 0
     gatewayA.serve()
     gatewayB.serve()
 
