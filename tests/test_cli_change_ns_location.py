@@ -12,6 +12,8 @@ image = "mytestdevimage"
 image2 = "mytestdevimage2"
 image3 = "mytestdevimage3"
 pool = "rbd"
+location = "USA"
+location2 = "China"
 subsystem = "nqn.2016-06.io.spdk:cnode1"
 subsystem2 = "nqn.2016-06.io.spdk:cnode2"
 config = "ceph-nvmeof.conf"
@@ -20,6 +22,7 @@ config = "ceph-nvmeof.conf"
 @pytest.fixture(scope="module")
 def two_gateways(config):
     """Sets up and tears down two Gateways"""
+    global location, location2
     nameA = "GatewayAA"
     nameB = "GatewayBB"
     sockA = f"spdk_{nameA}.sock"
@@ -57,14 +60,20 @@ def two_gateways(config):
         ceph_utils.execute_ceph_monitor_command(
             "{" + f'"prefix":"nvme-gw create", "id": "{nameB}", "pool": "{pool}", "group": ""' + "}"
         )
-        ceph_utils.execute_ceph_monitor_command(
+        rc = ceph_utils.execute_ceph_monitor_command(
             "{" + f'"prefix":"nvme-gw set-location", "id": "{nameA}", "pool": "{pool}", '
-            f'"group": "", "location": "USA"' + "}"
+            f'"group": "", "location": "{location}"' + "}"
         )
-        ceph_utils.execute_ceph_monitor_command(
-            "{" + f'"prefix":"nvme-gw set-location", "id": "{nameB}", "pool": "{pool}", '
-            f'"group": "", "location": "USA"' + "}"
-        )
+        if rc[0]:
+            location = ""
+            location2 = ""
+            print("set-location is not implemented in Ceph, will use default")
+        else:
+            rc = ceph_utils.execute_ceph_monitor_command(
+                "{" + f'"prefix":"nvme-gw set-location", "id": "{nameB}", "pool": "{pool}", '
+                f'"group": "", "location": "{location}"' + "}"
+            )
+            assert rc[0] == 0
         gatewayA.serve()
         gatewayB.serve()
 
@@ -99,81 +108,83 @@ def test_change_namespace_location(caplog, two_gateways):
     cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool,
          "--rbd-data-pool", pool,
          "--rbd-image", image, "--size", "16MB", "--rbd-create-image",
-         "--location", "USA"])
+         "--location", location])
     assert f"Adding namespace 1 to {subsystem}: Successful" in caplog.text
     caplog.clear()
     cli(["--format", "json", "namespace", "list", "--subsystem", subsystem, "--nsid", "1"])
     assert '"nsid": 1,' in caplog.text
-    assert '"location": "USA",' in caplog.text
+    assert f'"location": "{location}",' in caplog.text
     time.sleep(15)
     caplog.clear()
     cli(["--server-port", "5502", "--format", "json", "namespace", "list",
          "--subsystem", subsystem, "--nsid", "1"])
     assert '"nsid": 1,' in caplog.text
-    assert '"location": "USA",' in caplog.text
+    assert f'"location": "{location}",' in caplog.text
     caplog.clear()
     cli(["namespace", "change_location", "--subsystem", subsystem,
-         "--nsid", "1", "--location", "USA"])
-    assert f'Setting location for namespace 1 in {subsystem} to "USA": ' \
+         "--nsid", "1", "--location", location])
+    assert f'Setting location for namespace 1 in {subsystem} to "{location}": ' \
            f'Successful' in caplog.text
     assert f"No change to namespace 1 in {subsystem} location, nothing to do" in caplog.text
     caplog.clear()
     cli(["--server-port", "5502", "--format", "json", "namespace", "list",
          "--subsystem", subsystem, "--nsid", "1"])
     assert '"nsid": 1,' in caplog.text
-    assert '"location": "USA",' in caplog.text
+    assert f'"location": "{location}",' in caplog.text
     caplog.clear()
     cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool,
          "--rbd-data-pool", pool,
          "--rbd-image", image2, "--size", "16MB", "--rbd-create-image",
-         "--location", "USA"])
+         "--location", location])
     assert f"Adding namespace 2 to {subsystem}: Successful" in caplog.text
     time.sleep(15)
     caplog.clear()
     cli(["--server-port", "5502", "--format", "json", "namespace", "list",
          "--subsystem", subsystem, "--nsid", "2"])
     assert '"nsid": 2,' in caplog.text
-    assert '"location": "USA",' in caplog.text
+    assert f'"location": "{location}",' in caplog.text
     ns_list = gatewayA.subsystem_nsid_bdev_and_uuid.get_all_namespaces_with_location("Junk")
     assert len(ns_list) == 0
-    ns_list = gatewayA.subsystem_nsid_bdev_and_uuid.get_all_namespaces_with_location("USA")
+    ns_list = gatewayA.subsystem_nsid_bdev_and_uuid.get_all_namespaces_with_location(location)
     assert len(ns_list) == 2
     assert ns_list[0] == (1, subsystem)
     assert ns_list[1] == (2, subsystem)
-    ns_list = gatewayA.subsystem_nsid_bdev_and_uuid.get_all_namespaces_with_location("USA",
+    ns_list = gatewayA.subsystem_nsid_bdev_and_uuid.get_all_namespaces_with_location(location,
                                                                                      subsystem)
     assert len(ns_list) == 2
     assert ns_list[0] == (1, subsystem)
     assert ns_list[1] == (2, subsystem)
-    ns_list = gatewayA.subsystem_nsid_bdev_and_uuid.get_all_namespaces_with_location("USA",
+    ns_list = gatewayA.subsystem_nsid_bdev_and_uuid.get_all_namespaces_with_location(location,
                                                                                      subsystem2)
     assert len(ns_list) == 0
-    return       # Disable change location calls until it works in Ceph
+    print("Disable change location calls until they work in Ceph")
+    return
+    assert location != location2
     caplog.clear()
     cli(["namespace", "change_location", "--subsystem", subsystem,
-         "--nsid", "1", "--location", "China"])
-    assert f'Setting location for namespace 1 in {subsystem} to "China": ' \
+         "--nsid", "1", "--location", location2])
+    assert f'Setting location for namespace 1 in {subsystem} to "{location2}": ' \
            f'Successful' in caplog.text
     assert f'Received request to change the location of namespace 1 in {subsystem} ' \
-           f'to "China", context: <grpc._server' in caplog.text
+           f'to "{location2}", context: <grpc._server' in caplog.text
     time.sleep(15)
     assert f'Received request to change the location of namespace 1 in {subsystem} ' \
-           f'to "China", context: None' in caplog.text
+           f'to "{location2}", context: None' in caplog.text
     assert f"Received request to delete namespace 1 from {subsystem}" not in caplog.text
     assert f"Received request to remove namespace 1 from {subsystem}" not in caplog.text
     assert f"Received request to add namespace 1 to {subsystem}" not in caplog.text
     caplog.clear()
     cli(["--format", "json", "namespace", "list", "--subsystem", subsystem, "--nsid", "1"])
     assert '"nsid": 1,' in caplog.text
-    assert '"location": "China",' in caplog.text
+    assert f'"location": "{location2}",' in caplog.text
     assert f'"rbd_data_pool_name": "{pool}",' in caplog.text
     caplog.clear()
     cli(["--server-port", "5502", "--format", "json", "namespace", "list",
          "--subsystem", subsystem, "--nsid", "1"])
     assert '"nsid": 1,' in caplog.text
-    assert '"location": "China",' in caplog.text
+    assert f'"location": "{location2}",' in caplog.text
     assert f'"rbd_data_pool_name": "{pool}",' in caplog.text
-    ns_list = gatewayA.subsystem_nsid_bdev_and_uuid.get_all_namespaces_with_location("USA")
+    ns_list = gatewayA.subsystem_nsid_bdev_and_uuid.get_all_namespaces_with_location(location)
     assert len(ns_list) == 1
     assert ns_list[0] == (2, subsystem)
     caplog.clear()
