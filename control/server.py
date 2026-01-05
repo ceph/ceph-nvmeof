@@ -154,6 +154,9 @@ class GatewayServer:
         self.name = self.config.get("gateway", "name")
         if not self.name:
             self.name = socket.gethostname()
+        self.abort_on_update_error = self.config.getboolean_with_default("gateway",
+                                                                         "abort_on_update_error",
+                                                                         True)
         self.system_exit_message = None
         self.system_exit_message_lock = threading.Lock()
         self.gateway_exit_started = threading.Event()
@@ -944,6 +947,12 @@ class GatewayServer:
             exit_msg = self.system_exit_message
         if exit_msg is not None:
             self.logger.error(f"System exit message was set to {exit_msg}")
+            if self.gateway_rpc:
+                self.gateway_rpc.up_and_running = False
+            if self.gateway_state:
+                self.gateway_state.up_and_running = False
+                if self.gateway_state.omap:
+                    self.gateway_state.omap.up_and_running = False
             self.gateway_exit_started.set()
             raise SystemExit(exit_msg)
 
@@ -1073,6 +1082,23 @@ class GatewayServer:
                 return True
             return False
 
+        def abort_server_on_update_error(rc: int, msg: str):
+            if rc == 0:
+                return
+            if msg:
+                self.logger.error(msg)
+            if self.abort_on_update_error:
+                exit_msg = f"Got error {rc} while updating gateway {self.name} state, " \
+                           f"aborting gateway"
+                if self.gateway_rpc:
+                    self.gateway_rpc.up_and_running = False
+                self.set_gateway_exit_message(exit_msg)
+                time.sleep(2)
+                assert False, exit_msg
+            else:
+                self.logger.error(f"Got error {rc} while updating gateway {self.name} state, "
+                                  f"will not abort")
+
         start_time = 0
         for key, val in requests.items():
             start_time = self._sleep_if_needed(break_interval, start_time)
@@ -1096,34 +1122,38 @@ class GatewayServer:
                                                 f"{req.subsystem_nqn} would fail")
                             req.dhchap_key = GatewayUtilsCrypto.INVALID_KEY_VALUE
                             req.key_encrypted = False
-                    self.gateway_rpc.create_subsystem(req)
+                    rc = self.gateway_rpc.create_subsystem(req)
                 else:
                     req = json_format.Parse(val,
                                             pb2.delete_subsystem_req(),
                                             ignore_unknown_fields=True)
-                    self.gateway_rpc.delete_subsystem(req)
+                    rc = self.gateway_rpc.delete_subsystem(req)
+                abort_server_on_update_error(rc.status, rc.error_message)
             elif key.startswith(GatewayState.SUBSYSTEM_NETWORK_MASK):
                 if is_add_req:
                     req = json_format.Parse(val,
                                             pb2.create_subsystem_req(),
                                             ignore_unknown_fields=True)
-                    self.gateway_rpc.create_auto_listeners(req)
+                    rc = self.gateway_rpc.create_auto_listeners(req)
+                    abort_server_on_update_error(rc.status, rc.error_message)
             elif key.startswith(GatewayState.NAMESPACE_PREFIX):
                 if is_add_req:
                     req = json_format.Parse(val, pb2.namespace_add_req(),
                                             ignore_unknown_fields=True)
-                    self.gateway_rpc.namespace_add(req)
+                    rc = self.gateway_rpc.namespace_add(req)
                 else:
                     req = json_format.Parse(val,
                                             pb2.namespace_delete_req(),
                                             ignore_unknown_fields=True)
                     req.i_am_sure = True
-                    self.gateway_rpc.namespace_delete(req)
+                    rc = self.gateway_rpc.namespace_delete(req)
+                abort_server_on_update_error(rc.status, rc.error_message)
             elif key.startswith(GatewayState.NAMESPACE_QOS_PREFIX):
                 if is_add_req:
                     req = json_format.Parse(val, pb2.namespace_set_qos_req(),
                                             ignore_unknown_fields=True)
-                    self.gateway_rpc.namespace_set_qos_limits(req)
+                    rc = self.gateway_rpc.namespace_set_qos_limits(req)
+                    abort_server_on_update_error(rc.status, rc.error_message)
                 else:
                     # Do nothing, this is covered by the delete namespace code
                     pass
@@ -1177,61 +1207,71 @@ class GatewayServer:
                                                 f"PSK key")
                             req.psk = GatewayUtilsCrypto.INVALID_KEY_VALUE
                             req.psk_encrypted = False
-                    self.gateway_rpc.add_host(req)
+                    rc = self.gateway_rpc.add_host(req)
                 else:
                     req = json_format.Parse(val, pb2.remove_host_req(),
                                             ignore_unknown_fields=True)
-                    self.gateway_rpc.remove_host(req)
+                    rc = self.gateway_rpc.remove_host(req)
+                abort_server_on_update_error(rc.status, rc.error_message)
             elif key.startswith(GatewayState.LISTENER_PREFIX):
                 if is_add_req:
                     req = json_format.Parse(val, pb2.create_listener_req(),
                                             ignore_unknown_fields=True)
-                    self.gateway_rpc.create_listener(req)
+                    rc = self.gateway_rpc.create_listener(req)
                 else:
                     req = json_format.Parse(val, pb2.delete_listener_req(),
                                             ignore_unknown_fields=True)
-                    self.gateway_rpc.delete_listener(req)
+                    rc = self.gateway_rpc.delete_listener(req)
+                abort_server_on_update_error(rc.status, rc.error_message)
             elif key.startswith(GatewayState.NAMESPACE_LB_GROUP_PREFIX):
                 if is_add_req:
                     req = json_format.Parse(val, pb2.namespace_change_load_balancing_group_req(),
                                             ignore_unknown_fields=True)
-                    self.gateway_rpc.namespace_change_load_balancing_group(req)
+                    rc = self.gateway_rpc.namespace_change_load_balancing_group(req)
+                    abort_server_on_update_error(rc.status, rc.error_message)
             elif is_a_visibility_change_key(key):
                 if is_add_req:
                     req = json_format.Parse(val, pb2.namespace_change_visibility_req(),
                                             ignore_unknown_fields=True)
-                    self.gateway_rpc.namespace_change_visibility(req)
+                    rc = self.gateway_rpc.namespace_change_visibility(req)
+                    abort_server_on_update_error(rc.status, rc.error_message)
             elif key.startswith(GatewayState.NAMESPACE_LOCATION_PREFIX):
                 if is_add_req:
                     req = json_format.Parse(val, pb2.namespace_change_location_req(),
                                             ignore_unknown_fields=True)
-                    self.gateway_rpc.namespace_change_location(req)
+                    rc = self.gateway_rpc.namespace_change_location(req)
+                    abort_server_on_update_error(rc.status, rc.error_message)
             elif key.startswith(GatewayState.NAMESPACE_TRASH_IMAGE_PREFIX):
                 if is_add_req:
                     req = json_format.Parse(val, pb2.namespace_set_rbd_trash_image_req(),
                                             ignore_unknown_fields=True)
-                    self.gateway_rpc.namespace_set_rbd_trash_image(req)
+                    rc = self.gateway_rpc.namespace_set_rbd_trash_image(req)
+                    abort_server_on_update_error(rc.status, rc.error_message)
             elif key.startswith(GatewayState.NAMESPACE_AUTO_RESIZE_PREFIX):
                 if is_add_req:
                     req = json_format.Parse(val, pb2.namespace_set_auto_resize_req(),
                                             ignore_unknown_fields=True)
-                    self.gateway_rpc.namespace_set_auto_resize(req)
+                    rc = self.gateway_rpc.namespace_set_auto_resize(req)
+                    abort_server_on_update_error(rc.status, rc.error_message)
             elif key.startswith(GatewayState.NAMESPACE_HOST_PREFIX):
                 if is_add_req:
                     req = json_format.Parse(val, pb2.namespace_add_host_req(),
                                             ignore_unknown_fields=True)
-                    self.gateway_rpc.namespace_add_host(req)
+                    rc = self.gateway_rpc.namespace_add_host(req)
                 else:
                     req = json_format.Parse(val, pb2.namespace_delete_host_req(),
                                             ignore_unknown_fields=True)
-                    self.gateway_rpc.namespace_delete_host(req)
+                    rc = self.gateway_rpc.namespace_delete_host(req)
+                abort_server_on_update_error(rc.status, rc.error_message)
             elif key.startswith(GatewayState.HOST_KEY_PREFIX):
                 if is_add_req:
                     req = json_format.Parse(val, pb2.change_host_key_req(),
                                             ignore_unknown_fields=True)
-                    self.gateway_rpc.change_host_key(req)
+                    rc = self.gateway_rpc.change_host_key(req)
+                    abort_server_on_update_error(rc.status, rc.error_message)
             elif key.startswith(GatewayState.SUBSYSTEM_KEY_PREFIX):
                 if is_add_req:
                     req = json_format.Parse(val, pb2.change_subsystem_key_req(),
                                             ignore_unknown_fields=True)
-                    self.gateway_rpc.change_subsystem_key(req)
+                    rc = self.gateway_rpc.change_subsystem_key(req)
+                    abort_server_on_update_error(rc.status, rc.error_message)

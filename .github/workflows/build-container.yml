@@ -107,7 +107,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        test: ["cli", "cli_change_lb", "cli_change_keys", "cli_change_ns_visibility", "cli_change_ns_location", "cli_trash_rbd", "state", "multi_gateway", "server", "grpc", "omap_lock", "log_files", "nsid", "psk", "dhchap", "subsys_grp_name_append", "max_subsystems", "omap_no_read_lock", "omap_read_lock", "omap_read_lock_ignore_errors", "big_omap", "ns_limit", "cli_force_tls", "erasure_pool", "cli_ns_resize", "auto_listeners"]
+        test: ["cli", "cli_change_lb", "cli_change_keys", "cli_change_ns_visibility", "cli_change_ns_location", "cli_trash_rbd", "state", "multi_gateway", "server", "grpc", "omap_lock", "log_files", "nsid", "psk", "dhchap", "subsys_grp_name_append", "max_subsystems", "omap_no_read_lock", "omap_read_lock", "omap_read_lock_ignore_errors", "big_omap", "ns_limit", "cli_force_tls", "erasure_pool", "cli_ns_resize", "auto_listeners", "update_error"]
     runs-on: ubuntu-latest
     env:
       HUGEPAGES: 512  # for multi gateway test, approx 256 per gateway instance
@@ -263,6 +263,7 @@ jobs:
       - name: Start containers
         timeout-minutes: 3
         run: |
+          sed -i 's/^.*abort_on_update_error.*$/abort_on_update_error = False/' ceph-nvmeof.conf
           make up
 
       - name: Wait for the Gateway to be listening
@@ -306,6 +307,10 @@ jobs:
       - name: Run bdevperf
         run: |
           ./tests/ha/demo_test.sh bdevperf_${{ matrix.security_protocol }}
+
+      - name: Restore modified configuration file to default
+        run: |
+          sed -i 's/^.*abort_on_update_error.*$/#abort_on_update_error = True/' ceph-nvmeof.conf
 
       # For debugging purposes (provides an SSH connection to the runner)
       # - name: Setup tmate session

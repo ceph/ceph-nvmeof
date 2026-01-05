@@ -104,6 +104,7 @@ def gateway_no_encryption_key(config):
     config.config["gateway-logs"]["log_level"] = "debug"
     config.config["gateway"]["group"] = ""
     config.config["gateway"]["encryption_key"] = "/etc/ceph/NOencryption.key"
+    config.config["gateway"]["abort_on_update_error"] = "False"
     if os.cpu_count() >= 4:
         config.config["spdk"]["tgt_cmd_extra_args"] = "--lcores (2-3)"
     else:

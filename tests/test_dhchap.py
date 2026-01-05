@@ -166,6 +166,7 @@ def gateway_no_encryption_key(config):
     config.config["gateway"]["group"] = ""
     config.config["gateway"]["enable_key_encryption"] = "True"
     config.config["gateway"]["encryption_key"] = "/etc/ceph/NOencryption.key"
+    config.config["gateway"]["abort_on_update_error"] = "False"
     if os.cpu_count() >= 4:
         config.config["spdk"]["tgt_cmd_extra_args"] = "--lcores 2"
     else:
@@ -206,6 +207,7 @@ def gateway_no_key_encryption_disabled(config):
     config.config["gateway"]["group"] = ""
     config.config["gateway"]["enable_key_encryption"] = "False"
     config.config["gateway"]["encryption_key"] = "/etc/ceph/NOencryption.key"
+    config.config["gateway"]["abort_on_update_error"] = "False"
     if os.cpu_count() >= 4:
         config.config["spdk"]["tgt_cmd_extra_args"] = "--lcores 3"
     else:
