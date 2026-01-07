@@ -32,8 +32,8 @@ NQN="nqn.2016-06.io.spdk:cnode1"
 
      docker compose run -T --rm nvmeof-cli --server-address $ip --server-port 5500 subsystem del -n $NQN --force
      sleep 2
-     verify_gw_exists_and_no_subs  $ip
-     verify_gw_exists_and_no_subs  $ip2
+     verify_gw_exists_and_no_subs $ip
+     verify_gw_exists_and_no_subs $ip2
 
      echo "ℹ️ ℹ️ next : Create  subsystem:"
 
