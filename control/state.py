@@ -35,6 +35,8 @@ class GatewayState(ABC):
     NAMESPACE_PREFIX = "namespace" + OMAP_KEY_DELIMITER
     SUBSYSTEM_PREFIX = "subsystem" + OMAP_KEY_DELIMITER
     SUBSYSTEM_NETWORK_MASK = "network-mask-subsystem" + OMAP_KEY_DELIMITER
+    SUBSYSTEM_NETWORK_ADD_PREFIX = "net-add-subsystem" + OMAP_KEY_DELIMITER
+    SUBSYSTEM_NETWORK_DEL_PREFIX = "net-del-subsystem" + OMAP_KEY_DELIMITER
     SUBSYSTEM_KEY_PREFIX = "key-subsystem" + OMAP_KEY_DELIMITER
     HOST_PREFIX = "host" + OMAP_KEY_DELIMITER
     HOST_KEY_PREFIX = "key-host" + OMAP_KEY_DELIMITER
@@ -149,6 +151,20 @@ class GatewayState(ABC):
 
     def build_subsystem_network_mask_key(subsystem_nqn: str) -> str:
         return GatewayState.SUBSYSTEM_NETWORK_MASK + subsystem_nqn
+
+    def build_subsystem_network_add_key(subsystem_nqn: str, network: str) -> str:
+        key = GatewayState.SUBSYSTEM_NETWORK_ADD_PREFIX + GatewayState.OMAP_KEY_DELIMITER + \
+            subsystem_nqn + GatewayState.OMAP_KEY_DELIMITER
+        if network is not None:
+            key += network
+        return key
+
+    def build_subsystem_network_del_key(subsystem_nqn: str, network: str) -> str:
+        key = GatewayState.SUBSYSTEM_NETWORK_DEL_PREFIX + GatewayState.OMAP_KEY_DELIMITER + \
+            subsystem_nqn + GatewayState.OMAP_KEY_DELIMITER
+        if network is not None:
+            key += network
+        return key
 
     def build_partial_listener_key(subsystem_nqn: str, host: str) -> str:
         key = GatewayState.LISTENER_PREFIX + subsystem_nqn + GatewayState.OMAP_KEY_DELIMITER
@@ -267,6 +283,10 @@ class GatewayState(ABC):
             elif key.startswith(GatewayState.build_host_key_key(subsystem_nqn, None)):
                 self._remove_key(key)
             elif key.startswith(GatewayState.build_subsystem_key_key(subsystem_nqn)):
+                self._remove_key(key)
+            elif key.startswith(GatewayState.build_subsystem_network_add_key(subsystem_nqn, None)):
+                self._remove_key(key)
+            elif key.startswith(GatewayState.build_subsystem_network_del_key(subsystem_nqn, None)):
                 self._remove_key(key)
             elif key.startswith(GatewayState.build_partial_listener_key(subsystem_nqn, None)):
                 self._remove_key(key)
@@ -1483,6 +1503,40 @@ class GatewayStateHandler:
             return (False, None, False)
         return (True, new_req.dhchap_key, new_req.key_encrypted)
 
+    def subsystem_only_network_mask_changed(self, old_val, new_val):
+        # If only the network_mask key field has changed we can use
+        # add/del_subsystem_network request instead of re-adding the subsystem
+        old_req = None
+        new_req = None
+        try:
+            old_req = json_format.Parse(old_val,
+                                        pb2.create_subsystem_req(),
+                                        ignore_unknown_fields=True)
+        except json_format.ParseError:
+            self.logger.exception(f"Got exception parsing {old_val}")
+            return (False, None, None)
+        try:
+            new_req = json_format.Parse(new_val,
+                                        pb2.create_subsystem_req(),
+                                        ignore_unknown_fields=True)
+        except json_format.ParseError:
+            self.logger.exeption(f"Got exception parsing {new_val}")
+            return (False, None, None)
+        if not old_req or not new_req:
+            self.logger.debug(f"Failed to parse requests, old: {old_val} -> {old_req}, "
+                              f"new: {new_val} -> {new_req}")
+            return (False, None, None)
+        assert old_req != new_req, f"Something was wrong we shouldn't get identical old " \
+                                   f"and new values ({old_req})"
+
+        add = list(set(new_req.network_mask) - set(old_req.network_mask))
+        delete = list(set(old_req.network_mask) - set(new_req.network_mask))
+        old_req.network_mask[:] = new_req.network_mask
+        if old_req != new_req:
+            # Something besides the network_mask is different
+            return (False, None, None)
+        return (True, add, delete)
+
     def break_namespace_attribute_key(self, prefix: str, ns_key: str):
         if not ns_key.startswith(prefix):
             self.logger.warning(f"Invalid namespace attribute key \"{ns_key}\", "
@@ -1583,6 +1637,8 @@ class GatewayStateHandler:
                 GatewayState.NAMESPACE_REFRESH_SIZE_PREFIX,
                 GatewayState.LISTENER_PREFIX,
                 GatewayState.SUBSYSTEM_NETWORK_MASK,
+                GatewayState.SUBSYSTEM_NETWORK_DEL_PREFIX,
+                GatewayState.SUBSYSTEM_NETWORK_ADD_PREFIX,
             ]
 
             if not self.omap.ioctx:
@@ -1637,6 +1693,7 @@ class GatewayStateHandler:
                 ns_auto_resize_changed = []
                 only_host_key_changed = []
                 only_subsystem_key_changed = []
+                only_subsystem_network_changed = []
                 auto_listener_add = []
                 for key in changed.keys():
                     if key.startswith(GatewayState.NAMESPACE_PREFIX):
@@ -1705,6 +1762,12 @@ class GatewayStateHandler:
                             only_subsystem_key_changed.append((key,
                                                                new_dhchap_key,
                                                                new_key_encrypted))
+                        (should_process, add_n, del_n) = self.subsystem_only_network_mask_changed(
+                            local_state_dict[key],
+                            omap_state_dict[key])
+                        if should_process:
+                            self.logger.debug(f"Found {key} where only the network has changed.")
+                            only_subsystem_network_changed.append((key, add_n, del_n))
                 for key in added.keys():
                     if key.startswith(GatewayState.SUBSYSTEM_PREFIX):
                         subsystem = self._parse_subsystem_req(omap_state_dict[key])
@@ -1894,15 +1957,49 @@ class GatewayStateHandler:
                         except Exception:
                             self.logger.exception("Exception formatting change subsystem "
                                                   "key request")
+                for subsys_key, add_n, delete_n in only_subsystem_network_changed:
+                    subsys_nqn = None
+                    try:
+                        changed.pop(subsys_key)
+                        subsys_nqn = self.break_subsystem_key(subsys_key)
+                    except Exception:
+                        self.logger.exception(f"Exception removing {subsys_key} from {changed}")
+                    if subsys_nqn:
+                        try:
+                            for network_subnet in add_n:
+                                req = pb2.add_subsystem_network_req(subsystem_nqn=subsys_nqn,
+                                                                    network_mask=network_subnet)
+                                nadd_key = GatewayState.build_subsystem_network_add_key(
+                                    subsys_nqn, network_subnet)
+                                json_req = json_format.MessageToJson(
+                                    req,
+                                    preserving_proto_field_name=True,
+                                    including_default_value_fields=True)
+                                changed[nadd_key] = json_req
+                            for network_subnet in delete_n:
+                                req = pb2.del_subsystem_network_req(subsystem_nqn=subsys_nqn,
+                                                                    network_mask=network_subnet)
+                                ndel_key = GatewayState.build_subsystem_network_del_key(
+                                    subsys_nqn, network_subnet)
+                                json_req = json_format.MessageToJson(
+                                    req,
+                                    preserving_proto_field_name=True,
+                                    including_default_value_fields=True)
+                                changed[ndel_key] = json_req
+                        except Exception:
+                            self.logger.exception("Exception formatting add/del subsystem "
+                                                  "network request")
                 for subsystem_req in auto_listener_add:
                     subsystem_nqn = subsystem_req.subsystem_nqn
                     autolistener_key = GatewayState.build_subsystem_network_mask_key(subsystem_nqn)
                     json_req = json_format.MessageToJson(subsystem_req)
                     added[autolistener_key] = json_req
+
                 if len(ns_lb_group_changed) > 0 or len(only_host_key_changed) > 0 or \
                    len(only_subsystem_key_changed) > 0 or len(ns_visibility_changed) > 0 or \
                    len(ns_location_changed) > 0 or len(ns_trash_image_changed) > 0 or \
-                   len(ns_auto_resize_changed) > 0 or len(auto_listener_add) > 0:
+                   len(ns_auto_resize_changed) > 0 or len(auto_listener_add) > 0 or \
+                   len(only_subsystem_network_changed) > 0:
                     grouped_changed = self._group_by_prefix(changed, prefix_list)
 
                     if len(only_subsystem_key_changed) > 0:
