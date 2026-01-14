@@ -24,6 +24,7 @@ import uuid
 import struct
 import selectors
 import os
+import errno
 from dataclasses import dataclass, field
 from ctypes import LittleEndianStructure, c_ubyte, c_uint8, c_uint16, c_uint32, c_uint64
 
@@ -323,6 +324,9 @@ class DiscoveryService:
         discovery_port: Discovery controller's listening port
     """
 
+    DEFAULT_BIND_RETRIES = 10
+    DEFAULT_BIND_SLEEP_INTERVAL = 0.5
+
     def __init__(self, config):
         self.version = 1
         self.config = config
@@ -337,9 +341,27 @@ class DiscoveryService:
 
         self.discovery_addr = self.config.get_with_default("discovery", "addr", "0.0.0.0")
         self.discovery_port = self.config.get_with_default("discovery", "port", "8009")
-        if not self.discovery_addr or not self.discovery_port:
-            self.logger.error("discovery addr/port are empty.")
-            assert 0
+        self.bind_retries_limit = self.config.getint_with_default(
+            "discovery",
+            "bind_retries_limit",
+            DiscoveryService.DEFAULT_BIND_RETRIES)
+        if self.bind_retries_limit < 0:
+            self.logger.info("A negative bind retries limit, will not limit the "
+                             "number of bind retries")
+        elif self.bind_retries_limit == 0:
+            self.logger.warning("A zero bind retries limit, will use default value")
+            self.bind_retries_limit = DiscoveryService.DEFAULT_BIND_RETRIES
+
+        self.bind_sleep_interval = self.config.getfloat_with_default(
+            "discovery",
+            "bind_sleep_interval",
+            DiscoveryService.DEFAULT_BIND_SLEEP_INTERVAL)
+        if self.bind_sleep_interval < 0.0:
+            self.logger.warning(f"Negative bind sleep interval {self.bind_sleep_interval}, "
+                                f"will use default value")
+            self.bind_sleep_interval = DiscoveryService.DEFAULT_BIND_SLEEP_INTERVAL
+
+        assert self.discovery_addr and self.discovery_port, "discovery addr/port are empty"
         self.logger.info(f"discovery addr: {self.discovery_addr} port: {self.discovery_port}")
 
         self.omap_lock = None
@@ -1183,7 +1205,25 @@ class DiscoveryService:
                 family = socket.AF_INET6
 
         self.sock = socket.socket(family, socket.SOCK_STREAM)
-        self.sock.bind((self.discovery_addr, int(self.discovery_port)))
+        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        retries = self.bind_retries_limit
+        # Notice that a negative value means, keep trying until we succeed
+        while retries != 0:
+            try:
+                retries -= 1
+                self.sock.bind((self.discovery_addr, int(self.discovery_port)))
+                self.logger.debug(f"bind of port {self.discovery_port} succesful")
+                break
+            except OSError as ex:
+                if ex.errno != errno.EADDRINUSE:
+                    self.logger.exception("bind failure")
+                    raise ex
+                if retries != 0:
+                    self.logger.warning("Bind failed as the address is in use, will try again")
+                else:
+                    self.logger.error("Bind failed as the address is in use, will abort")
+                    raise
+            time.sleep(self.bind_sleep_interval)
         self.sock.listen(MAX_CONNECTION)
         self.sock.setblocking(False)
         self.selector.register(self.sock, selectors.EVENT_READ, self.nvmeof_accept)
