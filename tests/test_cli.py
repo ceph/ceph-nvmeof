@@ -218,7 +218,6 @@ class TestGet:
             spdk_ver = os.getenv("NVMEOF_SPDK_VERSION")
         gw_info = cli_test(["gw", "info"])
         assert gw_info is not None
-        assert gw_info.cli_version == cli_ver
         assert gw_info.version == cli_ver
         assert gw_info.spdk_version == spdk_ver
         assert gw_info.name == gw.gateway_name

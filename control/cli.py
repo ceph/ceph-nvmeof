@@ -375,8 +375,6 @@ class GatewayClient:
 
         if args.format == "text" or args.format == "plain":
             if gw_info.status == 0:
-                if gw_info.cli_version:
-                    out_func(f"CLI's version: {gw_info.cli_version}")
                 if gw_info.version:
                     out_func(f"Gateway's version: {gw_info.version}")
                 if gw_info.name:
