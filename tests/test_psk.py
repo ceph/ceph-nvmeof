@@ -329,8 +329,9 @@ def test_psk_with_dhchap(caplog, gateway):
     cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn14,
          "--psk", hostpsk1, "--dhchap-key", hostdhchap1])
     assert f"Adding host {hostnqn14} to {subsystem}: Successful" in caplog.text
-    assert f"Host {hostnqn14} has a DH-HMAC-CHAP key but subsystem {subsystem} " \
-           f"has none, a unidirectional authentication will be used" in caplog.text
+    assert f"Host {hostnqn14} has a DH-HMAC-CHAP key but no controller key, " \
+           f"and subsystem {subsystem} has no key, a unidirectional " \
+           f"authentication will be used" in caplog.text
 
 
 def test_list_listeners(caplog, gateway):

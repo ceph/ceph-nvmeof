@@ -1193,6 +1193,20 @@ class GatewayServer:
                                                 f"DH-HMAC-CHAP key")
                             req.dhchap_key = GatewayUtilsCrypto.INVALID_KEY_VALUE
                             req.key_encrypted = False
+                    if req.ctrlr_key_encrypted and req.dhchap_ctrlr_key:
+                        ctrlr_key_decrypted = None
+                        if self.crypto:
+                            ctrlr_key_decrypted = self.crypto.decrypt_text(req.dhchap_ctrlr_key)
+                            req.ctrlr_key_encrypted = False
+                        if ctrlr_key_decrypted:
+                            req.dhchap_ctrlr_key = ctrlr_key_decrypted
+                        else:
+                            # TODO: raise an alert
+                            self.logger.warning(f"No encryption key or the wrong key was found "
+                                                f"but we need to decrypt host {req.host_nqn} "
+                                                f"controller DH-HMAC-CHAP key")
+                            req.dhchap_ctrlr_key = GatewayUtilsCrypto.INVALID_KEY_VALUE
+                            req.ctrlr_key_encrypted = False
                     if req.psk_encrypted and req.psk:
                         psk_decrypted = None
                         if self.crypto:

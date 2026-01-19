@@ -252,6 +252,7 @@ class GatewayUtils:
 class GatewayUtilsCrypto:
     KEY_SIZE = 32
     INVALID_KEY_VALUE = "<invalid>"
+    EXISTING_DHCHAP_KEY = "-"
     KEY_START = "-----BEGIN PRIVATE KEY-----"
     KEY_END = "-----END PRIVATE KEY-----"
 
