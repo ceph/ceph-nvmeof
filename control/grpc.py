@@ -6057,7 +6057,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                                  active=active,
                                                  manual=True)
                 listeners.append(one_listener)
-                listener_key = (listener.traddr, listener.trsvcid, listener.secure)
+                listener_key = (listener.traddr, listener.trsvcid)
                 omap_listeners.add(listener_key)
             except Exception:
                 self.logger.exception(f"Got exception while parsing {val}")
@@ -6069,7 +6069,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 raise RuntimeError(err_msg)
             state_subsys = state[subsys_key]
             subsystem = json.loads(state_subsys)
-            if subsystem and 'network_mask' in subsystem:
+            if subsystem and subsystem.get('network_mask'):
                 pool = self.config.get("ceph", "pool")
                 group = self.config.get("gateway", "group")
                 nvmemon_listeners = self.ceph_utils.get_gw_listeners(pool, group)
@@ -6085,8 +6085,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                             "traddr": _listener["address"],
                             "secure": secure,
                         }
-                        listener_key = (listener["traddr"], listener["trsvcid"],
-                                        secure)
+                        listener_key = (listener["traddr"], listener["trsvcid"])
                         if listener_key in omap_listeners:
                             continue
                         hostname = GatewayUtils.get_hostname(listener["traddr"], self.logger)
