@@ -271,20 +271,23 @@ def test_create_secure(caplog, gateway):
     cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn1,
          "--dhchap-key", hostdhchap1])
     assert f"Adding host {hostnqn1} to {subsystem}: Successful" in caplog.text
-    assert f"Host {hostnqn1} has a DH-HMAC-CHAP key but subsystem {subsystem} has none, " \
-           f"a unidirectional authentication will be used" in caplog.text
+    assert f"Host {hostnqn1} has a DH-HMAC-CHAP key but no controller key, " \
+           f"and subsystem {subsystem} has no key, a unidirectional " \
+           f"authentication will be used" in caplog.text
     caplog.clear()
     cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn2,
          "--dhchap-key", hostdhchap2])
     assert f"Adding host {hostnqn2} to {subsystem}: Successful" in caplog.text
-    assert f"Host {hostnqn2} has a DH-HMAC-CHAP key but subsystem {subsystem} has none, " \
-           f"a unidirectional authentication will be used" in caplog.text
+    assert f"Host {hostnqn2} has a DH-HMAC-CHAP key but no controller key, " \
+           f"and subsystem {subsystem} has no key, a unidirectional " \
+           f"authentication will be used" in caplog.text
     caplog.clear()
     cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn4,
          "--dhchap-key", hostdhchap4])
     assert f"Adding host {hostnqn4} to {subsystem}: Successful" in caplog.text
-    assert f"Host {hostnqn4} has a DH-HMAC-CHAP key but subsystem {subsystem} has none, " \
-           f"a unidirectional authentication will be used" in caplog.text
+    assert f"Host {hostnqn4} has a DH-HMAC-CHAP key but no controller key, " \
+           f"and subsystem {subsystem} has no key, a unidirectional " \
+           f"authentication will be used" in caplog.text
 
 
 def test_create_not_secure(caplog, gateway):
@@ -426,7 +429,8 @@ def test_add_host_with_key_to_open_subsystem(caplog, gateway):
     assert f"Disabling open host access to {subsystem9}: Successful" in caplog.text
     cli(["host", "change_key", "--subsystem", subsystem9, "--host-nqn", hostnqn19,
          "--dhchap-key", hostdhchap12])
-    assert f"Changing key for host {hostnqn19} on subsystem {subsystem9}: Successful" in caplog.text
+    assert f"Changing DH-HMAC-CHAP key for host {hostnqn19} on subsystem " \
+           f"{subsystem9}: Successful" in caplog.text
     cli(["host", "add", "--subsystem", subsystem9, "--host-nqn", hostnqn20,
          "--dhchap-key", hostdhchap13])
     assert f"Adding host {hostnqn20} to {subsystem9}: Successful" in caplog.text
@@ -508,7 +512,7 @@ def test_dhchap_controller_with_no_dhchap_key(caplog, gateway):
     caplog.clear()
     cli(["host", "add", "--subsystem", subsystem2, "--host-nqn", hostnqn10])
     assert f"Failure adding host {hostnqn10} to {subsystem2}: Host must have a DH-HMAC-CHAP " \
-           f"key if the subsystem has one" in caplog.text
+           f"key if the controller or subsystem has one" in caplog.text
 
 
 def test_list_listeners(caplog, gateway):
@@ -542,9 +546,11 @@ def test_add_key_to_host(caplog, gateway):
     caplog.clear()
     cli(["host", "change_key", "--subsystem", subsystem, "--host-nqn", hostnqn7,
          "--dhchap-key", hostdhchap6])
-    assert f"Changing key for host {hostnqn7} on subsystem {subsystem}: Successful" in caplog.text
-    assert f"Host {hostnqn7} has a DH-HMAC-CHAP key but subsystem {subsystem} has none, " \
-           f"a unidirectional authentication will be used" in caplog.text
+    assert f"Changing DH-HMAC-CHAP key for host {hostnqn7} on subsystem " \
+           f"{subsystem}: Successful" in caplog.text
+    assert f"Host {hostnqn7} has a DH-HMAC-CHAP key but no controller key, " \
+           f"and subsystem {subsystem} has no key, a unidirectional " \
+           f"authentication will be used" in caplog.text
     caplog.clear()
     found = False
     hosts = cli_test(["host", "list", "--subsystem", subsystem])
@@ -578,16 +584,19 @@ def test_change_key_to_all_hosts(caplog, gateway):
         rc = int(str(sysex))
         pass
     assert rc == 2
-    assert "error: Can't change key for host NQN '*', please use a real NQN" in caplog.text
+    assert "error: Can't change DH-HMAC-CHAP key for host NQN '*', please use " \
+           "a real NQN" in caplog.text
 
 
 def test_change_key_for_host(caplog, gateway):
     caplog.clear()
     cli(["host", "change_key", "--subsystem", subsystem, "--host-nqn", hostnqn7,
          "--dhchap-key", hostdhchap1])
-    assert f"Changing key for host {hostnqn7} on subsystem {subsystem}: Successful" in caplog.text
-    assert f"Host {hostnqn7} has a DH-HMAC-CHAP key but subsystem {subsystem} has none, " \
-           f"a unidirectional authentication will be used" in caplog.text
+    assert f"Changing DH-HMAC-CHAP key for host {hostnqn7} on subsystem " \
+           f"{subsystem}: Successful" in caplog.text
+    assert f"Host {hostnqn7} has a DH-HMAC-CHAP key but no controller key, " \
+           f"and subsystem {subsystem} has no key, a unidirectional " \
+           f"authentication will be used" in caplog.text
     rc = 0
     try:
         cli(["host", "change_key", "--subsystem", subsystem, "--host-nqn", hostnqn7])
@@ -618,9 +627,11 @@ def test_change_key_with_psk(caplog, gateway):
     caplog.clear()
     cli(["host", "change_key", "--subsystem", subsystem, "--host-nqn", hostnqn12,
          "--dhchap-key", hostdhchap7])
-    assert f"Changing key for host {hostnqn12} on subsystem {subsystem}: Successful" in caplog.text
-    assert f"Host {hostnqn12} has a DH-HMAC-CHAP key but subsystem {subsystem} has none, " \
-           f"a unidirectional authentication will be used" in caplog.text
+    assert f"Changing DH-HMAC-CHAP key for host {hostnqn12} on subsystem " \
+           f"{subsystem}: Successful" in caplog.text
+    assert f"Host {hostnqn12} has a DH-HMAC-CHAP key but no controller key, " \
+           f"and subsystem {subsystem} has no key, a unidirectional " \
+           f"authentication will be used" in caplog.text
 
 
 def test_change_key_host_not_exist(caplog, gateway):
@@ -760,7 +771,7 @@ def test_change_key_host_on_all_hosts(caplog, gateway):
     except SystemExit as sysex:
         rc = int(str(sysex))
         pass
-    assert "Can't change key for host NQN '*', please use a real NQN" in caplog.text
+    assert "Can't change DH-HMAC-CHAP key for host NQN '*', please use a real NQN" in caplog.text
     assert rc == 2
 
 
@@ -855,7 +866,7 @@ def test_set_subsystem_key_with_non_key_hosts(caplog, gateway):
 def test_change_subsystem_key(caplog, gateway):
     caplog.clear()
     cli(["subsystem", "change_key", "--subsystem", subsystem2, "--dhchap-key", hostdhchap8])
-    assert f"Changing key for subsystem {subsystem2}: Successful" in caplog.text
+    assert f"Changing DH-HMAC-CHAP key for subsystem {subsystem2}: Successful" in caplog.text
     assert f"Received request to change inband authentication key for host " \
            f"{hostnqn11} on subsystem {subsystem2}" in caplog.text
     rc = 0
@@ -982,7 +993,7 @@ def test_delete_key(caplog, gateway):
     cli(["subsystem", "del_key", "--subsystem", subsystem8])
     assert f"Received request to delete inband authentication key for " \
            f"subsystem {subsystem8}" in caplog.text
-    assert f"Deleting key for subsystem {subsystem8}: Successful" in caplog.text
+    assert f"Deleting DH-HMAC-CHAP key for subsystem {subsystem8}: Successful" in caplog.text
     caplog.clear()
     cli(["--format", "json", "subsystem", "list", "--subsystem", subsystem8])
     assert '"status": 0' in caplog.text
@@ -992,7 +1003,8 @@ def test_delete_key(caplog, gateway):
     cli(["host", "del_key", "--subsystem", subsystem8, "--host-nqn", hostnqn1])
     assert f"Received request to delete inband authentication key for host {hostnqn1} " \
            f"on subsystem {subsystem8}" in caplog.text
-    assert f"Deleting key for host {hostnqn1} on subsystem {subsystem8}: Successful" in caplog.text
+    assert f"Deleting DH-HMAC-CHAP key for host {hostnqn1} on subsystem {subsystem8}: " \
+           f"Successful" in caplog.text
     caplog.clear()
     cli(["--format", "json", "host", "list", "--subsystem", subsystem8])
     assert '"status": 0,' in caplog.text
@@ -1054,7 +1066,7 @@ def test_encryption_disabled(caplog, gateway_encryption_disabled):
     caplog.clear()
     cli(["--server-port", "5502", "subsystem", "change_key", "--subsystem", subsystem4,
          "--dhchap-key", hostdhchap8])
-    assert f"Changing key for subsystem {subsystem4}: Successful" in caplog.text
+    assert f"Changing DH-HMAC-CHAP key for subsystem {subsystem4}: Successful" in caplog.text
     found = 0
     state = gw_encryption_disabled.gateway_state.omap.get_state()
     for key, val in state.items():
@@ -1081,7 +1093,8 @@ def test_encryption_disabled(caplog, gateway_encryption_disabled):
          "--host-nqn", hostnqn7, "--dhchap-key", hostdhchap11])
     assert f"Received request to change inband authentication key for host {hostnqn7} " \
            f"on subsystem {subsystem}" in caplog.text
-    assert f"Changing key for host {hostnqn7} on subsystem {subsystem}: Successful" in caplog.text
+    assert f"Changing DH-HMAC-CHAP key for host {hostnqn7} on subsystem " \
+           f"{subsystem}: Successful" in caplog.text
     found = 0
     state = gw_encryption_disabled.gateway_state.omap.get_state()
     for key, val in state.items():
@@ -1133,7 +1146,7 @@ def test_no_encryption_key(caplog, gateway_no_encryption_key):
          "--dhchap-key", hostdhchap9])
     assert f"Received request to change inband authentication key for " \
            f"subsystem {subsystem5}" in caplog.text
-    assert f"Changing key for subsystem {subsystem5}: Successful" in caplog.text
+    assert f"Changing DH-HMAC-CHAP key for subsystem {subsystem5}: Successful" in caplog.text
     assert f"No encryption key or the wrong key was found but we need to encrypt subsystem " \
            f"{subsystem5} DH-HMAC-CHAP key. Any attempt to add host access using a " \
            f"DH-HMAC-CHAP key to the subsystem would fail" in caplog.text
@@ -1173,7 +1186,7 @@ def test_no_encryption_key(caplog, gateway_no_encryption_key):
     caplog.clear()
     cli(["--server-port", "5504", "subsystem", "change_key", "--subsystem", subsystem6,
          "--dhchap-key", hostdhchap1])
-    assert f"Changing key for subsystem {subsystem6}: Successful" in caplog.text
+    assert f"Changing DH-HMAC-CHAP key for subsystem {subsystem6}: Successful" in caplog.text
     assert f"No encryption key or the wrong key was found but we need to encrypt subsystem " \
            f"{subsystem6} DH-HMAC-CHAP key. Any attempt to add host access using a " \
            f"DH-HMAC-CHAP key to the subsystem would fail" in caplog.text
@@ -1219,7 +1232,7 @@ def test_no_encryption_key_when_encryption_disabled(caplog, gateway_no_key_encry
     caplog.clear()
     cli(["--server-port", "5506", "subsystem", "change_key", "--subsystem", subsystem7,
          "--dhchap-key", hostdhchap9])
-    assert f"Changing key for subsystem {subsystem7}: Successful" in caplog.text
+    assert f"Changing DH-HMAC-CHAP key for subsystem {subsystem7}: Successful" in caplog.text
     caplog.clear()
     cli(["--format", "json", "--server-port", "5506", "subsystem", "list",
          "--subsystem", subsystem7])
@@ -1232,4 +1245,5 @@ def test_no_encryption_key_when_encryption_disabled(caplog, gateway_no_key_encry
     caplog.clear()
     cli(["--server-port", "5506", "host", "change_key", "--subsystem", subsystem7, "--host-nqn",
          hostnqn18, "--dhchap-key", hostdhchap2])
-    assert f"Changing key for host {hostnqn18} on subsystem {subsystem7}: Successful" in caplog.text
+    assert f"Changing DH-HMAC-CHAP key for host {hostnqn18} on subsystem " \
+           f"{subsystem7}: Successful" in caplog.text

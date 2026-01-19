@@ -90,8 +90,9 @@ def test_change_host_key(caplog, two_gateways):
     caplog.clear()
     cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn2, "--dhchap-key", key1])
     assert f"Adding host {hostnqn2} to {subsystem}: Successful" in caplog.text
-    assert f"Host {hostnqn2} has a DH-HMAC-CHAP key but subsystem {subsystem} has none, " \
-           f"a unidirectional authentication will be used" in caplog.text
+    assert f"Host {hostnqn2} has a DH-HMAC-CHAP key but no controller key, and " \
+           f"subsystem {subsystem} has no key, a unidirectional authentication will " \
+           f"be used" in caplog.text
     time.sleep(15)
     assert f"Received request to add host {hostnqn2} to " \
            f"{subsystem}, context: <grpc._server" in caplog.text
@@ -100,9 +101,11 @@ def test_change_host_key(caplog, two_gateways):
     caplog.clear()
     cli(["host", "change_key", "--subsystem", subsystem,
          "--host-nqn", hostnqn1, "--dhchap-key", key2])
-    assert f"Changing key for host {hostnqn1} on subsystem {subsystem}: Successful" in caplog.text
-    assert f"Host {hostnqn1} has a DH-HMAC-CHAP key but subsystem {subsystem} has none, " \
-           f"a unidirectional authentication will be used" in caplog.text
+    assert f"Changing DH-HMAC-CHAP key for host {hostnqn1} on subsystem " \
+           f"{subsystem}: Successful" in caplog.text
+    assert f"Host {hostnqn1} has a DH-HMAC-CHAP key but no controller key, and " \
+           f"subsystem {subsystem} has no key, a unidirectional authentication will " \
+           f"be used" in caplog.text
     time.sleep(15)
     assert f"Received request to change inband authentication key for host {hostnqn1} on " \
            f"subsystem {subsystem}, context: <grpc._server" in caplog.text

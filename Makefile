@@ -23,6 +23,7 @@ include mk/containerized.mk
 include mk/demo.mk
 include mk/demosecurepsk.mk
 include mk/demosecuredhchap.mk
+include mk/demosecuredhchap_ctrlr.mk
 include mk/misc.mk
 include mk/autohelp.mk
 

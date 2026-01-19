@@ -280,14 +280,6 @@ class GatewayState(ABC):
                 self._remove_key(key)
             elif key.startswith(GatewayState.build_host_key(subsystem_nqn, None)):
                 self._remove_key(key)
-            elif key.startswith(GatewayState.build_host_key_key(subsystem_nqn, None)):
-                self._remove_key(key)
-            elif key.startswith(GatewayState.build_subsystem_key_key(subsystem_nqn)):
-                self._remove_key(key)
-            elif key.startswith(GatewayState.build_subsystem_network_add_key(subsystem_nqn, None)):
-                self._remove_key(key)
-            elif key.startswith(GatewayState.build_subsystem_network_del_key(subsystem_nqn, None)):
-                self._remove_key(key)
             elif key.startswith(GatewayState.build_partial_listener_key(subsystem_nqn, None)):
                 self._remove_key(key)
 
@@ -1442,18 +1434,43 @@ class GatewayStateHandler:
         # so just use the same values for empty
         old_req.dhchap_key = GatewayStateHandler._normalize_json_string(old_req.dhchap_key)
         new_req.dhchap_key = GatewayStateHandler._normalize_json_string(new_req.dhchap_key)
+        old_req.dhchap_ctrlr_key = GatewayStateHandler._normalize_json_string(
+            old_req.dhchap_ctrlr_key)
+        new_req.dhchap_ctrlr_key = GatewayStateHandler._normalize_json_string(
+            new_req.dhchap_ctrlr_key)
         old_req.key_encrypted = GatewayStateHandler._normalize_json_boolean(old_req.key_encrypted)
         new_req.key_encrypted = GatewayStateHandler._normalize_json_boolean(new_req.key_encrypted)
+        old_req.ctrlr_key_encrypted = GatewayStateHandler._normalize_json_boolean(
+            old_req.ctrlr_key_encrypted)
+        new_req.ctrlr_key_encrypted = GatewayStateHandler._normalize_json_boolean(
+            new_req.ctrlr_key_encrypted)
         old_req.psk = GatewayStateHandler._normalize_json_string(old_req.psk)
         new_req.psk = GatewayStateHandler._normalize_json_string(new_req.psk)
         old_req.psk_encrypted = GatewayStateHandler._normalize_json_boolean(old_req.psk_encrypted)
         new_req.psk_encrypted = GatewayStateHandler._normalize_json_boolean(new_req.psk_encrypted)
+        dhchap_key_changed = old_req.dhchap_key != new_req.dhchap_key
         old_req.dhchap_key = new_req.dhchap_key
         old_req.key_encrypted = new_req.key_encrypted
+        dhchap_ctrlr_key_changed = old_req.dhchap_ctrlr_key != new_req.dhchap_ctrlr_key
+        old_req.dhchap_ctrlr_key = new_req.dhchap_ctrlr_key
+        old_req.ctrlr_key_encrypted = new_req.ctrlr_key_encrypted
         if old_req != new_req:
             # Something besides the keys is different
-            return (False, None, False)
-        return (True, new_req.dhchap_key, new_req.key_encrypted)
+            return (False, None, False, None, False)
+        if dhchap_key_changed:
+            new_dhchap_key = new_req.dhchap_key
+            new_key_encrypted = new_req.key_encrypted
+        else:
+            new_dhchap_key = GatewayUtilsCrypto.EXISTING_DHCHAP_KEY
+            new_key_encrypted = False
+        if dhchap_ctrlr_key_changed:
+            new_dhchap_ctrlr_key = new_req.dhchap_ctrlr_key
+            new_ctrlr_key_encrypted = new_req.ctrlr_key_encrypted
+        else:
+            new_dhchap_ctrlr_key = GatewayUtilsCrypto.EXISTING_DHCHAP_KEY
+            new_ctrlr_key_encrypted = False
+        return (True, new_dhchap_key, new_key_encrypted,
+                new_dhchap_ctrlr_key, new_ctrlr_key_encrypted)
 
     def _parse_subsystem_req(self, val):
         req = None
@@ -1743,13 +1760,18 @@ class GatewayStateHandler:
                     elif key.startswith(GatewayState.HOST_PREFIX):
                         (should_process,
                          new_dhchap_key,
-                         new_key_encrypted) = self.host_only_key_changed(
+                         new_key_encrypted,
+                         new_ctrlr_dhchap_key,
+                         new_ctrlr_key_encrypted) = self.host_only_key_changed(
                              local_state_dict[key],
                              omap_state_dict[key])
                         if should_process:
                             self.logger.debug(f"Found {key} where only the key has changed. The "
-                                              f"new DHCHAP key is {new_dhchap_key}")
-                            only_host_key_changed.append((key, new_dhchap_key, new_key_encrypted))
+                                              f"new DHCHAP key is {new_dhchap_key} and the new "
+                                              f"DHCHAP controller key is {new_ctrlr_dhchap_key}")
+                            only_host_key_changed.append((key, new_dhchap_key, new_key_encrypted,
+                                                          new_ctrlr_dhchap_key,
+                                                          new_ctrlr_key_encrypted))
                     elif key.startswith(GatewayState.SUBSYSTEM_PREFIX):
                         (should_process,
                          new_dhchap_key,
@@ -1901,7 +1923,8 @@ class GatewayStateHandler:
                             self.logger.exception("Exception formatting set namespace "
                                                   "auto resize flag request")
 
-                for host_key, new_dhchap_key, new_key_encrypted in only_host_key_changed:
+                for (host_key, new_dhchap_key, new_key_encrypted, new_dhchap_ctrlr_key,
+                     new_ctrlr_key_encrypted) in only_host_key_changed:
                     subsys_nqn = None
                     host_nqn = None
                     try:
@@ -1921,9 +1944,16 @@ class GatewayStateHandler:
                                     new_dhchap_key = self.crypto.decrypt_text(new_dhchap_key)
                                 else:
                                     new_dhchap_key = GatewayUtilsCrypto.INVALID_KEY_VALUE
+                            if new_ctrlr_key_encrypted and new_dhchap_ctrlr_key:
+                                if self.crypto:
+                                    new_dhchap_ctrlr_key = self.crypto.decrypt_text(
+                                        new_dhchap_ctrlr_key)
+                                else:
+                                    new_dhchap_ctrlr_key = GatewayUtilsCrypto.INVALID_KEY_VALUE
                             req = pb2.change_host_key_req(subsystem_nqn=subsys_nqn,
                                                           host_nqn=host_nqn,
-                                                          dhchap_key=new_dhchap_key)
+                                                          dhchap_key=new_dhchap_key,
+                                                          dhchap_ctrlr_key=new_dhchap_ctrlr_key)
                             json_req = json_format.MessageToJson(
                                 req,
                                 preserving_proto_field_name=True,
