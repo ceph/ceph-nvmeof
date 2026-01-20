@@ -246,6 +246,38 @@ class TestGet:
         assert '"completed_nvme_io": "0"' in caplog.text
         assert '"trtype": "TCP"' in caplog.text
 
+    def test_get_gateway_thread_stats(self, caplog, gateway):
+        caplog.clear()
+        cli(["--format", "json", "gateway", "get_thread_stats"])
+        assert '"status": 0' in caplog.text
+        assert '"tick_rate": "' in caplog.text
+        assert '"tick_rate": "0' not in caplog.text
+        assert '"threads": [' in caplog.text
+        assert '"threads": []' not in caplog.text
+        assert '"name": "app_thread"' in caplog.text
+        if os.cpu_count() >= 4:
+            assert '"name": "nvmf_tgt_poll_group_000"' in caplog.text
+            assert '"name": "nvmf_tgt_poll_group_001"' in caplog.text
+            assert '"name": "nvmf_tgt_poll_group_002"' in caplog.text
+            assert '"name": "nvmf_tgt_poll_group_003"' in caplog.text
+            assert '"name": "nvmf_tgt_poll_group_004"' not in caplog.text
+        elif os.cpu_count() == 3:
+            assert '"name": "nvmf_tgt_poll_group_000"' in caplog.text
+            assert '"name": "nvmf_tgt_poll_group_001"' in caplog.text
+            assert '"name": "nvmf_tgt_poll_group_002"' in caplog.text
+            assert '"name": "nvmf_tgt_poll_group_003"' not in caplog.text
+        elif os.cpu_count() == 2:
+            assert '"name": "nvmf_tgt_poll_group_000"' in caplog.text
+            assert '"name": "nvmf_tgt_poll_group_001"' in caplog.text
+            assert '"name": "nvmf_tgt_poll_group_002"' not in caplog.text
+        else:
+            assert '"name": "nvmf_tgt_poll_group_000"' in caplog.text
+            assert '"name": "nvmf_tgt_poll_group_001"' not in caplog.text
+        assert '"busy": "' in caplog.text
+        assert '"busy": "0' not in caplog.text
+        assert '"idle": "' in caplog.text
+        assert '"idle": "0' not in caplog.text
+
     def test_message_length_too_long(self, caplog, gateway):
         caplog.clear()
         try:
