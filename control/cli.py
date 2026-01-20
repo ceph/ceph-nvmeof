@@ -24,6 +24,7 @@ from tabulate import tabulate
 from .proto import gateway_pb2_grpc as pb2_grpc
 from .proto import gateway_pb2 as pb2
 from .utils import GatewayUtils
+from .utils import GatewayUtilsCrypto
 from .utils import GatewayEnumUtils
 
 
@@ -566,6 +567,51 @@ class GatewayClient:
         else:
             assert False
 
+    def gw_get_thread_stats(self, args):
+        """Show NVMf thread statistics for the gateway"""
+
+        out_func, err_func, _ = self.get_output_functions(args)
+        thread_stats = None
+        try:
+            get_thread_stats_req = pb2.get_thread_stats_req()
+            thread_stats = self.stub.get_thread_stats(get_thread_stats_req)
+        except Exception as ex:
+            err_msg = f"Failure getting gateway's NVMf thread statistics:\n{ex}"
+            thread_stats = pb2.thread_stats_info(status=errno.EINVAL,
+                                                 error_message=err_msg)
+        if args.format == "text" or args.format == "plain":
+            if thread_stats.status == 0:
+                if args.format == "text":
+                    table_format = "fancy_grid"
+                else:
+                    table_format = "plain"
+                stats_list = []
+                tick_rate = thread_stats.tick_rate
+                for thread in thread_stats.threads:
+                    stats_list.append([thread.name, thread.busy, thread.idle])
+                stats_out = tabulate(stats_list,
+                                     headers=["Name", "Busy", "Idle"],
+                                     tablefmt=table_format)
+                out_func(f"NVMf thread statistics for gateway (tick: "
+                         f"{tick_rate}):\n{stats_out}")
+            else:
+                err_func(f"{thread_stats.error_message}")
+        elif args.format == "json" or args.format == "yaml":
+            ret_str = json_format.MessageToJson(thread_stats, indent=4,
+                                                including_default_value_fields=True,
+                                                preserving_proto_field_name=True)
+            if args.format == "json":
+                out_func(ret_str)
+            elif args.format == "yaml":
+                obj = json.loads(ret_str)
+                out_func(yaml.dump(obj))
+        elif args.format == "python":
+            return thread_stats
+        else:
+            assert False
+
+        return thread_stats.status
+
     def gw_get_stats(self, args):
         """Show NVMf statistics for the gateway"""
 
@@ -729,6 +775,9 @@ class GatewayClient:
     gw_actions.append({"name": "listener_info",
                        "args": gw_listener_info_args,
                        "help": "Show listeners information for the gateway"})
+    gw_actions.append({"name": "get_thread_stats",
+                       "args": [],
+                       "help": "Show NVMf thread statistics for the gateway"})
     gw_actions.append({"name": "get_stats",
                        "args": [],
                        "help": "Show NVMf statistics for the gateway"})
@@ -750,6 +799,8 @@ class GatewayClient:
             return self.gw_listener_info(args)
         elif args.action == "get_stats":
             return self.gw_get_stats(args)
+        elif args.action == "get_thread_stats":
+            return self.gw_get_thread_stats(args)
         if not args.action:
             self.cli.parser.error(f"missing action for gw command (choose from "
                                   f"{GatewayClient.gw_choices})")
@@ -1127,12 +1178,12 @@ class GatewayClient:
         try:
             ret = self.stub.change_subsystem_key(req)
         except Exception as ex:
-            errmsg = f"Failure {cmd} key for subsystem {args.subsystem}"
+            errmsg = f"Failure {cmd} DH-HMAC-CHAP key for subsystem {args.subsystem}"
             ret = pb2.req_status(status=errno.EINVAL, error_message=f"{errmsg}:\n{ex}")
 
         if args.format == "text" or args.format == "plain":
             if ret.status == 0:
-                out_func(f"{cmd2} key for subsystem {args.subsystem}: Successful")
+                out_func(f"{cmd2} DH-HMAC-CHAP key for subsystem {args.subsystem}: Successful")
             else:
                 err_func(f"{ret.error_message}")
         elif args.format == "json" or args.format == "yaml":
@@ -1647,6 +1698,13 @@ class GatewayClient:
         if args.dhchap_key == "":
             self.cli.parser.error("DH-HMAC-CHAP key can't be empty")
 
+        if args.dhchap_controller_key == "":
+            self.cli.parser.error("Controller's DH-HMAC-CHAP key can't be empty")
+
+        if args.dhchap_controller_key and not args.dhchap_key:
+            self.cli.parser.error("Controller's DH-HMAC-CHAP key is not allowed without "
+                                  "a host DH-HMAC-CHAP key")
+
         if args.psk:
             if len(args.host_nqn) > 1:
                 self.cli.parser.error("Can't have more than one host NQN when PSK keys are used")
@@ -1655,16 +1713,25 @@ class GatewayClient:
             if len(args.host_nqn) > 1:
                 self.cli.parser.error("Can't have more than one host NQN when "
                                       "DH-HMAC-CHAP keys are used")
+        if args.dhchap_controller_key:
+            if len(args.host_nqn) > 1:
+                self.cli.parser.error("Can't have more than one host NQN when "
+                                      "controller DH-HMAC-CHAP keys are used")
 
         for one_host_nqn in args.host_nqn:
             if one_host_nqn == "*" and args.psk:
                 self.cli.parser.error("PSK key is only allowed for specific hosts")
 
-            if one_host_nqn == "*" and args.dhchap_key:
-                self.cli.parser.error("DH-HMAC-CHAP key is only allowed for specific hosts")
+            if one_host_nqn == "*":
+                if args.dhchap_key:
+                    self.cli.parser.error("DH-HMAC-CHAP key is only allowed for specific hosts")
+                if args.dhchap_controller_key:
+                    self.cli.parser.error("Controller DH-HMAC-CHAP key is only allowed "
+                                          "for specific hosts")
 
             req = pb2.add_host_req(subsystem_nqn=args.subsystem, host_nqn=one_host_nqn,
-                                   psk=args.psk, dhchap_key=args.dhchap_key)
+                                   psk=args.psk, dhchap_key=args.dhchap_key,
+                                   dhchap_ctrlr_key=args.dhchap_controller_key)
             try:
                 ret = self.stub.add_host(req)
             except Exception as ex:
@@ -1782,20 +1849,76 @@ class GatewayClient:
             self.cli.parser.error("DH-HMAC-CHAP key can't be empty")
 
         if args.host_nqn == "*":
-            self.cli.parser.error(f"Can't {cmd} key for host NQN '*', please use a real NQN")
+            self.cli.parser.error(f"Can't {cmd} DH-HMAC-CHAP key for host NQN '*', "
+                                  f"please use a real NQN")
 
         req = pb2.change_host_key_req(subsystem_nqn=args.subsystem, host_nqn=args.host_nqn,
-                                      dhchap_key=args.dhchap_key)
+                                      dhchap_key=args.dhchap_key,
+                                      dhchap_ctrlr_key=GatewayUtilsCrypto.EXISTING_DHCHAP_KEY)
         try:
             ret = self.stub.change_host_key(req)
         except Exception as ex:
-            errmsg = f"Failure {cmd2} key for host {args.host_nqn} on subsystem {args.subsystem}"
+            errmsg = f"Failure {cmd2} DH-HMAC-CHAP key for host {args.host_nqn} on " \
+                     f"subsystem {args.subsystem}"
             ret = pb2.req_status(status=errno.EINVAL, error_message=f"{errmsg}:\n{ex}")
 
         if args.format == "text" or args.format == "plain":
             if ret.status == 0:
-                out_func(f"{cmd3} key for host {args.host_nqn} on subsystem "
+                out_func(f"{cmd3} DH-HMAC-CHAP key for host {args.host_nqn} on subsystem "
                          f"{args.subsystem}: Successful")
+            else:
+                err_func(ret.error_message)
+        elif args.format == "json" or args.format == "yaml":
+            ret_str = json_format.MessageToJson(ret, indent=4,
+                                                including_default_value_fields=True,
+                                                preserving_proto_field_name=True)
+            if args.format == "json":
+                out_func(ret_str)
+            elif args.format == "yaml":
+                obj = json.loads(ret_str)
+                out_func(yaml.dump(obj))
+        elif args.format == "python":
+            return ret
+        else:
+            assert False
+
+        return ret.status
+
+    def controller_del_key(self, args):
+        """Delete controller's inband authentication key."""
+
+        args.dhchap_controller_key = None
+        return self.controller_change_key(args)
+
+    def controller_change_key(self, args):
+        """Change controller's inband authentication key."""
+
+        out_func, err_func, _ = self.get_output_functions(args)
+
+        cmd = "delete" if args.dhchap_controller_key is None else "change"
+        cmd2 = "deleting" if args.dhchap_controller_key is None else "changing"
+        cmd3 = "Deleting" if args.dhchap_controller_key is None else "Changing"
+        if args.dhchap_controller_key is not None and args.dhchap_controller_key == "":
+            self.cli.parser.error("Controller DH-HMAC-CHAP key can't be empty")
+
+        if args.host_nqn == "*":
+            self.cli.parser.error(f"Can't {cmd} controller DH-HMAC-CHAP key for host NQN '*', "
+                                  f"please use a real NQN")
+
+        req = pb2.change_host_key_req(subsystem_nqn=args.subsystem, host_nqn=args.host_nqn,
+                                      dhchap_key=GatewayUtilsCrypto.EXISTING_DHCHAP_KEY,
+                                      dhchap_ctrlr_key=args.dhchap_controller_key)
+        try:
+            ret = self.stub.change_host_key(req)
+        except Exception as ex:
+            errmsg = f"Failure {cmd2} DH-HMAC-CHAP key for controller of {args.host_nqn} on " \
+                     f"subsystem {args.subsystem}"
+            ret = pb2.req_status(status=errno.EINVAL, error_message=f"{errmsg}:\n{ex}")
+
+        if args.format == "text" or args.format == "plain":
+            if ret.status == 0:
+                out_func(f"{cmd3} DH-HMAC-CHAP key for controller of host {args.host_nqn} "
+                         f"on subsystem {args.subsystem}: Successful")
             else:
                 err_func(ret.error_message)
         elif args.format == "json" or args.format == "yaml":
@@ -1895,6 +2018,10 @@ class GatewayClient:
                  "-k",
                  help="Host DH-HMAC-CHAP key",
                  required=False),
+        argument("--dhchap-controller-key",
+                 "-c",
+                 help="Controller DH-HMAC-CHAP key (mutual exclusive with subsystem's key)",
+                 required=False),
     ]
     host_del_args = host_common_args + [
         argument("--host-nqn",
@@ -1919,7 +2046,23 @@ class GatewayClient:
                  help="Host DH-HMAC-CHAP key",
                  required=True),
     ]
+    controller_change_key_args = host_common_args + [
+        argument("--host-nqn",
+                 "-t",
+                 help="Host NQN",
+                 required=True),
+        argument("--dhchap-controller-key",
+                 "-c",
+                 help="Controller DH-HMAC-CHAP key",
+                 required=True),
+    ]
     host_del_key_args = host_common_args + [
+        argument("--host-nqn",
+                 "-t",
+                 help="Host NQN",
+                 required=True),
+    ]
+    controller_del_key_args = host_common_args + [
         argument("--host-nqn",
                  "-t",
                  help="Host NQN",
@@ -1941,6 +2084,12 @@ class GatewayClient:
     host_actions.append({"name": "del_key",
                          "args": host_del_key_args,
                          "help": "Delete host's inband authentication key"})
+    host_actions.append({"name": "change_controller_key",
+                         "args": controller_change_key_args,
+                         "help": "Change controller's inband authentication key"})
+    host_actions.append({"name": "del_controller_key",
+                         "args": controller_del_key_args,
+                         "help": "Delete controller's inband authentication key"})
     host_choices = get_actions(host_actions)
 
     @cli.cmd(host_actions)
@@ -1956,6 +2105,10 @@ class GatewayClient:
             return self.host_change_key(args)
         elif args.action == "del_key":
             return self.host_del_key(args)
+        elif args.action == "change_controller_key":
+            return self.controller_change_key(args)
+        elif args.action == "del_controller_key":
+            return self.controller_del_key(args)
         if not args.action:
             self.cli.parser.error(f"missing action for host command "
                                   f"(choose from {GatewayClient.host_choices})")

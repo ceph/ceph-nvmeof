@@ -60,6 +60,22 @@ function demo_test_dhchap()
     make demosecuredhchap OPTS=-T SUBNQN1="${NQN}" SUBNQN2="${NQN}2" HOSTNQN="${NQN}host" HOSTNQN2="${NQN}host2" HOSTNQN3="${NQN}host3" HOSTNQN4="${NQN}host4" NVMEOF_IO_PORT2=${port2} NVMEOF_IO_PORT3=${port3} NVMEOF_IO_PORT4=${port4} DHCHAPKEY1="${DHCHAP_KEY4}" DHCHAPKEY2="${DHCHAP_KEY5}" DHCHAPKEY3="${DHCHAP_KEY6}" DHCHAPKEY4="${DHCHAP_KEY8}" PSKKEY1="${PSK_KEY1}"
 }
 
+function demo_test_dhchap_ctrlr()
+{
+    rm -rf /tmp/temp-dhchap
+    mkdir -p /tmp/temp-dhchap/dhchap/${NQN}
+    echo -n "${DHCHAP_KEY5}" > /tmp/temp-dhchap/dhchap/${NQN}/key1
+    echo -n "${DHCHAP_KEY6}" > /tmp/temp-dhchap/dhchap/${NQN}/key2
+    echo -n "${DHCHAP_KEY7}" > /tmp/temp-dhchap/dhchap/${NQN}/key3
+    echo -n "${DHCHAP_KEY8}" > /tmp/temp-dhchap/dhchap/${NQN}/key4
+    chmod 0600 /tmp/temp-dhchap/dhchap/${NQN}/key1
+    chmod 0600 /tmp/temp-dhchap/dhchap/${NQN}/key2
+    chmod 0600 /tmp/temp-dhchap/dhchap/${NQN}/key3
+    chmod 0600 /tmp/temp-dhchap/dhchap/${NQN}/key4
+
+    make demosecuredhchap_ctrlr OPTS=-T SUBNQN1="${NQN}" HOSTNQN="${NQN}host" DHCHAPKEY1="${DHCHAP_KEY5}" DHCHAPKEY2="${DHCHAP_KEY6}"
+}
+
 function demo_bdevperf_unsecured()
 {
     echo -n "ℹ️  Starting bdevperf container"
@@ -702,6 +718,13 @@ function demo_bdevperf_dhchap()
         echo "Connecting using the wrong DHCAP controller key should fail"
         exit 1
     fi
+
+    ###echo "ℹ️  bdevperf tcp connect ip: $NVMEOF_IP_ADDRESS port: ${port2} nqn: ${NQN}host2 using no DHCHAP controller"
+    ###make exec SVC=bdevperf OPTS=-T CMD="$rpc -v -s $BDEVPERF_SOCKET bdev_nvme_attach_controller -b Nvme1 -t tcp -a $NVMEOF_IP_ADDRESS -s ${port2} -f ipv4 -n ${NQN}2 -q ${NQN}host2 -l -1 -o 10 --dhchap-key key2"
+    ###if [[ $? -eq 0 ]]; then
+        ###echo "Connecting using no DHCAP controller key should fail"
+        ###exit 1
+    ###fi
     set -e
 
     echo "ℹ️  bdevperf tcp connect ip: $NVMEOF_IP_ADDRESS port: ${port2} nqn: ${NQN}host2 using DHCHAP controller"
@@ -1105,6 +1128,207 @@ function demo_bdevperf_dhchap()
     return 0
 }
 
+function demo_bdevperf_dhchap_ctrlr()
+{
+    echo -n "ℹ️  Starting bdevperf container"
+    docker compose up -d bdevperf
+    sleep 10
+    echo "ℹ️  bdevperf start up logs"
+    make logs SVC=bdevperf
+    eval $(make run SVC=bdevperf OPTS="--entrypoint=env" | grep BDEVPERF_SOCKET | tr -d '\n\r' )
+
+    echo "ℹ️  bdevperf bdev_nvme_set_options"
+    make exec SVC=bdevperf OPTS=-T CMD="$rpc -v -s $BDEVPERF_SOCKET bdev_nvme_set_options -r -1"
+
+    dhchap_path_prefix="/tmp/dhchap/"
+    dhchap_path="${dhchap_path_prefix}${NQN}"
+    docker cp /tmp/temp-dhchap/dhchap ${BDEVPERF_CONTAINER_NAME}:`dirname ${dhchap_path_prefix}`
+    make exec SVC=bdevperf OPTS=-T CMD="chown -R root:root ${dhchap_path_prefix}"
+    make exec SVC=bdevperf OPTS=-T CMD="chmod 0600 ${dhchap_path}/key1"
+    make exec SVC=bdevperf OPTS=-T CMD="chmod 0600 ${dhchap_path}/key2"
+    make exec SVC=bdevperf OPTS=-T CMD="chmod 0600 ${dhchap_path}/key3"
+    make exec SVC=bdevperf OPTS=-T CMD="chmod 0600 ${dhchap_path}/key4"
+    rm -rf /tmp/temp-dhchap
+
+    echo "ℹ️  bdevperf add DHCHAP key name key1 to keyring"
+    make -s exec SVC=bdevperf OPTS=-T CMD="$rpc -v -s $BDEVPERF_SOCKET keyring_file_add_key key1 ${dhchap_path}/key1"
+    echo "ℹ️  bdevperf add DHCHAP key name key2 to keyring"
+    make -s exec SVC=bdevperf OPTS=-T CMD="$rpc -v -s $BDEVPERF_SOCKET keyring_file_add_key key2 ${dhchap_path}/key2"
+    echo "ℹ️  bdevperf add DHCHAP key name key3 to keyring"
+    make -s exec SVC=bdevperf OPTS=-T CMD="$rpc -v -s $BDEVPERF_SOCKET keyring_file_add_key key3 ${dhchap_path}/key3"
+    echo "ℹ️  bdevperf add DHCHAP key name key4 to keyring"
+    make -s exec SVC=bdevperf OPTS=-T CMD="$rpc -v -s $BDEVPERF_SOCKET keyring_file_add_key key4 ${dhchap_path}/key4"
+
+    echo "ℹ️  bdevperf list keyring"
+    make -s exec SVC=bdevperf OPTS=-T CMD="$rpc -s $BDEVPERF_SOCKET keyring_get_keys"
+
+    set +e
+    make -s exec SVC=ceph OPTS=-T CMD="rados --pool rbd listomapvals nvmeof.state" | grep "DHHC"
+    if [[ $? -eq 0 ]]; then
+        echo "DHCHAP keys should be encrypted in OMAP"
+        exit 1
+    fi
+
+    echo "ℹ️  bdevperf tcp connect ip: $NVMEOF_IP_ADDRESS port: ${NVMEOF_IO_PORT} nqn: ${NQN}host using DHCHAP, wrong key"
+    make exec SVC=bdevperf OPTS=-T CMD="$rpc -v -s $BDEVPERF_SOCKET bdev_nvme_attach_controller -b Nvme0 -t tcp -a $NVMEOF_IP_ADDRESS -s ${NVMEOF_IO_PORT} -f ipv4 -n ${NQN} -q ${NQN}host -l -1 -o 10 --dhchap-key key3 --dhchap-ctrlr-key key2"
+    if [[ $? -eq 0 ]]; then
+        echo "Connecting using the wrong DHCAP key should fail"
+        exit 1
+    fi
+
+    echo "ℹ️  bdevperf tcp connect ip: $NVMEOF_IP_ADDRESS port: ${NVMEOF_IO_PORT} nqn: ${NQN}host using DHCHAP, wrong controller key"
+    make exec SVC=bdevperf OPTS=-T CMD="$rpc -v -s $BDEVPERF_SOCKET bdev_nvme_attach_controller -b Nvme0 -t tcp -a $NVMEOF_IP_ADDRESS -s ${NVMEOF_IO_PORT} -f ipv4 -n ${NQN} -q ${NQN}host -l -1 -o 10 --dhchap-key key1 --dhchap-ctrlr-key key3"
+    if [[ $? -eq 0 ]]; then
+        echo "Connecting using the wrong DHCAP controller key should fail"
+        exit 1
+    fi
+
+    echo "ℹ️  bdevperf tcp connect ip: $NVMEOF_IP_ADDRESS port: ${NVMEOF_IO_PORT} nqn: ${NQN}host using DHCHAP, no keys"
+    make exec SVC=bdevperf OPTS=-T CMD="$rpc -v -s $BDEVPERF_SOCKET bdev_nvme_attach_controller -b Nvme0 -t tcp -a $NVMEOF_IP_ADDRESS -s ${NVMEOF_IO_PORT} -f ipv4 -n ${NQN} -q ${NQN}host -l -1 -o 10"
+    if [[ $? -eq 0 ]]; then
+        echo "Connecting without DHCAP keys should fail"
+        exit 1
+    fi
+
+    echo "ℹ️  bdevperf tcp connect ip: $NVMEOF_IP_ADDRESS port: ${NVMEOF_IO_PORT} nqn: ${NQN}host using DHCHAP, no key"
+    make exec SVC=bdevperf OPTS=-T CMD="$rpc -v -s $BDEVPERF_SOCKET bdev_nvme_attach_controller -b Nvme0 -t tcp -a $NVMEOF_IP_ADDRESS -s ${NVMEOF_IO_PORT} -f ipv4 -n ${NQN} -q ${NQN}host -l -1 -o 10 --dhchap-ctrlr-key key2"
+    if [[ $? -eq 0 ]]; then
+        echo "Connecting without a DHCAP key should fail"
+        exit 1
+    fi
+
+    #####echo "ℹ️  bdevperf tcp connect ip: $NVMEOF_IP_ADDRESS port: ${NVMEOF_IO_PORT} nqn: ${NQN}host using DHCHAP, no controller key"
+    #####make exec SVC=bdevperf OPTS=-T CMD="$rpc -v -s $BDEVPERF_SOCKET bdev_nvme_attach_controller -b Nvme0 -t tcp -a $NVMEOF_IP_ADDRESS -s ${NVMEOF_IO_PORT} -f ipv4 -n ${NQN} -q ${NQN}host -l -1 -o 10 --dhchap-key key1"
+    #####if [[ $? -eq 0 ]]; then
+        #####echo "Connecting without a DHCAP controller key should fail"
+        #####exit 1
+    #####fi
+    set -e
+
+    echo "ℹ️  bdevperf tcp connect ip: $NVMEOF_IP_ADDRESS port: ${NVMEOF_IO_PORT} nqn: ${NQN}host using DHCHAP"
+    make exec SVC=bdevperf OPTS=-T CMD="$rpc -v -s $BDEVPERF_SOCKET bdev_nvme_attach_controller -b Nvme0 -t tcp -a $NVMEOF_IP_ADDRESS -s ${NVMEOF_IO_PORT} -f ipv4 -n ${NQN} -q ${NQN}host -l -1 -o 10 --dhchap-key key1 --dhchap-ctrlr-key key2"
+
+    echo "ℹ️  get controllers list"
+    controllers=`make -s exec SVC=bdevperf OPTS=-T CMD="$rpc -v -s $BDEVPERF_SOCKET bdev_nvme_get_controllers"`
+
+    echo "ℹ️  verify connection list"
+    conns=`cephnvmf_func --output stdio --format json connection list --subsystem $NQN`
+
+    [[ `echo $conns | jq -r '.status'` == "0" ]]
+    [[ `echo $conns | jq -r '.subsystem_nqn'` == "${NQN}" ]]
+
+    [[ `echo $conns | jq -r '.connections[0].nqn'` == "${NQN}host" ]]
+    [[ `echo $conns | jq -r '.connections[0].trsvcid'` == "${NVMEOF_IO_PORT}" ]]
+    [[ `echo $conns | jq -r '.connections[0].traddr'` == "${NVMEOF_IP_ADDRESS}" ]]
+    [[ `echo $conns | jq -r '.connections[0].adrfam'` == "ipv4" ]]
+    [[ `echo $conns | jq -r '.connections[0].trtype'` == "TCP" ]]
+    [[ `echo $conns | jq -r '.connections[0].qpairs_count'` == "1" ]]
+    [[ `echo $conns | jq -r '.connections[0].controller_id'` == "5" ]]
+    [[ `echo $conns | jq -r '.connections[0].connected'` == "true" ]]
+    [[ `echo $conns | jq -r '.connections[0].secure'` == "false" ]]
+    [[ `echo $conns | jq -r '.connections[0].use_psk'` == "false" ]]
+    [[ `echo $conns | jq -r '.connections[0].use_dhchap'` == "true" ]]
+    [[ `echo $conns | jq -r '.connections[0].subsystem'` == "${NQN}" ]]
+
+    [[ `echo $conns | jq -r '.connections[1]'` == "null" ]]
+
+    echo "ℹ️  bdevperf perform_tests"
+    eval $(make run SVC=bdevperf OPTS="--entrypoint=env" | grep BDEVPERF_TEST_DURATION | tr -d '\n\r' )
+    timeout=$(expr $BDEVPERF_TEST_DURATION \* 2)
+    bdevperf="/usr/libexec/spdk/scripts/bdevperf.py"
+    make exec SVC=bdevperf OPTS=-T CMD="$bdevperf -v -t $timeout -s $BDEVPERF_SOCKET perform_tests"
+
+    echo "ℹ️  bdevperf detach controllers"
+    make exec SVC=bdevperf OPTS=-T CMD="$rpc -v -s $BDEVPERF_SOCKET bdev_nvme_detach_controller Nvme0"
+
+    echo "ℹ️  get controllers list again"
+    controllers=`make -s exec SVC=bdevperf OPTS=-T CMD="$rpc -v -s $BDEVPERF_SOCKET bdev_nvme_get_controllers"`
+    [[ "${controllers}" == "[]" ]]
+
+    echo "ℹ️  get keys before change"
+    dhchap_key_list_pre_change=`make -s exec SVC=nvmeof OPTS=-T CMD="/usr/local/bin/spdk-rpc -s /var/tmp/spdk.sock keyring_get_keys"`
+    path1_pre=`echo ${dhchap_key_list_pre_change} | jq -r '.[0].path'`
+    path2_pre=`echo ${dhchap_key_list_pre_change} | jq -r '.[1].path'`
+    name1_pre=`echo ${dhchap_key_list_pre_change} | jq -r '.[0].name'`
+    name2_pre=`echo ${dhchap_key_list_pre_change} | jq -r '.[1].name'`
+    make exec SVC=nvmeof OPTS=-T CMD="test -f ${path1_pre}"
+    make exec SVC=nvmeof OPTS=-T CMD="test -f ${path2_pre}"
+
+    echo "ℹ️  change the key for host ${NQN}host"
+    cephnvmf_func host change_key --subsystem $NQN --host-nqn ${NQN}host --dhchap-key "${DHCHAP_KEY7}"
+
+    make exec SVC=nvmeof OPTS=-T CMD="test ! -f ${path1_pre}"
+    make exec SVC=nvmeof OPTS=-T CMD="test ! -f ${path2_pre}"
+
+    echo "ℹ️  get keys after change"
+    dhchap_key_list_post_change=`make -s exec SVC=nvmeof OPTS=-T CMD="/usr/local/bin/spdk-rpc -s /var/tmp/spdk.sock keyring_get_keys"`
+    path1_post=`echo ${dhchap_key_list_post_change} | jq -r '.[0].path'`
+    path2_post=`echo ${dhchap_key_list_post_change} | jq -r '.[1].path'`
+    name1_post=`echo ${dhchap_key_list_post_change} | jq -r '.[0].name'`
+    name2_post=`echo ${dhchap_key_list_post_change} | jq -r '.[1].name'`
+    make exec SVC=nvmeof OPTS=-T CMD="test -f ${path1_post}"
+    make exec SVC=nvmeof OPTS=-T CMD="test -f ${path2_post}"
+
+    echo "ℹ️  bdevperf tcp connect ip: $NVMEOF_IP_ADDRESS port: ${NVMEOF_IO_PORT} nqn: ${NQN}host using previous DHCHAP key"
+    set +e
+    make exec SVC=bdevperf OPTS=-T CMD="$rpc -v -s $BDEVPERF_SOCKET bdev_nvme_attach_controller -b Nvme4 -t tcp -a $NVMEOF_IP_ADDRESS -s ${NVMEOF_IO_PORT} -f ipv4 -n ${NQN} -q ${NQN}host -l -1 -o 10 --dhchap-key key1 --dhchap-ctrlr-key key2"
+    if [[ $? -eq 0 ]]; then
+        echo "Connecting using the previous DHCAP key should fail"
+        exit 1
+    fi
+    set -e
+
+    echo "ℹ️  bdevperf tcp connect ip: $NVMEOF_IP_ADDRESS port: ${NVMEOF_IO_PORT} nqn: ${NQN}host using the new DHCHAP key"
+    make exec SVC=bdevperf OPTS=-T CMD="$rpc -v -s $BDEVPERF_SOCKET bdev_nvme_attach_controller -b Nvme5 -t tcp -a $NVMEOF_IP_ADDRESS -s ${NVMEOF_IO_PORT} -f ipv4 -n ${NQN} -q ${NQN}host -l -1 -o 10 --dhchap-key key3 --dhchap-ctrlr-key key2"
+    make exec SVC=bdevperf OPTS=-T CMD="$rpc -v -s $BDEVPERF_SOCKET bdev_nvme_detach_controller Nvme5"
+
+    echo "ℹ️  change the key for host ${NQN}host controller"
+    cephnvmf_func host change_controller_key --subsystem $NQN --host-nqn ${NQN}host --dhchap-controller-key "${DHCHAP_KEY8}"
+
+    make exec SVC=nvmeof OPTS=-T CMD="test ! -f ${path1_post}"
+    make exec SVC=nvmeof OPTS=-T CMD="test ! -f ${path2_post}"
+
+    echo "ℹ️  bdevperf tcp connect ip: $NVMEOF_IP_ADDRESS port: ${NVMEOF_IO_PORT} nqn: ${NQN}host using previous DHCHAP controller key"
+    set +e
+    make exec SVC=bdevperf OPTS=-T CMD="$rpc -v -s $BDEVPERF_SOCKET bdev_nvme_attach_controller -b Nvme4 -t tcp -a $NVMEOF_IP_ADDRESS -s ${NVMEOF_IO_PORT} -f ipv4 -n ${NQN} -q ${NQN}host -l -1 -o 10 --dhchap-key key3 --dhchap-ctrlr-key key2"
+    if [[ $? -eq 0 ]]; then
+        echo "Connecting using the previous DHCAP controller key should fail"
+        exit 1
+    fi
+    set -e
+
+    echo "ℹ️  bdevperf tcp connect ip: $NVMEOF_IP_ADDRESS port: ${NVMEOF_IO_PORT} nqn: ${NQN}host using the new DHCHAP controller key"
+    make exec SVC=bdevperf OPTS=-T CMD="$rpc -v -s $BDEVPERF_SOCKET bdev_nvme_attach_controller -b Nvme6 -t tcp -a $NVMEOF_IP_ADDRESS -s ${NVMEOF_IO_PORT} -f ipv4 -n ${NQN} -q ${NQN}host -l -1 -o 10 --dhchap-key key3 --dhchap-ctrlr-key key4"
+
+    set +e
+    make -s exec SVC=ceph OPTS=-T CMD="rados --pool rbd listomapvals nvmeof.state" | grep "DHHC"
+    if [[ $? -eq 0 ]]; then
+        echo "DHCHAP keys should be encrypted in OMAP"
+        exit 1
+    fi
+    set -e
+
+    make exec SVC=bdevperf OPTS=-T CMD="$rpc -v -s $BDEVPERF_SOCKET bdev_nvme_detach_controller Nvme6"
+
+    echo "ℹ️  delete the key for host ${NQN}host controller"
+    cephnvmf_func host del_controller_key --subsystem $NQN --host-nqn ${NQN}host
+
+    echo "ℹ️  bdevperf tcp connect ip: $NVMEOF_IP_ADDRESS port: ${NVMEOF_IO_PORT} nqn: ${NQN}host using previous DHCHAP controller key"
+    set +e
+    make exec SVC=bdevperf OPTS=-T CMD="$rpc -v -s $BDEVPERF_SOCKET bdev_nvme_attach_controller -b Nvme4 -t tcp -a $NVMEOF_IP_ADDRESS -s ${NVMEOF_IO_PORT} -f ipv4 -n ${NQN} -q ${NQN}host -l -1 -o 10 --dhchap-key key3 --dhchap-ctrlr-key key4"
+    if [[ $? -eq 0 ]]; then
+        echo "Connecting using the previous DHCAP controller key should fail after we deleted it"
+        exit 1
+    fi
+    set -e
+
+    echo "ℹ️  bdevperf tcp connect ip: $NVMEOF_IP_ADDRESS port: ${NVMEOF_IO_PORT} nqn: ${NQN}host using DHCHAP key only, after controller key removal"
+    make exec SVC=bdevperf OPTS=-T CMD="$rpc -v -s $BDEVPERF_SOCKET bdev_nvme_attach_controller -b Nvme7 -t tcp -a $NVMEOF_IP_ADDRESS -s ${NVMEOF_IO_PORT} -f ipv4 -n ${NQN} -q ${NQN}host -l -1 -o 10 --dhchap-key key3"
+    make exec SVC=bdevperf OPTS=-T CMD="$rpc -v -s $BDEVPERF_SOCKET bdev_nvme_detach_controller Nvme7"
+
+    return 0
+}
+
 . .env
 
 set -e
@@ -1123,6 +1347,9 @@ case "$1" in
     test_dhchap)
         demo_test_dhchap
     ;;
+    test_dhchap_ctrlr)
+        demo_test_dhchap_ctrlr
+    ;;
     bdevperf_unsecured)
         demo_bdevperf_unsecured
     ;;
@@ -1131,6 +1358,9 @@ case "$1" in
     ;;
     bdevperf_dhchap)
         demo_bdevperf_dhchap
+    ;;
+    bdevperf_dhchap_ctrlr)
+        demo_bdevperf_dhchap_ctrlr
     ;;
     *)
         echo "Invalid argument $1"

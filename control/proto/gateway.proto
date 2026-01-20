@@ -145,6 +145,9 @@ service Gateway {
 
 	// Gets gateway's stats
 	rpc get_gateway_stats(get_gateway_stats_req) returns (gateway_stats_info) {}
+
+	// Gets spdk thread stats
+	rpc get_thread_stats(get_thread_stats_req) returns (thread_stats_info) {}
 }
 
 // Request messages
@@ -292,12 +295,15 @@ message add_host_req {
 	optional string dhchap_key = 4;
 	optional bool psk_encrypted = 5;
 	optional bool key_encrypted = 6;
+	optional string dhchap_ctrlr_key = 7;
+	optional bool ctrlr_key_encrypted = 8;
 }
 
 message change_host_key_req {
 	string subsystem_nqn = 1;
 	string host_nqn = 2;
 	optional string dhchap_key = 3;
+	optional string dhchap_ctrlr_key = 4;
 }
 
 message remove_host_req {
@@ -376,6 +382,9 @@ message show_gateway_listeners_info_req {
 }
 
 message get_gateway_stats_req {
+}
+
+message get_thread_stats_req {
 }
 
 // From https://nvmexpress.org/wp-content/uploads/NVM-Express-1_4-2019.06.10-Ratified.pdf page 138
@@ -509,7 +518,7 @@ message gateway_info {
 	optional uint32 max_hosts_per_subsystem = 15;
 	optional uint32 max_namespaces_per_subsystem = 16;
 	optional uint32 max_hosts = 17;
-        optional bool gateway_initialization_over = 18;
+	optional bool gateway_initialization_over = 18;
 }
 
 message cli_version {
@@ -536,14 +545,27 @@ message poll_group_info {
 	uint32 current_io_qpairs = 5;
 	uint64 pending_bdev_io = 6;
 	uint64 completed_nvme_io = 7;
-        repeated poll_group_transport_info transports = 8;
+	repeated poll_group_transport_info transports = 8;
 }
 
 message gateway_stats_info {
 	int32 status = 1;
 	string error_message = 2;
 	uint64 tick_rate = 3;
-        repeated poll_group_info poll_groups = 4;
+	repeated poll_group_info poll_groups = 4;
+}
+
+message thread_stats_info {
+	int32 status = 1;
+	string error_message = 2;
+    repeated spdk_thread_info threads = 3;
+	uint64 tick_rate = 4;
+}
+
+message spdk_thread_info {
+	string name = 1;
+	uint64 busy = 2;
+	uint64 idle = 3;
 }
 
 message listener_info {
@@ -601,7 +623,7 @@ message connection {
 	optional bool secure = 9;
 	optional bool use_psk = 10;
 	optional bool use_dhchap = 11;
-        optional string subsystem = 12;
+	optional string subsystem = 12;
 	optional bool disconnected_due_to_keepalive_timeout = 13;
 }
 
@@ -631,8 +653,8 @@ message namespace_cli {
 	optional bool trash_image = 16;
 	optional bool disable_auto_resize = 17;
 	optional bool read_only = 18;
-        optional string cluster_name = 19;
-        optional uint32 configured_load_balancing_group = 20;
+	optional string cluster_name = 19;
+	optional uint32 configured_load_balancing_group = 20;
 	optional bool image_was_shrunk = 21;
 	optional string rbd_data_pool_name = 22;
 	optional string location = 23;
