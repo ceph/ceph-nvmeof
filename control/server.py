@@ -685,6 +685,7 @@ class GatewayServer:
 
             # Initialize RBD CRC32C configuration
             self._initialize_rbd_crc32c()
+            self._initialize_rbd_spdk_wq()
 
             # Set config and enable dsa accel module offload.
             self._probe_dsa()
@@ -892,6 +893,19 @@ class GatewayServer:
             self.logger.info(f"Set RBD CRC32C usage to: {rbd_with_crc32c}")
         except Exception:
             self.logger.exception("Failed to set RBD CRC32C configuration")
+            raise
+
+    def _initialize_rbd_spdk_wq(self):
+        """Initialize RBD SPDK ContextWQ configuration."""
+
+        rbd_with_spdk_wq = self.config.getboolean_with_default("spdk", "rbd_with_spdk_wq", False)
+        self.logger.debug(f"initialize_rbd_spdk_wq: rbd_with_spdk_wq: {rbd_with_spdk_wq}")
+
+        try:
+            self.spdk_rpc_client.bdev_rbd_set_with_spdk_wq(enable=rbd_with_spdk_wq)
+            self.logger.info(f"Set RBD SPDK ContextWQ usage to: {rbd_with_spdk_wq}")
+        except Exception:
+            self.logger.exception("Failed to set RBD SPDK ContextWQ configuration")
             raise
 
     def _accel_config(self):
