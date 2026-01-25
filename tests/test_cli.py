@@ -873,7 +873,7 @@ class TestCreate:
              "--auto-visible", "yes", "--force"])
         assert f'Asking to change visibility of namespace 8 in {subsystem} to be visible to ' \
                f'all hosts while there are already hosts added to it. Will continue as the ' \
-               f'"--force" parameter was used but these hosts will be removed ' \
+               f'"force" parameter was used but these hosts will be removed ' \
                f'from the namespace.' in caplog.text
         assert f'Changing visibility of namespace 8 in {subsystem} to ' \
                f'"visible to all hosts": Successful' in caplog.text

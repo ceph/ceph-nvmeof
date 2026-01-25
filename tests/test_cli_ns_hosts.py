@@ -2,6 +2,7 @@ import pytest
 from control.server import GatewayServer
 from control.cli import main as cli
 from control.cephutils import CephUtils
+from control.state import GatewayState
 import grpc
 from control.proto import gateway_pb2_grpc as pb2_grpc
 import copy
@@ -14,6 +15,8 @@ subsystem1 = "nqn.2016-06.io.spdk:cnode1"
 hostnqn1 = "nqn.2016-06.io.spdk:host1"
 hostnqn2 = "nqn.2016-06.io.spdk:host2"
 hostnqn3 = "nqn.2016-06.io.spdk:host3"
+hostnqn4 = "nqn.2016-06.io.spdk:host4"
+hostnqn5 = "nqn.2016-06.io.spdk:host5"
 config = "ceph-nvmeof.conf"
 group_name = "GROUPNAME"
 
@@ -235,3 +238,80 @@ def test_del_open_access(caplog, two_gateways):
     cli(["namespace", "list_hosts", "--subsystem", subsystem1, "--nsid", "1"])
     assert hostnqn3 not in caplog.text
     assert "One of the hosts relied on the subsystem being open for all hosts" not in caplog.text
+    caplog.clear()
+    cli(["--format", "json", "namespace", "list_hosts", "--subsystem", subsystem1, "--nsid", "1"])
+    assert '"hosts": []' in caplog.text
+    assert '"auto_visible":' not in caplog.text or '"auto_visible": false' in caplog.text
+
+
+def test_change_visibility_with_hosts_fail(caplog, two_gateways):
+    gwA, _ = two_gateways
+    caplog.clear()
+    cli(["host", "add", "--subsystem", subsystem1, "--host-nqn", "*"])
+    assert f"Allowing open host access to {subsystem1}: Successful" in caplog.text
+    caplog.clear()
+    cli(["namespace", "add_host", "--subsystem", subsystem1, "--nsid", "1",
+         "--host-nqn", hostnqn4])
+    assert f"Adding host {hostnqn4} to namespace 1 on {subsystem1}: Successful" in caplog.text
+    caplog.clear()
+    cli(["namespace", "add_host", "--subsystem", subsystem1, "--nsid", "1",
+         "--host-nqn", hostnqn5])
+    assert f"Adding host {hostnqn5} to namespace 1 on {subsystem1}: Successful" in caplog.text
+    caplog.clear()
+    cli(["namespace", "list_hosts", "--subsystem", subsystem1, "--nsid", "1"])
+    assert hostnqn4 in caplog.text
+    assert hostnqn5 in caplog.text
+    state = gwA.gateway_rpc.gateway_state.omap.get_state()
+    found_host4 = False
+    found_host5 = False
+    for key, val in state.items():
+        if key.startswith(GatewayState.NAMESPACE_HOST_PREFIX):
+            if hostnqn4 in key:
+                found_host4 = True
+            if hostnqn5 in key:
+                found_host5 = True
+    assert found_host4
+    assert found_host5
+    caplog.clear()
+    cli(["namespace", "change_visibility", "--subsystem", subsystem1, "--nsid", "1",
+         "--auto-visible", "yes"])
+    assert f"Failure changing visibility for namespace 1 in {subsystem1}: Asking to change " \
+           f"visibility of namespace to be visible to all hosts while there are already hosts " \
+           f"added to it. Either remove these hosts or use the \"force\" parameter" in caplog.text
+    caplog.clear()
+    cli(["namespace", "list_hosts", "--subsystem", subsystem1, "--nsid", "1"])
+    assert hostnqn4 in caplog.text
+    assert hostnqn5 in caplog.text
+    state = gwA.gateway_rpc.gateway_state.omap.get_state()
+    found_host4 = False
+    found_host5 = False
+    for key, val in state.items():
+        if key.startswith(GatewayState.NAMESPACE_HOST_PREFIX):
+            if hostnqn4 in key:
+                found_host4 = True
+            if hostnqn5 in key:
+                found_host5 = True
+    assert found_host4
+    assert found_host5
+
+
+def test_change_visibility_with_hosts_force(caplog, two_gateways):
+    gwA, _ = two_gateways
+    caplog.clear()
+    cli(["namespace", "change_visibility", "--subsystem", subsystem1, "--nsid", "1",
+         "--auto-visible", "yes", "--force"])
+    assert f'Changing visibility of namespace 1 in {subsystem1} to "visible to all hosts": ' \
+           f'Successful' in caplog.text
+    assert f"Asking to change visibility of namespace 1 in {subsystem1} to be visible to all " \
+           f"hosts while there are already hosts added to it. Will continue as the \"force\" " \
+           f"parameter was used but these hosts will be removed from the namespace." in caplog.text
+    caplog.clear()
+    cli(["namespace", "list_hosts", "--subsystem", subsystem1, "--nsid", "1"])
+    assert hostnqn4 not in caplog.text
+    assert hostnqn5 not in caplog.text
+    caplog.clear()
+    cli(["--format", "json", "namespace", "list_hosts", "--subsystem", subsystem1, "--nsid", "1"])
+    assert '"hosts": []' in caplog.text
+    state = gwA.gateway_rpc.gateway_state.omap.get_state()
+    for key, val in state.items():
+        assert not key.startswith(GatewayState.NAMESPACE_HOST_PREFIX)
