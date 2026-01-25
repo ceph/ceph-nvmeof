@@ -11,29 +11,16 @@ fi
 
 . "$test_dir/sanity.sh"
 
-# Private SPDK RPCs are not exposed via rpc.py CLI; call them through the
-# same JSON-RPC client the gateway uses (spdk.rpc.client).
+rpc=/usr/libexec/spdk/scripts/rpc.py
 SPDK_SOCKET=/var/tmp/spdk.sock
 
 echo "ℹ️  Verify SpdkContextWQ is enabled"
-enabled=$(docker exec -i "$GW1_NAME" python3 - <<EOF
-import json
-import spdk.rpc.client as rpc_client
-c = rpc_client.JSONRPCClient("$SPDK_SOCKET", None, 60.0)
-print(json.dumps(c.call("bdev_rbd_get_with_spdk_wq")))
-EOF
-)
+enabled=$(docker exec "$GW1_NAME" "$rpc" -s "$SPDK_SOCKET" bdev_rbd_get_with_spdk_wq)
 echo "bdev_rbd_get_with_spdk_wq: $enabled"
 [ "$enabled" = "true" ]
 
 echo "ℹ️  Verify SpdkContextWQ processed completions (deq_items > 0)"
-stats=$(docker exec -i "$GW1_NAME" python3 - <<EOF
-import json
-import spdk.rpc.client as rpc_client
-c = rpc_client.JSONRPCClient("$SPDK_SOCKET", None, 60.0)
-print(json.dumps(c.call("bdev_rbd_get_wq_stats")))
-EOF
-)
+stats=$(docker exec "$GW1_NAME" "$rpc" -s "$SPDK_SOCKET" bdev_rbd_get_wq_stats)
 echo "bdev_rbd_get_wq_stats: $stats"
 deq=$(echo "$stats" | jq '[.[].deq_items] | add // 0')
 [ "$deq" -gt 0 ]
