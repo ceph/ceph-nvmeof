@@ -845,7 +845,7 @@ class TestCreate:
              "--host-nqn", host12, "--force"])
         assert f"Adding host {host12} to namespace 1 on {subsystem12}: Successful" in caplog.text
         assert f"Host {host12} is not allowed to access subsystem {subsystem12} but it will " \
-               f"be added to namespace 1 as the \"--force\" parameter " \
+               f"be added to namespace 1 as the \"force\" parameter " \
                f"was used" in caplog.text
         caplog.clear()
         cli(["--format", "json", "namespace", "list_hosts",
@@ -1233,6 +1233,10 @@ class TestCreate:
         assert f'"{host9}"' not in caplog.text
         assert f'"{host10}"' not in caplog.text
         assert '"hosts": []' in caplog.text
+        caplog.clear()
+        cli(["namespace", "del_host", "--subsystem", subsystem, "--nsid", "8",
+             "--host-nqn", host8])
+        assert f"Deleting host {host8} from namespace 8 on {subsystem}: Successful" in caplog.text
         caplog.clear()
         cli(["host", "del", "--subsystem", subsystem, "--host-nqn", host8])
         assert f"Removing host {host8} access from {subsystem}: Successful" in caplog.text

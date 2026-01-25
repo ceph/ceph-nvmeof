@@ -1749,7 +1749,9 @@ class GatewayClient:
         ret_list = []
         out_func, err_func, wrn_func = self.get_output_functions(args)
         for one_host_nqn in args.host_nqn:
-            req = pb2.remove_host_req(subsystem_nqn=args.subsystem, host_nqn=one_host_nqn)
+            req = pb2.remove_host_req(subsystem_nqn=args.subsystem,
+                                      host_nqn=one_host_nqn,
+                                      force=args.force)
 
             try:
                 ret = self.stub.remove_host(req)
@@ -1775,12 +1777,10 @@ class GatewayClient:
                     else:
                         out_func(f"Removing host {one_host_nqn} access from "
                                  f"{args.subsystem}: Successful")
-                    if orig_status == errno.EBUSY:
-                        wrn_func(f"Host {one_host_nqn} is still connected to {args.subsystem}.\n"
-                                 f"Notice that re-connecting the host would fail unless it's "
-                                 f"re-added to the subsystem")
+                    if orig_status != 0:
+                        wrn_func(ret.error_message)
                 else:
-                    err_func(f"{ret.error_message}")
+                    err_func(ret.error_message)
             elif args.format == "json" or args.format == "yaml":
                 ret_str = json_format.MessageToJson(ret, indent=4,
                                                     including_default_value_fields=True,
@@ -1998,6 +1998,10 @@ class GatewayClient:
                  help="Host NQN list",
                  nargs="+",
                  required=True),
+        argument("--force",
+                 help="Delete the host even if it used in a namespace netmask",
+                 action='store_true',
+                 required=False),
     ]
     host_list_args = host_common_args + [
         argument("--clear-alerts",
@@ -2479,8 +2483,15 @@ class GatewayClient:
                     else:
                         if len(ns_host_list) > 0:
                             visibility = ""
+                            relied_on_open = ""
                             for hst in ns_host_list:
-                                visibility += hst + "\n"
+                                if hst == "*":
+                                    relied_on_open = "\nOne of the hosts relied on the " \
+                                                     "subsystem being open for all hosts"
+                                else:
+                                    visibility += hst + "\n"
+                            if relied_on_open:
+                                visibility += relied_on_open
                         else:
                             visibility = "None" if show_hosts else "Restrictive"
 

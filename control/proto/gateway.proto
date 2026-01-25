@@ -309,6 +309,7 @@ message change_host_key_req {
 message remove_host_req {
 	string subsystem_nqn = 1;
 	string host_nqn = 2;
+	optional bool force = 3;
 }
 
 message list_hosts_req {

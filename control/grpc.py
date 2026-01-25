@@ -475,6 +475,8 @@ class NamespaceInfo:
             self.host_list.remove(host_nqn)
         except ValueError:
             pass
+        if len(self.host_list) == 1 and self.is_host_in_namespace("*"):
+            self.remove_all_hosts()
 
     def remove_all_hosts(self):
         self.host_list = []
@@ -674,6 +676,28 @@ class NamespacesLocalList:
                     if not location and not ns.location:
                         ns_list.append((nsid, nqn))
                     elif ns.location == location:
+                        ns_list.append((nsid, nqn))
+        return ns_list
+
+    def get_all_namespaces_with_host(self, host: str, nqn=None) -> list:
+        ns_list = []
+        if not host:
+            return []
+        with self.namespace_list_lock:
+            if nqn and nqn not in self.namespace_list:
+                return []
+
+            if nqn:
+                subsystems = [nqn]
+            else:
+                subsystems = self.namespace_list.keys()
+
+            for nqn in subsystems:
+                for nsid in self.namespace_list[nqn]:
+                    ns = self.namespace_list[nqn][nsid]
+                    if ns.empty():
+                        continue
+                    if ns.is_host_in_namespace(host):
                         ns_list.append((nsid, nqn))
         return ns_list
 
@@ -4267,6 +4291,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                          f"{request.nsid} on {request.subsystem_nqn}, force: {request.force}, "
                          f"context: {context}{peer_msg}")
 
+        assert context or request.force, "Force must be set on update"
         if not request.nsid:
             errmsg = f"Failure adding host {request.host_nqn} to namespace on " \
                      f"{request.subsystem_nqn}: Missing ID"
@@ -4335,19 +4360,21 @@ class GatewayService(pb2_grpc.GatewayServicer):
             self.logger.error(errmsg)
             return pb2.req_status(status=errno.E2BIG, error_message=errmsg)
 
-        host_allowed = self.host_info.is_any_host_allowed(request.subsystem_nqn)
-        if not host_allowed:
-            host_allowed = self.host_info.does_host_exist(request.subsystem_nqn, request.host_nqn)
+        specific_host_allowed = self.host_info.does_host_exist(request.subsystem_nqn,
+                                                               request.host_nqn)
+        host_allowed = specific_host_allowed
+        if not specific_host_allowed:
+            host_allowed = self.host_info.is_any_host_allowed(request.subsystem_nqn)
 
         if not host_allowed:
             if request.force:
                 self.logger.info(f"Host {request.host_nqn} is not allowed to access "
                                  f"subsystem {request.subsystem_nqn} but it will be added "
-                                 f"to namespace {request.nsid} as the \"--force\" parameter "
+                                 f"to namespace {request.nsid} as the \"force\" parameter "
                                  f"was used")
             else:
                 errmsg = f"{failure_prefix}: Host is not allowed to access the subsystem, " \
-                         f"use the \"--force\" parameter to add the host anyway"
+                         f"use the \"force\" parameter to add the host anyway"
                 self.logger.error(errmsg)
                 return pb2.req_status(status=errno.EACCES, error_message=errmsg)
 
@@ -4360,6 +4387,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
             )
             self.logger.debug(f"ns_visible {request.host_nqn}: {ret}")
             find_ret.add_host(request.host_nqn)
+            if not specific_host_allowed and host_allowed:
+                find_ret.add_host("*")
 
             # Just in case SPDK failed with no exception
             if not ret:
@@ -4370,6 +4399,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
             if context:
                 # Update gateway state
                 try:
+                    request.force = True
                     json_req = json_format.MessageToJson(
                         request, preserving_proto_field_name=True,
                         including_default_value_fields=True)
@@ -5007,9 +5037,21 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         assert self.rpc_lock.locked(), "RPC is unlocked when calling remove_host_safe()"
         peer_msg = self.get_peer_message(context)
+        ns_using_host = []
+        removed_host_is_connected = False
         all_host_failure_prefix = f"Failure disabling open host access to {request.subsystem_nqn}"
         host_failure_prefix = f"Failure removing host {request.host_nqn} access " \
                               f"from {request.subsystem_nqn}"
+
+        if request.host_nqn == "*":
+            self.logger.info(
+                f"Received request to disable open host access to"
+                f" {request.subsystem_nqn}, context: {context}{peer_msg}")
+        else:
+            self.logger.info(
+                f"Received request to remove host {request.host_nqn} access from"
+                f" {request.subsystem_nqn}, force: {request.force}, "
+                f"context: {context}{peer_msg}")
 
         if self.verify_nqns:
             rc = GatewayService.is_valid_host_nqn(request.host_nqn)
@@ -5036,15 +5078,30 @@ class GatewayService(pb2_grpc.GatewayServicer):
             self.logger.error(errmsg)
             return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
 
+        if context:
+            ns_using_host = self.subsystem_nsid_bdev_and_uuid.get_all_namespaces_with_host(
+                request.host_nqn, request.subsystem_nqn)
+        if len(ns_using_host) > 0 and not request.force:
+            if request.host_nqn == "*":
+                errmsg = f"{all_host_failure_prefix}: One of the hosts in the netmask of " \
+                         f"namespace {ns_using_host[0][0]} relies on the subsystem " \
+                         f"being open for all hosts. " \
+                         f"Either clear the netmask or use the \"force\" parameter."
+                self.logger.error(errmsg)
+                return pb2.req_status(status=errno.EACCES, error_message=errmsg)
+            else:
+                errmsg = f"{host_failure_prefix}: Host is included in the netmask of " \
+                         f"namespace {ns_using_host[0][0]}. " \
+                         f"Either remove it or use the \"force\" parameter."
+                self.logger.error(errmsg)
+                return pb2.req_status(status=errno.EACCES, error_message=errmsg)
+
         removed_host_is_connected = self.is_host_connected(request.subsystem_nqn, request.host_nqn)
 
         omap_lock = self.omap_lock.get_omap_lock_to_use(context)
         with omap_lock:
             try:
                 if request.host_nqn == "*":  # Disable allow any host access
-                    self.logger.info(
-                        f"Received request to disable open host access to"
-                        f" {request.subsystem_nqn}, context: {context}{peer_msg}")
                     ret = self.spdk_rpc_client.nvmf_subsystem_allow_any_host(
                         nqn=request.subsystem_nqn,
                         allow_any_host=False,
@@ -5052,9 +5109,6 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     self.logger.debug(f"remove_host *: {ret}")
                     self.host_info.disallow_any_host(request.subsystem_nqn)
                 else:  # Remove single host access to subsystem
-                    self.logger.info(
-                        f"Received request to remove host {request.host_nqn} access from"
-                        f" {request.subsystem_nqn}, context: {context}{peer_msg}")
                     if not self.host_info.does_host_exist(request.subsystem_nqn,
                                                           request.host_nqn):
                         errmsg = f"{host_failure_prefix}: Host is not found"
@@ -5104,13 +5158,41 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
 
             rc = self.remove_host_from_state(request.subsystem_nqn, request.host_nqn, context)
-            if rc.status == 0 and removed_host_is_connected:
-                rc.status = errno.EBUSY
-                rc.error_message = f"Host {request.host_nqn} is still connected to " \
-                                   f"{request.subsystem_nqn}\n" \
-                                   f"Reconnecting the host would fail unless " \
-                                   f"it is re-added to the subsystem."
-                self.logger.warning(rc.error_message)
+            if rc.status == 0:
+                err_msg_con = ""
+                err_msg_ns = ""
+                if removed_host_is_connected:
+                    rc.status = errno.EBUSY
+                    err_msg_con = \
+                        f"Host {request.host_nqn} is still connected to " \
+                        f"{request.subsystem_nqn}\n" \
+                        f"Reconnecting the host would fail unless " \
+                        f"it is re-added to the subsystem."
+                    self.logger.warning(err_msg_con)
+                if len(ns_using_host) > 0:
+                    rc.status = errno.EBUSY
+                    if request.host_nqn == "*":
+                        err_msg_ns = \
+                            f"One of the hosts in the netmask of " \
+                            f"namespace {ns_using_host[0][0]} relies on the subsystem " \
+                            f"being open for all hosts. "
+                    else:
+                        err_msg_ns = \
+                            f"Host {request.host_nqn} is included in the netmask of " \
+                            f"namespace {ns_using_host[0][0]} in subsystem " \
+                            f"{ns_using_host[0][1]}. "
+
+                    err_msg_ns += \
+                        "Will continue as the \"force\" parameter " \
+                        "was used but this might cause issues with the netmask later, in " \
+                        "case the host is not removed from the netmask."
+                    self.logger.warning(err_msg_ns)
+                if err_msg_con:
+                    rc.error_message = err_msg_con
+                    if err_msg_ns:
+                        rc.error_message += "\n" + err_msg_ns
+                elif err_msg_ns:
+                    rc.error_message = err_msg_ns
             return rc
 
     def remove_host(self, request, context=None):
