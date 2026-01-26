@@ -3034,6 +3034,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         self.logger.info(f"Received request to change the visibility of namespace {request.nsid} "
                          f"in {request.subsystem_nqn} to {vis_txt}, force: {request.force}, "
                          f"context: {context}{peer_msg}")
+        ns_host_to_remove_from_omap = []
 
         if not request.subsystem_nqn:
             errmsg = "Failure changing visibility for namespace, missing subsystem NQN"
@@ -3064,12 +3065,12 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 self.logger.warning(f"Asking to change visibility of namespace {request.nsid} "
                                     f"in {request.subsystem_nqn} to be visible to all hosts "
                                     f"while there are already hosts added to it. Will continue "
-                                    f"as the \"--force\" parameter was used but these hosts "
+                                    f"as the \"force\" parameter was used but these hosts "
                                     f"will be removed from the namespace.")
             else:
                 errmsg = f"{failure_prefix}: Asking to change visibility of namespace to be " \
                          f"visible to all hosts while there are already hosts added to it. " \
-                         f"Either remove these hosts or use the \"--force\" parameter"
+                         f"Either remove these hosts or use the \"force\" parameter"
                 self.logger.error(errmsg)
                 return pb2.req_status(status=errno.EBUSY, error_message=errmsg)
 
@@ -3078,11 +3079,11 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 self.logger.warning(f"Asking to change visibility of namespace {request.nsid} "
                                     f"in {request.subsystem_nqn} while there are active "
                                     f"connections on the subsystem, will continue as the "
-                                    f"\"--force\" parameter was used.")
+                                    f"\"force\" parameter was used.")
             else:
                 errmsg = f"{failure_prefix}: Asking to change visibility of namespace while " \
                          f"there are active connections on the subsystem, please disconnect " \
-                         f"them or use the \"--force\" parameter."
+                         f"them or use the \"force\" parameter."
                 self.logger.error(errmsg)
                 return pb2.req_status(status=errno.EBUSY, error_message=errmsg)
 
@@ -3115,6 +3116,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 )
                 self.logger.debug(f"nvmf_subsystem_set_ns_visible: {ret}")
                 if request.force and find_ret.host_count() > 0 and request.auto_visible:
+                    ns_host_to_remove_from_omap = find_ret.host_list.copy()
                     self.logger.warning(f"Removing all hosts added to namespace {request.nsid} in "
                                         f"{request.subsystem_nqn} as it was set to be "
                                         f"visible to all hosts")
@@ -3143,6 +3145,18 @@ class GatewayService(pb2_grpc.GatewayServicer):
                         ns_entry, preserving_proto_field_name=True,
                         including_default_value_fields=True)
                     self.gateway_state.add_namespace(request.subsystem_nqn, request.nsid, json_req)
+
+                    # If we set the namespace to be visible, we need to remote its hosts
+                    if len(ns_host_to_remove_from_omap) > 0:
+                        assert request.auto_visible, "We only remove hosts for auto visible"
+                        assert request.force, "Must use \"force\" to set a namespace " \
+                                              "with hosts visible"
+                    for host in ns_host_to_remove_from_omap:
+                        try:
+                            self.gateway_state.remove_namespace_host(request.subsystem_nqn,
+                                                                     request.nsid, host)
+                        except KeyError:
+                            pass
                 except Exception as ex:
                     errmsg = f"Error persisting visibility change for namespace " \
                              f"{request.nsid} in {request.subsystem_nqn}"
