@@ -77,4 +77,4 @@ def test_discovery_bind_ok(caplog, gateway):
     gw = gateway
     caplog.clear()
     cli(["--format", "json", "gateway", "info"])
-    assert f'"gw-id": "{gw.name}"' in caplog.text
+    assert f'"name": "{gw.name}"' in caplog.text
