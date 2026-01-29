@@ -284,6 +284,12 @@ class GatewayClient:
         else:
             self.cli.parser.error("invalid --output value")
 
+    @staticmethod
+    def parse_boolean(val: str) -> bool:
+        val = val.lower()
+        rc = val == "yes" or val == "true" or val == "1"
+        return rc
+
     def validate_ip_address(self, addr, family):
         ipaddr = None
         try:
@@ -403,6 +409,8 @@ class GatewayClient:
                 if gw_info.max_hosts_per_subsystem:
                     out_func(f"Gateway's max hosts per subsystem: "
                              f"{gw_info.max_hosts_per_subsystem}")
+                io_stats_txt = "enabled" if gw_info.io_stats_enabled else "disabled"
+                out_func(f"Gateway's IO statistics is {io_stats_txt}")
                 if gw_info.spdk_version:
                     out_func(f"SPDK version: {gw_info.spdk_version}")
                 if not gw_info.bool_status:
@@ -536,6 +544,8 @@ class GatewayClient:
         else:
             assert False
 
+        return ret.status
+
     def gw_get_thread_stats(self, args):
         """Show NVMf thread statistics for the gateway"""
 
@@ -550,10 +560,7 @@ class GatewayClient:
                                                  error_message=err_msg)
         if args.format == "text" or args.format == "plain":
             if thread_stats.status == 0:
-                if args.format == "text":
-                    table_format = "fancy_grid"
-                else:
-                    table_format = "plain"
+                table_format = "fancy_grid" if args.format == "text" else "plain"
                 stats_list = []
                 tick_rate = thread_stats.tick_rate
                 for thread in thread_stats.threads:
@@ -581,6 +588,47 @@ class GatewayClient:
 
         return thread_stats.status
 
+    def gw_set_io_stats_mode(self, args):
+        """Set gateway IO statistics on or off"""
+
+        out_func, err_func, _ = self.get_output_functions(args)
+        ret = None
+        if args.enable and args.disable:
+            self.cli.parser.error("\"--enable\" and \"--disable\" are mutually exclusive")
+        if not args.enable and not args.disable:
+            self.cli.parser.error("One of \"--enable\" or \"--disable\" must be specified")
+
+        enabled = args.enable or False
+        try:
+            set_io_stats_req = pb2.set_gateway_io_stats_mode_req(enabled=enabled)
+            ret = self.stub.set_gateway_io_stats_mode(set_io_stats_req)
+        except Exception as ex:
+            ret = pb2.gateway_stats_info(status=errno.EINVAL,
+                                         error_message=f"Failure setting gateway's "
+                                                       f"IO statistics mode:\n{ex}")
+
+        if args.format == "text" or args.format == "plain":
+            if ret.status == 0:
+                mode_str = "enabled" if enabled else "disabled"
+                out_func(f"Set gateway IO statistics mode to \"{mode_str}\": Successful")
+            else:
+                err_func(f"{ret.error_message}")
+        elif args.format == "json" or args.format == "yaml":
+            ret_str = json_format.MessageToJson(ret, indent=4,
+                                                including_default_value_fields=True,
+                                                preserving_proto_field_name=True)
+            if args.format == "json":
+                out_func(ret_str)
+            elif args.format == "yaml":
+                obj = json.loads(ret_str)
+                out_func(yaml.dump(obj))
+        elif args.format == "python":
+            return ret
+        else:
+            assert False
+
+        return ret.status
+
     def gw_get_stats(self, args):
         """Show NVMf statistics for the gateway"""
 
@@ -596,10 +644,7 @@ class GatewayClient:
 
         if args.format == "text" or args.format == "plain":
             if gw_stats.status == 0:
-                if args.format == "text":
-                    table_format = "fancy_grid"
-                else:
-                    table_format = "plain"
+                table_format = "fancy_grid" if args.format == "text" else "plain"
                 stats_list = []
                 for pg in gw_stats.poll_groups:
                     transports = ""
@@ -684,10 +729,7 @@ class GatewayClient:
                                            active,
                                            ana_states])
                 if len(listeners_list) > 0:
-                    if args.format == "text":
-                        table_format = "fancy_grid"
-                    else:
-                        table_format = "plain"
+                    table_format = "fancy_grid" if args.format == "text" else "plain"
                     listeners_out = tabulate(listeners_list,
                                              headers=["Host",
                                                       "Transport",
@@ -728,6 +770,12 @@ class GatewayClient:
                  help="Subsystem NQN",
                  required=True),
     ]
+    gw_set_io_stats_mode_args = [
+        argument("--enable", "-e", help="Enable the IO statistics for the gateway",
+                 action='store_true', required=False),
+        argument("--disable", "-d", help="Enable the IO statistics for the gateway",
+                 action='store_true', required=False),
+    ]
     gw_actions = []
     gw_actions.append({"name": "version",
                        "args": [],
@@ -750,6 +798,9 @@ class GatewayClient:
     gw_actions.append({"name": "get_stats",
                        "args": [],
                        "help": "Show NVMf statistics for the gateway"})
+    gw_actions.append({"name": "set_io_stats_mode",
+                       "args": gw_set_io_stats_mode_args,
+                       "help": "Set gateway IO statistics on or off"})
     gw_choices = get_actions(gw_actions)
 
     @cli.cmd(gw_actions, ["gw"])
@@ -770,6 +821,8 @@ class GatewayClient:
             return self.gw_get_stats(args)
         elif args.action == "get_thread_stats":
             return self.gw_get_thread_stats(args)
+        elif args.action == "set_io_stats_mode":
+            return self.gw_set_io_stats_mode(args)
         if not args.action:
             self.cli.parser.error(f"missing action for gw command (choose from "
                                   f"{GatewayClient.gw_choices})")
@@ -1083,10 +1136,7 @@ class GatewayClient:
                         one_subsys.append("Yes" if s.created_without_key else "No")
                     subsys_list.append(one_subsys)
                 if len(subsys_list) > 0:
-                    if args.format == "text":
-                        table_format = "fancy_grid"
-                    else:
-                        table_format = "plain"
+                    table_format = "fancy_grid" if args.format == "text" else "plain"
                     headers_list = ["Subtype", "NQN", "Serial\nNumber", "Controller IDs",
                                     "Namespace\nCount", "Max\nNamespaces", "Allow\nAny Host",
                                     "DHCHAP\nKey", "Network\nMask"]
@@ -1537,10 +1587,7 @@ class GatewayClient:
                                            active,
                                            manual])
                 if len(listeners_list) > 0:
-                    if args.format == "text":
-                        table_format = "fancy_grid"
-                    else:
-                        table_format = "plain"
+                    table_format = "fancy_grid" if args.format == "text" else "plain"
                     listeners_out = tabulate(listeners_list,
                                              headers=["Host",
                                                       "Transport",
@@ -1937,10 +1984,7 @@ class GatewayClient:
                     one_host = [h.nqn, use_psk, use_dhchap] + timeout_col
                     hosts_list.append(one_host)
                 if len(hosts_list) > 0:
-                    if args.format == "text":
-                        table_format = "fancy_grid"
-                    else:
-                        table_format = "plain"
+                    table_format = "fancy_grid" if args.format == "text" else "plain"
                     timeout_col = ["Keepalive\nTimeout"] if has_timeout else []
                     headers_list = ["Host NQN", "Uses PSK", "Uses DHCHAP"] + timeout_col
                     hosts_out = tabulate(hosts_list,
@@ -2139,10 +2183,7 @@ class GatewayClient:
                                                           conn_dhchap] + timeout_col)
                 subsys_text = connections_info.subsystem_nqn
                 if len(connections_list) > 0:
-                    if args.format == "text":
-                        table_format = "fancy_grid"
-                    else:
-                        table_format = "plain"
+                    table_format = "fancy_grid" if args.format == "text" else "plain"
                     subsys_col = []
                     if connections_info.subsystem_nqn == GatewayUtils.ALL_SUBSYSTEMS:
                         subsys_col = ["Subsystem"]
@@ -2182,6 +2223,136 @@ class GatewayClient:
 
         return connections_info.status
 
+    def connection_get_io_statistics(self, args):
+        """Get connection's IO statistics."""
+
+        def _is_latency_group_empty(grp) -> bool:
+            if not grp:
+                return True
+            if grp.io_count:
+                return False
+            if grp.total.min or grp.total.max or grp.total.mean:
+                return False
+            if grp.bdev.min or grp.bdev.max or grp.bdev.mean:
+                return False
+            if grp.net.min or grp.net.max or grp.net.mean:
+                return False
+            if grp.qos.min or grp.qos.max or grp.qos.mean:
+                return False
+            return True
+
+        def _get_latency_stats_line(ls) -> str:
+            return f"{ls.min}, {ls.max}, {ls.mean}"
+
+        out_func, err_func, _ = self.get_output_functions(args)
+
+        if args.host_nqn == "*":
+            self.cli.parser.error("Must specify a specific host NQN")
+
+        req = pb2.get_connection_io_statistics_req(subsystem_nqn=args.subsystem,
+                                                   host_nqn=args.host_nqn, reset=False)
+        try:
+            ret = self.stub.get_connection_io_statistics(req)
+        except Exception as ex:
+            ret = pb2.connection_io_statistics(status=errno.EINVAL,
+                                               error_message=f"Failure getting host IO "
+                                                             f"statistics:\n{ex}",
+                                               subsystem_nqn=args.subsystem,
+                                               host_nqn=args.host_nqn)
+
+        if args.format == "text" or args.format == "plain":
+            if ret.status == 0:
+                if len(ret.buckets) == 0:
+                    out_func(f"No IO statistics available for host {args.host_nqn} "
+                             f"on {args.subsystem}")
+                    if ret.total_num_ios > 0:
+                        out_func(f"Total IOs count: {ret.total_num_ios}")
+                    return ret.status
+
+                table_format = "fancy_grid" if args.format == "text" else "plain"
+                out_func(f"IO statistics for host {args.host_nqn} on {args.subsystem}:\n")
+                stats_list = []
+                for bucket in ret.buckets:
+                    rd = bucket.read
+                    wr = bucket.write
+                    lat_groups = [("Read", rd), ("Write", wr)]
+                    for lg in lat_groups:
+                        if not _is_latency_group_empty(lg[1]):
+                            stats_list.append([f"{bucket.size}KB",
+                                               lg[0],
+                                               lg[1].io_count,
+                                               _get_latency_stats_line(lg[1].bdev),
+                                               _get_latency_stats_line(lg[1].net),
+                                               _get_latency_stats_line(lg[1].qos)])
+                tbl = tabulate(stats_list,
+                               headers=["Bucket\nSize",
+                                        "Bucket\nType",
+                                        "IOs Count",
+                                        "BDEV µSec\n(Min,Max,Mean)",
+                                        "Net µSec\n(Min,Max,Mean)",
+                                        "QOS µSec\n(Min,Max,Mean)"],
+                               tablefmt=table_format)
+                out_func(f"{tbl}\n\n"
+                         f"Total IOs count: {ret.total_num_ios}")
+            else:
+                err_func(ret.error_message)
+        elif args.format == "json" or args.format == "yaml":
+            ret_str = json_format.MessageToJson(ret, indent=4,
+                                                including_default_value_fields=True,
+                                                preserving_proto_field_name=True)
+            if args.format == "json":
+                out_func(ret_str)
+            elif args.format == "yaml":
+                obj = json.loads(ret_str)
+                out_func(yaml.dump(obj))
+        elif args.format == "python":
+            return ret
+        else:
+            assert False
+
+        return ret.status
+
+    def connection_reset_io_statistics(self, args):
+        """Reset connection's IO statistics."""
+
+        out_func, err_func, _ = self.get_output_functions(args)
+
+        if args.host_nqn == "*":
+            self.cli.parser.error("Must specify a specific host NQN")
+
+        req = pb2.get_connection_io_statistics_req(subsystem_nqn=args.subsystem,
+                                                   host_nqn=args.host_nqn, reset=True)
+        try:
+            ret = self.stub.get_connection_io_statistics(req)
+        except Exception as ex:
+            ret = pb2.connection_io_statistics(status=errno.EINVAL,
+                                               error_message=f"Failure resetting host's IO "
+                                                             f"statistics:\n{ex}",
+                                               subsystem_nqn=args.subsystem,
+                                               host_nqn=args.host_nqn)
+
+        if args.format == "text" or args.format == "plain":
+            if ret.status == 0:
+                out_func(f"Resetting host's {args.host_nqn} in {args.subsystem} "
+                         f"IO statistics: Successful")
+            else:
+                err_func(ret.error_message)
+        elif args.format == "json" or args.format == "yaml":
+            ret_str = json_format.MessageToJson(ret, indent=4,
+                                                including_default_value_fields=True,
+                                                preserving_proto_field_name=True)
+            if args.format == "json":
+                out_func(ret_str)
+            elif args.format == "yaml":
+                obj = json.loads(ret_str)
+                out_func(yaml.dump(obj))
+        elif args.format == "python":
+            return ret
+        else:
+            assert False
+
+        return ret.status
+
     connection_list_args = [
         argument("--subsystem",
                  "-n",
@@ -2192,10 +2363,36 @@ class GatewayClient:
                  action='store_true',
                  required=False),
     ]
+    get_io_statistics_args = [
+        argument("--subsystem",
+                 "-n",
+                 help="Subsystem NQN",
+                 required=True),
+        argument("--host-nqn",
+                 "-t",
+                 help="Host NQN",
+                 required=True),
+    ]
+    reset_io_statistics_args = [
+        argument("--subsystem",
+                 "-n",
+                 help="Subsystem NQN",
+                 required=True),
+        argument("--host-nqn",
+                 "-t",
+                 help="Host NQN",
+                 required=True),
+    ]
     connection_actions = []
     connection_actions.append({"name": "list",
                                "args": connection_list_args,
                                "help": "List active connections"})
+    connection_actions.append({"name": "get_io_statistics",
+                               "args": get_io_statistics_args,
+                               "help": "Get the IO statistics for a connection"})
+    connection_actions.append({"name": "reset_io_statistics",
+                               "args": reset_io_statistics_args,
+                               "help": "Reset the IO statistics for a connection"})
     connection_choices = get_actions(connection_actions)
 
     @cli.cmd(connection_actions)
@@ -2203,6 +2400,10 @@ class GatewayClient:
         """Connection commands"""
         if args.action == "list":
             return self.connection_list(args)
+        elif args.action == "get_io_statistics":
+            return self.connection_get_io_statistics(args)
+        elif args.action == "reset_io_statistics":
+            return self.connection_reset_io_statistics(args)
         if not args.action:
             self.cli.parser.error(f"missing action for connection command (choose "
                                   f"from {GatewayClient.connection_choices})")
@@ -2532,10 +2733,7 @@ class GatewayClient:
                                                 qos_str] + verbose_info)
 
                 if len(namespaces_list) > 0:
-                    if args.format == "text":
-                        table_format = "fancy_grid"
-                    else:
-                        table_format = "plain"
+                    table_format = "fancy_grid" if args.format == "text" else "plain"
                     verbose_headers = []
                     configured_txt = ""
                     if args.verbose:
@@ -2694,10 +2892,7 @@ class GatewayClient:
                     if e.value:
                         stats_list.append([f"IO Error - {e.name}", e.value])
 
-                if args.format == "text":
-                    table_format = "fancy_grid"
-                else:
-                    table_format = "plain"
+                table_format = "fancy_grid" if args.format == "text" else "plain"
                 stats_out = tabulate(stats_list, headers=["Stat", "Value"], tablefmt=table_format)
                 out_func(f"IO statistics for namespace {args.nsid} in {args.subsystem}, "
                          f"bdev {ns_io_stats.bdev_name}:\n{stats_out}")
@@ -2947,10 +3142,7 @@ class GatewayClient:
         if args.nsid <= 0:
             self.cli.parser.error("nsid value must be positive")
 
-        auto_visible = args.auto_visible == "yes" or \
-            args.auto_visible == "true" or \
-            args.auto_visible == "1"
-
+        auto_visible = GatewayClient.parse_boolean(args.auto_visible)
         try:
             change_visibility_req = pb2.namespace_change_visibility_req(
                 subsystem_nqn=args.subsystem,
@@ -3037,10 +3229,7 @@ class GatewayClient:
         if args.nsid <= 0:
             self.cli.parser.error("nsid value must be positive")
 
-        trash_image = args.rbd_trash_image_on_delete == "yes" or \
-            args.rbd_trash_image_on_delete == "true" or \
-            args.rbd_trash_image_on_delete == "1"
-
+        trash_image = GatewayClient.parse_boolean(args.rbd_trash_image_on_delete)
         try:
             set_trash_image_req = pb2.namespace_set_rbd_trash_image_req(
                 subsystem_nqn=args.subsystem,
@@ -3084,10 +3273,7 @@ class GatewayClient:
         if args.nsid <= 0:
             self.cli.parser.error("nsid value must be positive")
 
-        auto_resize = args.auto_resize_enabled == "yes" or \
-            args.auto_resize_enabled == "true" or \
-            args.auto_resize_enabled == "1"
-
+        auto_resize = GatewayClient.parse_boolean(args.auto_resize_enabled)
         try:
             set_auto_resize_req = pb2.namespace_set_auto_resize_req(
                 subsystem_nqn=args.subsystem,
