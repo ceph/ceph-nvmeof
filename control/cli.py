@@ -807,47 +807,8 @@ class GatewayClient:
 
         return ret.status
 
-    def spdk_log_level_get(self, args):
-        """Get SPDK log levels and nvmf log flags"""
 
-        out_func, err_func, _ = self.get_output_functions(args)
-
-        req = pb2.get_spdk_nvmf_log_flags_and_level_req(all_log_flags=args.all_log_flags)
-        try:
-            ret = self.stub.get_spdk_nvmf_log_flags_and_level(req)
-        except Exception as ex:
-            ret = pb2.req_status(
-                status=errno.EINVAL,
-                error_message=f"Failure getting SPDK log levels and nvmf log flags:\n{ex}")
-
-        if args.format == "text" or args.format == "plain":
-            if ret.status == 0:
-                for flag in ret.nvmf_log_flags:
-                    enabled_str = "enabled" if flag.enabled else "disabled"
-                    out_func(f"SPDK log flag \"{flag.name}\" is {enabled_str}")
-                level = GatewayEnumUtils.get_key_from_value(pb2.LogLevel, ret.log_level)
-                out_func(f"SPDK log level is {level}")
-                level = GatewayEnumUtils.get_key_from_value(pb2.LogLevel, ret.log_print_level)
-                out_func(f"SPDK log print level is {level}")
-            else:
-                err_func(f"{ret.error_message}")
-        elif args.format == "json" or args.format == "yaml":
-            out_log_level = json_format.MessageToJson(ret, indent=4,
-                                                      including_default_value_fields=True,
-                                                      preserving_proto_field_name=True)
-            if args.format == "json":
-                out_func(out_log_level)
-            elif args.format == "yaml":
-                obj = json.loads(out_log_level)
-                out_func(yaml.dump(obj))
-        elif args.format == "python":
-            return ret
-        else:
-            assert False
-
-        return ret.status
-
-    def spdk_log_level_set(self, args):
+    def spdk_log_level_set1(self, args):
         """Set SPDK log levels and nvmf log flags"""
 
         out_func, err_func, _ = self.get_output_functions(args)
