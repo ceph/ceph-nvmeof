@@ -1134,7 +1134,7 @@ class TestCreate:
         cli(["namespace", "del_host", "--subsystem", subsystem, "--nsid", "9",
              "--host-nqn", hostxx])
         assert f"Failure deleting host {hostxx} from namespace 9 on {subsystem}: " \
-               f"Host is not found in namespace's host list" in caplog.text
+               f"Host is not in namespace's host list" in caplog.text
 
     def test_add_namespace_multiple_hosts(self, caplog, gateway):
         caplog.clear()
@@ -2017,7 +2017,7 @@ class TestDelete:
         caplog.clear()
         cli(["host", "del", "--subsystem", subsystem, "--host-nqn", hostxx])
         assert f"Failure removing host {hostxx} access from {subsystem}: " \
-               f"Host is not found" in caplog.text
+               f"No such host" in caplog.text
 
     def remove_host_list(self, caplog):
         caplog.clear()
