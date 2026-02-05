@@ -604,6 +604,25 @@ jobs:
           make down
           make clean
 
+  kmip_test:
+    needs: [build, build-ceph]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Download container images
+        uses: actions/download-artifact@v4
+        with:
+          name: container_images_nvmeof
+
+      - name: Load container image
+        run: docker load < nvmeof.tar
+
+      - name: Run KMIP test inside container
+        run: |
+          make run SVC="nvmeof" OPTS="--volume=$(pwd)/tests:/src/tests --entrypoint=python3" CMD="tests/kmip/test_kmip_client.py"
+
   atom:
     needs: [build, build-ceph]
     if: github.repository == 'ceph/ceph-nvmeof' && github.event_name != 'schedule'
