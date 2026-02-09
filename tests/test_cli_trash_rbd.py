@@ -111,7 +111,7 @@ def test_rbd_image_trash(caplog, two_gateways):
     assert '"namespaces": []' in caplog.text
     caplog.clear()
     if not ceph_utils.does_image_exist(pool, image):
-        ceph_utils.create_image(pool, image, 16777216)
+        ceph_utils.create_image(pool, None, None, image, 16777216)
     assert ceph_utils.does_image_exist(pool, image)
     cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool,
          "--rbd-image", image, "--size", "16MB", "--rbd-create-image",

@@ -29,6 +29,7 @@ def two_gateways(config):
     config.config["gateway"]["rebalance_period_sec"] = "0"
     config.config["gateway"]["state_update_notify"] = "False"
     config.config["gateway"]["state_update_interval_sec"] = "300"
+    config.config["gateway"]["omap_file_lock_duration"] = "20"
     addr = config.get("gateway", "addr")
     configA = copy.deepcopy(config)
     configB = copy.deepcopy(config)

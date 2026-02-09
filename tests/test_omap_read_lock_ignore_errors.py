@@ -17,6 +17,7 @@ def gateway(config):
     addr = config.get("gateway", "addr")
     port = config.getint("gateway", "port")
     config.config["gateway"]["omap_file_ignore_unlock_errors"] = "True"
+    config.config["gateway"]["omap_file_lock_duration"] = "20"
     config.config["gateway-logs"]["log_level"] = "debug"
     ceph_utils = CephUtils(config)
 
