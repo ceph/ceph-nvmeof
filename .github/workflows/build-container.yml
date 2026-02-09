@@ -107,7 +107,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        test: ["cli", "cli_change_lb", "cli_change_keys", "cli_change_ns_visibility", "cli_trash_rbd", "state", "multi_gateway", "server", "grpc", "omap_lock", "log_files", "nsid", "psk", "dhchap", "dhchap_ctrlr", "subsys_grp_name_append", "max_subsystems", "omap_no_read_lock", "omap_read_lock", "omap_read_lock_ignore_errors", "big_omap", "ns_limit", "cli_force_tls", "erasure_pool", "cli_ns_resize", "auto_listeners", "update_error", "discovery_bind", "cli_ns_hosts"]
+        test: ["cli", "cli_change_lb", "cli_change_keys", "cli_change_ns_visibility", "cli_trash_rbd", "state", "multi_gateway", "server", "grpc", "omap_lock", "log_files", "nsid", "psk", "dhchap", "dhchap_ctrlr", "subsys_grp_name_append", "max_subsystems", "omap_no_read_lock", "omap_read_lock", "omap_read_lock_ignore_errors", "big_omap", "ns_limit", "cli_force_tls", "erasure_pool", "cli_ns_resize", "auto_listeners", "update_error", "discovery_bind", "cli_ns_hosts", "io_stats"]
     runs-on: ubuntu-latest
     env:
       HUGEPAGES: 512  # for multi gateway test, approx 256 per gateway instance
@@ -603,6 +603,25 @@ jobs:
         run: |
           make down
           make clean
+
+  kmip_test:
+    needs: [build, build-ceph]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Download container images
+        uses: actions/download-artifact@v4
+        with:
+          name: container_images_nvmeof
+
+      - name: Load container image
+        run: docker load < nvmeof.tar
+
+      - name: Run KMIP test inside container
+        run: |
+          make run SVC="nvmeof" OPTS="--volume=$(pwd)/tests:/src/tests --entrypoint=python3" CMD="tests/kmip/test_kmip_client.py"
 
   atom:
     needs: [build, build-ceph]

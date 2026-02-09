@@ -152,7 +152,7 @@ class CephUtils:
                         except (KeyError, ValueError, TypeError) as e:
                             self.logger.info(f"ana-location error: gw ,{gw},reason {repr(e)}")
                             continue
-                    self.logger.info(f"ana-location dict:  {self.ana_group_to_location}")
+                    self.logger.debug(f"ana-location dict:  {self.ana_group_to_location}")
 
                 else:
                     self.rebalance_supported = False

@@ -954,6 +954,19 @@ class GatewayService(pb2_grpc.GatewayServicer):
         self.spdk_qos_timeslice = self.config.getint_with_default("spdk",
                                                                   "qos_timeslice_in_usecs", None)
         self.force_tls = self.config.getboolean_with_default("gateway", "force_tls", False)
+        self.io_stats_enabled = self.config.getboolean_with_default("gateway",
+                                                                    "io_stats_enabled", True)
+        if self.io_stats_enabled:
+            io_stats_req = pb2.set_gateway_io_stats_mode_req(enabled=True)
+            self.logger.info("Will enable gateway's IO statistics")
+            rc = self.set_gateway_io_stats_mode(io_stats_req, "context")
+            self.logger.debug(f"set_gateway_io_stats_mode: {rc.error_message}")
+            if rc.status != 0:
+                self.logger.error(f"Failure enabling gateway's IO statistics: {rc.error_message}")
+                self.io_stats_enabled = False
+        else:
+            self.logger.info("Gateway's IO statistics is disabled")
+
         self.fsid = None
         spdk_notifications_interval = self.config.getint_with_default("spdk",
                                                                       "notifications_interval",
@@ -4509,7 +4522,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
             return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
 
         if not find_ret.is_host_in_namespace(request.host_nqn):
-            errmsg = f"{failure_prefix}: Host is not found in namespace's host list"
+            errmsg = f"{failure_prefix}: Host is not in namespace's host list"
             self.logger.error(errmsg)
             return pb2.req_status(status=errno.ENODEV, error_message=errmsg)
 
@@ -5125,7 +5138,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 else:  # Remove single host access to subsystem
                     if not self.host_info.does_host_exist(request.subsystem_nqn,
                                                           request.host_nqn):
-                        errmsg = f"{host_failure_prefix}: Host is not found"
+                        errmsg = f"{host_failure_prefix}: No such host"
                         self.logger.error(errmsg)
                         return pb2.req_status(status=errno.ENOENT, error_message=errmsg)
                     ret = self.spdk_rpc_client.nvmf_subsystem_remove_host(
@@ -5542,6 +5555,161 @@ class GatewayService(pb2_grpc.GatewayServicer):
         err_prefix = f"Failure {cmd2} DH-HMAC-CHAP key for host {request.host_nqn} " \
                      f"on subsystem {request.subsystem_nqn}: "
         return self.execute_grpc_function(self.change_host_key_safe, request, context, err_prefix)
+
+    def get_connection_io_statistics_safe(self, request, context):
+        """Get connection's IO statistics."""
+
+        def _get_int_from_dict(dic, fld) -> int:
+            if not dic:
+                return 0
+            if not fld:
+                return 0
+            val = dic.get(fld)
+            if not val:
+                return 0
+            return val
+
+        def _get_bucket(bucket):
+            def _get_latency_group(grp):
+                def _get_latency_stats(lat):
+                    if not lat:
+                        return None
+                    lat_min = _get_int_from_dict(lat, "min")
+                    lat_max = _get_int_from_dict(lat, "max")
+                    lat_mean = _get_int_from_dict(lat, "mean")
+                    return pb2.latency_stats(min=lat_min, max=lat_max, mean=lat_mean)
+
+                if not grp:
+                    return None
+                io_count = _get_int_from_dict(grp, "io_count")
+                latency = grp.get("latency")
+                if not latency:
+                    return pb2.latency_group(io_count=io_count)
+                total_lat = _get_latency_stats(latency.get("total"))
+                bdev_lat = _get_latency_stats(latency.get("bdev"))
+                net_lat = _get_latency_stats(latency.get("net"))
+                qos_lat = _get_latency_stats(latency.get("qos"))
+                return pb2.latency_group(io_count=io_count,
+                                         total=total_lat,
+                                         bdev=bdev_lat,
+                                         net=net_lat,
+                                         qos=qos_lat)
+            if not bucket:
+                return None
+            size = _get_int_from_dict(bucket, "bucket-size (KB)")
+            read_lat_grp = _get_latency_group(bucket.get("read"))
+            write_lat_grp = _get_latency_group(bucket.get("write"))
+            return pb2.bucket_info(size=size, read=read_lat_grp, write=write_lat_grp)
+
+        assert self.rpc_lock.locked(), "RPC is unlocked when calling " \
+                                       "get_connection_io_statistics_safe()"
+        peer_msg = self.get_peer_message(context)
+        cmd = "reset" if request.reset else "get"
+        cmd2 = "resetting" if request.reset else "getting"
+        self.logger.info(f"Received request to {cmd} IO statistics for host {request.host_nqn} "
+                         f"on {request.subsystem_nqn}, "
+                         f"context: {context}{peer_msg}")
+        failure_prefix = f"Failure {cmd2} IO statistics for host {request.host_nqn} " \
+                         f"on subsystem {request.subsystem_nqn}"
+
+        if request.subsystem_nqn not in self.subsys_serial:
+            errmsg = f"{failure_prefix}: No such subsystem"
+            self.logger.error(errmsg)
+            return pb2.connection_io_statistics(status=errno.ENOENT, error_message=errmsg)
+
+        if not self.io_stats_enabled:
+            errmsg = f"{failure_prefix}: IO statistics is disabled or not supported"
+            self.logger.error(errmsg)
+            return pb2.connection_io_statistics(status=errno.ENOTSUP, error_message=errmsg)
+
+        if request.host_nqn == "*":
+            errmsg = f"{failure_prefix}: Must specify a specific host NQN, \"*\" is invalid"
+            self.logger.error(errmsg)
+            return pb2.connection_io_statistics(status=errno.EINVAL, error_message=errmsg)
+
+        if not GatewayState.is_key_element_valid(request.host_nqn):
+            errmsg = f"{failure_prefix}: Invalid host NQN \"{request.host_nqn}\", " \
+                     f"contains invalid characters"
+            self.logger.error(errmsg)
+            return pb2.connection_io_statistics(status=errno.EINVAL, error_message=errmsg)
+
+        if not GatewayState.is_key_element_valid(request.subsystem_nqn):
+            errmsg = f"{failure_prefix}: Invalid subsystem NQN \"{request.subsystem_nqn}\"," \
+                     f" contains invalid characters"
+            self.logger.error(errmsg)
+            return pb2.connection_io_statistics(status=errno.EINVAL, error_message=errmsg)
+
+        if not self.host_info.is_any_host_allowed(request.subsystem_nqn):
+            host_exists = self.host_info.does_host_exist(request.subsystem_nqn,
+                                                         request.host_nqn)
+            if not host_exists:
+                errmsg = f"{failure_prefix}: Host is not allowed to access subsystem"
+                self.logger.error(errmsg)
+                return pb2.connection_io_statistics(status=errno.ENODEV, error_message=errmsg)
+
+        host_is_connected = self.is_host_connected(request.subsystem_nqn, request.host_nqn)
+        if not host_is_connected:
+            errmsg = f"{failure_prefix}: Host is not connected"
+            self.logger.error(errmsg)
+            return pb2.connection_io_statistics(status=errno.ENODEV, error_message=errmsg)
+
+        try:
+            ret = self.spdk_rpc_client.nvmf_get_ctrl_io_stats(nqn=request.subsystem_nqn,
+                                                              host_nqn=request.host_nqn,
+                                                              reset=request.reset)
+            self.logger.debug(f"nvmf_get_ctrl_io_stats: {ret}")
+        except Exception as ex:
+            self.logger.exception(failure_prefix)
+            errmsg = f"{failure_prefix}:\n{ex}"
+            resp = self.parse_json_exeption(ex)
+            status = errno.EINVAL
+            if resp:
+                status = resp["code"]
+                errmsg = f"{failure_prefix}: {resp['message']}"
+            return pb2.connection_io_statistics(status=status, error_message=errmsg)
+
+        # Just in case SPDK failed with no exception
+        if not ret:
+            self.logger.error(failure_prefix)
+            return pb2.connection_io_statistics(status=errno.EINVAL, error_message=failure_prefix)
+
+        not_supported_err = ret.get("supported")
+        if not_supported_err:
+            errmsg = f"{failure_prefix}: IO statistics is disabled or not supported"
+            self.logger.error(errmsg)
+            return pb2.connection_io_statistics(status=errno.ENOTSUP, error_message=errmsg)
+
+        if request.reset:
+            if ret.get("reset"):
+                return pb2.connection_io_statistics(status=0, error_message=os.strerror(0))
+            self.logger.error(failure_prefix)
+            return pb2.connection_io_statistics(status=errno.EINVAL, error_message=failure_prefix)
+
+        bucket_list = []
+        try:
+            total_num_ios = _get_int_from_dict(ret, "total_num_ios")
+            buckets = ret.get("buckets")
+            if not buckets:
+                buckets = []
+            for bucket in buckets:
+                one_bucket = _get_bucket(bucket)
+                if one_bucket:
+                    bucket_list.append(one_bucket)
+            return pb2.connection_io_statistics(status=0, error_message=os.strerror(0),
+                                                subsystem_nqn=request.subsystem_nqn,
+                                                host_nqn=request.host_nqn,
+                                                total_num_ios=total_num_ios,
+                                                buckets=bucket_list)
+        except Exception as ex:
+            self.logger.exception(f"Error parsing {ret}")
+            errmsg = f"{failure_prefix}:\n{ex}"
+            return pb2.connection_io_statistics(status=errno.EINVAL, error_message=errmsg)
+
+        return pb2.connection_io_statistics(status=errno.ENOTSUP, error_message="TBD")
+
+    def get_connection_io_statistics(self, request, context=None):
+        """Get connection's IO statistics."""
+        return self.execute_grpc_function(self.get_connection_io_statistics_safe, request, context)
 
     def list_hosts_safe(self, request, context):
         """List hosts."""
@@ -6947,6 +7115,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                max_hosts_per_subsystem=self.max_hosts_per_subsystem,
                                max_hosts=self.max_hosts,
                                gateway_initialization_over=initialization_over,
+                               io_stats_enabled=self.io_stats_enabled,
                                status=0,
                                error_message=os.strerror(0))
         cli_ver = self.parse_version(cli_version_string)
@@ -6980,6 +7149,40 @@ class GatewayService(pb2_grpc.GatewayServicer):
         """Get gateway's info"""
 
         return self.execute_grpc_function(self.get_gateway_info_safe, request, context)
+
+    def set_gateway_io_stats_mode_safe(self, request, context):
+        """Set gateway's IO statistics mode"""
+
+        assert self.rpc_lock.locked(), "RPC is unlocked when calling " \
+                                       "set_gateway_io_stats_mode_safe()"
+        peer_msg = self.get_peer_message(context)
+        self.logger.info(f"Received request to set gateway's IO statistics mode, enabled: "
+                         f"{request.enabled}{peer_msg}")
+        mode_str = "on" if request.enabled else "off"
+        error_prefix = f"Failure setting gateway's IO statistics mode to \"{mode_str}\""
+        assert context, "Should not set gateway's IO statistics mode on update"
+
+        try:
+            ret = self.spdk_rpc_client.nvmf_enable_ctrl_io_stats(trtype="TCP",
+                                                                 enable=request.enabled)
+            self.logger.debug(f"nvmf_enable_ctrl_io_stats: {ret}")
+            self.io_stats_enabled = request.enabled
+        except Exception as ex:
+            self.logger.exception(error_prefix)
+            errmsg = f"{error_prefix}:\n{ex}"
+            resp = self.parse_json_exeption(ex)
+            status = errno.EINVAL
+            if resp:
+                status = resp["code"]
+                errmsg = f"{error_prefix}: {resp['message']}"
+            return pb2.req_status(status=status, error_message=errmsg)
+
+        return pb2.req_status(status=0, error_message=os.strerror(0))
+
+    def set_gateway_io_stats_mode(self, request, context=None):
+        """Set gateway's IO statistics mode"""
+
+        return self.execute_grpc_function(self.set_gateway_io_stats_mode_safe, request, context)
 
     def get_gateway_stats_safe(self, request, context=None):
         """Get gateway's NVMf statistics"""

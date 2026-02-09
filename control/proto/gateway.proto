@@ -104,6 +104,9 @@ service Gateway {
 	// List connections
 	rpc list_connections(list_connections_req) returns(connections_info) {}
 
+	// Gets connection's IO statistics
+	rpc get_connection_io_statistics(get_connection_io_statistics_req) returns (connection_io_statistics) {}
+
 	// Creates a listener for a subsystem at a given IP/Port
 	rpc create_listener(create_listener_req) returns(req_status) {}
 
@@ -148,6 +151,9 @@ service Gateway {
 
 	// Gets spdk thread stats
 	rpc get_thread_stats(get_thread_stats_req) returns (thread_stats_info) {}
+
+	// Set gateway IO stats on or off
+	rpc set_gateway_io_stats_mode(set_gateway_io_stats_mode_req) returns (req_status) {}
 }
 
 // Request messages
@@ -306,6 +312,12 @@ message change_host_key_req {
 	optional string dhchap_ctrlr_key = 4;
 }
 
+message get_connection_io_statistics_req {
+	string subsystem_nqn = 1;
+	string host_nqn = 2;
+	optional bool reset = 3;
+}
+
 message remove_host_req {
 	string subsystem_nqn = 1;
 	string host_nqn = 2;
@@ -386,6 +398,10 @@ message get_gateway_stats_req {
 }
 
 message get_thread_stats_req {
+}
+
+message set_gateway_io_stats_mode_req {
+	bool enabled = 1;
 }
 
 // From https://nvmexpress.org/wp-content/uploads/NVM-Express-1_4-2019.06.10-Ratified.pdf page 138
@@ -520,6 +536,7 @@ message gateway_info {
 	optional uint32 max_namespaces_per_subsystem = 16;
 	optional uint32 max_hosts = 17;
 	optional bool gateway_initialization_over = 18;
+	optional bool io_stats_enabled = 19;
 }
 
 message cli_version {
@@ -602,6 +619,35 @@ message host {
 	optional bool use_psk = 2;
 	optional bool use_dhchap = 3;
 	optional bool disconnected_due_to_keepalive_timeout = 4;
+}
+
+message latency_stats {
+	uint64 min = 1;
+	uint64 max = 2;
+	uint64 mean = 3;
+}
+
+message latency_group {
+	uint64 io_count = 1;
+	latency_stats total = 2;
+	latency_stats bdev = 3;
+	latency_stats net = 4;
+	latency_stats qos = 5;
+}
+
+message bucket_info {
+	uint32 size = 1;
+	latency_group read = 2;
+	latency_group write = 3;
+}
+
+message connection_io_statistics {
+	int32 status = 1;
+	string error_message = 2;
+	string subsystem_nqn = 3;
+	string host_nqn = 4;
+	optional uint64 total_num_ios = 5;
+	repeated bucket_info buckets = 6;
 }
 
 message hosts_info {
