@@ -1,0 +1,73 @@
+diff --git a/control/cephutils.py b/control/cephutils.py
+index 01e5632..a4e7d70 100644
+--- a/control/cephutils.py
++++ b/control/cephutils.py
+@@ -405,7 +405,7 @@ class CephUtils:
+                     except Exception as ex:
+                         self.logger.exception(f"Can't encrypt image {image_path}")
+                         try:
+-                            self.logger.info(f"Will delete the create image {image_path}")
++                            self.logger.info(f"Will delete the created image {image_path}")
+                             self.delete_image(pool_name, image_name, rados_namespace_name)
+                         except Exception:
+                             self.logger.exception(f"Error deleting image {image_path}")
+diff --git a/control/cli.py b/control/cli.py
+index eeea998..233f93a 100644
+--- a/control/cli.py
++++ b/control/cli.py
+@@ -2465,10 +2465,23 @@ class GatewayClient:
+ 
+         enc_entries = []
+         for i in range(len(args.encryption_format)):
+-            enc = pb2.encryption_entry(format=args.encryption_format[i],
++            enc_format_val = GatewayEnumUtils.get_value_from_key(pb2.EncryptionFormat,
++                                                                 args.encryption_format[i],
++                                                                 True)
++            if enc_format_val is None:
++                self.cli.parser.error(f"Invalid encryption format: {args.encryption_format[i]}")
++            enc = pb2.encryption_entry(format=enc_format_val,
+                                        key_id=args.key_id[i])
+             enc_entries.append(enc)
+ 
++        enc_algorithm_val = pb2.EncryptionAlgorithm.no_algorithm
++        if args.encryption_algorithm is not None:
++            enc_algorithm_val = GatewayEnumUtils.get_value_from_key(pb2.EncryptionAlgorithm,
++                                                                    args.encryption_algorithm,
++                                                                    True)
++            if enc_algorithm_val is None:
++                self.cli.parser.error(f"Invalid encryption algorithm: {args.encryption_algorithm}")
++
+         req = pb2.namespace_add_req(rbd_pool_name=args.rbd_pool,
+                                     rbd_image_name=args.rbd_image,
+                                     subsystem_nqn=args.subsystem,
+@@ -2487,7 +2500,7 @@ class GatewayClient:
+                                     location=args.location,
+                                     rados_namespace_name=args.rados_namespace,
+                                     encryption_entries=enc_entries,
+-                                    encryption_algorithm=args.encryption_algorithm)
++                                    encryption_algorithm=enc_algorithm_val)
+         try:
+             ret = self.stub.namespace_add(req)
+         except Exception as ex:
+diff --git a/control/grpc.py b/control/grpc.py
+index 6929edc..3866388 100644
+--- a/control/grpc.py
++++ b/control/grpc.py
+@@ -1475,7 +1475,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
+                 if format_str is None:
+                     return BdevStatus(status=errno.EINVAL,
+                                       error_message=f"Invalid encryption format {ent.format}")
+-                enc_formats_str + f"{format_str}, "
++                enc_formats_str += f"{format_str}, "
+ 
+                 if not ent.key_id:
+                     return BdevStatus(status=errno.EINVAL,
+@@ -2935,7 +2935,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
+                                            ret_bdev.trash_image, request.read_only,
+                                            request.location, not request.disable_auto_resize,
+                                            request.encryption_entries,
+-                                           enc_algorithm_msg,
++                                           request.encryption_algorithm,
+                                            context)
+             if ret_ns.status == 0 and request.nsid and ret_ns.nsid != request.nsid:
+                 errmsg = f"Returned ID {ret_ns.nsid} differs from requested one {request.nsid}"
