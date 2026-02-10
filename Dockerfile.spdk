@@ -64,6 +64,10 @@ priority=2
 gpgcheck=0
 EOF
 
+RUN dnf install -y python3-pip
+
+RUN pip install --no-cache-dir -U "setuptools<69" "packaging<24"
+
 RUN \
     --mount=type=cache,target=/var/cache/dnf \
     --mount=type=cache,target=/var/lib/dnf \
