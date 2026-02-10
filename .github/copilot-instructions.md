@@ -11,7 +11,7 @@
   - SPDK (v25.09) - Storage Performance Development Kit with DPDK
   - Ceph cluster (v20.2.0) for RBD backend
   - gRPC (v1.53.0) for communication
-  - Docker and docker-compose (v2.11.0+) for containerization
+  - Docker with Compose plugin (v2+) for containerization
 
 **Main Components**:
 - `control/` - Python gateway service (server, CLI, gRPC, state management)
