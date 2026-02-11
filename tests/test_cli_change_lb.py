@@ -190,10 +190,12 @@ def test_change_namespace_lb_group(caplog, two_gateways):
     assert f"Received request to add namespace to {subsystem}, ana group {anagrpid}, " \
            f"no_auto_visible: False, disable_auto_resize: False, " \
            f"read_only: False, location: \"\", " \
+           f"encryption_entries: [], encryption_algorithm: no_algorithm, " \
            f"context: <grpc._server" in caplog.text
     assert f"Received request to add namespace 1 to {subsystem}, ana group {anagrpid}, " \
            f"no_auto_visible: False, disable_auto_resize: False, " \
            f"read_only: False, location: \"\", " \
+           f"encryption_entries: [], encryption_algorithm: no_algorithm, " \
            f"context: None" in caplog.text
     caplog.clear()
     cli(["namespace", "set_qos", "--subsystem", subsystem, "--nsid", "1",
@@ -286,10 +288,12 @@ def test_change_namespace_lb_group(caplog, two_gateways):
     assert f"Received request to add namespace to {subsystem}, ana group {anagrpid2}, " \
            f"no_auto_visible: False, disable_auto_resize: False, " \
            f"read_only: False, location: \"\", " \
+           f"encryption_entries: [], encryption_algorithm: no_algorithm, " \
            f"context: <grpc._server" in caplog.text
     assert f"Received request to add namespace 2 to {subsystem}, ana group {anagrpid2}, " \
            f"no_auto_visible: False, disable_auto_resize: False, " \
            f"read_only: False, location: \"\", " \
+           f"encryption_entries: [], encryption_algorithm: no_algorithm, " \
            f"context: None" in caplog.text
     caplog.clear()
     cli(["--format", "json", "namespace", "list", "--subsystem", subsystem, "--nsid", "2"])

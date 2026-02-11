@@ -431,7 +431,8 @@ class SubsystemHostAuth:
 
 class NamespaceInfo:
     def __init__(self, subsys, nsid, bdev, uuid, anagrpid, auto_visible, pool, data_pool, image,
-                 rados_namespace_name, trash_image, read_only, location, auto_resize):
+                 rados_namespace_name, trash_image, read_only, location, auto_resize,
+                 encryption_entries, encryption_algorithm):
         self.subsys = subsys
         self.nsid = nsid
         self.bdev = bdev
@@ -448,6 +449,8 @@ class NamespaceInfo:
         self.location = location
         self.auto_resize = auto_resize
         self.image_was_shrunk = False
+        self.encryption_entries = encryption_entries
+        self.encryption_algorithm = encryption_algorithm
 
     def __str__(self):
         return f"subsys: {self.subsys}, nsid: {self.nsid}, " \
@@ -459,6 +462,8 @@ class NamespaceInfo:
                f"read_only: {self.read_only}, image_shrunk: {self.image_was_shrunk}, " \
                f"location: {self.location}, " \
                f"auto_resize: {self.auto_resize}, " \
+               f"encryption_entries: {self.encryption_entries}, " \
+               f"encryption_algorithm: {self.encryption_algorithm}, " \
                f"hosts: {self.host_list}"
 
     def empty(self) -> bool:
@@ -515,7 +520,7 @@ class NamespaceInfo:
 
 class NamespacesLocalList:
     EMPTY_NAMESPACE = NamespaceInfo(None, None, None, None, 0, False, None, None,
-                                    None, None, False, False, None, False)
+                                    None, None, False, False, None, False, None, None)
 
     def __init__(self):
         self.namespace_list = defaultdict(dict)
@@ -547,7 +552,9 @@ class NamespacesLocalList:
             trash_image,
             read_only,
             location,
-            auto_resize):
+            auto_resize,
+            encryption_entries,
+            encryption_algorithm):
         if not bdev:
             bdev = GatewayService.find_unique_bdev_name(uuid)
         with self.namespace_list_lock:
@@ -555,7 +562,9 @@ class NamespacesLocalList:
                                                            auto_visible, pool, data_pool,
                                                            image, rados_namespace_name,
                                                            trash_image, read_only,
-                                                           location, auto_resize)
+                                                           location, auto_resize,
+                                                           encryption_entries,
+                                                           encryption_algorithm)
 
     def find_namespace(self, nqn, nsid, uuid=None, bdev=None) -> NamespaceInfo:
         with self.namespace_list_lock:
@@ -1411,7 +1420,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
     def create_bdev(self, anagrp: int, name, uuid, rbd_pool_name, rbd_data_pool_name,
                     rbd_image_name,
                     block_size, create_image, trash_image, rbd_image_size, disable_auto_resize,
-                    read_only, rados_namespace_name, context, peer_msg=""):
+                    read_only, rados_namespace_name,
+                    encryption_entries, encryption_algorithm,
+                    context, peer_msg=""):
         """Creates a bdev from an RBD image."""
 
         if create_image:
@@ -1436,10 +1447,53 @@ class GatewayService(pb2_grpc.GatewayServicer):
         else:
             data_pool_msg = ""
 
+        enc_formats_str = ""
+        enc_algo_str = None
+        if encryption_entries is None:
+            encryption_entries = []
+        if encryption_algorithm is None:
+            encryption_algorithm = pb2.EncryptionAlgorithm.no_algorithm
+
+        for ent in encryption_entries:
+            if ent.format is not None and ent.format != pb2.EncryptionFormat.none:
+                format_str = GatewayEnumUtils.get_key_from_value(pb2.EncryptionFormat,
+                                                                 ent.format)
+                if format_str is None:
+                    return BdevStatus(status=errno.EINVAL,
+                                      error_message=f"Invalid encryption format {ent.format}")
+                enc_formats_str += f"{format_str}, "
+
+        enc_formats_str = enc_formats_str.removesuffix(", ")
+
+        if create_image and len(encryption_entries) > 1:
+            return BdevStatus(status=errno.EINVAL,
+                              error_message="At most one encryption format can be specified when "
+                                            "creating a new image")
+
+        if encryption_algorithm != pb2.EncryptionAlgorithm.no_algorithm:
+            if not create_image:
+                return BdevStatus(status=errno.EINVAL,
+                                  error_message="Encryption algorithm is only allowed when "
+                                                "creating a new image")
+            enc_algo_str = GatewayEnumUtils.get_key_from_value(pb2.EncryptionAlgorithm,
+                                                               encryption_algorithm)
+            if enc_algo_str is None:
+                return BdevStatus(status=errno.EINVAL,
+                                  error_message=f"Invalid encryption algorithm "
+                                                f"{encryption_algorithm}")
+
+        enc_format_msg = ""
+        if enc_formats_str:
+            enc_format_msg = f"using encryption format(s) {enc_formats_str}"
+            if enc_algo_str:
+                enc_format_msg += f" and encryption algorithm {enc_algo_str}"
+            enc_format_msg += ", "
+
         self.logger.info(f"Received request to create {ro_msg} bdev {name} from"
                          f" {image_path} {data_pool_msg}"
                          f"(size {rbd_image_size} bytes)"
                          f" with block size {block_size}, {cr_img_msg}, {trsh_msg}"
+                         f"{enc_format_msg}"
                          f"context={context}{peer_msg}")
 
         if block_size == 0:
@@ -1500,9 +1554,17 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                                     f"or erasure coded pool")
 
             try:
+                enc_format = None
+                passphrase = None
+                if len(encryption_entries) > 0:
+                    enc_format = encryption_entries[0].format
+                    # TODO: fetch the actual pass phrase from the KMIP server using the key ID
+                    passphrase = encryption_entries[0].key_id
                 rc = self.ceph_utils.create_image(rbd_pool_name, rbd_data_pool_name,
+                                                  rados_namespace_name,
                                                   rbd_image_name, rbd_image_size,
-                                                  rados_namespace_name)
+                                                  enc_format, encryption_algorithm,
+                                                  passphrase)
                 if rc:
                     data_pool_msg = ""
                     if rbd_data_pool_name:
@@ -1557,6 +1619,15 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         cluster_name = None
         assert self.rpc_lock.locked(), "RPC is unlocked when calling bdev_rbd_create()"
+        enc_format_list = []
+        passphrase_list = []
+        for ent in encryption_entries:
+            rbd_format = CephUtils.gateway_encryption_format_to_rbd(ent.format)
+            assert rbd_format is not None and rbd_format >= 0, \
+                f"Invalid encryption format {ent.format}"
+            enc_format_list.append(rbd_format)
+            # TODO: fetch the actual pass phrase from the KMIP server using the key ID
+            passphrase_list.append(ent.key_id)
         try:
             cluster_name = self.cluster_allocator.get_cluster(anagrp)
             bdev_name = self.spdk_rpc_client.bdev_rbd_create(
@@ -1568,6 +1639,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 block_size=block_size,
                 uuid=uuid,
                 read_only=read_only,
+                encryption_format=enc_format_list,
+                passphrase=passphrase_list,
             )
             with self.shared_state_lock:
                 self.bdev_cluster[name] = cluster_name
@@ -2412,7 +2485,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
     def create_namespace(self, subsystem_nqn, bdev_name, nsid, anagrpid, uuid,
                          auto_visible, rbd_pool, rbd_data_pool, rbd_image_name,
                          rados_namespace_name, trash_image, read_only, location,
-                         auto_resize, context):
+                         auto_resize, encryption_entries, encryption_algorithm, context):
         """Adds a namespace to a subsystem."""
 
         assert self.rpc_lock.locked(), "RPC is unlocked when calling create_namespace()"
@@ -2515,7 +2588,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                                             rbd_image_name,
                                                             rados_namespace_name,
                                                             trash_image, read_only,
-                                                            location, auto_resize)
+                                                            location, auto_resize,
+                                                            encryption_entries,
+                                                            encryption_algorithm)
             self.logger.debug(f"subsystem_add_ns: {nsid}")
             self.ana_grp_ns_load[anagrpid] += 1
             if anagrpid in self.ana_grp_subs_load:
@@ -2658,21 +2733,74 @@ class GatewayService(pb2_grpc.GatewayServicer):
         rados_namespace_msg = ""
         if request.rados_namespace_name:
             rados_namespace_msg = f"rados_namespace_name: {request.rados_namespace_name}, "
+        assert request.encryption_entries is not None, "Shouldn't get None from protobuf"
+        enc_entries_msg = ""
+        for enc in request.encryption_entries:
+            try:
+                enc_format = GatewayEnumUtils.get_key_from_value(pb2.EncryptionFormat,
+                                                                 enc.format)
+                if enc_format is None:
+                    enc_format = enc.format
+            except Exception:
+                enc_format = enc.format
+            enc_entries_msg += f"(format: {enc_format}, key_id: {enc.key_id}), "
+        enc_entries_msg = "[" + enc_entries_msg.removesuffix(", ") + "]"
+        enc_algorithm_msg = ""
+        try:
+            enc_algorithm_msg = GatewayEnumUtils.get_key_from_value(pb2.EncryptionAlgorithm,
+                                                                    request.encryption_algorithm)
+        except Exception:
+            pass
+        if not enc_algorithm_msg:
+            enc_algorithm_msg = request.encryption_algorithm
         self.logger.info(f"Received request to add namespace {nsid_msg}to "
                          f"{request.subsystem_nqn}, ana group {request.anagrpid}, "
                          f"no_auto_visible: {request.no_auto_visible}, "
                          f"disable_auto_resize: {request.disable_auto_resize}, "
                          f"read_only: {request.read_only}, location: {loc_msg}, "
                          f"{rados_namespace_msg}"
+                         f"encryption_entries: {enc_entries_msg}, "
+                         f"encryption_algorithm: {enc_algorithm_msg}, "
                          f"context: {context}{peer_msg}")
 
         if not request.uuid:
             request.uuid = str(uuid.uuid4())
 
         if request.trash_image and not request.create_image:
-            self.logger.warning = "Can't trash the RBD image on delete if it " \
-                                  "wasn't created by the gateway, will reset the flag"
+            self.logger.warning("Can't trash the RBD image on delete if it "
+                                "wasn't created by the gateway, will reset the flag")
             request.trash_image = False
+
+        has_a_none_format = False
+        has_non_none_format = False
+        for ent in request.encryption_entries:
+            if ent.format == pb2.EncryptionFormat.none:
+                has_a_none_format = True
+                if ent.key_id:
+                    errmsg = f"Failure adding namespace {nsid_msg}to {request.subsystem_nqn}: " \
+                             f"Mustn't have a key ID when encryption format is not set"
+                    self.logger.error(errmsg)
+                    return pb2.nsid_status(status=errno.EINVAL, error_message=errmsg)
+            else:
+                has_non_none_format = True
+                if not ent.key_id:
+                    errmsg = f"Failure adding namespace {nsid_msg}to {request.subsystem_nqn}: " \
+                             f"Must have a key ID when encryption format is set"
+                    self.logger.error(errmsg)
+                    return pb2.nsid_status(status=errno.ENOKEY, error_message=errmsg)
+
+        if has_a_none_format and has_non_none_format:
+            errmsg = f"Failure adding namespace {nsid_msg}to {request.subsystem_nqn}: " \
+                     f"Mismatch in encryption formats, either all should be set or none"
+            self.logger.error(errmsg)
+            return pb2.nsid_status(status=errno.EINVAL, error_message=errmsg)
+
+        if not request.encryption_entries or has_a_none_format:
+            if request.encryption_algorithm != pb2.EncryptionAlgorithm.no_algorithm:
+                errmsg = f"Failure adding namespace {nsid_msg}to {request.subsystem_nqn}: " \
+                         f"Can\'t have an encryption algorithm without an encryption format"
+                self.logger.error(errmsg)
+                return pb2.nsid_status(status=errno.EINVAL, error_message=errmsg)
 
         if context:
             try:
@@ -2696,6 +2824,17 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 _, anagrp = \
                     self.rebalance.find_min_loaded_group_in_subsys(request.subsystem_nqn,
                                                                    loc_grps_list)
+                request.anagrpid = anagrp
+            else:
+                # If an explicit load balancing group was passed, make sure it exists
+                if request.anagrpid not in loc_grps_list:
+                    self.logger.debug(f"Load balancing groups: {loc_grps_list}")
+                    errmsg = f"Failure adding namespace {nsid_msg}to " \
+                             f"{request.subsystem_nqn}: Load balancing group " \
+                             f"{request.anagrpid} doesn't exist"
+                    self.logger.error(errmsg)
+                    return pb2.nsid_status(status=errno.ENODEV, error_message=errmsg)
+
             if request.nsid:
                 ns = self.subsystem_nsid_bdev_and_uuid.find_namespace(request.subsystem_nqn,
                                                                       request.nsid)
@@ -2711,6 +2850,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 self.logger.error(errmsg)
                 return pb2.nsid_status(status=errno.EEXIST, error_message=errmsg)
 
+        anagrp = request.anagrpid
+        assert anagrp != 0, "Chosen load balancing group is 0"
+        bdev_name = GatewayService.find_unique_bdev_name(request.uuid)
         omap_lock = self.omap_lock.get_omap_lock_to_use(context)
         with omap_lock:
             if context:
@@ -2729,32 +2871,17 @@ class GatewayService(pb2_grpc.GatewayServicer):
                         self.logger.error(errmsg)
                         return pb2.nsid_status(status=errno.EEXIST, error_message=errmsg)
 
-            bdev_name = GatewayService.find_unique_bdev_name(request.uuid)
-
             create_image = request.create_image
             if not context:
                 create_image = False
-            else:                          # new namespace
-                # If an explicit load balancing group was passed, make sure it exists
-                if request.anagrpid != 0:
-                    if request.anagrpid not in loc_grps_list:
-                        self.logger.debug(f"Load balancing groups: {loc_grps_list}")
-                        errmsg = f"Failure adding namespace {nsid_msg}to " \
-                                 f"{request.subsystem_nqn}: Load balancing group " \
-                                 f"{request.anagrpid} doesn't exist"
-                        self.logger.error(errmsg)
-                        return pb2.req_status(status=errno.ENODEV, error_message=errmsg)
-                else:
-                    request.anagrpid = anagrp
 
-            anagrp = request.anagrpid
-            assert anagrp != 0, "Chosen load balancing group is 0"
             ret_bdev = self.create_bdev(anagrp, bdev_name, request.uuid, request.rbd_pool_name,
                                         request.rbd_data_pool_name,
                                         request.rbd_image_name, request.block_size, create_image,
                                         request.trash_image, request.size,
                                         request.disable_auto_resize, request.read_only,
                                         request.rados_namespace_name,
+                                        request.encryption_entries, request.encryption_algorithm,
                                         context, peer_msg)
             if ret_bdev.status != 0:
                 errmsg = f"Failure adding namespace {nsid_msg}to {request.subsystem_nqn}: " \
@@ -2786,6 +2913,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                            ret_bdev.rados_namespace_name,
                                            ret_bdev.trash_image, request.read_only,
                                            request.location, not request.disable_auto_resize,
+                                           request.encryption_entries,
+                                           request.encryption_algorithm,
                                            context)
             if ret_ns.status == 0 and request.nsid and ret_ns.nsid != request.nsid:
                 errmsg = f"Returned ID {ret_ns.nsid} differs from requested one {request.nsid}"
@@ -3730,7 +3859,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                                cluster_name=cluster_name,
                                                image_was_shrunk=was_image_shrunk,
                                                rbd_data_pool_name=find_ret.data_pool,
-                                               location=find_ret.location)
+                                               location=find_ret.location,
+                                               encryption_entries=find_ret.encryption_entries,
+                                               encryption_algorithm=find_ret.encryption_algorithm)
                     with self.rpc_lock:
                         ns_bdev = self.get_bdev_info(bdev_name)
                     if ns_bdev is None:

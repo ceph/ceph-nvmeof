@@ -85,10 +85,12 @@ def test_namespace_resize(caplog, two_gateways):
     assert f"Received request to add namespace to {subsystem}, ana group 0, " \
            f"no_auto_visible: False, disable_auto_resize: True, " \
            f"read_only: False, location: \"\", " \
+           f"encryption_entries: [], encryption_algorithm: no_algorithm, " \
            f"context: <grpc._server" in caplog.text
     assert f"Received request to add namespace 1 to {subsystem}, ana group 1, " \
            f"no_auto_visible: False, disable_auto_resize: True, " \
            f"read_only: False, location: \"\", " \
+           f"encryption_entries: [], encryption_algorithm: no_algorithm, " \
            f"context: None" in caplog.text
     caplog.clear()
     cli(["--format", "json", "namespace", "list", "--subsystem", subsystem, "--nsid", "1"])

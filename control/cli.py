@@ -2432,14 +2432,48 @@ class GatewayClient:
             mib = 1024 * 1024
             if img_size % mib:
                 self.cli.parser.error("size value must be aligned to MiBs")
+
+            if args.encryption_format is not None and len(args.encryption_format) > 1:
+                self.cli.parser.error("at most one encryption format can be specified when "
+                                      "creating a new image")
+
         else:
             if args.size is not None:
                 self.cli.parser.error("--size argument is not allowed for add command when "
                                       "RBD image creation is disabled")
 
-        if args.rbd_trash_image_on_delete and not args.rbd_create_image:
-            self.cli.parser.error("Can't trash associated RBD image on delete if it wasn't "
-                                  "created automatically by the gateway")
+            if args.encryption_algorithm is not None:
+                self.cli.parser.error("--encryption-algorithm argument is not allowed for add "
+                                      "command when RBD image creation is disabled")
+            if args.rbd_trash_image_on_delete:
+                self.cli.parser.error("Can't trash associated RBD image on delete if it wasn't "
+                                      "created automatically by the gateway")
+
+        if args.encryption_format is None:
+            args.encryption_format = []
+
+        if args.key_id is None:
+            args.key_id = []
+
+        if len(args.encryption_format) > 0:
+            if not args.key_id:
+                self.cli.parser.error("Must have a key ID when using encryption")
+            if len(args.encryption_format) != len(args.key_id):
+                self.cli.parser.error("The number of key IDs should match the "
+                                      "number of encryption formats")
+        else:
+            if args.encryption_algorithm is not None:
+                self.cli.parser.error("Encryption algorithm is only allowed when an encryption "
+                                      "format is specified")
+            if args.key_id:
+                self.cli.parser.error("Key IDs are only valid when an encryption "
+                                      "format is specified")
+
+        enc_entries = []
+        for i in range(len(args.encryption_format)):
+            enc = pb2.encryption_entry(format=args.encryption_format[i],
+                                       key_id=args.key_id[i])
+            enc_entries.append(enc)
 
         req = pb2.namespace_add_req(rbd_pool_name=args.rbd_pool,
                                     rbd_image_name=args.rbd_image,
@@ -2457,7 +2491,9 @@ class GatewayClient:
                                     read_only=args.read_only,
                                     rbd_data_pool_name=args.rbd_data_pool,
                                     location=args.location,
-                                    rados_namespace_name=args.rados_namespace)
+                                    rados_namespace_name=args.rados_namespace,
+                                    encryption_entries=enc_entries,
+                                    encryption_algorithm=args.encryption_algorithm)
         try:
             ret = self.stub.namespace_add(req)
         except Exception as ex:
@@ -2696,6 +2732,18 @@ class GatewayClient:
                         else:
                             visibility = "None" if show_hosts else "Restrictive"
 
+                    encryption = ""
+                    all_none = True
+                    for ent in ns.encryption_entries:
+                        enc_for = GatewayEnumUtils.get_key_from_value(pb2.EncryptionFormat,
+                                                                      ent.format)
+                        if enc_for is None:
+                            enc_for = f"<unknown {ent.format}>"
+                        encryption += f"{enc_for.upper()}\n"
+                        if ent.format != pb2.EncryptionFormat.none:
+                            all_none = False
+                    if not encryption or all_none:
+                        encryption = "None"
                     ro_msg = "Read-Only" if ns.read_only else "Read-Write"
                     trash_msg = "\nTrash on delete" if ns.trash_image else ""
                     auto_resize_msg = "\nDisable auto resize" if ns.disable_auto_resize else ""
@@ -2729,6 +2777,7 @@ class GatewayClient:
                                                 lb_group,
                                                 location,
                                                 visibility,
+                                                encryption,
                                                 self.get_qos_limit_str_value(ns.rw_ios_per_second),
                                                 qos_str] + verbose_info)
 
@@ -2755,6 +2804,7 @@ class GatewayClient:
                                    "Load\nBalancing\nGroup" + configured_txt,
                                    "Location",
                                    "Visibility",
+                                   "Encryption",
                                    "IOs per\nsecond",
                                    "R/W, R, W MBs\n"
                                    "per second"] + verbose_headers
@@ -3414,6 +3464,23 @@ class GatewayClient:
                  required=False),
         argument("--location",
                  help="Namespace's location",
+                 required=False),
+        argument("--encryption-format",
+                 "-f",
+                 nargs="+",
+                 help="Encryption formats to use, LUKS1 or LUKS2",
+                 type=str.lower,
+                 choices=get_enum_keys_list(pb2.EncryptionFormat, False),
+                 required=False),
+        argument("--encryption-algorithm",
+                 "-g",
+                 help="Algorithm to use for encryption",
+                 type=str.lower,
+                 choices=get_enum_keys_list(pb2.EncryptionAlgorithm, False),
+                 required=False),
+        argument("--key-id",
+                 help="Key ID(s) to use for encryption pass phrases",
+                 nargs="+",
                  required=False),
     ]
     ns_del_args_list = ns_common_args + [

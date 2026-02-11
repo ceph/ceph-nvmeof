@@ -34,6 +34,18 @@ enum GwLogLevel {
 	critical = 50;
 }
 
+enum EncryptionFormat {
+	none = 0;
+	luks1 = 1;
+	luks2 = 2;
+}
+
+enum EncryptionAlgorithm {
+	no_algorithm = 0;
+	aes128 = 1;
+	aes256 = 2;
+}
+
 service Gateway {
 	// Creates a namespace from an RBD image
 	rpc namespace_add(namespace_add_req) returns (nsid_status) {}
@@ -176,6 +188,8 @@ message namespace_add_req {
 	optional string rbd_data_pool_name = 15;
 	optional string location = 16;
 	optional string rados_namespace_name = 17;
+	repeated encryption_entry encryption_entries = 18;
+	optional EncryptionAlgorithm encryption_algorithm = 19;
 }
 
 message namespace_resize_req {
@@ -706,6 +720,8 @@ message namespace_cli {
 	optional string rbd_data_pool_name = 22;
 	optional string location = 23;
 	optional string rados_namespace_name = 24;
+	optional EncryptionAlgorithm encryption_algorithm = 25;
+	repeated encryption_entry encryption_entries = 26;
 }
 
 message namespaces_info {
@@ -767,4 +783,9 @@ message gateway_log_level_info {
 	int32 status = 1;
 	string error_message = 2;
 	GwLogLevel log_level = 3;
+}
+
+message encryption_entry {
+	EncryptionFormat format = 1;
+	string key_id = 2;
 }

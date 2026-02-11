@@ -14,6 +14,7 @@ import time
 import json
 from enum import Enum
 from .utils import GatewayLogger
+from .proto import gateway_pb2 as pb2
 
 
 class CephUtils:
@@ -315,8 +316,29 @@ class CephUtils:
         except Exception:
             self.logger.exception("Can't update daemon status to service_map!")
 
-    def create_image(self, pool_name, data_pool_name, image_name, size,
-                     rados_namespace_name=None) -> bool:
+    @staticmethod
+    def gateway_encryption_format_to_rbd(gw_format: pb2.EncryptionFormat) -> int:
+        if gw_format is None or gw_format == pb2.EncryptionFormat.none:
+            return None
+        elif gw_format == pb2.EncryptionFormat.luks1:
+            return rbd.RBD_ENCRYPTION_FORMAT_LUKS1
+        elif gw_format == pb2.EncryptionFormat.luks2:
+            return rbd.RBD_ENCRYPTION_FORMAT_LUKS2
+        return -1
+
+    @staticmethod
+    def gateway_encryption_algorithm_to_rbd(gw_algo: pb2.EncryptionAlgorithm) -> int:
+        if gw_algo is None or gw_algo == pb2.EncryptionAlgorithm.no_algorithm:
+            return None
+        elif gw_algo == pb2.EncryptionAlgorithm.aes128:
+            return rbd.RBD_ENCRYPTION_ALGORITHM_AES128
+        elif gw_algo == pb2.EncryptionAlgorithm.aes256:
+            return rbd.RBD_ENCRYPTION_ALGORITHM_AES256
+        return -1
+
+    def create_image(self, pool_name, data_pool_name, rados_namespace_name, image_name,
+                     size, encryption_format=None, encryption_algorithm=None,
+                     passphrase=None) -> bool:
         image_path = f"{pool_name}/{rados_namespace_name}/{image_name}" if rados_namespace_name \
             else f"{pool_name}/{image_name}"
         # Check for pool existence in advance as we don't create it if it's not there
@@ -346,7 +368,15 @@ class CephUtils:
                                       f"a size of {image_size} bytes which differs from the "
                                       f"requested size of {size} bytes",
                                       errno=errno.EEXIST)
-            return False    # Image exists with an idetical size, there is nothing to do here
+            return False    # Image exists with an identical size, there is nothing to do here
+
+        encryption_format = CephUtils.gateway_encryption_format_to_rbd(encryption_format)
+        if encryption_format is not None and encryption_format < 0:
+            raise ValueError("Invalid encryption format")
+
+        encryption_algorithm = CephUtils.gateway_encryption_algorithm_to_rbd(encryption_algorithm)
+        if encryption_algorithm is not None and encryption_algorithm < 0:
+            raise ValueError("Invalid encryption algorithm")
 
         with rados.Rados(conffile=self.ceph_conf, rados_id=self.rados_id) as cluster:
             with cluster.open_ioctx(pool_name) as ioctx:
@@ -360,9 +390,27 @@ class CephUtils:
                     raise rbd.ImageExists(f"Image {image_path} was just created by "
                                           f"someone else, please retry",
                                           errno=errno.EAGAIN)
-                except Exception as ex:
+                except Exception:
                     self.logger.exception(f"Can't create image {image_path}")
-                    raise ex
+                    raise
+
+                if encryption_format is not None and passphrase is not None:
+                    try:
+                        with rbd.Image(ioctx, image_name) as img:
+                            if encryption_algorithm is not None:
+                                img.encryption_format(encryption_format,
+                                                      passphrase,
+                                                      encryption_algorithm)
+                            else:
+                                img.encryption_format(encryption_format, passphrase)
+                    except Exception:
+                        self.logger.exception(f"Can't encrypt image {image_path}")
+                        try:
+                            self.logger.info(f"Will delete the created image {image_path}")
+                            self.delete_image(pool_name, image_name, rados_namespace_name)
+                        except Exception:
+                            self.logger.exception(f"Error deleting image {image_path}")
+                        raise
 
         return True
 

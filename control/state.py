@@ -389,7 +389,7 @@ class OmapLock:
         self.omap_file_lock_duration = self.omap_state.config.getint_with_default(
             "gateway",
             "omap_file_lock_duration",
-            20)
+            40)
         self.omap_file_update_reloads = self.omap_state.config.getint_with_default(
             "gateway",
             "omap_file_update_reloads",
