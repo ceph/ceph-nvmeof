@@ -107,7 +107,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        test: ["cli", "cli_change_lb", "cli_change_keys", "cli_change_ns_visibility", "cli_trash_rbd", "state", "multi_gateway", "server", "grpc", "omap_lock", "log_files", "nsid", "psk", "dhchap", "dhchap_ctrlr", "subsys_grp_name_append", "max_subsystems", "omap_no_read_lock", "omap_read_lock", "omap_read_lock_ignore_errors", "big_omap", "ns_limit", "cli_force_tls", "erasure_pool", "cli_ns_resize", "auto_listeners", "update_error", "discovery_bind", "cli_ns_hosts", "io_stats", "rbd_encrypt"]
+        test: ["cli", "cli_change_lb", "cli_change_keys", "cli_change_ns_visibility", "cli_change_ns_location", "cli_list_ns_locations", "cli_trash_rbd", "state", "multi_gateway", "server", "grpc", "omap_lock", "log_files", "nsid", "psk", "dhchap", "dhchap_ctrlr", "subsys_grp_name_append", "max_subsystems", "omap_no_read_lock", "omap_read_lock", "omap_read_lock_ignore_errors", "big_omap", "ns_limit", "cli_force_tls", "erasure_pool", "cli_ns_resize", "auto_listeners", "update_error", "discovery_bind", "cli_ns_hosts", "io_stats", "rbd_encrypt"]
     runs-on: ubuntu-latest
     env:
       HUGEPAGES: 512  # for multi gateway test, approx 256 per gateway instance

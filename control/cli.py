@@ -2648,12 +2648,76 @@ class GatewayClient:
         int_size *= multiply
         return int_size
 
-    def ns_list(self, args, show_hosts=False):
+    def ns_location_list(self, args, ns_info):
+        """List namespace distribution per site locations"""
+
+        out_func, _, _ = self.get_output_functions(args)
+        ns_locations_count = {}
+        if ns_info.namespaces:
+            for ns in ns_info.namespaces:
+                nqn = ns.ns_subsystem_nqn
+                if not nqn:
+                    self.cli.parser.error("Found a namespace without a subsystem NQN")
+                lb = ns.load_balancing_group
+                if not lb:
+                    lb = 0
+                loc = ns.location
+                if not loc:
+                    loc = "<default>"
+                if nqn not in ns_locations_count:
+                    ns_locations_count[nqn] = {}
+                if lb not in ns_locations_count[nqn]:
+                    ns_locations_count[nqn][lb] = {}
+                if loc not in ns_locations_count[nqn][lb]:
+                    ns_locations_count[nqn][lb][loc] = 0
+                ns_locations_count[nqn][lb][loc] += 1
+
+        loc_list = []
+        for nqn in sorted(ns_locations_count.keys()):
+            first_nqn = True
+            for lb in sorted(ns_locations_count[nqn].keys()):
+                for loc in sorted(ns_locations_count[nqn][lb].keys()):
+                    nqnstr = nqn if first_nqn else ""
+                    first_nqn = False
+                    lbstr = str(lb) if lb else "<n/a>"
+                    loc_list.append([nqnstr, lbstr, loc, ns_locations_count[nqn][lb][loc]])
+
+        if len(loc_list) > 0:
+            table_format = "fancy_grid" if args.format == "text" else "plain"
+            headers = ["Subsystem",
+                       "Load\nBalancing\nGroup",
+                       "Location",
+                       "Count"]
+            locations_out = tabulate(loc_list,
+                                     headers=headers,
+                                     tablefmt=table_format)
+
+            if args.nsid:
+                prefix = f"Namespace {args.nsid} in"
+            elif args.uuid:
+                prefix = f"Namespace with UUID {args.uuid} in"
+            else:
+                prefix = "Namespaces in"
+            if args.subsystem == GatewayUtils.ALL_SUBSYSTEMS:
+                out_func(f"{prefix} all subsystems:\n{locations_out}")
+            else:
+                out_func(f"{prefix} subsystem {args.subsystem}:\n{locations_out}")
+        else:
+            if args.subsystem == GatewayUtils.ALL_SUBSYSTEMS:
+                out_func("No namespaces in any subsystem")
+            else:
+                out_func(f"No namespaces in subsystem {args.subsystem}")
+        return 0
+
+    def ns_list(self, args, show_hosts=False, show_ns_locations=False):
         """Lists namespaces on a subsystem."""
 
         out_func, err_func, _ = self.get_output_functions(args)
         if args.nsid is not None and args.nsid <= 0:
             self.cli.parser.error("nsid value must be positive")
+
+        if show_hosts and show_ns_locations:
+            self.cli.parser.error("Can't list hosts and locations at once")
 
         if not args.subsystem:
             args.subsystem = GatewayUtils.ALL_SUBSYSTEMS
@@ -2679,6 +2743,8 @@ class GatewayClient:
                                  f"{namespaces_info.subsystem_nqn} which is different than the "
                                  f"requested subsystem {args.subsystem}")
                         return errno.ENODEV
+                if show_ns_locations:
+                    return self.ns_location_list(args, namespaces_info)
                 namespaces_list = []
                 for ns in namespaces_info.namespaces:
                     ns_host_list = ns.hosts if show_hosts else []
@@ -2757,7 +2823,7 @@ class GatewayClient:
                     if args.verbose:
                         verbose_info = [cluster_name]
                         lb_group += f" ({configured_lb_group})"
-                    location = ns.location if ns.location else "<N/A>"
+                    location = ns.location if ns.location else "<default>"
                     qos_str = f"{self.get_qos_limit_str_value(ns.rw_mbytes_per_second)}\n" \
                               f"{self.get_qos_limit_str_value(ns.r_mbytes_per_second)}\n" \
                               f"{self.get_qos_limit_str_value(ns.w_mbytes_per_second)}"
@@ -3608,6 +3674,11 @@ class GatewayClient:
         argument("--nsid", help="Namespace ID", type=int),
         argument("--uuid", "-u", help="UUID"),
     ]
+    ns_list_locations_args_list = [
+        argument("--subsystem", "-n", help="Subsystem NQN"),
+        argument("--nsid", help="Namespace ID", type=int),
+        argument("--uuid", "-u", help="UUID"),
+    ]
     ns_del_host_args_list = ns_common_args + [
         argument("--nsid", help="Namespace ID", type=int, required=True),
         argument("--host-nqn", "-t", help="Host NQN list", nargs="+", required=True),
@@ -3655,6 +3726,9 @@ class GatewayClient:
     ns_actions.append({"name": "list_hosts",
                        "args": ns_list_hosts_args_list,
                        "help": "List namespace's hosts"})
+    ns_actions.append({"name": "list_locations",
+                       "args": ns_list_locations_args_list,
+                       "help": "List namespace distribution by site location"})
     ns_actions.append({"name": "change_visibility",
                        "args": ns_change_visibility_args_list,
                        "help": "Change visibility for a namespace"})
@@ -3682,7 +3756,7 @@ class GatewayClient:
         elif args.action == "resize":
             return self.ns_resize(args)
         elif args.action == "list":
-            return self.ns_list(args, False)
+            return self.ns_list(args, False, False)
         elif args.action == "get_io_stats":
             return self.ns_get_io_stats(args)
         elif args.action == "change_load_balancing_group":
@@ -3694,7 +3768,9 @@ class GatewayClient:
         elif args.action == "del_host":
             return self.ns_del_host(args)
         elif args.action == "list_hosts":
-            return self.ns_list(args, True)
+            return self.ns_list(args, True, False)
+        elif args.action == "list_locations":
+            return self.ns_list(args, False, True)
         elif args.action == "change_visibility":
             return self.ns_change_visibility(args)
         elif args.action == "change_location":
