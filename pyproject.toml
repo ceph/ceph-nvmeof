@@ -29,7 +29,8 @@ dependencies = [
     "pyyaml>=6.0.1",
     "prometheus_client ~= 0.19.0",
     "netifaces ~= 0.11.0",
-    "cryptography>=43.0.3"
+    "cryptography>=43.0.3",
+    "setuptools<82.0.0",
 ]
 
 [tool.pdm.scripts]
