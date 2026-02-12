@@ -134,7 +134,7 @@ RUN \
     dnf install -y gcc python3-devel
 RUN \
     --mount=type=cache,target=/root/.cache/pip \
-    pip install -U pip setuptools wheel
+    pip install -U pip "setuptools<82" wheel
 
 RUN \
     --mount=type=cache,target=/root/.cache/pip \
