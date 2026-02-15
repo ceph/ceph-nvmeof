@@ -2922,95 +2922,84 @@ class GatewayClient:
         return namespaces_info.status
 
     def ns_get_io_stats(self, args):
-        """Get namespace IO statistics."""
+        """Get namespaces IO statistics."""
 
         out_func, err_func, _ = self.get_output_functions(args)
-        if args.nsid <= 0:
+        if args.nsid and args.nsid <= 0:
             self.cli.parser.error("nsid value must be positive")
 
         try:
-            get_stats_req = pb2.namespace_get_io_stats_req(subsystem_nqn=args.subsystem,
-                                                           nsid=args.nsid)
-            ns_io_stats = self.stub.namespace_get_io_stats(get_stats_req)
+            ns_list_io_stats_req = pb2.list_namespaces_io_stats_req(subsystem_nqn=args.subsystem,
+                                                                    nsid=args.nsid)
+            ns_io_stats = self.stub.list_namespaces_io_stats(ns_list_io_stats_req)
         except Exception as ex:
-            ns_io_stats = pb2.namespace_io_stats_info(
+            ns_io_stats = pb2.list_namespaces_io_stats_info(
                 status=errno.EINVAL,
-                error_message=f"Failure getting namespace's IO stats:\n{ex}")
-
-        if ns_io_stats.status == 0:
-            if ns_io_stats.subsystem_nqn != args.subsystem:
-                ns_io_stats.status = errno.ENODEV
-                ns_io_stats.error_message = f"Failure getting namespace's IO stats: Returned " \
-                                            f"subsystem {ns_io_stats.subsystem_nqn} differs " \
-                                            f"from requested one {args.subsystem}"
-            elif args.nsid and args.nsid != ns_io_stats.nsid:
-                ns_io_stats.status = errno.ENODEV
-                ns_io_stats.error_message = f"Failure getting namespace's IO stats: Returned " \
-                                            f"namespace NSID {ns_io_stats.nsid} differs from " \
-                                            f"requested one {args.nsid}"
-
-        # only show IO errors in verbose mode
-        if not args.verbose:
-            io_stats = pb2.namespace_io_stats_info(
-                status=ns_io_stats.status,
-                error_message=ns_io_stats.error_message,
-                subsystem_nqn=ns_io_stats.subsystem_nqn,
-                nsid=ns_io_stats.nsid,
-                uuid=ns_io_stats.uuid,
-                bdev_name=ns_io_stats.bdev_name,
-                tick_rate=ns_io_stats.tick_rate,
-                ticks=ns_io_stats.ticks,
-                bytes_read=ns_io_stats.bytes_read,
-                num_read_ops=ns_io_stats.num_read_ops,
-                bytes_written=ns_io_stats.bytes_written,
-                num_write_ops=ns_io_stats.num_write_ops,
-                bytes_unmapped=ns_io_stats.bytes_unmapped,
-                num_unmap_ops=ns_io_stats.num_unmap_ops,
-                read_latency_ticks=ns_io_stats.read_latency_ticks,
-                max_read_latency_ticks=ns_io_stats.max_read_latency_ticks,
-                min_read_latency_ticks=ns_io_stats.min_read_latency_ticks,
-                write_latency_ticks=ns_io_stats.write_latency_ticks,
-                max_write_latency_ticks=ns_io_stats.max_write_latency_ticks,
-                min_write_latency_ticks=ns_io_stats.min_write_latency_ticks,
-                unmap_latency_ticks=ns_io_stats.unmap_latency_ticks,
-                max_unmap_latency_ticks=ns_io_stats.max_unmap_latency_ticks,
-                min_unmap_latency_ticks=ns_io_stats.min_unmap_latency_ticks,
-                copy_latency_ticks=ns_io_stats.copy_latency_ticks,
-                max_copy_latency_ticks=ns_io_stats.max_copy_latency_ticks,
-                min_copy_latency_ticks=ns_io_stats.min_copy_latency_ticks)
-            ns_io_stats = io_stats
+                error_message=f"Failure getting namespaces IO stats:\n{ex}")
 
         if args.format == "text" or args.format == "plain":
             if ns_io_stats.status == 0:
-                stats_list = []
-                stats_list.append(["Tick Rate", ns_io_stats.tick_rate])
-                stats_list.append(["Ticks", ns_io_stats.ticks])
-                stats_list.append(["Bytes Read", ns_io_stats.bytes_read])
-                stats_list.append(["Num Read Ops", ns_io_stats.num_read_ops])
-                stats_list.append(["Bytes Written", ns_io_stats.bytes_written])
-                stats_list.append(["Num Write Ops", ns_io_stats.num_write_ops])
-                stats_list.append(["Bytes Unmapped", ns_io_stats.bytes_unmapped])
-                stats_list.append(["Num Unmap Ops", ns_io_stats.num_unmap_ops])
-                stats_list.append(["Read Latency Ticks", ns_io_stats.read_latency_ticks])
-                stats_list.append(["Max Read Latency Ticks", ns_io_stats.max_read_latency_ticks])
-                stats_list.append(["Min Read Latency Ticks", ns_io_stats.min_read_latency_ticks])
-                stats_list.append(["Write Latency Ticks", ns_io_stats.write_latency_ticks])
-                stats_list.append(["Max Write Latency Ticks", ns_io_stats.max_write_latency_ticks])
-                stats_list.append(["Min Write Latency Ticks", ns_io_stats.min_write_latency_ticks])
-                stats_list.append(["Unmap Latency Ticks", ns_io_stats.unmap_latency_ticks])
-                stats_list.append(["Max Unmap Latency Ticks", ns_io_stats.max_unmap_latency_ticks])
-                stats_list.append(["Min Unmap Latency Ticks", ns_io_stats.min_unmap_latency_ticks])
-                stats_list.append(["Copy Latency Ticks", ns_io_stats.copy_latency_ticks])
-                stats_list.append(["Max Copy Latency Ticks", ns_io_stats.max_copy_latency_ticks])
-                stats_list.append(["Min Copy Latency Ticks", ns_io_stats.min_copy_latency_ticks])
-                for e in ns_io_stats.io_error:
-                    if e.value:
-                        stats_list.append([f"IO Error - {e.name}", e.value])
-
-                table_format = "fancy_grid" if args.format == "text" else "plain"
-                stats_out = tabulate(stats_list, headers=["Stat", "Value"], tablefmt=table_format)
-                out_func(f"IO statistics for namespace {args.nsid} in {args.subsystem}, "
-                         f"bdev {ns_io_stats.bdev_name}:\n{stats_out}")
+                ns_iostat_list = []
+                for ns_iostat in ns_io_stats.namespaces:
+                    ns_iostat_list.append([
+                        ns_iostat.bdev_name,
+                        ns_iostat.bytes_read,
+                        ns_iostat.num_read_ops,
+                        ns_iostat.bytes_written,
+                        ns_iostat.num_write_ops,
+                        ns_iostat.bytes_unmapped,
+                        ns_iostat.num_unmap_ops,
+                        ns_iostat.bytes_copied,
+                        ns_iostat.num_copy_ops,
+                        ns_iostat.read_latency_ticks,
+                        ns_iostat.max_read_latency_ticks,
+                        ns_iostat.min_read_latency_ticks,
+                        ns_iostat.write_latency_ticks,
+                        ns_iostat.max_write_latency_ticks,
+                        ns_iostat.min_write_latency_ticks,
+                        ns_iostat.unmap_latency_ticks,
+                        ns_iostat.max_unmap_latency_ticks,
+                        ns_iostat.min_unmap_latency_ticks,
+                        ns_iostat.copy_latency_ticks,
+                        ns_iostat.max_copy_latency_ticks,
+                        ns_iostat.min_copy_latency_ticks,
+                    ])
+                if len(ns_iostat_list) > 0:
+                    table_format = "fancy_grid" if args.format == "text" else "plain"
+                    ns_iostat_out = tabulate(ns_iostat_list,
+                                             headers=[
+                                                 "Name",
+                                                 "Bytes Read",
+                                                 "Num Read Ops",
+                                                 "Bytes Written",
+                                                 "Num Write Ops",
+                                                 "Bytes Unmapped",
+                                                 "Num Unmap Ops",
+                                                 "Bytes Copied",
+                                                 "Num Copy Ops",
+                                                 "Read Latency Ticks",
+                                                 "Max Read Latency Ticks",
+                                                 "Min Read Latency Ticks",
+                                                 "Write Latency Ticks",
+                                                 "Max Write Latency Ticks",
+                                                 "Min Write Latency Ticks",
+                                                 "Unmap Latency Ticks",
+                                                 "Max Unmap Latency Ticks",
+                                                 "Min Unmap Latency Ticks",
+                                                 "Copy Latency Ticks",
+                                                 "Max Copy Latency Ticks",
+                                                 "Min Copy Latency Ticks",
+                                             ],
+                                             tablefmt=table_format)
+                    tick_rate = ns_io_stats.tick_rate
+                    ticks = ns_io_stats.ticks
+                    if args.nsid and args.subsystem:
+                        ns_str = f"IO statistics for namespace {args.nsid} in {args.subsystem}"
+                    else:
+                        ns_str = "IO statistics for all namespaces"
+                    out_func(f"{ns_str}; tick rate={tick_rate} and ticks={ticks}:\n{ns_iostat_out}")
+                else:
+                    out_func("No namespaces found")
             else:
                 err_func(f"{ns_io_stats.error_message}")
         elif args.format == "json" or args.format == "yaml":
@@ -3579,11 +3568,15 @@ class GatewayClient:
                  "-u",
                  help="UUID"),
     ]
-    ns_get_io_stats_args_list = ns_common_args + [
+    ns_get_io_stats_args_list = [
+        argument("--subsystem",
+                 "-n",
+                 help="Subsystem NQN",
+                 required=False),
         argument("--nsid",
                  help="Namespace ID",
                  type=int,
-                 required=True),
+                 required=False),
     ]
     ns_change_load_balancing_group_args_list = ns_common_args + [
         argument("--nsid",
@@ -3709,7 +3702,7 @@ class GatewayClient:
                        "help": "List namespaces"})
     ns_actions.append({"name": "get_io_stats",
                        "args": ns_get_io_stats_args_list,
-                       "help": "Get I/O stats for a namespace"})
+                       "help": "Get I/O stats for namespaces"})
     ns_actions.append({"name": "change_load_balancing_group",
                        "args": ns_change_load_balancing_group_args_list,
                        "help": "Change load balancing group for a namespace"})

@@ -13,10 +13,10 @@ ip2="$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end
 calc_written_bytes_in_sec()
 {
    IP=$1
-   num_bytes=$(docker compose run --rm nvmeof-cli --server-address $IP --server-port 5500 --output stdio --format json namespace get_io_stats -n nqn.2016-06.io.spdk:cnode1 --nsid 1 | jq '.bytes_written'| sed 's/[^0-9]*//g');
+   num_bytes=$(docker compose run --rm nvmeof-cli --server-address $IP --server-port 5500 --output stdio --format json namespace get_io_stats -n nqn.2016-06.io.spdk:cnode1 --nsid 1 | jq '.namespaces[0].bytes_written'| sed 's/[^0-9]*//g');
 
   sleep 1;
-  num_bytes1=$(docker compose run --rm nvmeof-cli --server-address $IP --server-port 5500 --output stdio --format json namespace get_io_stats -n nqn.2016-06.io.spdk:cnode1 --nsid 1 | jq '.bytes_written'| sed 's/[^0-9]*//g');
+  num_bytes1=$(docker compose run --rm nvmeof-cli --server-address $IP --server-port 5500 --output stdio --format json namespace get_io_stats -n nqn.2016-06.io.spdk:cnode1 --nsid 1 | jq '.namespaces[0].bytes_written'| sed 's/[^0-9]*//g');
    
   res=$(expr $num_bytes1 - $num_bytes );
   #echo "Bytes written in sec: $res";
