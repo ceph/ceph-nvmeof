@@ -1,5 +1,13 @@
 # Ceph NVMe-oF Gateway - Coding Agent Instructions
 
+## Before You Start - Essential Checklist
+
+Complete these steps before making any changes:
+- [ ] Clone with submodules: `git submodule update --init --recursive`
+- [ ] Run `make setup` (requires sudo, allocates huge-pages for SPDK)
+- [ ] Run `make verify` to see baseline linting status
+- [ ] Check if containers need building: `make pull` (faster) or `make build`
+
 ## Repository Overview
 
 **Purpose**: Provides block storage on top of Ceph for platforms without native Ceph RBD support (e.g., VMware) using the NVMe over Fabrics (NVMe-oF) protocol. Exports existing RBD images as NVMe-oF namespaces.
@@ -107,6 +115,17 @@ make clean # Clean up and reset huge-pages to 0
 
 **Test execution time**: Individual tests range from 30 seconds to 5 minutes.
 
+**Test Strategy for Code Changes**:
+| Change Type | Recommended Tests | Execution Time |
+|-------------|------------------|----------------|
+| CLI changes | `test_cli.py` | 3-5 minutes |
+| gRPC API | `test_grpc.py` | 1-2 minutes |
+| State management | `test_state.py` | 2-3 minutes |
+| Multi-gateway | `test_multi_gateway.py` | 4-5 minutes |
+| Security (PSK/DHCHAP) | `test_psk.py`, `test_dhchap.py` | 3-4 minutes each |
+
+Start with the smallest relevant test, expand if needed.
+
 ### Generate Protocol Buffer Files
 
 **Required** after modifying `.proto` files in `control/proto/`:
@@ -125,6 +144,18 @@ After modifying `pyproject.toml` dependencies:
 make update-lockfile  # Updates pdm.lock
 git add pdm.lock
 ```
+
+### Key Environment Variables
+
+From `.env` file (used by docker-compose):
+- `NVMEOF_VERSION` - Gateway version (current: 1.6.5)
+- `SPDK_VERSION` - SPDK version (current: 25.09)
+- `CEPH_VERSION` - Ceph cluster version (current: 20.2.0)
+- `HUGEPAGES` - Number of 2MB huge-pages (default: 2048 = 4GB)
+- `NVMEOF_NOFILE` - Max open files (default: 20,480)
+- `CONTAINER_REGISTRY` - Docker registry (default: quay.io/ceph)
+
+Override in shell: `export HUGEPAGES=512 && make up`
 
 ### Docker Compose Commands
 
@@ -167,6 +198,16 @@ Analyzes Python and GitHub Actions for security issues.
 
 ### check-deps.yml (Dependency Checks)
 Checks for outdated dependencies.
+
+### Local Development vs CI
+
+| Aspect | Local Development | CI Environment |
+|--------|-------------------|----------------|
+| Huge-pages | 2048 (4GB) default | 512 (1GB) for parallel tests |
+| Test execution | Sequential, interactive | Parallel matrix (30+ jobs) |
+| Container images | Build locally or pull | Built from scratch each time |
+| Ceph cluster timeout | User-controlled | 3-minute hard timeout |
+| Test focus | Single module testing | Full test suite |
 
 ## Repository Structure
 
@@ -244,11 +285,37 @@ Checks for outdated dependencies.
 
 Three strategies for mapping SPDK BDEVs to Ceph cluster contexts:
 
-1. **Legacy (default)**: Per ANA group, `bdevs_per_cluster = 32` in [spdk] config
-2. **Flat**: Ignore ANA groups, `flat_bdevs_per_cluster = 32`
-3. **Cluster Pool**: Pre-defined pool, `cluster_connections = 32`
+1. **Legacy (default)**: Per ANA group, `bdevs_per_cluster = 32` - use for standard deployments
+2. **Flat**: Ignore ANA groups, `flat_bdevs_per_cluster = 32` - use for simpler setups without ANA
+3. **Cluster Pool**: Pre-defined pool, `cluster_connections = 32` - use for dynamic workloads with load balancing
 
 ## Development Tips
+
+### Common Development Tasks - Step-by-Step
+
+**Task: Add a new gRPC API endpoint**
+1. Edit `control/proto/gateway.proto` to define new RPC
+2. Run `make protoc` to generate Python bindings
+3. Implement handler in `control/grpc.py`
+4. Add CLI command in `control/cli.py` if needed
+5. Write tests in `tests/test_grpc.py` or `tests/test_cli.py`
+6. Run `make verify` to check style
+7. Test: `make up && make run SVC="nvmeof" OPTS="--volume=$(pwd)/tests:/src/tests --entrypoint=python3" CMD="-m pytest -s -vv tests/test_YOUR_TEST.py"`
+
+**Task: Fix a bug in existing code**
+1. Run `make verify` to establish baseline linting
+2. Make your changes in `control/` directory
+3. Run `make verify` again to ensure no new issues
+4. Test: `make up && make run SVC="nvmeof" OPTS="--volume=$(pwd)/tests:/src/tests --entrypoint=python3" CMD="-m pytest -s -vv tests/test_AFFECTED_MODULE.py"`
+5. Check logs if tests fail: `make logs SVC=nvmeof`
+6. Teardown: `make down`
+
+**Task: Update Python dependencies**
+1. Edit `pyproject.toml` to add/update dependencies
+2. Run `make update-lockfile` to update `pdm.lock`
+3. Rebuild containers: `make build SVC=nvmeof`
+4. Test to ensure no regressions
+5. Commit both `pyproject.toml` and `pdm.lock`
 
 ### Making Code Changes
 
@@ -271,12 +338,17 @@ docker compose up nvmeof-devel  # Mounts source at runtime
 
 ### Common Issues and Solutions
 
-1. **"command not found: make"**: Install with `yum groupinstall "Development Tools"`
-2. **Huge-pages errors**: Always run `make setup` before `make up`
-3. **Container build hangs on CEPH_CLUSTER_CEPH_REPO_BASEURL**: Transient network issue, retry
-4. **SELinux issues**: Set to permissive: `sudo setenforce 0`
-5. **Protocol buffer errors**: Run `make protoc` to regenerate
-6. **Test failures after dependency changes**: Run `make update-lockfile`
+| Symptom | Solution |
+|---------|----------|
+| "command not found: make" | Install with `yum groupinstall "Development Tools"` |
+| "Cannot allocate memory" errors | Run `make setup` to allocate huge-pages |
+| Container build hangs on CEPH_CLUSTER_CEPH_REPO_BASEURL | Transient network issue with shaman.ceph.com - retry build |
+| SELinux permission denied | Set to permissive: `sudo setenforce 0` |
+| Protocol buffer import errors | Run `make protoc` to regenerate Python bindings |
+| Test failures after dependency changes | Run `make update-lockfile` to update pdm.lock |
+| "Connection refused" to gRPC port 5500 | Wait 2-3 minutes for gateway to fully start |
+| flake8 errors on unchanged files | Run `make verify` first to see baseline issues |
+| Test fails with "Ceph cluster not healthy" | Check cluster: `make exec SVC=ceph CMD="ceph -s"` |
 
 ### Code Style Guidelines
 
@@ -286,9 +358,20 @@ docker compose up nvmeof-devel  # Mounts source at runtime
 - Follow Conventional Commit syntax (type: description)
 - Use gRPC and Protocol Buffers for service communication
 
-### Performance Considerations
+### System Requirements
 
-- Gateway requires 16GB+ RAM
+**Minimum for local development**:
+- 16GB RAM (gateway + Ceph cluster + SPDK)
+- 20GB free disk space (containers and build artifacts)
+- 4 CPU cores
+- Linux kernel with huge-pages support
+
+**Recommended for multi-gateway testing**:
+- 32GB RAM
+- 40GB free disk space
+- 8+ CPU cores
+
+**Performance notes**:
 - Huge-pages allocation: default 4GB (2048 × 2MB pages)
 - For multi-gateway tests: ~256 huge-pages per gateway instance
 - NVMEOF_NOFILE limit: 20,480 open files (depends on connected hosts)
@@ -322,5 +405,15 @@ mk/                     - Makefile fragments
 monitoring/             - Prometheus/Grafana dashboard examples
 spdk/                   - SPDK submodule (external dependency)
 ```
+
+## External Documentation
+
+- [SPDK Documentation](https://spdk.io/doc/) - Storage Performance Development Kit
+- [NVMe-oF Specification](https://nvmexpress.org/specification/nvme-of-specification/) - Protocol specification
+- [Ceph RBD Documentation](https://docs.ceph.com/en/latest/rbd/) - Ceph RADOS Block Device
+- [gRPC Python Documentation](https://grpc.io/docs/languages/python/) - gRPC framework
+- [Protocol Buffers Guide](https://protobuf.dev/programming-guides/proto3/) - Protocol Buffers v3
+
+---
 
 This repository requires container-based development. Most operations go through the Makefile. Always start with `make setup` and `make verify` when working with this codebase.
