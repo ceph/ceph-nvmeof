@@ -16,10 +16,12 @@ Complete these steps before making any changes:
 - **Size**: ~4.2MB of source code, 192 files total (51 Python files)
 - **Languages**: Python 3.9+, Protocol Buffers, Shell scripts
 - **Key Dependencies**: 
-  - SPDK (v25.09) - Storage Performance Development Kit with DPDK
-  - Ceph cluster (v20.2.0) for RBD backend
-  - gRPC (v1.53.0) for communication
+  - SPDK - Storage Performance Development Kit with DPDK
+  - Ceph cluster for RBD backend
+  - gRPC for communication
   - Docker with Compose plugin (v2+) for containerization
+  
+See `.env` file for current dependency versions (SPDK_VERSION, CEPH_VERSION, etc.)
 
 **Main Components**:
 - `control/` - Python gateway service (server, CLI, gRPC, state management)
@@ -148,14 +150,14 @@ git add pdm.lock
 ### Key Environment Variables
 
 From `.env` file (used by docker-compose):
-- `NVMEOF_VERSION` - Gateway version (current: 1.6.5)
-- `SPDK_VERSION` - SPDK version (current: 25.09)
-- `CEPH_VERSION` - Ceph cluster version (current: 20.2.0)
+- `NVMEOF_VERSION` - Gateway version
+- `SPDK_VERSION` - SPDK version
+- `CEPH_VERSION` - Ceph cluster version
 - `HUGEPAGES` - Number of 2MB huge-pages (default: 2048 = 4GB)
 - `NVMEOF_NOFILE` - Max open files (default: 20,480)
 - `CONTAINER_REGISTRY` - Docker registry (default: quay.io/ceph)
 
-Override in shell: `export HUGEPAGES=512 && make up`
+Check `.env` file for current values. Override in shell: `export HUGEPAGES=512 && make up`
 
 ### Docker Compose Commands
 
@@ -410,7 +412,10 @@ spdk/                   - SPDK submodule (external dependency)
 
 - [SPDK Documentation](https://spdk.io/doc/) - Storage Performance Development Kit
 - [NVMe-oF Specification](https://nvmexpress.org/specification/nvme-of-specification/) - Protocol specification
+- [Ceph Documentation](https://docs.ceph.com/en/latest/) - Ceph distributed storage system
 - [Ceph RBD Documentation](https://docs.ceph.com/en/latest/rbd/) - Ceph RADOS Block Device
+- [Ceph NVMe-oF Overview](https://docs.ceph.com/en/latest/rbd/nvmeof-overview/) - Ceph NVMe-oF gateway overview
+- [Ceph NVMe-oF Target Configuration](https://docs.ceph.com/en/latest/rbd/nvmeof-target-configure/) - Target setup guide
 - [gRPC Python Documentation](https://grpc.io/docs/languages/python/) - gRPC framework
 - [Protocol Buffers Guide](https://protobuf.dev/programming-guides/proto3/) - Protocol Buffers v3
 
