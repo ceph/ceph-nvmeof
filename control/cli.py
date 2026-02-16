@@ -1961,7 +1961,7 @@ class GatewayClient:
         hosts_info = None
         try:
             hosts_info = self.stub.list_hosts(
-                pb2.list_hosts_req(subsystem=args.subsystem, clear_alerts=args.clear_alerts))
+                pb2.list_hosts_req(subsystem=args.subsystem, clear_alerts=False))
         except Exception as ex:
             hosts_info = pb2.hosts_info(status=errno.EINVAL,
                                         error_message=f"Failure listing hosts:\n{ex}", hosts=[])
@@ -2048,10 +2048,6 @@ class GatewayClient:
                  required=False),
     ]
     host_list_args = host_common_args + [
-        argument("--clear-alerts",
-                 help="Clear any host alert signal after getting its value",
-                 action='store_true',
-                 required=False),
     ]
     host_change_key_args = host_common_args + [
         argument("--host-nqn",
@@ -2139,7 +2135,7 @@ class GatewayClient:
             args.subsystem = GatewayUtils.ALL_SUBSYSTEMS
         try:
             list_req = pb2.list_connections_req(subsystem=args.subsystem,
-                                                clear_alerts=args.clear_alerts)
+                                                clear_alerts=False)
             connections_info = self.stub.list_connections(list_req)
         except Exception as ex:
             connections_info = pb2.connections_info(status=errno.EINVAL,
@@ -2357,10 +2353,6 @@ class GatewayClient:
         argument("--subsystem",
                  "-n",
                  help="Subsystem NQN",
-                 required=False),
-        argument("--clear-alerts",
-                 help="Clear any connection alert signal after getting its value",
-                 action='store_true',
                  required=False),
     ]
     get_io_statistics_args = [

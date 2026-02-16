@@ -2806,7 +2806,7 @@ class TestSubsystemsCache:
         assert host14 not in caplog.text
         assert host15 not in caplog.text
         caplog.clear()
-        cli(["--format", "json", "host", "list", "--subsystem", subsystem16, "--clear-alerts"])
+        cli(["--format", "json", "host", "list", "--subsystem", subsystem16])
         assert '"status": 0' in caplog.text
         assert f'"nqn": "{host13}",' in caplog.text
         caplog.clear()
