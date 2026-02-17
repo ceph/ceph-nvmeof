@@ -633,6 +633,7 @@ message host {
 	optional bool use_psk = 2;
 	optional bool use_dhchap = 3;
 	optional bool disconnected_due_to_keepalive_timeout = 4;
+	optional bool use_dhchap_controller = 5;
 }
 
 message latency_stats {
@@ -686,6 +687,7 @@ message connection {
 	optional bool use_dhchap = 11;
 	optional string subsystem = 12;
 	optional bool disconnected_due_to_keepalive_timeout = 13;
+	optional bool use_dhchap_controller = 14;
 }
 
 message connections_info {
