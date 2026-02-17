@@ -5894,6 +5894,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     self.logger.warning(f'Got subsystem {s.nqn} instead of '
                                         f'{request.subsystem}, ignore')
                     continue
+                subsys_dhchap_key = self.host_info.does_subsystem_have_dhchap_key(request.subsystem)
                 try:
                     allow_any_host = s.allow_any_host
                     host_nqns = s.hosts
@@ -5904,10 +5905,13 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     host_nqn = h.nqn
                     psk = self.host_info.is_psk_host(request.subsystem, host_nqn)
                     dhchap = self.host_info.is_dhchap_host(request.subsystem, host_nqn)
+                    dhchap_ctrlr = self.host_info.is_dhchap_ctrlr_host(request.subsystem, host_nqn)
+                    dhchap_ctrlr = dhchap_ctrlr or subsys_dhchap_key
                     was_ka_timeout = \
                         self.host_info.was_host_disconnected_due_to_keepalive_timeout(
                             request.subsystem, host_nqn)
                     one_host = pb2.host(nqn=host_nqn, use_psk=psk, use_dhchap=dhchap,
+                                        use_dhchap_controller=dhchap_ctrlr,
                                         disconnected_due_to_keepalive_timeout=was_ka_timeout)
                     hosts.append(one_host)
                     if was_ka_timeout and request.clear_alerts:
@@ -6060,6 +6064,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 self.logger.exception(f"{s=} parse error")
                 pass
 
+        subsys_dhchap_key = self.host_info.does_subsystem_have_dhchap_key(subsystem)
         for conn in ctrl_ret:
             try:
                 traddr = ""
@@ -6069,8 +6074,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 hostnqn = conn["hostnqn"]
                 found = False
                 secure = False
-                psk = False
-                dhchap = False
+                psk = self.host_info.is_psk_host(subsystem, hostnqn)
+                dhchap = self.host_info.is_dhchap_host(subsystem, hostnqn)
+                dhchap_ctrlr = self.host_info.is_dhchap_ctrlr_host(subsystem, hostnqn)
+                dhchap_ctrlr = dhchap_ctrlr or subsys_dhchap_key
 
                 for qp in qpair_ret:
                     try:
@@ -6104,9 +6111,6 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     self.logger.debug(f"Can't find active qpair for connection {conn}")
                     continue
 
-                psk = self.host_info.is_psk_host(subsystem, hostnqn)
-                dhchap = self.host_info.is_dhchap_host(subsystem, hostnqn)
-
                 if subsystem in self.subsystem_listeners:
                     for active in [False, True]:
                         lstnr = (adrfam, traddr, trsvcid, True, active)
@@ -6127,6 +6131,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                           qpairs_count=conn["num_io_qpairs"],
                                           controller_id=conn["cntlid"],
                                           secure=secure, use_psk=psk, use_dhchap=dhchap,
+                                          use_dhchap_controller=dhchap_ctrlr,
                                           subsystem=subsystem,
                                           disconnected_due_to_keepalive_timeout=was_ka_timeout)
                 connections.append(one_conn)
@@ -6137,16 +6142,18 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 pass
 
         for nqn in host_nqns:
-            psk = False
-            dhchap = False
             psk = self.host_info.is_psk_host(subsystem, nqn)
             dhchap = self.host_info.is_dhchap_host(subsystem, nqn)
+            dhchap_ctrlr = self.host_info.is_dhchap_ctrlr_host(subsystem, nqn)
+            dhchap_ctrlr = dhchap_ctrlr or subsys_dhchap_key
             was_ka_timeout = \
                 self.host_info.was_host_disconnected_due_to_keepalive_timeout(
                     subsystem, nqn)
             one_conn = pb2.connection(nqn=nqn, connected=False, traddr="<n/a>", trsvcid=0,
                                       qpairs_count=-1, controller_id=-1,
-                                      use_psk=psk, use_dhchap=dhchap, subsystem=subsystem,
+                                      use_psk=psk, use_dhchap=dhchap,
+                                      use_dhchap_controller=dhchap_ctrlr,
+                                      subsystem=subsystem,
                                       disconnected_due_to_keepalive_timeout=was_ka_timeout)
             connections.append(one_conn)
 
