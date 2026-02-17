@@ -72,7 +72,6 @@ subsystemX = "nqn.2016-06.io.spdk:cnodeX"
 discovery_nqn = "nqn.2014-08.org.nvmexpress.discovery"
 uuid = "948878ee-c3b2-4d58-a29b-2cff713fc02d"
 uuid2 = "948878ee-c3b2-4d58-a29b-2cff713fc02e"
-host_list = ["nqn.2016-06.io.spdk:host1", "*"]
 hostprefix = "nqn.2016-06.io.spdk:host"
 host1 = hostprefix + "1"
 host2 = hostprefix + "2"
@@ -420,7 +419,7 @@ class TestCreate:
         try:
             cli(["subsystem", "add", "--subsystem", discovery_nqn])
         except SystemExit as sysex:
-            rc = int(str(sysex))
+            rc = sysex.code
             pass
         assert "Can't add a discovery subsystem" in caplog.text
         assert rc == 2
@@ -429,7 +428,7 @@ class TestCreate:
         try:
             cli(["subsystem", "add", "--subsystem", discovery_nqn, "--no-group-append"])
         except SystemExit as sysex:
-            rc = int(str(sysex))
+            rc = sysex.code
             pass
         assert "Can't add a discovery subsystem" in caplog.text
         assert rc == 2
@@ -449,7 +448,7 @@ class TestCreate:
             cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool,
                  "--rbd-image", "junkimage", "--size", "0", "--rbd-create-image"])
         except SystemExit as sysex:
-            rc = int(str(sysex))
+            rc = sysex.code
             pass
         assert "size value must be positive" in caplog.text
         assert rc == 2
@@ -459,7 +458,7 @@ class TestCreate:
             cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool,
                  "--rbd-image", "junkimage", "--size", "1026KB", "--rbd-create-image"])
         except SystemExit as sysex:
-            rc = int(str(sysex))
+            rc = sysex.code
             pass
         assert "size value must be aligned to MiBs" in caplog.text
         assert rc == 2
@@ -582,7 +581,7 @@ class TestCreate:
                  "--rbd-image", image2, "--block-size", "1024", "--size", "16MB",
                  "--load-balancing-group", anagrpid])
         except SystemExit as sysex:
-            rc = int(str(sysex))
+            rc = sysex.code
             pass
         assert "size argument is not allowed for add command when " \
                "RBD image creation is disabled" in caplog.text
@@ -594,7 +593,7 @@ class TestCreate:
                  "--rbd-image", image2, "--block-size", "1024", "--size=-16MB",
                  "--rbd-create-image", "--load-balancing-group", anagrpid])
         except SystemExit as sysex:
-            rc = int(str(sysex))
+            rc = sysex.code
             pass
         assert "size value must be positive" in caplog.text
         assert rc == 2
@@ -605,7 +604,7 @@ class TestCreate:
                  "--rbd-image", image2, "--block-size", "1024", "--size", "1x6MB",
                  "--load-balancing-group", anagrpid, "--rbd-create-image"])
         except SystemExit as sysex:
-            rc = int(str(sysex))
+            rc = sysex.code
             pass
         assert "must be numeric" in caplog.text
         assert rc == 2
@@ -616,7 +615,7 @@ class TestCreate:
                  "--rbd-image", image2, "--block-size", "1024", "--size", "16MiB",
                  "--load-balancing-group", anagrpid, "--rbd-create-image"])
         except SystemExit as sysex:
-            rc = int(str(sysex))
+            rc = sysex.code
             pass
         assert "must be numeric" in caplog.text
         assert rc == 2
@@ -627,7 +626,7 @@ class TestCreate:
                  "--rbd-image", image2, "--block-size", "1024", "--size", "16mB",
                  "--load-balancing-group", anagrpid, "--rbd-create-image"])
         except SystemExit as sysex:
-            rc = int(str(sysex))
+            rc = sysex.code
             pass
         assert "must be numeric" in caplog.text
         assert rc == 2
@@ -921,7 +920,7 @@ class TestCreate:
         try:
             cli(["namespace", "change_visibility", "--subsystem", subsystem, "--nsid", "8"])
         except SystemExit as sysex:
-            rc = int(str(sysex))
+            rc = sysex.code
             pass
         assert "error: the following arguments are required: --auto-visible" in caplog.text
         assert rc == 2
@@ -931,7 +930,7 @@ class TestCreate:
             cli(["namespace", "change_visibility", "--subsystem", subsystem, "--nsid", "8",
                  "--auto-visible"])
         except SystemExit as sysex:
-            rc = int(str(sysex))
+            rc = sysex.code
             pass
         assert "error: argument --auto-visible: expected one argument" in caplog.text
         assert rc == 2
@@ -941,7 +940,7 @@ class TestCreate:
             cli(["namespace", "change_visibility", "--subsystem", subsystem, "--nsid", "8",
                  "--auto-visible", "junk"])
         except SystemExit as sysex:
-            rc = int(str(sysex))
+            rc = sysex.code
             pass
         assert "error: argument --auto-visible: invalid choice: 'junk' " \
                "(choose from 'yes', 'no', 'true', 'false', '1', '0')" in caplog.text
@@ -952,7 +951,7 @@ class TestCreate:
             cli(["namespace", "change_visibility", "--subsystem", subsystem,
                  "--nsid", "-8", "--auto-visible", "yes"])
         except SystemExit as sysex:
-            rc = int(str(sysex))
+            rc = sysex.code
             pass
         assert "nsid value must be positive" in caplog.text
         assert rc == 2
@@ -962,7 +961,7 @@ class TestCreate:
             cli(["namespace", "change_visibility", "--subsystem", subsystem,
                  "--nsid", "X8", "--auto-visible", "yes"])
         except SystemExit as sysex:
-            rc = int(str(sysex))
+            rc = sysex.code
             pass
         assert "argument --nsid: invalid int value" in caplog.text
         assert rc == 2
@@ -1078,7 +1077,7 @@ class TestCreate:
             cli(["namespace", "del_host", "--subsystem", subsystem, "--nsid", "-8",
                  "--host-nqn", host8])
         except SystemExit as sysex:
-            rc = int(str(sysex))
+            rc = sysex.code
             pass
         assert "nsid value must be positive" in caplog.text
         assert rc == 2
@@ -1178,14 +1177,27 @@ class TestCreate:
 
     def test_list_hosts(self, caplog, gateway):
         caplog.clear()
+        rc = 0
+        try:
+            cli(["host", "list", "--subsystem", subsystem, "--clear-alerts"])
+        except SystemExit as sysex:
+            rc = sysex.code
+            pass
+        assert "error: unrecognized arguments: --clear-alerts" in caplog.text
+        assert rc == 2
+        caplog.clear()
         cli(["--format", "json", "host", "list", "--subsystem", subsystem])
         assert '"status": 0,' in caplog.text
         assert f'"subsystem_nqn": "{subsystem}",' in caplog.text
-        assert f'"nqn": "{host8}",' in caplog.text
-        assert f'"nqn": "{host9}",' in caplog.text
-        assert f'"nqn": "{host10}",' in caplog.text
-        assert '"use_psk": true,' not in caplog.text
-        assert '"use_dhchap": true,' not in caplog.text
+        assert f'"nqn": "{host8}"' in caplog.text
+        assert f'"nqn": "{host9}"' in caplog.text
+        assert f'"nqn": "{host10}"' in caplog.text
+        assert '"use_psk": true' not in caplog.text
+        assert '"use_psk": false' in caplog.text
+        assert '"use_dhchap": true' not in caplog.text
+        assert '"use_dhchap": false' in caplog.text
+        assert '"use_dhchap_controller": true' not in caplog.text
+        assert '"use_dhchap_controller": false' in caplog.text
         assert '"allow_any_host": false' in caplog.text
         caplog.clear()
         hosts = cli_test(["host", "list", "--subsystem", subsystem])
@@ -1204,8 +1216,11 @@ class TestCreate:
         assert not hosts.hosts[1].use_psk
         assert not hosts.hosts[2].use_psk
         assert not hosts.hosts[0].use_dhchap
+        assert not hosts.hosts[0].use_dhchap_controller
         assert not hosts.hosts[1].use_dhchap
+        assert not hosts.hosts[1].use_dhchap_controller
         assert not hosts.hosts[2].use_dhchap
+        assert not hosts.hosts[2].use_dhchap_controller
         assert not hosts.hosts[0].disconnected_due_to_keepalive_timeout
         assert not hosts.hosts[1].disconnected_due_to_keepalive_timeout
         assert not hosts.hosts[2].disconnected_due_to_keepalive_timeout
@@ -1298,7 +1313,7 @@ class TestCreate:
         try:
             cli(["namespace", "resize", "--subsystem", subsystem, "--nsid", "6", "--size", "32mB"])
         except SystemExit as sysex:
-            rc = int(str(sysex))
+            rc = sysex.code
             pass
         assert "must be numeric" in caplog.text
         assert rc == 2
@@ -1307,7 +1322,7 @@ class TestCreate:
         try:
             cli(["namespace", "resize", "--subsystem", subsystem, "--nsid", "6", "--size=-32MB"])
         except SystemExit as sysex:
-            rc = int(str(sysex))
+            rc = sysex.code
             pass
         assert "size value must be positive" in caplog.text
         assert rc == 2
@@ -1316,7 +1331,7 @@ class TestCreate:
         try:
             cli(["namespace", "resize", "--subsystem", subsystem, "--nsid", "6", "--size", "3x2GB"])
         except SystemExit as sysex:
-            rc = int(str(sysex))
+            rc = sysex.code
             pass
         assert "must be numeric" in caplog.text
         assert rc == 2
@@ -1337,7 +1352,7 @@ class TestCreate:
             cli(["namespace", "resize", "--subsystem", subsystem, "--uuid", uuid2,
                  "--size", "64MB"])
         except SystemExit as sysex:
-            rc = int(str(sysex))
+            rc = sysex.code
             pass
         assert "error: the following arguments are required: --nsid" in caplog.text
         assert rc == 2
@@ -1347,7 +1362,7 @@ class TestCreate:
             cli(["namespace", "resize", "--subsystem", subsystem, "--nsid", "6",
                  "--uuid", uuid2, "--size", "64MB"])
         except SystemExit as sysex:
-            rc = int(str(sysex))
+            rc = sysex.code
             pass
         assert "error: unrecognized arguments: --uuid" in caplog.text
         assert rc == 2
@@ -1507,7 +1522,7 @@ class TestCreate:
         try:
             cli(["namespace", "set_qos", "--subsystem", subsystem, "--nsid", "6"])
         except SystemExit as sysex:
-            rc = int(str(sysex))
+            rc = sysex.code
             pass
         assert "error: At least one QOS limit should be set" in caplog.text
         assert rc == 2
@@ -1517,7 +1532,7 @@ class TestCreate:
             cli(["namespace", "set_qos", "--subsystem", subsystem,
                  "--nsid", "6", "--w-megabytes-per-second", "JUNK"])
         except SystemExit as sysex:
-            rc = int(str(sysex))
+            rc = sysex.code
             pass
         assert "error: argument --w-megabytes-per-second: invalid int value: 'JUNK'" in caplog.text
         assert rc == 2
@@ -1548,7 +1563,7 @@ class TestCreate:
             cli(["namespace", "get_io_stats", "--subsystem", subsystem,
                  "--uuid", uuid2, "--nsid", "1"])
         except SystemExit as sysex:
-            rc = int(str(sysex))
+            rc = sysex.code
             pass
         assert "error: unrecognized arguments: --uuid" in caplog.text
         assert rc == 2
@@ -1557,7 +1572,7 @@ class TestCreate:
         try:
             cli(["--format", "json", "namespace", "get_io_stats", "--subsystem", subsystem])
         except SystemExit as sysex:
-            rc = int(str(sysex))
+            rc = sysex.code
             pass
         assert "error: the following arguments are required: --nsid" in caplog.text
         assert rc == 2
@@ -1568,7 +1583,7 @@ class TestCreate:
         try:
             cli(["host", "add", "--subsystem", subsystem])
         except SystemExit as sysex:
-            rc = int(str(sysex))
+            rc = sysex.code
             pass
         assert "error: the following arguments are required: --host-nqn/-t" in caplog.text
         assert rc == 2
@@ -1611,7 +1626,7 @@ class TestCreate:
         assert "Invalid subsystem NQN" in caplog.text
         assert "contains invalid characters" in caplog.text
 
-    def test_host_list(self, caplog):
+    def test_add_host_list(self, caplog):
         caplog.clear()
         cli(["host", "add", "--subsystem", subsystem, "--host-nqn", host5, host6, host7])
         assert f"Adding host {host5} to {subsystem}: Successful" in caplog.text
@@ -1638,7 +1653,7 @@ class TestCreate:
             cli(["listener", "add", "--subsystem", subsystem, "--host-name", "host*",
                  "-a", addr, "-s", "5010", "--verify-host-name"])
         except SystemExit as sysex:
-            rc = int(str(sysex))
+            rc = sysex.code
             pass
         assert "error: invalid host name host*" in caplog.text
         assert rc == 2
@@ -1648,7 +1663,7 @@ class TestCreate:
             cli(["listener", "add", "--subsystem", subsystem, "--host-name", "host_name",
                  "-a", addr, "-s", "5010", "--verify-host-name"])
         except SystemExit as sysex:
-            rc = int(str(sysex))
+            rc = sysex.code
             pass
         assert "error: invalid host name host_name" in caplog.text
         assert rc == 2
@@ -1658,7 +1673,7 @@ class TestCreate:
             cli(["listener", "add", "--subsystem", subsystem, "--host-name", "host-",
                  "-a", addr, "-s", "5010", "--verify-host-name"])
         except SystemExit as sysex:
-            rc = int(str(sysex))
+            rc = sysex.code
             pass
         assert "error: invalid host name host-" in caplog.text
         assert rc == 2
@@ -1668,7 +1683,7 @@ class TestCreate:
             cli(["listener", "add", "--subsystem", subsystem, "--host-name", "host.host-",
                  "-a", addr, "-s", "5010", "--verify-host-name"])
         except SystemExit as sysex:
-            rc = int(str(sysex))
+            rc = sysex.code
             pass
         assert "error: invalid host name host.host-" in caplog.text
         assert rc == 2
@@ -1679,7 +1694,7 @@ class TestCreate:
                  "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
                  "-a", addr, "-s", "5010", "--verify-host-name"])
         except SystemExit as sysex:
-            rc = int(str(sysex))
+            rc = sysex.code
             pass
         assert "error: invalid host name " \
                "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" \
@@ -1691,7 +1706,7 @@ class TestCreate:
             cli(["listener", "add", "--subsystem", subsystem, "--host-name", "host..name",
                  "-a", addr, "-s", "5010", "--verify-host-name"])
         except SystemExit as sysex:
-            rc = int(str(sysex))
+            rc = sysex.code
             pass
         assert "error: invalid host name host..name" in caplog.text
         assert rc == 2
@@ -1712,7 +1727,7 @@ class TestCreate:
                  "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
                  "-a", addr, "-s", "5010", "--verify-host-name"])
         except SystemExit as sysex:
-            rc = int(str(sysex))
+            rc = sysex.code
             pass
         assert "error: invalid host name xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" \
                "xxxxxxxxxxxxxxxxxxxxxxxxxxx.xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" \
@@ -1836,7 +1851,7 @@ class TestCreate:
             cli(["listener", "add", "--subsystem", subsystem, "--host-name", host_name,
                  "--verify-host-name"] + listener)
         except SystemExit as sysex:
-            rc = int(str(sysex))
+            rc = sysex.code
             pass
         assert "error: trsvcid value must be positive" in caplog.text
         assert rc == 2
@@ -1849,7 +1864,7 @@ class TestCreate:
             cli(["listener", "add", "--subsystem", subsystem, "--host-name", host_name,
                  "--verify-host-name"] + listener)
         except SystemExit as sysex:
-            rc = int(str(sysex))
+            rc = sysex.code
             pass
         assert "error: trsvcid value must be smaller than 65536" in caplog.text
         assert rc == 2
@@ -1895,7 +1910,7 @@ class TestCreate:
             cli(["listener", "add", "--subsystem", subsystem, "--host-name", host_name,
                  "--verify-host-name"] + listener)
         except SystemExit as sysex:
-            rc = int(str(sysex))
+            rc = sysex.code
             pass
         assert "error: argument --adrfam/-f: invalid choice: 'junk'" in caplog.text
         assert rc == 2
@@ -2002,7 +2017,7 @@ class TestDelete:
         try:
             cli(["host", "del", "--subsystem", subsystem])
         except SystemExit as sysex:
-            rc = int(str(sysex))
+            rc = sysex.code
             pass
         assert "error: the following arguments are required: --host-nqn/-t" in caplog.text
         assert rc == 2
@@ -2033,7 +2048,7 @@ class TestDelete:
         try:
             cli(["listener", "del", "--subsystem", subsystem, "--host-name", "*"] + listener)
         except SystemExit as sysex:
-            rc = int(str(sysex))
+            rc = sysex.code
             pass
         assert "error: must use --force when setting host name to *" in caplog.text
         assert rc == 2
@@ -2068,7 +2083,7 @@ class TestDelete:
         try:
             cli(["listener", "del", "--subsystem", subsystem, "--host-name", host_name] + listener)
         except SystemExit as sysex:
-            rc = int(str(sysex))
+            rc = sysex.code
             pass
         assert "error: the following arguments are required: --trsvcid/-s" in caplog.text
         assert rc == 2
@@ -2173,7 +2188,7 @@ class TestDelete:
         try:
             cli(["subsystem", "del", "--subsystem", discovery_nqn])
         except SystemExit as sysex:
-            rc = int(str(sysex))
+            rc = sysex.code
             pass
         assert "Can't delete a discovery subsystem" in caplog.text
         assert rc == 2
@@ -2333,7 +2348,7 @@ class TestGwLogLevel:
         try:
             cli(["gw", "set_log_level", "-l", "JUNK"])
         except SystemExit as sysex:
-            rc = int(str(sysex))
+            rc = sysex.code
             pass
         assert "error: argument --level/-l: invalid choice: 'junk'" in caplog.text
         assert rc == 2
@@ -2405,7 +2420,7 @@ class TestSPDKLOg:
         try:
             cli(["spdk_log_level", "set", "-l", "JUNK"])
         except SystemExit as sysex:
-            rc = int(str(sysex))
+            rc = sysex.code
             pass
         assert "error: argument --level/-l: invalid choice: 'junk'" in caplog.text
         assert rc == 2
@@ -2428,7 +2443,7 @@ class TestSPDKLOg:
         try:
             cli(["spdk_log_level", "set", "--extra-log-flags"])
         except SystemExit as sysex:
-            rc = int(str(sysex))
+            rc = sysex.code
             pass
         assert "error: argument --extra-log-flags/-e: expected at least one argument" in caplog.text
         assert rc == 2
@@ -2445,7 +2460,7 @@ class TestDeleteRBDImage:
             cli(["namespace", "add", "--subsystem", subsystem10, "--rbd-pool", pool,
                  "--rbd-image", image19, "--rbd-trash-image-on-delete"])
         except SystemExit as sysex:
-            rc = int(str(sysex))
+            rc = sysex.code
             pass
         assert "error: Can't trash associated RBD image on delete if it wasn't " \
                "created automatically by the gateway" in caplog.text
@@ -2575,7 +2590,7 @@ class TestListenerBadIPAddresses:
             cli(["listener", "add", "--subsystem", subsystem11, "--traddr", "3.4",
                  "--trsvcid", "4620", "--host-name", host_name])
         except SystemExit as sysex:
-            rc = int(str(sysex))
+            rc = sysex.code
             pass
         assert "error: invalid IP address 3.4" in caplog.text
         assert rc == 2
@@ -2584,7 +2599,7 @@ class TestListenerBadIPAddresses:
             cli(["listener", "add", "--subsystem", subsystem11, "--traddr", "192.44.32.43",
                  "--adrfam", "ipv6", "--trsvcid", "4620", "--host-name", host_name])
         except SystemExit as sysex:
-            rc = int(str(sysex))
+            rc = sysex.code
             pass
         assert "error: IP address 192.44.32.43 is not an IPv6 address" in caplog.text
         assert rc == 2
@@ -2593,7 +2608,7 @@ class TestListenerBadIPAddresses:
             cli(["listener", "add", "--subsystem", subsystem11, "--traddr", "::",
                  "--adrfam", "ipv4", "--trsvcid", "4620", "--host-name", host_name])
         except SystemExit as sysex:
-            rc = int(str(sysex))
+            rc = sysex.code
             pass
         assert "error: IP address :: is not an IPv4 address" in caplog.text
         assert rc == 2
@@ -2602,7 +2617,7 @@ class TestListenerBadIPAddresses:
             cli(["listener", "add", "--subsystem", subsystem11, "--traddr", "::",
                  "--trsvcid", "4620", "--host-name", host_name])
         except SystemExit as sysex:
-            rc = int(str(sysex))
+            rc = sysex.code
             pass
         assert "error: IP address :: is not an IPv4 address" in caplog.text
         assert rc == 2
@@ -2634,7 +2649,7 @@ class TestImageResize:
             cli(["namespace", "set_auto_resize", "--subsystem", subsystem11, "--nsid", "1",
                  "--auto-resize-enabled", "junk"])
         except SystemExit as sysex:
-            rc = int(str(sysex))
+            rc = sysex.code
             pass
         assert "error: argument --auto-resize-enabled: invalid choice: 'junk' " \
                "(choose from 'yes', 'no', 'true', 'false', '1', '0')" in caplog.text
