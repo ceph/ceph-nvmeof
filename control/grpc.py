@@ -5585,10 +5585,14 @@ class GatewayService(pb2_grpc.GatewayServicer):
                          f"when the subsystem has a key as well, remove the subsystem's key first"
                 self.logger.error(errmsg)
                 return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
-            else:
-                dhchap_ctrlr_key_to_use = dhchap_subsystem_key
-                has_dhchap_ctrlr_key = True
-                ctrlr_key_taken_from_subsystem = True
+            if not request.dhchap_ctrlr_key:
+                errmsg = f"{failure_prefix}: Can't delete host DH-HMAC-CHAP controller key " \
+                         f"as it was defined in the subsystem"
+                self.logger.error(errmsg)
+                return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
+            dhchap_ctrlr_key_to_use = dhchap_subsystem_key
+            has_dhchap_ctrlr_key = True
+            ctrlr_key_taken_from_subsystem = True
 
         if has_dhchap_key and not has_dhchap_ctrlr_key:
             self.logger.warning(f"Host {request.host_nqn} has a DH-HMAC-CHAP key but no "
@@ -5733,7 +5737,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 self.remove_all_host_key_files(request.subsystem_nqn, request.host_nqn)
                 self.remove_all_host_keys_from_keyring(request.subsystem_nqn, request.host_nqn)
 
-            if dhchap_ctrlr_key_name:
+            if dhchap_ctrlr_key_name and not ctrlr_key_taken_from_subsystem:
                 self.host_info.add_dhchap_ctrlr_host(request.subsystem_nqn,
                                                      request.host_nqn, dhchap_ctrlr_key_to_use)
             else:
@@ -5977,24 +5981,29 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     self.logger.warning(f'Got subsystem {s.nqn} instead of '
                                         f'{request.subsystem}, ignore')
                     continue
-                subsys_dhchap_key = self.host_info.does_subsystem_have_dhchap_key(request.subsystem)
                 try:
                     allow_any_host = s.allow_any_host
                     host_nqns = s.hosts
                 except Exception:
                     host_nqns = []
                     pass
+                subsystem_has_dhchap_key = self.host_info.does_subsystem_have_dhchap_key(
+                    request.subsystem)
                 for h in host_nqns:
                     host_nqn = h.nqn
                     psk = self.host_info.is_psk_host(request.subsystem, host_nqn)
                     dhchap = self.host_info.is_dhchap_host(request.subsystem, host_nqn)
-                    dhchap_ctrlr = self.host_info.is_dhchap_ctrlr_host(request.subsystem, host_nqn)
-                    dhchap_ctrlr = dhchap_ctrlr or subsys_dhchap_key
+                    if self.host_info.is_dhchap_ctrlr_host(request.subsystem, host_nqn):
+                        dhchap_ctrlr = pb2.DHCHAPControllerKeyOrigin.host_specific
+                    elif subsystem_has_dhchap_key:
+                        dhchap_ctrlr = pb2.DHCHAPControllerKeyOrigin.subsystem_implicit
+                    else:
+                        dhchap_ctrlr = pb2.DHCHAPControllerKeyOrigin.no_key
                     was_ka_timeout = \
                         self.host_info.was_host_disconnected_due_to_keepalive_timeout(
                             request.subsystem, host_nqn)
                     one_host = pb2.host(nqn=host_nqn, use_psk=psk, use_dhchap=dhchap,
-                                        use_dhchap_controller=dhchap_ctrlr,
+                                        dhchap_controller_origin=dhchap_ctrlr,
                                         disconnected_due_to_keepalive_timeout=was_ka_timeout)
                     hosts.append(one_host)
                     if was_ka_timeout and request.clear_alerts:
@@ -6147,7 +6156,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 self.logger.exception(f"{s=} parse error")
                 pass
 
-        subsys_dhchap_key = self.host_info.does_subsystem_have_dhchap_key(subsystem)
+        subsystem_has_dhchap_key = self.host_info.does_subsystem_have_dhchap_key(subsystem)
         for conn in ctrl_ret:
             try:
                 traddr = ""
@@ -6159,8 +6168,12 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 secure = False
                 psk = self.host_info.is_psk_host(subsystem, hostnqn)
                 dhchap = self.host_info.is_dhchap_host(subsystem, hostnqn)
-                dhchap_ctrlr = self.host_info.is_dhchap_ctrlr_host(subsystem, hostnqn)
-                dhchap_ctrlr = dhchap_ctrlr or subsys_dhchap_key
+                if self.host_info.is_dhchap_ctrlr_host(subsystem, hostnqn):
+                    dhchap_ctrlr = pb2.DHCHAPControllerKeyOrigin.host_specific
+                elif subsystem_has_dhchap_key:
+                    dhchap_ctrlr = pb2.DHCHAPControllerKeyOrigin.subsystem_implicit
+                else:
+                    dhchap_ctrlr = pb2.DHCHAPControllerKeyOrigin.no_key
 
                 for qp in qpair_ret:
                     try:
@@ -6214,7 +6227,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                           qpairs_count=conn["num_io_qpairs"],
                                           controller_id=conn["cntlid"],
                                           secure=secure, use_psk=psk, use_dhchap=dhchap,
-                                          use_dhchap_controller=dhchap_ctrlr,
+                                          dhchap_controller_origin=dhchap_ctrlr,
                                           subsystem=subsystem,
                                           disconnected_due_to_keepalive_timeout=was_ka_timeout)
                 connections.append(one_conn)
@@ -6227,15 +6240,19 @@ class GatewayService(pb2_grpc.GatewayServicer):
         for nqn in host_nqns:
             psk = self.host_info.is_psk_host(subsystem, nqn)
             dhchap = self.host_info.is_dhchap_host(subsystem, nqn)
-            dhchap_ctrlr = self.host_info.is_dhchap_ctrlr_host(subsystem, nqn)
-            dhchap_ctrlr = dhchap_ctrlr or subsys_dhchap_key
+            if self.host_info.is_dhchap_ctrlr_host(subsystem, nqn):
+                dhchap_ctrlr = pb2.DHCHAPControllerKeyOrigin.host_specific
+            elif subsystem_has_dhchap_key:
+                dhchap_ctrlr = pb2.DHCHAPControllerKeyOrigin.subsystem_implicit
+            else:
+                dhchap_ctrlr = pb2.DHCHAPControllerKeyOrigin.no_key
             was_ka_timeout = \
                 self.host_info.was_host_disconnected_due_to_keepalive_timeout(
                     subsystem, nqn)
             one_conn = pb2.connection(nqn=nqn, connected=False, traddr="<n/a>", trsvcid=0,
                                       qpairs_count=-1, controller_id=-1,
                                       use_psk=psk, use_dhchap=dhchap,
-                                      use_dhchap_controller=dhchap_ctrlr,
+                                      dhchap_controller_origin=dhchap_ctrlr,
                                       subsystem=subsystem,
                                       disconnected_due_to_keepalive_timeout=was_ka_timeout)
             connections.append(one_conn)

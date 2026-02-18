@@ -267,14 +267,24 @@ class GatewayClient:
             acts += ", '" + a["name"] + "'"
         return acts[2:]
 
-    def format_adrfam(self, adrfam):
-        adrfam = adrfam.upper()
-        if adrfam == "IPV4":
-            adrfam = "IPv4"
-        elif adrfam == "IPV6":
-            adrfam = "IPv6"
+    @staticmethod
+    def format_adrfam(adrfam: pb2.AddressFamily) -> str:
+        if adrfam == pb2.ipv4:
+            return "IPv4"
+        elif adrfam == pb2.ipv6:
+            return "IPv6"
 
-        return adrfam
+        return f"Unknown address family ({adrfam})"
+
+    @staticmethod
+    def get_dhchap_controller_text(val: pb2.DHCHAPControllerKeyOrigin) -> str:
+        if val == pb2.DHCHAPControllerKeyOrigin.no_key:
+            return "No Key"
+        elif val == pb2.DHCHAPControllerKeyOrigin.host_specific:
+            return "Host Specific"
+        elif val == pb2.DHCHAPControllerKeyOrigin.subsystem_implicit:
+            return "Subsystem Implicit"
+        return "<unknown>"
 
     def get_output_functions(self, args):
         if args.output == "log":
@@ -712,9 +722,7 @@ class GatewayClient:
                             ana_states += str(ana.grp_id) + ": " + str(ana.state) + "\n"
                         else:
                             ana_states += str(ana.grp_id) + ": " + state_str.title() + "\n"
-                    adrfam = GatewayEnumUtils.get_key_from_value(pb2.AddressFamily,
-                                                                 lstnr.listener.adrfam)
-                    adrfam = self.format_adrfam(adrfam)
+                    adrfam = GatewayClient.format_adrfam(lstnr.listener.adrfam)
                     traddr = lstnr.listener.traddr
                     if lstnr.listener.adrfam == pb2.ipv6:
                         traddr = GatewayUtils.escape_address_if_ipv6(traddr)
@@ -1571,8 +1579,7 @@ class GatewayClient:
             if listeners_info.status == 0:
                 listeners_list = []
                 for lstnr in listeners_info.listeners:
-                    adrfam = GatewayEnumUtils.get_key_from_value(pb2.AddressFamily, lstnr.adrfam)
-                    adrfam = self.format_adrfam(adrfam)
+                    adrfam = GatewayClient.format_adrfam(lstnr.adrfam)
                     secure = "Yes" if lstnr.secure else "No"
                     active = "Yes" if lstnr.active else "No"
                     manual = "Yes" if lstnr.manual else "No"
@@ -1980,7 +1987,8 @@ class GatewayClient:
                 for h in hosts_info.hosts:
                     use_psk = "Yes" if h.use_psk else "No"
                     use_dhchap = "Yes" if h.use_dhchap else "No"
-                    use_dhchap_ctrlr = "Yes" if h.use_dhchap_controller else "No"
+                    use_dhchap_ctrlr = GatewayClient.get_dhchap_controller_text(
+                        h.dhchap_controller_origin)
                     ka_timeout = "Yes" if h.disconnected_due_to_keepalive_timeout else "No"
                     timeout_col = [ka_timeout] if has_timeout else []
                     one_host = [h.nqn, use_psk, use_dhchap, use_dhchap_ctrlr] + timeout_col
@@ -1989,7 +1997,7 @@ class GatewayClient:
                     table_format = "fancy_grid" if args.format == "text" else "plain"
                     timeout_col = ["Keepalive\nTimeout"] if has_timeout else []
                     headers_list = ["Host NQN", "Uses PSK", "Uses DHCHAP",
-                                    "Uses DHCHAP Controller"] + timeout_col
+                                    "DHCHAP Controller"] + timeout_col
                     hosts_out = tabulate(hosts_list,
                                          headers=headers_list,
                                          tablefmt=table_format, stralign="center")
@@ -2157,7 +2165,8 @@ class GatewayClient:
                     conn_secure = "<n/a>"
                     conn_psk = "Yes" if conn.use_psk else "No"
                     conn_dhchap = "Yes" if conn.use_dhchap else "No"
-                    conn_dhchap_ctrlr = "Yes" if conn.use_dhchap_controller else "No"
+                    conn_dhchap_ctrlr = GatewayClient.get_dhchap_controller_text(
+                        conn.dhchap_controller_origin)
                     if conn.connected:
                         conn_secure = "Yes" if conn.secure else "No"
                     conn_addr = "<n/a>"
@@ -2199,7 +2208,7 @@ class GatewayClient:
                                               "Secure",
                                               "Uses\nPSK",
                                               "Uses\nDHCHAP",
-                                              "Uses\nDHCHAP\nController"] + timeout_col,
+                                              "DHCHAP\nController"] + timeout_col,
                         tablefmt=table_format)
                     if connections_info.subsystem_nqn == GatewayUtils.ALL_SUBSYSTEMS:
                         subsys_text = "all subsystems"
