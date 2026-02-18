@@ -15,10 +15,10 @@ function cephnvmf()
 
 calc_written_bytes_in_sec()
 {
-  num_bytes=$(docker compose run --rm nvmeof-cli --server-address $GW_IP --server-port 5500 --output stdio --format json namespace get_io_stats -n $NQN --nsid 1 | jq '.bytes_written'| sed 's/[^0-9]*//g')
+  num_bytes=$(docker compose run --rm nvmeof-cli --server-address $GW_IP --server-port 5500 --output stdio --format json namespace get_io_stats -n $NQN --nsid 1 | jq '.namespaces[0].bytes_written'| sed 's/[^0-9]*//g')
 
   sleep 1
-  num_bytes1=$(docker compose run --rm nvmeof-cli --server-address $GW_IP --server-port 5500 --output stdio --format json namespace get_io_stats -n $NQN --nsid 1 | jq '.bytes_written'| sed 's/[^0-9]*//g')
+  num_bytes1=$(docker compose run --rm nvmeof-cli --server-address $GW_IP --server-port 5500 --output stdio --format json namespace get_io_stats -n $NQN --nsid 1 | jq '.namespaces[0].bytes_written'| sed 's/[^0-9]*//g')
 
   res=$(expr $num_bytes1 - $num_bytes)
   echo $res

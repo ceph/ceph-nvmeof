@@ -3919,49 +3919,56 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                    subsystem_nqn=request.subsystem,
                                    namespaces=namespaces)
 
-    def namespace_get_io_stats(self, request, context=None):
-        """Get namespace's IO stats."""
-
-        failure_prefix = f"Failure getting IO stats for namespace {request.nsid} " \
-                         f"on {request.subsystem_nqn}"
+    def list_namespaces_io_stats(self, request, context=None):
+        """Get namespaces IO stats."""
         peer_msg = self.get_peer_message(context)
-        self.logger.info(f"Received request to get IO stats for namespace {request.nsid} on "
-                         f"{request.subsystem_nqn}, context: {context}{peer_msg}")
-        if not request.nsid:
+        self.logger.info(f"Received request to list IO stats for namespaces with "
+                         f"nsid: {request.nsid}, subsystem: {request.subsystem_nqn}, "
+                         f"context: {context}{peer_msg}")
+        failure_prefix = "Failure listing IO stats for namespaces"
+        if (request.nsid):
+            failure_prefix += f" with ID {request.nsid}"
+        if (request.subsystem_nqn):
+            failure_prefix += f" on subsystem {request.subsystem_nqn}"
+
+        if (request.subsystem_nqn and not request.nsid):
             errmsg = "Failure getting IO stats for namespace, missing ID"
             self.logger.error(errmsg)
-            return pb2.namespace_io_stats_info(status=errno.EINVAL, error_message=errmsg)
+            return pb2.list_namespaces_io_stats_info(status=errno.EINVAL, error_message=errmsg)
 
-        if not request.subsystem_nqn:
-            errmsg = f"Failure getting IO stats for namespace {request.nsid}, \
-                missing subsystem NQN"
+        if (request.nsid and not request.subsystem_nqn):
+            errmsg = f"Failure getting IO stats for namespace {request.nsid}, " \
+                     "missing subsystem NQN"
             self.logger.error(errmsg)
-            return pb2.namespace_io_stats_info(status=errno.EINVAL, error_message=errmsg)
+            return pb2.list_namespaces_io_stats_info(status=errno.EINVAL, error_message=errmsg)
 
         # If this is not set the subsystem was not created yet
-        if request.subsystem_nqn not in self.subsys_serial:
+        if request.subsystem_nqn and (request.subsystem_nqn not in self.subsys_serial):
             errmsg = f"Failure getting IO stats for namespace {request.nsid}, can't find " \
                      f"subsystem \"{request.subsystem_nqn}\""
             self.logger.error(errmsg)
-            return pb2.namespace_io_stats_info(status=errno.ENOENT, error_message=errmsg)
+            return pb2.list_namespaces_io_stats_info(status=errno.ENOENT, error_message=errmsg)
 
+        target_bdev_name = None
         with self.rpc_lock:
-            find_ret = self.subsystem_nsid_bdev_and_uuid.find_namespace(
-                request.subsystem_nqn, request.nsid)
-            if find_ret.empty():
-                errmsg = f"{failure_prefix}: Can't find namespace"
-                self.logger.error(errmsg)
-                return pb2.namespace_io_stats_info(status=errno.ENODEV, error_message=errmsg)
-            uuid = find_ret.uuid
-            bdev_name = find_ret.bdev
-            if not bdev_name:
-                errmsg = f"{failure_prefix}: Can't find associated block device"
-                self.logger.error(errmsg)
-                return pb2.namespace_io_stats_info(status=errno.ENODEV, error_message=errmsg)
+            if request.nsid:
+                find_ret = self.subsystem_nsid_bdev_and_uuid.find_namespace(
+                    request.subsystem_nqn, request.nsid)
+                if find_ret.empty():
+                    errmsg = f"{failure_prefix}: Can't find namespace"
+                    self.logger.error(errmsg)
+                    return pb2.list_namespaces_io_stats_info(status=errno.ENODEV,
+                                                             error_message=errmsg)
+                target_bdev_name = find_ret.bdev
+                if not target_bdev_name:
+                    errmsg = f"{failure_prefix}: Can't find associated block device"
+                    self.logger.error(errmsg)
+                    return pb2.list_namespaces_io_stats_info(status=errno.ENODEV,
+                                                             error_message=errmsg)
 
             try:
-                ret = self.spdk_rpc_client.bdev_get_iostat(name=bdev_name)
-                self.logger.debug(f"get_bdev_iostat {bdev_name}: {ret}")
+                ret = self.spdk_rpc_client.bdev_get_iostat(name=target_bdev_name)
+                self.logger.debug(f"get_bdev_iostat: {ret}")
             except Exception as ex:
                 self.logger.exception(failure_prefix)
                 errmsg = f"{failure_prefix}:\n{ex}"
@@ -3970,69 +3977,145 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 if resp:
                     status = resp["code"]
                     errmsg = f"{failure_prefix}: {resp['message']}"
-                return pb2.namespace_io_stats_info(status=status, error_message=errmsg)
+                return pb2.list_namespaces_io_stats_info(status=status, error_message=errmsg)
 
         # Just in case SPDK failed with no exception
         if not ret:
             self.logger.error(failure_prefix)
-            return pb2.namespace_io_stats_info(status=errno.EINVAL, error_message=failure_prefix)
+            return pb2.list_namespaces_io_stats_info(status=errno.EINVAL,
+                                                     error_message=failure_prefix)
 
         exmsg = ""
         try:
             bdevs = ret["bdevs"]
             if not bdevs:
-                return pb2.namespace_io_stats_info(
+                return pb2.list_namespaces_io_stats_info(
                     status=errno.ENODEV,
                     error_message=f"{failure_prefix}: No associated block device found")
-            if len(bdevs) > 1:
-                self.logger.warning("More than one associated block device found for namespace, "
-                                    "will use the first one")
-            bdev = bdevs[0]
-            io_errs = []
-            try:
-                io_error = bdev["io_error"]
-                for err_name in io_error.keys():
-                    one_error = pb2.namespace_io_error(name=err_name, value=io_error[err_name])
-                    io_errs.append(one_error)
-            except Exception:
-                self.logger.exception("failure getting io errors")
-            io_stats = pb2.namespace_io_stats_info(
+
+            if target_bdev_name and len(bdevs) > 1:
+                self.logger.warning("More than one associated block device found for namespace")
+
+            bdev_iostats = []
+            for bdev in bdevs:
+                io_errs = []
+                try:
+                    io_error = bdev["io_error"]
+                    for err_name in io_error.keys():
+                        one_error = pb2.namespace_io_error(name=err_name, value=io_error[err_name])
+                        io_errs.append(one_error)
+                except Exception:
+                    self.logger.exception("failure getting io errors")
+                io_stats = pb2.bdev_io_stats_info(
+                    bdev_name=bdev["name"],
+                    bytes_read=bdev["bytes_read"],
+                    num_read_ops=bdev["num_read_ops"],
+                    bytes_written=bdev["bytes_written"],
+                    num_write_ops=bdev["num_write_ops"],
+                    bytes_unmapped=bdev["bytes_unmapped"],
+                    num_unmap_ops=bdev["num_unmap_ops"],
+                    bytes_copied=bdev["bytes_copied"],
+                    num_copy_ops=bdev["num_copy_ops"],
+                    read_latency_ticks=bdev["read_latency_ticks"],
+                    max_read_latency_ticks=bdev["max_read_latency_ticks"],
+                    min_read_latency_ticks=bdev["min_read_latency_ticks"],
+                    write_latency_ticks=bdev["write_latency_ticks"],
+                    max_write_latency_ticks=bdev["max_write_latency_ticks"],
+                    min_write_latency_ticks=bdev["min_write_latency_ticks"],
+                    unmap_latency_ticks=bdev["unmap_latency_ticks"],
+                    max_unmap_latency_ticks=bdev["max_unmap_latency_ticks"],
+                    min_unmap_latency_ticks=bdev["min_unmap_latency_ticks"],
+                    copy_latency_ticks=bdev["copy_latency_ticks"],
+                    max_copy_latency_ticks=bdev["max_copy_latency_ticks"],
+                    min_copy_latency_ticks=bdev["min_copy_latency_ticks"],
+                    io_error=io_errs)
+                bdev_iostats.append(io_stats)
+            return pb2.list_namespaces_io_stats_info(
                 status=0,
                 error_message=os.strerror(0),
-                subsystem_nqn=request.subsystem_nqn,
-                nsid=request.nsid,
-                uuid=uuid,
-                bdev_name=bdev_name,
                 tick_rate=ret["tick_rate"],
                 ticks=ret["ticks"],
-                bytes_read=bdev["bytes_read"],
-                num_read_ops=bdev["num_read_ops"],
-                bytes_written=bdev["bytes_written"],
-                num_write_ops=bdev["num_write_ops"],
-                bytes_unmapped=bdev["bytes_unmapped"],
-                num_unmap_ops=bdev["num_unmap_ops"],
-                read_latency_ticks=bdev["read_latency_ticks"],
-                max_read_latency_ticks=bdev["max_read_latency_ticks"],
-                min_read_latency_ticks=bdev["min_read_latency_ticks"],
-                write_latency_ticks=bdev["write_latency_ticks"],
-                max_write_latency_ticks=bdev["max_write_latency_ticks"],
-                min_write_latency_ticks=bdev["min_write_latency_ticks"],
-                unmap_latency_ticks=bdev["unmap_latency_ticks"],
-                max_unmap_latency_ticks=bdev["max_unmap_latency_ticks"],
-                min_unmap_latency_ticks=bdev["min_unmap_latency_ticks"],
-                copy_latency_ticks=bdev["copy_latency_ticks"],
-                max_copy_latency_ticks=bdev["max_copy_latency_ticks"],
-                min_copy_latency_ticks=bdev["min_copy_latency_ticks"],
-                io_error=io_errs)
-            return io_stats
+                namespaces=bdev_iostats
+            )
         except Exception as ex:
             self.logger.exception("parse error")
             exmsg = str(ex)
             pass
+        return pb2.list_namespaces_io_stats_info(status=errno.EINVAL,
+                                                 error_message=f"{failure_prefix}: Error "
+                                                 f"parsing returned stats:\n{exmsg}")
 
-        return pb2.namespace_io_stats_info(status=errno.EINVAL,
-                                           error_message=f"{failure_prefix}: Error "
-                                                         f"parsing returned stats:\n{exmsg}")
+    def namespace_get_io_stats(self, request, context=None):
+        """Get namespace's IO stats."""
+
+        failure_prefix = f"Failure getting IO stats for namespace {request.nsid} " \
+                         f"on {request.subsystem_nqn}"
+        peer_msg = self.get_peer_message(context)
+        self.logger.info(f"Received request to get IO stats for namespace {request.nsid} on "
+                         f"{request.subsystem_nqn}, context: {context}{peer_msg}")
+
+        list_req = pb2.list_namespaces_io_stats_req(
+            subsystem_nqn=request.subsystem_nqn,
+            nsid=request.nsid
+        )
+        list_ret = self.list_namespaces_io_stats(list_req, context)
+
+        if list_ret.status != 0:
+            return pb2.namespace_io_stats_info(
+                status=list_ret.status,
+                error_message=list_ret.error_message
+            )
+
+        if not list_ret.namespaces:
+            return pb2.namespace_io_stats_info(
+                status=errno.ENODEV,
+                error_message=f"{failure_prefix}: No namespace found"
+            )
+
+        if len(list_ret.namespaces) > 1:
+            self.logger.warning("Found multiple devices for same ID, will use first one")
+        bdev_stats = list_ret.namespaces[0]
+
+        # get uuid
+        with self.rpc_lock:
+            find_ret = self.subsystem_nsid_bdev_and_uuid.find_namespace(
+                request.subsystem_nqn, request.nsid)
+            if find_ret.empty():
+                return pb2.namespace_io_stats_info(
+                    status=errno.ENODEV,
+                    error_message=f"{failure_prefix}: Can't find namespace"
+                )
+            uuid = find_ret.uuid
+
+        return pb2.namespace_io_stats_info(
+            status=0,
+            error_message=os.strerror(0),
+            subsystem_nqn=request.subsystem_nqn,
+            nsid=request.nsid,
+            uuid=uuid,
+            bdev_name=bdev_stats.bdev_name,
+            tick_rate=list_ret.tick_rate,
+            ticks=list_ret.ticks,
+            bytes_read=bdev_stats.bytes_read,
+            num_read_ops=bdev_stats.num_read_ops,
+            bytes_written=bdev_stats.bytes_written,
+            num_write_ops=bdev_stats.num_write_ops,
+            bytes_unmapped=bdev_stats.bytes_unmapped,
+            num_unmap_ops=bdev_stats.num_unmap_ops,
+            read_latency_ticks=bdev_stats.read_latency_ticks,
+            max_read_latency_ticks=bdev_stats.max_read_latency_ticks,
+            min_read_latency_ticks=bdev_stats.min_read_latency_ticks,
+            write_latency_ticks=bdev_stats.write_latency_ticks,
+            max_write_latency_ticks=bdev_stats.max_write_latency_ticks,
+            min_write_latency_ticks=bdev_stats.min_write_latency_ticks,
+            unmap_latency_ticks=bdev_stats.unmap_latency_ticks,
+            max_unmap_latency_ticks=bdev_stats.max_unmap_latency_ticks,
+            min_unmap_latency_ticks=bdev_stats.min_unmap_latency_ticks,
+            copy_latency_ticks=bdev_stats.copy_latency_ticks,
+            max_copy_latency_ticks=bdev_stats.max_copy_latency_ticks,
+            min_copy_latency_ticks=bdev_stats.min_copy_latency_ticks,
+            io_error=bdev_stats.io_error
+        )
 
     @staticmethod
     def is_optional_field_in_message(request, fld):
