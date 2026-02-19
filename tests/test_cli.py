@@ -1196,8 +1196,9 @@ class TestCreate:
         assert '"use_psk": false' in caplog.text
         assert '"use_dhchap": true' not in caplog.text
         assert '"use_dhchap": false' in caplog.text
-        assert '"use_dhchap_controller": true' not in caplog.text
-        assert '"use_dhchap_controller": false' in caplog.text
+        assert '"dhchap_controller_origin": "no_key"' in caplog.text
+        assert '"dhchap_controller_origin": "subsystem_implicit"' not in caplog.text
+        assert '"dhchap_controller_origin": "host_specific"' not in caplog.text
         assert '"allow_any_host": false' in caplog.text
         caplog.clear()
         hosts = cli_test(["host", "list", "--subsystem", subsystem])
@@ -1216,11 +1217,11 @@ class TestCreate:
         assert not hosts.hosts[1].use_psk
         assert not hosts.hosts[2].use_psk
         assert not hosts.hosts[0].use_dhchap
-        assert not hosts.hosts[0].use_dhchap_controller
+        assert hosts.hosts[0].dhchap_controller_origin == pb2.DHCHAPControllerKeyOrigin.no_key
         assert not hosts.hosts[1].use_dhchap
-        assert not hosts.hosts[1].use_dhchap_controller
+        assert hosts.hosts[1].dhchap_controller_origin == pb2.DHCHAPControllerKeyOrigin.no_key
         assert not hosts.hosts[2].use_dhchap
-        assert not hosts.hosts[2].use_dhchap_controller
+        assert hosts.hosts[2].dhchap_controller_origin == pb2.DHCHAPControllerKeyOrigin.no_key
         assert not hosts.hosts[0].disconnected_due_to_keepalive_timeout
         assert not hosts.hosts[1].disconnected_due_to_keepalive_timeout
         assert not hosts.hosts[2].disconnected_due_to_keepalive_timeout

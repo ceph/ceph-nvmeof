@@ -46,6 +46,12 @@ enum EncryptionAlgorithm {
 	aes256 = 2;
 }
 
+enum DHCHAPControllerKeyOrigin {
+	no_key = 0;
+	host_specific = 1;
+	subsystem_implicit = 2;
+}
+
 service Gateway {
 	// Creates a namespace from an RBD image
 	rpc namespace_add(namespace_add_req) returns (nsid_status) {}
@@ -598,7 +604,7 @@ message gateway_stats_info {
 message thread_stats_info {
 	int32 status = 1;
 	string error_message = 2;
-    repeated spdk_thread_info threads = 3;
+	repeated spdk_thread_info threads = 3;
 	uint64 tick_rate = 4;
 }
 
@@ -641,7 +647,7 @@ message host {
 	optional bool use_psk = 2;
 	optional bool use_dhchap = 3;
 	optional bool disconnected_due_to_keepalive_timeout = 4;
-	optional bool use_dhchap_controller = 5;
+	optional DHCHAPControllerKeyOrigin dhchap_controller_origin = 5;
 }
 
 message latency_stats {
@@ -695,7 +701,7 @@ message connection {
 	optional bool use_dhchap = 11;
 	optional string subsystem = 12;
 	optional bool disconnected_due_to_keepalive_timeout = 13;
-	optional bool use_dhchap_controller = 14;
+	optional DHCHAPControllerKeyOrigin dhchap_controller_origin = 14;
 }
 
 message connections_info {

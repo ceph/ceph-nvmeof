@@ -37,6 +37,7 @@ const (
 	Gateway_ListNamespaces_FullMethodName                    = "/Gateway/list_namespaces"
 	Gateway_NamespaceResize_FullMethodName                   = "/Gateway/namespace_resize"
 	Gateway_NamespaceGetIoStats_FullMethodName               = "/Gateway/namespace_get_io_stats"
+	Gateway_ListNamespacesIoStats_FullMethodName             = "/Gateway/list_namespaces_io_stats"
 	Gateway_NamespaceSetQosLimits_FullMethodName             = "/Gateway/namespace_set_qos_limits"
 	Gateway_NamespaceChangeLoadBalancingGroup_FullMethodName = "/Gateway/namespace_change_load_balancing_group"
 	Gateway_NamespaceChangeVisibility_FullMethodName         = "/Gateway/namespace_change_visibility"
@@ -92,6 +93,8 @@ type GatewayClient interface {
 	NamespaceResize(ctx context.Context, in *NamespaceResizeReq, opts ...grpc.CallOption) (*ReqStatus, error)
 	// Gets namespace's IO stats
 	NamespaceGetIoStats(ctx context.Context, in *NamespaceGetIoStatsReq, opts ...grpc.CallOption) (*NamespaceIoStatsInfo, error)
+	// List namespaces IO stats
+	ListNamespacesIoStats(ctx context.Context, in *ListNamespacesIoStatsReq, opts ...grpc.CallOption) (*ListNamespacesIoStatsInfo, error)
 	// Sets namespace's qos limits
 	NamespaceSetQosLimits(ctx context.Context, in *NamespaceSetQosReq, opts ...grpc.CallOption) (*ReqStatus, error)
 	// Changes namespace's load balancing group
@@ -248,6 +251,16 @@ func (c *gatewayClient) NamespaceGetIoStats(ctx context.Context, in *NamespaceGe
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(NamespaceIoStatsInfo)
 	err := c.cc.Invoke(ctx, Gateway_NamespaceGetIoStats_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *gatewayClient) ListNamespacesIoStats(ctx context.Context, in *ListNamespacesIoStatsReq, opts ...grpc.CallOption) (*ListNamespacesIoStatsInfo, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListNamespacesIoStatsInfo)
+	err := c.cc.Invoke(ctx, Gateway_ListNamespacesIoStats_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -586,6 +599,8 @@ type GatewayServer interface {
 	NamespaceResize(context.Context, *NamespaceResizeReq) (*ReqStatus, error)
 	// Gets namespace's IO stats
 	NamespaceGetIoStats(context.Context, *NamespaceGetIoStatsReq) (*NamespaceIoStatsInfo, error)
+	// List namespaces IO stats
+	ListNamespacesIoStats(context.Context, *ListNamespacesIoStatsReq) (*ListNamespacesIoStatsInfo, error)
 	// Sets namespace's qos limits
 	NamespaceSetQosLimits(context.Context, *NamespaceSetQosReq) (*ReqStatus, error)
 	// Changes namespace's load balancing group
@@ -684,6 +699,9 @@ func (UnimplementedGatewayServer) NamespaceResize(context.Context, *NamespaceRes
 }
 func (UnimplementedGatewayServer) NamespaceGetIoStats(context.Context, *NamespaceGetIoStatsReq) (*NamespaceIoStatsInfo, error) {
 	return nil, status.Error(codes.Unimplemented, "method NamespaceGetIoStats not implemented")
+}
+func (UnimplementedGatewayServer) ListNamespacesIoStats(context.Context, *ListNamespacesIoStatsReq) (*ListNamespacesIoStatsInfo, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListNamespacesIoStats not implemented")
 }
 func (UnimplementedGatewayServer) NamespaceSetQosLimits(context.Context, *NamespaceSetQosReq) (*ReqStatus, error) {
 	return nil, status.Error(codes.Unimplemented, "method NamespaceSetQosLimits not implemented")
@@ -957,6 +975,24 @@ func _Gateway_NamespaceGetIoStats_Handler(srv interface{}, ctx context.Context, 
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(GatewayServer).NamespaceGetIoStats(ctx, req.(*NamespaceGetIoStatsReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Gateway_ListNamespacesIoStats_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListNamespacesIoStatsReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GatewayServer).ListNamespacesIoStats(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Gateway_ListNamespacesIoStats_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GatewayServer).ListNamespacesIoStats(ctx, req.(*ListNamespacesIoStatsReq))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1561,6 +1597,10 @@ var Gateway_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "namespace_get_io_stats",
 			Handler:    _Gateway_NamespaceGetIoStats_Handler,
+		},
+		{
+			MethodName: "list_namespaces_io_stats",
+			Handler:    _Gateway_ListNamespacesIoStats_Handler,
 		},
 		{
 			MethodName: "namespace_set_qos_limits",

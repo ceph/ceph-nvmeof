@@ -105,7 +105,7 @@ function demo_bdevperf_unsecured()
     [[ `echo $conns | jq -r '.connections[0].secure'` == "false" ]]
     [[ `echo $conns | jq -r '.connections[0].use_psk'` == "false" ]]
     [[ `echo $conns | jq -r '.connections[0].use_dhchap'` == "false" ]]
-    [[ `echo $conns | jq -r '.connections[0].use_dhchap_controller'` == "false" ]]
+    [[ `echo $conns | jq -r '.connections[0].dhchap_controller_origin'` == "no_key" ]]
     [[ `echo $conns | jq -r '.connections[0].subsystem'` == "${NQN}" ]]
     [[ `echo $conns | jq -r '.connections[1]'` == "null" ]]
 
@@ -123,7 +123,7 @@ function demo_bdevperf_unsecured()
     [[ `echo $conns | jq -r '.connections[0].secure'` == "false" ]]
     [[ `echo $conns | jq -r '.connections[0].use_psk'` == "false" ]]
     [[ `echo $conns | jq -r '.connections[0].use_dhchap'` == "false" ]]
-    [[ `echo $conns | jq -r '.connections[0].use_dhchap_controller'` == "false" ]]
+    [[ `echo $conns | jq -r '.connections[0].dhchap_controller_origin'` == "no_key" ]]
     [[ `echo $conns | jq -r '.connections[0].subsystem'` == "${NQN}" ]]
     [[ `echo $conns | jq -r '.connections[1]'` == "null" ]]
 
@@ -161,7 +161,7 @@ function demo_bdevperf_unsecured()
     [[ `echo $conns | jq -r '.connections[0].secure'` == "false" ]]
     [[ `echo $conns | jq -r '.connections[0].use_psk'` == "false" ]]
     [[ `echo $conns | jq -r '.connections[0].use_dhchap'` == "false" ]]
-    [[ `echo $conns | jq -r '.connections[0].use_dhchap_controller'` == "false" ]]
+    [[ `echo $conns | jq -r '.connections[0].dhchap_controller_origin'` == "no_key" ]]
     [[ `echo $conns | jq -r '.connections[0].subsystem'` == "${NQN}" ]]
     [[ `echo $conns | jq -r '.connections[1]'` == "null" ]]
 
@@ -183,7 +183,7 @@ function demo_bdevperf_unsecured()
     [[ `echo $conns | jq -r '.connections[0].secure'` == "false" ]]
     [[ `echo $conns | jq -r '.connections[0].use_psk'` == "false" ]]
     [[ `echo $conns | jq -r '.connections[0].use_dhchap'` == "false" ]]
-    [[ `echo $conns | jq -r '.connections[0].use_dhchap_controller'` == "false" ]]
+    [[ `echo $conns | jq -r '.connections[0].dhchap_controller_origin'` == "no_key" ]]
     [[ `echo $conns | jq -r '.connections[0].subsystem'` == "${NQN}" ]]
     [[ `echo $conns | jq -r '.connections[1].nqn'` == "${localhostnqn}" ]]
     [[ `echo $conns | jq -r '.connections[1].trsvcid'` == "${port2}" ]]
@@ -195,7 +195,7 @@ function demo_bdevperf_unsecured()
     [[ `echo $conns | jq -r '.connections[1].secure'` == "false" ]]
     [[ `echo $conns | jq -r '.connections[1].use_psk'` == "false" ]]
     [[ `echo $conns | jq -r '.connections[1].use_dhchap'` == "false" ]]
-    [[ `echo $conns | jq -r '.connections[1].use_dhchap_controller'` == "false" ]]
+    [[ `echo $conns | jq -r '.connections[1].dhchap_controller_origin'` == "no_key" ]]
     [[ `echo $conns | jq -r '.connections[1].subsystem'` == "${NQN}" ]]
     [[ `echo $conns | jq -r '.connections[2]'` == "null" ]]
 
@@ -221,7 +221,7 @@ function demo_bdevperf_unsecured()
     [[ `echo $conns | jq -r '.connections[0].secure'` == "false" ]]
     [[ `echo $conns | jq -r '.connections[0].use_psk'` == "false" ]]
     [[ `echo $conns | jq -r '.connections[0].use_dhchap'` == "false" ]]
-    [[ `echo $conns | jq -r '.connections[0].use_dhchap_controller'` == "false" ]]
+    [[ `echo $conns | jq -r '.connections[0].dhchap_controller_origin'` == "no_key" ]]
     [[ `echo $conns | jq -r '.connections[0].subsystem'` == "${NQN}" ]]
     [[ `echo $conns | jq -r '.connections[1]'` == "null" ]]
 
@@ -252,7 +252,7 @@ function demo_bdevperf_unsecured()
     [[ `echo $conns | jq -r '.connections[0].secure'` == "false" ]]
     [[ `echo $conns | jq -r '.connections[0].use_psk'` == "false" ]]
     [[ `echo $conns | jq -r '.connections[0].use_dhchap'` == "false" ]]
-    [[ `echo $conns | jq -r '.connections[0].use_dhchap_controller'` == "false" ]]
+    [[ `echo $conns | jq -r '.connections[0].dhchap_controller_origin'` == "no_key" ]]
     [[ `echo $conns | jq -r '.connections[0].subsystem'` == "${NQN}" ]]
     [[ `echo $conns | jq -r '.connections[1]'` == "null" ]]
 
@@ -407,7 +407,7 @@ function demo_bdevperf_unsecured()
     [[ `echo $conns | jq -r '.connections[0].secure'` == "false" ]]
     [[ `echo $conns | jq -r '.connections[0].use_psk'` == "false" ]]
     [[ `echo $conns | jq -r '.connections[0].use_dhchap'` == "false" ]]
-    [[ `echo $conns | jq -r '.connections[0].use_dhchap_controller'` == "false" ]]
+    [[ `echo $conns | jq -r '.connections[0].dhchap_controller_origin'` == "no_key" ]]
     [[ `echo $conns | jq -r '.connections[0].subsystem'` == "${NQN}" ]]
     [[ `echo $conns | jq -r '.connections[1].nqn'` == "${NQN}host32" ]]
     [[ `echo $conns | jq -r '.connections[1].trsvcid'` == 0 ]]
@@ -419,7 +419,7 @@ function demo_bdevperf_unsecured()
     [[ `echo $conns | jq -r '.connections[1].connected'` == "false" ]]
     [[ `echo $conns | jq -r '.connections[1].use_psk'` == "false" ]]
     [[ `echo $conns | jq -r '.connections[1].use_dhchap'` == "false" ]]
-    [[ `echo $conns | jq -r '.connections[1].use_dhchap_controller'` == "false" ]]
+    [[ `echo $conns | jq -r '.connections[1].dhchap_controller_origin'` == "no_key" ]]
     [[ `echo $conns | jq -r '.connections[1].subsystem'` == "${NQN}" ]]
     [[ `echo $conns | jq -r '.connections[2]'` == "null" ]]
 
@@ -450,7 +450,7 @@ function demo_bdevperf_unsecured()
     [[ `echo $conns | jq -r '.connections[0].secure'` == "false" ]]
     [[ `echo $conns | jq -r '.connections[0].use_psk'` == "false" ]]
     [[ `echo $conns | jq -r '.connections[0].use_dhchap'` == "false" ]]
-    [[ `echo $conns | jq -r '.connections[0].use_dhchap_controller'` == "false" ]]
+    [[ `echo $conns | jq -r '.connections[0].dhchap_controller_origin'` == "no_key" ]]
     [[ `echo $conns | jq -r '.connections[0].subsystem'` == "${NQN}" ]]
     [[ `echo $conns | jq -r '.connections[1].nqn'` == "${NQN}host33" ]]
     [[ `echo $conns | jq -r '.connections[1].trsvcid'` == "${NVMEOF_IO_PORT}" ]]
@@ -462,7 +462,7 @@ function demo_bdevperf_unsecured()
     [[ `echo $conns | jq -r '.connections[1].secure'` == "false" ]]
     [[ `echo $conns | jq -r '.connections[1].use_psk'` == "false" ]]
     [[ `echo $conns | jq -r '.connections[1].use_dhchap'` == "false" ]]
-    [[ `echo $conns | jq -r '.connections[1].use_dhchap_controller'` == "false" ]]
+    [[ `echo $conns | jq -r '.connections[1].dhchap_controller_origin'` == "no_key" ]]
     [[ `echo $conns | jq -r '.connections[1].subsystem'` == "${NQN}" ]]
     [[ `echo $conns | jq -r '.connections[2]'` == "null" ]]
     rm -f /tmp/hostdel.err
@@ -520,7 +520,7 @@ function demo_bdevperf_psk()
     [[ `echo $conns | jq -r '.connections[0].secure'` == "true" ]]
     [[ `echo $conns | jq -r '.connections[0].use_psk'` == "true" ]]
     [[ `echo $conns | jq -r '.connections[0].use_dhchap'` == "false" ]]
-    [[ `echo $conns | jq -r '.connections[0].use_dhchap_controller'` == "false" ]]
+    [[ `echo $conns | jq -r '.connections[0].dhchap_controller_origin'` == "no_key" ]]
     [[ `echo $conns | jq -r '.connections[0].subsystem'` == "${NQN}" ]]
 
     [[ `echo $conns | jq -r '.connections[1].nqn'` == "${NQN}host3" ]]
@@ -533,7 +533,7 @@ function demo_bdevperf_psk()
     [[ `echo $conns | jq -r '.connections[1].connected'` == "false" ]]
     [[ `echo $conns | jq -r '.connections[1].use_psk'` == "true" ]]
     [[ `echo $conns | jq -r '.connections[1].use_dhchap'` == "false" ]]
-    [[ `echo $conns | jq -r '.connections[1].use_dhchap_controller'` == "false" ]]
+    [[ `echo $conns | jq -r '.connections[1].dhchap_controller_origin'` == "no_key" ]]
     [[ `echo $conns | jq -r '.connections[1].subsystem'` == "${NQN}" ]]
 
     [[ `echo $conns | jq -r '.connections[2].nqn'` == "${NQN}host2" ]]
@@ -546,7 +546,7 @@ function demo_bdevperf_psk()
     [[ `echo $conns | jq -r '.connections[2].connected'` == "false" ]]
     [[ `echo $conns | jq -r '.connections[2].use_psk'` == "false" ]]
     [[ `echo $conns | jq -r '.connections[2].use_dhchap'` == "false" ]]
-    [[ `echo $conns | jq -r '.connections[2].use_dhchap_controller'` == "false" ]]
+    [[ `echo $conns | jq -r '.connections[2].dhchap_controller_origin'` == "no_key" ]]
     [[ `echo $conns | jq -r '.connections[2].subsystem'` == "${NQN}" ]]
 
     [[ `echo $conns | jq -r '.connections[3]'` == "null" ]]
@@ -571,7 +571,7 @@ function demo_bdevperf_psk()
     [[ `echo $conns | jq -r '.connections[0].secure'` == "true" ]]
     [[ `echo $conns | jq -r '.connections[0].use_psk'` == "true" ]]
     [[ `echo $conns | jq -r '.connections[0].use_dhchap'` == "false" ]]
-    [[ `echo $conns | jq -r '.connections[0].use_dhchap_controller'` == "false" ]]
+    [[ `echo $conns | jq -r '.connections[0].dhchap_controller_origin'` == "no_key" ]]
     [[ `echo $conns | jq -r '.connections[0].subsystem'` == "${NQN}" ]]
 
     [[ `echo $conns | jq -r '.connections[1].nqn'` == "${NQN}host2" ]]
@@ -585,7 +585,7 @@ function demo_bdevperf_psk()
     [[ `echo $conns | jq -r '.connections[1].secure'` == "false" ]]
     [[ `echo $conns | jq -r '.connections[1].use_psk'` == "false" ]]
     [[ `echo $conns | jq -r '.connections[1].use_dhchap'` == "false" ]]
-    [[ `echo $conns | jq -r '.connections[1].use_dhchap_controller'` == "false" ]]
+    [[ `echo $conns | jq -r '.connections[1].dhchap_controller_origin'` == "no_key" ]]
     [[ `echo $conns | jq -r '.connections[1].subsystem'` == "${NQN}" ]]
 
     [[ `echo $conns | jq -r '.connections[2].nqn'` == "${NQN}host3" ]]
@@ -598,7 +598,7 @@ function demo_bdevperf_psk()
     [[ `echo $conns | jq -r '.connections[2].connected'` == "false" ]]
     [[ `echo $conns | jq -r '.connections[2].use_psk'` == "true" ]]
     [[ `echo $conns | jq -r '.connections[2].use_dhchap'` == "false" ]]
-    [[ `echo $conns | jq -r '.connections[2].use_dhchap_controller'` == "false" ]]
+    [[ `echo $conns | jq -r '.connections[2].dhchap_controller_origin'` == "no_key" ]]
     [[ `echo $conns | jq -r '.connections[2].subsystem'` == "${NQN}" ]]
 
     [[ `echo $conns | jq -r '.connections[3]'` == "null" ]]
@@ -803,7 +803,7 @@ function demo_bdevperf_dhchap()
     [[ `echo $conns | jq -r '.connections[0].secure'` == "false" ]]
     [[ `echo $conns | jq -r '.connections[0].use_psk'` == "false" ]]
     [[ `echo $conns | jq -r '.connections[0].use_dhchap'` == "true" ]]
-    [[ `echo $conns | jq -r '.connections[0].use_dhchap_controller'` == "false" ]]
+    [[ `echo $conns | jq -r '.connections[0].dhchap_controller_origin'` == "no_key" ]]
     [[ `echo $conns | jq -r '.connections[0].subsystem'` == "${NQN}" ]]
 
     [[ `echo $conns | jq -r '.connections[1].nqn'` == "${NQN}host3" ]]
@@ -817,7 +817,7 @@ function demo_bdevperf_dhchap()
     [[ `echo $conns | jq -r '.connections[1].secure'` == "false" ]]
     [[ `echo $conns | jq -r '.connections[1].use_psk'` == "false" ]]
     [[ `echo $conns | jq -r '.connections[1].use_dhchap'` == "false" ]]
-    [[ `echo $conns | jq -r '.connections[1].use_dhchap_controller'` == "false" ]]
+    [[ `echo $conns | jq -r '.connections[1].dhchap_controller_origin'` == "no_key" ]]
     [[ `echo $conns | jq -r '.connections[1].subsystem'` == "${NQN}" ]]
 
     [[ `echo $conns | jq -r '.connections[2].nqn'` == "${NQN}host4" ]]
@@ -830,7 +830,7 @@ function demo_bdevperf_dhchap()
     [[ `echo $conns | jq -r '.connections[2].connected'` == "false" ]]
     [[ `echo $conns | jq -r '.connections[2].use_psk'` == "true" ]]
     [[ `echo $conns | jq -r '.connections[2].use_dhchap'` == "true" ]]
-    [[ `echo $conns | jq -r '.connections[2].use_dhchap_controller'` == "false" ]]
+    [[ `echo $conns | jq -r '.connections[2].dhchap_controller_origin'` == "no_key" ]]
     [[ `echo $conns | jq -r '.connections[2].subsystem'` == "${NQN}" ]]
 
     [[ `echo $conns | jq -r '.connections[3]'` == "null" ]]
@@ -849,7 +849,7 @@ function demo_bdevperf_dhchap()
     [[ `echo $conns2 | jq -r '.connections[0].secure'` == "false" ]]
     [[ `echo $conns2 | jq -r '.connections[0].use_psk'` == "false" ]]
     [[ `echo $conns2 | jq -r '.connections[0].use_dhchap'` == "true" ]]
-    [[ `echo $conns2 | jq -r '.connections[0].use_dhchap_controller'` == "true" ]]
+    [[ `echo $conns2 | jq -r '.connections[0].dhchap_controller_origin'` == "subsystem_implicit" ]]
 
     [[ `echo $conns2 | jq -r '.connections[1]'` == "null" ]]
 
@@ -961,7 +961,7 @@ function demo_bdevperf_dhchap()
     [[ `echo $conns | jq -r '.connections[0].secure'` == "true" ]]
     [[ `echo $conns | jq -r '.connections[0].use_psk'` == "true" ]]
     [[ `echo $conns | jq -r '.connections[0].use_dhchap'` == "true" ]]
-    [[ `echo $conns | jq -r '.connections[0].use_dhchap_controller'` == "false" ]]
+    [[ `echo $conns | jq -r '.connections[0].dhchap_controller_origin'` == "no_key" ]]
     [[ `echo $conns | jq -r '.connections[0].subsystem'` == "${NQN}" ]]
 
     [[ `echo $conns | jq -r '.connections[1].nqn'` == "${NQN}host3" ]]
@@ -974,7 +974,7 @@ function demo_bdevperf_dhchap()
     [[ `echo $conns | jq -r '.connections[1].connected'` == "false" ]]
     [[ `echo $conns | jq -r '.connections[1].use_psk'` == "false" ]]
     [[ `echo $conns | jq -r '.connections[1].use_dhchap'` == "false" ]]
-    [[ `echo $conns | jq -r '.connections[1].use_dhchap_controller'` == "false" ]]
+    [[ `echo $conns | jq -r '.connections[1].dhchap_controller_origin'` == "no_key" ]]
     [[ `echo $conns | jq -r '.connections[1].subsystem'` == "${NQN}" ]]
 
     [[ `echo $conns | jq -r '.connections[2].nqn'` == "${NQN}host" ]]
@@ -987,7 +987,7 @@ function demo_bdevperf_dhchap()
     [[ `echo $conns | jq -r '.connections[2].connected'` == "false" ]]
     [[ `echo $conns | jq -r '.connections[2].use_psk'` == "false" ]]
     [[ `echo $conns | jq -r '.connections[2].use_dhchap'` == "true" ]]
-    [[ `echo $conns | jq -r '.connections[2].use_dhchap_controller'` == "false" ]]
+    [[ `echo $conns | jq -r '.connections[2].dhchap_controller_origin'` == "no_key" ]]
     [[ `echo $conns | jq -r '.connections[2].subsystem'` == "${NQN}" ]]
 
     [[ `echo $conns | jq -r '.connections[3]'` == "null" ]]
@@ -1005,7 +1005,7 @@ function demo_bdevperf_dhchap()
     [[ `echo $conns2 | jq -r '.connections[0].connected'` == "false" ]]
     [[ `echo $conns2 | jq -r '.connections[0].use_psk'` == "false" ]]
     [[ `echo $conns2 | jq -r '.connections[0].use_dhchap'` == "true" ]]
-    [[ `echo $conns2 | jq -r '.connections[0].use_dhchap_controller'` == "true" ]]
+    [[ `echo $conns2 | jq -r '.connections[0].dhchap_controller_origin'` == "subsystem_implicit" ]]
     [[ `echo $conns2 | jq -r '.connections[0].subsystem'` == "${NQN}2" ]]
 
     [[ `echo $conns2 | jq -r '.connections[1]'` == "null" ]]
@@ -1024,7 +1024,7 @@ function demo_bdevperf_dhchap()
     [[ `echo $conns3 | jq -r '.connections[0].secure'` == "true" ]]
     [[ `echo $conns3 | jq -r '.connections[0].use_psk'` == "true" ]]
     [[ `echo $conns3 | jq -r '.connections[0].use_dhchap'` == "true" ]]
-    [[ `echo $conns3 | jq -r '.connections[0].use_dhchap_controller'` == "false" ]]
+    [[ `echo $conns3 | jq -r '.connections[0].dhchap_controller_origin'` == "no_key" ]]
     [[ `echo $conns3 | jq -r '.connections[0].subsystem'` == "${NQN}" ]]
 
     [[ `echo $conns3 | jq -r '.connections[1].nqn'` == "${NQN}host3" ]]
@@ -1037,7 +1037,7 @@ function demo_bdevperf_dhchap()
     [[ `echo $conns3 | jq -r '.connections[1].connected'` == "false" ]]
     [[ `echo $conns3 | jq -r '.connections[1].use_psk'` == "false" ]]
     [[ `echo $conns3 | jq -r '.connections[1].use_dhchap'` == "false" ]]
-    [[ `echo $conns3 | jq -r '.connections[1].use_dhchap_controller'` == "false" ]]
+    [[ `echo $conns3 | jq -r '.connections[1].dhchap_controller_origin'` == "no_key" ]]
     [[ `echo $conns3 | jq -r '.connections[1].subsystem'` == "${NQN}" ]]
 
     [[ `echo $conns3 | jq -r '.connections[2].nqn'` == "${NQN}host" ]]
@@ -1050,7 +1050,7 @@ function demo_bdevperf_dhchap()
     [[ `echo $conns3 | jq -r '.connections[2].connected'` == "false" ]]
     [[ `echo $conns3 | jq -r '.connections[2].use_psk'` == "false" ]]
     [[ `echo $conns3 | jq -r '.connections[2].use_dhchap'` == "true" ]]
-    [[ `echo $conns3 | jq -r '.connections[2].use_dhchap_controller'` == "false" ]]
+    [[ `echo $conns3 | jq -r '.connections[2].dhchap_controller_origin'` == "no_key" ]]
     [[ `echo $conns3 | jq -r '.connections[2].subsystem'` == "${NQN}" ]]
 
     [[ `echo $conns3 | jq -r '.connections[3].nqn'` == "${NQN}host2" ]]
@@ -1063,7 +1063,7 @@ function demo_bdevperf_dhchap()
     [[ `echo $conns3 | jq -r '.connections[3].connected'` == "false" ]]
     [[ `echo $conns3 | jq -r '.connections[3].use_psk'` == "false" ]]
     [[ `echo $conns3 | jq -r '.connections[3].use_dhchap'` == "true" ]]
-    [[ `echo $conns3 | jq -r '.connections[3].use_dhchap_controller'` == "true" ]]
+    [[ `echo $conns3 | jq -r '.connections[3].dhchap_controller_origin'` == "subsystem_implicit" ]]
     [[ `echo $conns3 | jq -r '.connections[3].subsystem'` == "${NQN}2" ]]
 
     [[ `echo $conns3 | jq -r '.connections[4]'` == "null" ]]
@@ -1289,7 +1289,7 @@ function demo_bdevperf_dhchap_ctrlr()
     [[ `echo $conns | jq -r '.connections[0].secure'` == "false" ]]
     [[ `echo $conns | jq -r '.connections[0].use_psk'` == "false" ]]
     [[ `echo $conns | jq -r '.connections[0].use_dhchap'` == "true" ]]
-    [[ `echo $conns | jq -r '.connections[0].use_dhchap_controller'` == "true" ]]
+    [[ `echo $conns | jq -r '.connections[0].dhchap_controller_origin'` == "host_specific" ]]
     [[ `echo $conns | jq -r '.connections[0].subsystem'` == "${NQN}" ]]
 
     [[ `echo $conns | jq -r '.connections[1]'` == "null" ]]
