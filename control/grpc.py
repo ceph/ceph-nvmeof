@@ -3860,6 +3860,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                                image_was_shrunk=was_image_shrunk,
                                                rbd_data_pool_name=find_ret.data_pool,
                                                location=find_ret.location,
+                                               rados_namespace_name=find_ret.rados_namespace_name,
                                                encryption_entries=find_ret.encryption_entries,
                                                encryption_algorithm=find_ret.encryption_algorithm)
                     with self.rpc_lock:
