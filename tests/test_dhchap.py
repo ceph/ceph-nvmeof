@@ -237,6 +237,7 @@ def test_setup(caplog, gateway):
     caplog.clear()
     cli(["subsystem", "add", "--subsystem", subsystem, "--no-group-append"])
     assert f"create_subsystem {subsystem}: True" in caplog.text
+    assert f"Adding subsystem {subsystem}: Successful" in caplog.text
     caplog.clear()
     cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool,
          "--rbd-image", image, "--rbd-create-image", "--size", "16MB"])
@@ -245,6 +246,7 @@ def test_setup(caplog, gateway):
     cli(["subsystem", "add", "--subsystem", subsystem2, "--dhchap-key", hostdhchap6,
          "--no-group-append"])
     assert f"create_subsystem {subsystem2}: True" in caplog.text
+    assert f"Adding subsystem {subsystem2}: Successful" in caplog.text
     caplog.clear()
     state = gw.gateway_state.omap.get_state()
     for key, val in state.items():
@@ -436,6 +438,14 @@ def test_add_host_with_key_to_open_subsystem(caplog, gateway):
     assert f"Adding host {hostnqn20} to {subsystem9}: Successful" in caplog.text
     cli(["subsystem", "del", "--subsystem", subsystem9])
     assert f"Deleting subsystem {subsystem9}: Successful" in caplog.text
+
+
+def test_allow_any_host_with_dhchap_key(caplog, gateway):
+    caplog.clear()
+    cli(["host", "add", "--subsystem", subsystem2, "--host-nqn", "*"])
+    assert "Failure while executing add_host_safe" not in caplog.text
+    assert f"Failure allowing open host access to {subsystem2}: Can't allow any host access " \
+           f"on a subsystem having a DH-HMAC-CHAP key" in caplog.text
 
 
 def test_dhchap_subsystem_key(caplog, gateway):
