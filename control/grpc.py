@@ -4932,7 +4932,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 errmsg = f"{all_host_failure_prefix}: Can't allow any host access " \
                          f"on a subsystem having a DH-HMAC-CHAP key"
                 self.logger.error(errmsg)
-                return pb2.req_status(errno.EACCES, error_message=errmsg)
+                return pb2.req_status(status=errno.EACCES, error_message=errmsg)
             dhchap_host_list = self.host_info.get_hosts_with_any_dhchap_key(request.subsystem_nqn)
             if dhchap_host_list:
                 errmsg = f"{all_host_failure_prefix}: Can't allow any host access " \
