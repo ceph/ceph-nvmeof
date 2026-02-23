@@ -385,12 +385,29 @@ class SubsystemHostAuth:
 
     def reset_host_keepalive_timeout_disconnection(self, subsys, hostnqn=None):
         with self.host_ka_timeout_lock:
-            self.host_ka_timeout[subsys].discard(hostnqn)
-            if hostnqn is None or not self.host_ka_timeout[subsys]:
+            if subsys not in self.host_ka_timeout:
+                return
+            if hostnqn is None:
+                # No host NQN, clear the entire subsystem
                 self.host_ka_timeout.pop(subsys, None)
+                return
+            self.host_ka_timeout[subsys].discard(hostnqn)
+            if not self.host_ka_timeout[subsys]:
+                # We removed the last host of this subsystem, delete it
+                self.host_ka_timeout.pop(subsys, None)
+
+    def get_keepalive_timeout_disconnections(self, subsys):
+        disconnected_list = []
+        with self.host_ka_timeout_lock:
+            if subsys in self.host_ka_timeout:
+                for h in self.host_ka_timeout[subsys]:
+                    disconnected_list.append(h)
+        return disconnected_list
 
     def was_host_disconnected_due_to_keepalive_timeout(self, subsys, hostnqn) -> bool:
         with self.host_ka_timeout_lock:
+            if subsys not in self.host_ka_timeout:
+                return False
             return hostnqn in self.host_ka_timeout[subsys]
 
     def allow_any_host(self, subsys):
@@ -5367,8 +5384,6 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     self.remove_all_host_key_files(request.subsystem_nqn, request.host_nqn)
                     self.remove_all_host_keys_from_keyring(request.subsystem_nqn, request.host_nqn)
                     self.host_info.remove_host_nqn(request.subsystem_nqn, request.host_nqn)
-                    self.host_info.reset_host_keepalive_timeout_disconnection(
-                        request.subsystem_nqn, request.host_nqn)
             except Exception as ex:
                 if request.host_nqn == "*":
                     self.logger.exception(all_host_failure_prefix)
@@ -6155,6 +6170,13 @@ class GatewayService(pb2_grpc.GatewayServicer):
             except Exception:
                 self.logger.exception(f"{s=} parse error")
                 pass
+
+        disconnected_hosts = self.host_info.get_keepalive_timeout_disconnections(subsystem)
+        if disconnected_hosts:
+            self.logger.debug(f"disconnected hosts: {disconnected_hosts}")
+        for h in disconnected_hosts:
+            if h not in host_nqns:
+                host_nqns.append(h)
 
         subsystem_has_dhchap_key = self.host_info.does_subsystem_have_dhchap_key(subsystem)
         for conn in ctrl_ret:
