@@ -107,7 +107,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        test: ["cli", "cli_change_lb", "cli_change_keys", "cli_change_ns_visibility", "cli_change_ns_location", "cli_list_ns_locations", "cli_trash_rbd", "state", "multi_gateway", "server", "grpc", "omap_lock", "log_files", "nsid", "psk", "dhchap", "dhchap_ctrlr", "subsys_grp_name_append", "max_subsystems", "omap_no_read_lock", "omap_read_lock", "omap_read_lock_ignore_errors", "big_omap", "ns_limit", "cli_force_tls", "erasure_pool", "cli_ns_resize", "auto_listeners", "update_error", "discovery_bind", "cli_ns_hosts", "io_stats", "rbd_encrypt"]
+        test: ["cli", "cli_change_lb", "cli_change_keys", "cli_change_ns_visibility", "cli_change_ns_location", "cli_list_ns_locations", "cli_trash_rbd", "state", "multi_gateway", "server", "grpc", "omap_lock", "log_files", "nsid", "psk", "dhchap", "dhchap_ctrlr", "subsys_grp_name_append", "max_subsystems", "omap_no_read_lock", "omap_read_lock", "omap_read_lock_ignore_errors", "big_omap", "ns_limit", "cli_force_tls", "erasure_pool", "cli_ns_resize", "auto_listeners", "update_error", "discovery_bind", "cli_ns_hosts", "io_stats", "rbd_encrypt", "rados_namespace"]
     runs-on: ubuntu-latest
     env:
       HUGEPAGES: 512  # for multi gateway test, approx 256 per gateway instance
@@ -181,11 +181,13 @@ jobs:
           echo "💁 rbd create RADOS namespace:"
           make exec SVC=ceph OPTS="-T" CMD="rbd namespace create rbd/rados_ns1"
           make exec SVC=ceph OPTS="-T" CMD="rbd namespace create rbd/rados_ns2"
+          make exec SVC=ceph OPTS="-T" CMD="rbd namespace create rbd2/rados_ns1"
           echo "💁 rbd list RADOS namespaces in the pool rbd:"
           make exec SVC=ceph OPTS="-T" CMD="rbd namespace ls rbd"
           echo "💁 rbd create:"
           make exec SVC=ceph OPTS="-T" CMD="rbd create rbd/mytestdevimage --size 16"
-          make exec SVC=ceph OPTS="-T" CMD="rbd create rbd2/mytestdevimage2 --size 16"
+          make exec SVC=ceph OPTS="-T" CMD="rbd create rbd/rados_ns1/mytestdevimage2 --size 16"
+          make exec SVC=ceph OPTS="-T" CMD="rbd create rbd2/rados_ns1/mytestdevimage2 --size 16"
           make exec SVC=ceph OPTS="-T" CMD="rbd create rbd/rados_ns1/image1 --size 16"
           make exec SVC=ceph OPTS="-T" CMD="rbd create rbd/rados_ns1/image2 --size 16"
           make exec SVC=ceph OPTS="-T" CMD="rbd create rbd/rados_ns2/image1 --size 16"

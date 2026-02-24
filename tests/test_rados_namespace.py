@@ -117,8 +117,14 @@ def test_different_pool_same_image_and_rados_namespace(caplog, gateway):
     """Test same image and RADOS namespace name in different pool (should succeed)"""
     caplog.clear()
     cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool2,
+         "--rados-namespace", rados_ns1,
          "--rbd-image", "mytestdevimage2"])
     assert f"Adding namespace 6 to {subsystem}: Successful" in caplog.text
+    caplog.clear()
+    cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool,
+         "--rados-namespace", rados_ns1,
+         "--rbd-image", "mytestdevimage2"])
+    assert f"Adding namespace 7 to {subsystem}: Successful" in caplog.text
 
 
 def test_list_namespaces_with_rados_namespace(caplog, gateway):
@@ -130,7 +136,8 @@ def test_list_namespaces_with_rados_namespace(caplog, gateway):
     assert f"{pool}/mytestdevimage" in caplog.text
     assert f"{pool}/{rados_ns1}/{image2}" in caplog.text
     assert f"{pool}/{image2}" in caplog.text
-    assert f"{pool2}/mytestdevimage2" in caplog.text
+    assert f"{pool2}/{rados_ns1}/mytestdevimage2" in caplog.text
+    assert f"{pool}/{rados_ns1}/mytestdevimage2" in caplog.text
 
 
 def test_delete_namespace_with_rados_namespace(caplog, gateway):
