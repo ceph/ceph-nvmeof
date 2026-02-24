@@ -40,6 +40,11 @@ if [[ $? -eq 0 ]]; then
 fi
 set -e
 grep -q "is already used" /tmp/ns_dup.txt
+rm -f /tmp/ns_dup.txt
+
+echo "ℹ️ Test: Create namespace using the same image name, no RADOS namespace, should succeed"
+cephnvmf_func namespace add --subsystem ${NQN} --rbd-pool ${RBD_POOL} \
+    --rbd-image ${IMAGE1} --size 10MB --rbd-create-image
 
 echo "ℹ️ Test: Namespace without namespace vs with RADOS namespace"
 cephnvmf_func namespace add --subsystem ${NQN} --rbd-pool ${RBD_POOL} \
