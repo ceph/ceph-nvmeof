@@ -2482,15 +2482,16 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 ns_image = GatewayStateHandler._normalize_json_string(ns_image)
                 ns_rados_namespace = ns.rados_namespace_name
                 ns_rados_namespace = GatewayStateHandler._normalize_json_string(ns_rados_namespace)
-                path = f"{ns_pool}/{ns_rados_namespace}/{ns_image}" \
-                    if ns_rados_namespace else f"{ns_pool}/{ns_image}"
-                if pool_name and pool_name != ns_pool:
+                # Notice that the normalized values can't be None. None will be changed into ""
+                if pool_name != ns_pool:
                     continue
-                if image_name and image_name != ns_image:
+                if image_name != ns_image:
                     continue
-                if rados_namespace_name and rados_namespace_name != ns_rados_namespace:
+                if rados_namespace_name != ns_rados_namespace:
                     continue
                 nqn = ns.subsystem_nqn
+                path = f"{ns_pool}/{ns_rados_namespace}/{ns_image}" \
+                    if ns_rados_namespace else f"{ns_pool}/{ns_image}"
                 errmsg = f"RBD image {path} is already used by a namespace " \
                          f"in subsystem {nqn}"
                 break
