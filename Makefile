@@ -9,13 +9,15 @@ ifneq (, $(filter $(TARGET_ARCH), arm64 aarch64))
 ceph_repo_arch = arm64
 TARGET_PLATFORM = linux/arm64
 SPDK_TARGET_ARCH = armv8-a+crypto
+SPDK_CONFIGURE_DSA=
 SPDK_MAKEFLAGS = $(shell echo "DPDKBUILD_FLAGS=-Dplatform=generic -j $$(nproc)")
 else ifneq (, $(filter $(TARGET_ARCH), amd64 x86_64))
 ceph_repo_arch = x86_64
 TARGET_PLATFORM = linux/amd64
 SPDK_TARGET_ARCH = x86-64-v2
+SPDK_CONFIGURE_DSA=--with-idxd
 else
-$(error Unspported CPU arch '$(TARGET_ARCH)' !! Set TARGET_ARCH to x86_64, amd64 or arm64, aarch64 arches)
+$(error Unsupported CPU arch '$(TARGET_ARCH)' !! Set TARGET_ARCH to x86_64, amd64 or arm64, aarch64 arches)
 endif
 
 # Includes
@@ -55,6 +57,7 @@ build: export SPDK_GIT_BRANCH != git -C spdk name-rev --name-only HEAD
 build: export SPDK_GIT_COMMIT != git rev-parse HEAD:spdk
 build: export BUILD_DATE != date -u +"%Y-%m-%d %H:%M:%S %Z"
 build: export NVMEOF_GIT_MODIFIED_FILES != git status -s | grep -e "^ *M" | sed 's/^ *M //' | xargs
+build: export SPDK_CONFIGURE_DSA := $(SPDK_CONFIGURE_DSA)
 
 # Variables
 SHAMAN_FETCH_ATTEMPTS := 3
