@@ -430,11 +430,11 @@ make build
 ```
 
 **NOTE:**
-For Arm64 build, the default SPDK building SoC is `generic`. To build SPDK for other SoC you need to override the default values of `SPDK_TARGET_ARCH` and `SPDK_MAKEFLAGS`. To know which values to set for all the supported Arm64 SoCs see [the socs and implementer_xxx parts](https://github.com/DPDK/dpdk/blob/main/config/arm/meson.build#L674).
+For Arm64 build, the default SPDK building SoC is `generic`. To build SPDK for other SoC you need to override the default values of `SPDK_TARGET_ARCH`, `SPDK_CONFIGURE_DSA` and `SPDK_MAKEFLAGS`. To know which values to set for all the supported Arm64 SoCs see [the socs and implementer_xxx parts](https://github.com/DPDK/dpdk/blob/main/config/arm/meson.build#L674).
 E.g. for kunpeng920 SoC:
 ```bash
 make build SPDK_TARGET_ARCH="armv8.2-a+crypto" \
-    SPDK_MAKEFLAGS="DPDKBUILD_FLAGS=-Dplatform=kunpeng920"
+    SPDK_MAKEFLAGS="DPDKBUILD_FLAGS=-Dplatform=kunpeng920" SPDK_CONFIGURE_DSA=""
 ```
 
 The resulting images should be like these:
