@@ -347,68 +347,68 @@ def test_add_host_bad_keys(caplog, gateway):
     caplog.clear()
     cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn15,
          "--dhchap-key", badhostdhchap1])
-    assert f'Failure adding host {hostnqn15} to {subsystem}: Invalid DH-HMAC-CHAP key ' \
-           f'"{badhostdhchap1}": key must start with "DHHC-1:' in caplog.text
+    assert f'Failure adding host {hostnqn15} to {subsystem}: Invalid DH-HMAC-CHAP key: ' \
+           f'key must start with "DHHC-1:' in caplog.text
     caplog.clear()
     cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn15,
          "--dhchap-key", badhostdhchap2])
-    assert f'Failure adding host {hostnqn15} to {subsystem}: Invalid DH-HMAC-CHAP key ' \
-           f'"{badhostdhchap2}": should contain a ":" delimiter' in caplog.text
+    assert f'Failure adding host {hostnqn15} to {subsystem}: Invalid DH-HMAC-CHAP key: ' \
+           f'should contain a ":" delimiter' in caplog.text
     caplog.clear()
     cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn15,
          "--dhchap-key", badhostdhchap3])
-    assert f'Failure adding host {hostnqn15} to {subsystem}: Invalid DH-HMAC-CHAP key ' \
-           f'"{badhostdhchap3}": invalid key length' in caplog.text
+    assert f'Failure adding host {hostnqn15} to {subsystem}: Invalid DH-HMAC-CHAP key: ' \
+           f'invalid key length' in caplog.text
     caplog.clear()
     cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn15,
          "--dhchap-key", badhostdhchap4])
-    assert f'Failure adding host {hostnqn15} to {subsystem}: Invalid DH-HMAC-CHAP key ' \
-           f'"{badhostdhchap4}": missing hash' in caplog.text
+    assert f'Failure adding host {hostnqn15} to {subsystem}: Invalid DH-HMAC-CHAP key: ' \
+           f'missing hash' in caplog.text
     caplog.clear()
     cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn15,
          "--dhchap-key", badhostdhchap5])
-    assert f'Failure adding host {hostnqn15} to {subsystem}: Invalid DH-HMAC-CHAP key ' \
-           f'"{badhostdhchap5}": non numeric hash "' in caplog.text
+    assert f'Failure adding host {hostnqn15} to {subsystem}: Invalid DH-HMAC-CHAP key: ' \
+           f'non numeric hash "' in caplog.text
     caplog.clear()
     cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn15,
          "--dhchap-key", badhostdhchap6])
-    assert f'Failure adding host {hostnqn15} to {subsystem}: Invalid DH-HMAC-CHAP key ' \
-           f'"{badhostdhchap6}": base64 part is missing' in caplog.text
+    assert f'Failure adding host {hostnqn15} to {subsystem}: Invalid DH-HMAC-CHAP key: ' \
+           f'base64 part is missing' in caplog.text
     caplog.clear()
     cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn15,
          "--dhchap-key", badhostdhchap7])
-    assert f'Failure adding host {hostnqn15} to {subsystem}: Invalid DH-HMAC-CHAP key ' \
-           f'"{badhostdhchap7}": base64 part is invalid' in caplog.text
+    assert f'Failure adding host {hostnqn15} to {subsystem}: Invalid DH-HMAC-CHAP key: ' \
+           f'base64 part is invalid' in caplog.text
     caplog.clear()
     cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn15,
          "--dhchap-key", badhostdhchap8])
-    assert f'Failure adding host {hostnqn15} to {subsystem}: Invalid DH-HMAC-CHAP key ' \
-           f'"{badhostdhchap8}": key must end with ":"' in caplog.text
+    assert f'Failure adding host {hostnqn15} to {subsystem}: Invalid DH-HMAC-CHAP key: ' \
+           f'key must end with ":"' in caplog.text
     caplog.clear()
     cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn15,
          "--dhchap-key", badhostdhchap9])
-    assert f'Failure adding host {hostnqn15} to {subsystem}: Invalid DH-HMAC-CHAP key ' \
-           f'"{badhostdhchap9}": invalid key length' in caplog.text
+    assert f'Failure adding host {hostnqn15} to {subsystem}: Invalid DH-HMAC-CHAP key: ' \
+           f'invalid key length' in caplog.text
     caplog.clear()
     cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn15,
          "--dhchap-key", badhostdhchap10])
-    assert f'Failure adding host {hostnqn15} to {subsystem}: Invalid DH-HMAC-CHAP key ' \
-           f'"{badhostdhchap10}": invalid key length' in caplog.text
+    assert f'Failure adding host {hostnqn15} to {subsystem}: Invalid DH-HMAC-CHAP key: ' \
+           f'invalid key length' in caplog.text
     caplog.clear()
     cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn15,
          "--dhchap-key", badhostdhchap11])
-    assert f'Failure adding host {hostnqn15} to {subsystem}: Invalid DH-HMAC-CHAP key ' \
-           f'"{badhostdhchap11}": base64 part is invalid' in caplog.text
+    assert f'Failure adding host {hostnqn15} to {subsystem}: Invalid DH-HMAC-CHAP key: ' \
+           f'base64 part is invalid' in caplog.text
     caplog.clear()
     cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn15,
          "--dhchap-key", badhostdhchap12])
-    assert f'Failure adding host {hostnqn15} to {subsystem}: Invalid DH-HMAC-CHAP key ' \
-           f'"{badhostdhchap12}": base64 part is invalid' in caplog.text
+    assert f'Failure adding host {hostnqn15} to {subsystem}: Invalid DH-HMAC-CHAP key: ' \
+           f'base64 part is invalid' in caplog.text
     caplog.clear()
     cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn15,
          "--dhchap-key", badhostdhchap13])
-    assert f'Failure adding host {hostnqn15} to {subsystem}: Invalid DH-HMAC-CHAP key ' \
-           f'"{badhostdhchap13}": CRC-32 checksums mismatch' in caplog.text
+    assert f'Failure adding host {hostnqn15} to {subsystem}: Invalid DH-HMAC-CHAP key: ' \
+           f'CRC-32 checksums mismatch' in caplog.text
 
 
 def test_add_host_with_key_to_open_subsystem(caplog, gateway):
@@ -696,80 +696,67 @@ def test_change_key_host_bad_keys(caplog, gateway):
     cli(["host", "change_key", "--subsystem", subsystem, "--host-nqn", hostnqn12,
          "--dhchap-key", badhostdhchap1])
     assert f'Failure changing DH-HMAC-CHAP key for host {hostnqn12} on subsystem {subsystem}: ' \
-           f'Invalid DH-HMAC-CHAP key ' \
-           f'"{badhostdhchap1}": key must start with "DHHC-1:' in caplog.text
+           f'Invalid DH-HMAC-CHAP key: key must start with "DHHC-1:' in caplog.text
     caplog.clear()
     cli(["host", "change_key", "--subsystem", subsystem, "--host-nqn", hostnqn12,
          "--dhchap-key", badhostdhchap2])
     assert f'Failure changing DH-HMAC-CHAP key for host {hostnqn12} on subsystem {subsystem}: ' \
-           f'Invalid DH-HMAC-CHAP key ' \
-           f'"{badhostdhchap2}": should contain a ":" delimiter' in caplog.text
+           f'Invalid DH-HMAC-CHAP key: should contain a ":" delimiter' in caplog.text
     caplog.clear()
     cli(["host", "change_key", "--subsystem", subsystem, "--host-nqn", hostnqn12,
          "--dhchap-key", badhostdhchap3])
     assert f'Failure changing DH-HMAC-CHAP key for host {hostnqn12} on subsystem {subsystem}: ' \
-           f'Invalid DH-HMAC-CHAP key ' \
-           f'"{badhostdhchap3}": invalid key length' in caplog.text
+           f'Invalid DH-HMAC-CHAP key: invalid key length' in caplog.text
     caplog.clear()
     cli(["host", "change_key", "--subsystem", subsystem, "--host-nqn", hostnqn12,
          "--dhchap-key", badhostdhchap4])
     assert f'Failure changing DH-HMAC-CHAP key for host {hostnqn12} on subsystem {subsystem}: ' \
-           f'Invalid DH-HMAC-CHAP key ' \
-           f'"{badhostdhchap4}": missing hash' in caplog.text
+           f'Invalid DH-HMAC-CHAP key: missing hash' in caplog.text
     caplog.clear()
     cli(["host", "change_key", "--subsystem", subsystem, "--host-nqn", hostnqn12,
          "--dhchap-key", badhostdhchap5])
     assert f'Failure changing DH-HMAC-CHAP key for host {hostnqn12} on subsystem {subsystem}: ' \
-           f'Invalid DH-HMAC-CHAP key ' \
-           f'"{badhostdhchap5}": non numeric hash "' in caplog.text
+           f'Invalid DH-HMAC-CHAP key: non numeric hash "' in caplog.text
     caplog.clear()
     cli(["host", "change_key", "--subsystem", subsystem, "--host-nqn", hostnqn12,
          "--dhchap-key", badhostdhchap6])
     assert f'Failure changing DH-HMAC-CHAP key for host {hostnqn12} on subsystem {subsystem}: ' \
-           f'Invalid DH-HMAC-CHAP key ' \
-           f'"{badhostdhchap6}": base64 part is missing' in caplog.text
+           f'Invalid DH-HMAC-CHAP key: base64 part is missing' in caplog.text
     caplog.clear()
     cli(["host", "change_key", "--subsystem", subsystem, "--host-nqn", hostnqn12,
          "--dhchap-key", badhostdhchap7])
     assert f'Failure changing DH-HMAC-CHAP key for host {hostnqn12} on subsystem {subsystem}: ' \
-           f'Invalid DH-HMAC-CHAP key ' \
-           f'"{badhostdhchap7}": base64 part is invalid' in caplog.text
+           f'Invalid DH-HMAC-CHAP key: base64 part is invalid' in caplog.text
     caplog.clear()
     cli(["host", "change_key", "--subsystem", subsystem, "--host-nqn", hostnqn12,
          "--dhchap-key", badhostdhchap8])
     assert f'Failure changing DH-HMAC-CHAP key for host {hostnqn12} on subsystem {subsystem}: ' \
-           f'Invalid DH-HMAC-CHAP key ' \
-           f'"{badhostdhchap8}": key must end with ":"' in caplog.text
+           f'Invalid DH-HMAC-CHAP key: key must end with ":"' in caplog.text
     caplog.clear()
     cli(["host", "change_key", "--subsystem", subsystem, "--host-nqn", hostnqn12,
          "--dhchap-key", badhostdhchap9])
     assert f'Failure changing DH-HMAC-CHAP key for host {hostnqn12} on subsystem {subsystem}: ' \
-           f'Invalid DH-HMAC-CHAP key ' \
-           f'"{badhostdhchap9}": invalid key length' in caplog.text
+           f'Invalid DH-HMAC-CHAP key: invalid key length' in caplog.text
     caplog.clear()
     cli(["host", "change_key", "--subsystem", subsystem, "--host-nqn", hostnqn12,
          "--dhchap-key", badhostdhchap10])
     assert f'Failure changing DH-HMAC-CHAP key for host {hostnqn12} on subsystem {subsystem}: ' \
-           f'Invalid DH-HMAC-CHAP key ' \
-           f'"{badhostdhchap10}": invalid key length' in caplog.text
+           f'Invalid DH-HMAC-CHAP key: invalid key length' in caplog.text
     caplog.clear()
     cli(["host", "change_key", "--subsystem", subsystem, "--host-nqn", hostnqn12,
          "--dhchap-key", badhostdhchap11])
     assert f'Failure changing DH-HMAC-CHAP key for host {hostnqn12} on subsystem {subsystem}: ' \
-           f'Invalid DH-HMAC-CHAP key ' \
-           f'"{badhostdhchap11}": base64 part is invalid' in caplog.text
+           f'Invalid DH-HMAC-CHAP key: base64 part is invalid' in caplog.text
     caplog.clear()
     cli(["host", "change_key", "--subsystem", subsystem, "--host-nqn", hostnqn12,
          "--dhchap-key", badhostdhchap12])
     assert f'Failure changing DH-HMAC-CHAP key for host {hostnqn12} on subsystem {subsystem}: ' \
-           f'Invalid DH-HMAC-CHAP key ' \
-           f'"{badhostdhchap12}": base64 part is invalid' in caplog.text
+           f'Invalid DH-HMAC-CHAP key: base64 part is invalid' in caplog.text
     caplog.clear()
     cli(["host", "change_key", "--subsystem", subsystem, "--host-nqn", hostnqn12,
          "--dhchap-key", badhostdhchap13])
     assert f'Failure changing DH-HMAC-CHAP key for host {hostnqn12} on subsystem {subsystem}: ' \
-           f'Invalid DH-HMAC-CHAP key ' \
-           f'"{badhostdhchap13}": CRC-32 checksums mismatch' in caplog.text
+           f'Invalid DH-HMAC-CHAP key: CRC-32 checksums mismatch' in caplog.text
 
 
 def test_change_key_host_on_all_hosts(caplog, gateway):
@@ -813,56 +800,56 @@ def test_set_subsystem_key_with_empty_key(caplog, gateway):
 def test_set_subsystem_key_with_bad_keys(caplog, gateway):
     caplog.clear()
     cli(["subsystem", "add", "--subsystem", subsystem8, "--dhchap-key", badhostdhchap1])
-    assert f'Failure creating subsystem {subsystem8}: Invalid DH-HMAC-CHAP key ' \
-           f'"{badhostdhchap1}": key must start with "DHHC-1:' in caplog.text
+    assert f'Failure creating subsystem {subsystem8}: Invalid DH-HMAC-CHAP key: ' \
+           f'key must start with "DHHC-1:' in caplog.text
     caplog.clear()
     cli(["subsystem", "add", "--subsystem", subsystem8, "--dhchap-key", badhostdhchap2])
-    assert f'Failure creating subsystem {subsystem8}: Invalid DH-HMAC-CHAP key ' \
-           f'"{badhostdhchap2}": should contain a ":" delimiter' in caplog.text
+    assert f'Failure creating subsystem {subsystem8}: Invalid DH-HMAC-CHAP key: ' \
+           f'should contain a ":" delimiter' in caplog.text
     caplog.clear()
     cli(["subsystem", "add", "--subsystem", subsystem8, "--dhchap-key", badhostdhchap3])
-    assert f'Failure creating subsystem {subsystem8}: Invalid DH-HMAC-CHAP key ' \
-           f'"{badhostdhchap3}": invalid key length' in caplog.text
+    assert f'Failure creating subsystem {subsystem8}: Invalid DH-HMAC-CHAP key: ' \
+           f'invalid key length' in caplog.text
     caplog.clear()
     cli(["subsystem", "add", "--subsystem", subsystem8, "--dhchap-key", badhostdhchap4])
-    assert f'Failure creating subsystem {subsystem8}: Invalid DH-HMAC-CHAP key ' \
-           f'"{badhostdhchap4}": missing hash' in caplog.text
+    assert f'Failure creating subsystem {subsystem8}: Invalid DH-HMAC-CHAP key: ' \
+           f'missing hash' in caplog.text
     caplog.clear()
     cli(["subsystem", "add", "--subsystem", subsystem8, "--dhchap-key", badhostdhchap5])
-    assert f'Failure creating subsystem {subsystem8}: Invalid DH-HMAC-CHAP key ' \
-           f'"{badhostdhchap5}": non numeric hash "' in caplog.text
+    assert f'Failure creating subsystem {subsystem8}: Invalid DH-HMAC-CHAP key: ' \
+           f'non numeric hash "' in caplog.text
     caplog.clear()
     cli(["subsystem", "add", "--subsystem", subsystem8, "--dhchap-key", badhostdhchap6])
-    assert f'Failure creating subsystem {subsystem8}: Invalid DH-HMAC-CHAP key ' \
-           f'"{badhostdhchap6}": base64 part is missing' in caplog.text
+    assert f'Failure creating subsystem {subsystem8}: Invalid DH-HMAC-CHAP key: ' \
+           f'base64 part is missing' in caplog.text
     caplog.clear()
     cli(["subsystem", "add", "--subsystem", subsystem8, "--dhchap-key", badhostdhchap7])
-    assert f'Failure creating subsystem {subsystem8}: Invalid DH-HMAC-CHAP key ' \
-           f'"{badhostdhchap7}": base64 part is invalid' in caplog.text
+    assert f'Failure creating subsystem {subsystem8}: Invalid DH-HMAC-CHAP key: ' \
+           f'base64 part is invalid' in caplog.text
     caplog.clear()
     cli(["subsystem", "add", "--subsystem", subsystem8, "--dhchap-key", badhostdhchap8])
-    assert f'Failure creating subsystem {subsystem8}: Invalid DH-HMAC-CHAP key ' \
-           f'"{badhostdhchap8}": key must end with ":"' in caplog.text
+    assert f'Failure creating subsystem {subsystem8}: Invalid DH-HMAC-CHAP key: ' \
+           f'key must end with ":"' in caplog.text
     caplog.clear()
     cli(["subsystem", "add", "--subsystem", subsystem8, "--dhchap-key", badhostdhchap9])
-    assert f'Failure creating subsystem {subsystem8}: Invalid DH-HMAC-CHAP key ' \
-           f'"{badhostdhchap9}": invalid key length' in caplog.text
+    assert f'Failure creating subsystem {subsystem8}: Invalid DH-HMAC-CHAP key: ' \
+           f'invalid key length' in caplog.text
     caplog.clear()
     cli(["subsystem", "add", "--subsystem", subsystem8, "--dhchap-key", badhostdhchap10])
-    assert f'Failure creating subsystem {subsystem8}: Invalid DH-HMAC-CHAP key ' \
-           f'"{badhostdhchap10}": invalid key length' in caplog.text
+    assert f'Failure creating subsystem {subsystem8}: Invalid DH-HMAC-CHAP key: ' \
+           f'invalid key length' in caplog.text
     caplog.clear()
     cli(["subsystem", "add", "--subsystem", subsystem8, "--dhchap-key", badhostdhchap11])
-    assert f'Failure creating subsystem {subsystem8}: Invalid DH-HMAC-CHAP key ' \
-           f'"{badhostdhchap11}": base64 part is invalid' in caplog.text
+    assert f'Failure creating subsystem {subsystem8}: Invalid DH-HMAC-CHAP key: ' \
+           f'base64 part is invalid' in caplog.text
     caplog.clear()
     cli(["subsystem", "add", "--subsystem", subsystem8, "--dhchap-key", badhostdhchap12])
-    assert f'Failure creating subsystem {subsystem8}: Invalid DH-HMAC-CHAP key ' \
-           f'"{badhostdhchap12}": base64 part is invalid' in caplog.text
+    assert f'Failure creating subsystem {subsystem8}: Invalid DH-HMAC-CHAP key: ' \
+           f'base64 part is invalid' in caplog.text
     caplog.clear()
     cli(["subsystem", "add", "--subsystem", subsystem8, "--dhchap-key", badhostdhchap13])
-    assert f'Failure creating subsystem {subsystem8}: Invalid DH-HMAC-CHAP key ' \
-           f'"{badhostdhchap13}": CRC-32 checksums mismatch' in caplog.text
+    assert f'Failure creating subsystem {subsystem8}: Invalid DH-HMAC-CHAP key: ' \
+           f'CRC-32 checksums mismatch' in caplog.text
 
 
 def test_set_subsystem_key_with_non_key_hosts(caplog, gateway):
@@ -905,68 +892,55 @@ def test_change_key_for_subsystem_with_bad_keys(caplog, gateway):
     caplog.clear()
     cli(["subsystem", "change_key", "--subsystem", subsystem, "--dhchap-key", badhostdhchap1])
     assert f'Failure changing DH-HMAC-CHAP key for subsystem {subsystem}: ' \
-           f'Invalid DH-HMAC-CHAP key ' \
-           f'"{badhostdhchap1}": key must start with "DHHC-1:' in caplog.text
+           f'Invalid DH-HMAC-CHAP key: key must start with "DHHC-1:' in caplog.text
     caplog.clear()
     cli(["subsystem", "change_key", "--subsystem", subsystem, "--dhchap-key", badhostdhchap2])
     assert f'Failure changing DH-HMAC-CHAP key for subsystem {subsystem}: ' \
-           f'Invalid DH-HMAC-CHAP key ' \
-           f'"{badhostdhchap2}": should contain a ":" delimiter' in caplog.text
+           f'Invalid DH-HMAC-CHAP key: should contain a ":" delimiter' in caplog.text
     caplog.clear()
     cli(["subsystem", "change_key", "--subsystem", subsystem, "--dhchap-key", badhostdhchap3])
     assert f'Failure changing DH-HMAC-CHAP key for subsystem {subsystem}: ' \
-           f'Invalid DH-HMAC-CHAP key ' \
-           f'"{badhostdhchap3}": invalid key length' in caplog.text
+           f'Invalid DH-HMAC-CHAP key: invalid key length' in caplog.text
     caplog.clear()
     cli(["subsystem", "change_key", "--subsystem", subsystem, "--dhchap-key", badhostdhchap4])
     assert f'Failure changing DH-HMAC-CHAP key for subsystem {subsystem}: ' \
-           f'Invalid DH-HMAC-CHAP key ' \
-           f'"{badhostdhchap4}": missing hash' in caplog.text
+           f'Invalid DH-HMAC-CHAP key: missing hash' in caplog.text
     caplog.clear()
     cli(["subsystem", "change_key", "--subsystem", subsystem, "--dhchap-key", badhostdhchap5])
     assert f'Failure changing DH-HMAC-CHAP key for subsystem {subsystem}: ' \
-           f'Invalid DH-HMAC-CHAP key ' \
-           f'"{badhostdhchap5}": non numeric hash "' in caplog.text
+           f'Invalid DH-HMAC-CHAP key: non numeric hash "' in caplog.text
     caplog.clear()
     cli(["subsystem", "change_key", "--subsystem", subsystem, "--dhchap-key", badhostdhchap6])
     assert f'Failure changing DH-HMAC-CHAP key for subsystem {subsystem}: ' \
-           f'Invalid DH-HMAC-CHAP key ' \
-           f'"{badhostdhchap6}": base64 part is missing' in caplog.text
+           f'Invalid DH-HMAC-CHAP key: base64 part is missing' in caplog.text
     caplog.clear()
     cli(["subsystem", "change_key", "--subsystem", subsystem, "--dhchap-key", badhostdhchap7])
     assert f'Failure changing DH-HMAC-CHAP key for subsystem {subsystem}: ' \
-           f'Invalid DH-HMAC-CHAP key ' \
-           f'"{badhostdhchap7}": base64 part is invalid' in caplog.text
+           f'Invalid DH-HMAC-CHAP key: base64 part is invalid' in caplog.text
     caplog.clear()
     cli(["subsystem", "change_key", "--subsystem", subsystem, "--dhchap-key", badhostdhchap8])
     assert f'Failure changing DH-HMAC-CHAP key for subsystem {subsystem}: ' \
-           f'Invalid DH-HMAC-CHAP key ' \
-           f'"{badhostdhchap8}": key must end with ":"' in caplog.text
+           f'Invalid DH-HMAC-CHAP key: key must end with ":"' in caplog.text
     caplog.clear()
     cli(["subsystem", "change_key", "--subsystem", subsystem, "--dhchap-key", badhostdhchap9])
     assert f'Failure changing DH-HMAC-CHAP key for subsystem {subsystem}: ' \
-           f'Invalid DH-HMAC-CHAP key ' \
-           f'"{badhostdhchap9}": invalid key length' in caplog.text
+           f'Invalid DH-HMAC-CHAP key: invalid key length' in caplog.text
     caplog.clear()
     cli(["subsystem", "change_key", "--subsystem", subsystem, "--dhchap-key", badhostdhchap10])
     assert f'Failure changing DH-HMAC-CHAP key for subsystem {subsystem}: ' \
-           f'Invalid DH-HMAC-CHAP key ' \
-           f'"{badhostdhchap10}": invalid key length' in caplog.text
+           f'Invalid DH-HMAC-CHAP key: invalid key length' in caplog.text
     caplog.clear()
     cli(["subsystem", "change_key", "--subsystem", subsystem, "--dhchap-key", badhostdhchap11])
     assert f'Failure changing DH-HMAC-CHAP key for subsystem {subsystem}: ' \
-           f'Invalid DH-HMAC-CHAP key ' \
-           f'"{badhostdhchap11}": base64 part is invalid' in caplog.text
+           f'Invalid DH-HMAC-CHAP key: base64 part is invalid' in caplog.text
     caplog.clear()
     cli(["subsystem", "change_key", "--subsystem", subsystem, "--dhchap-key", badhostdhchap12])
     assert f'Failure changing DH-HMAC-CHAP key for subsystem {subsystem}: ' \
-           f'Invalid DH-HMAC-CHAP key ' \
-           f'"{badhostdhchap12}": base64 part is invalid' in caplog.text
+           f'Invalid DH-HMAC-CHAP key: base64 part is invalid' in caplog.text
     caplog.clear()
     cli(["subsystem", "change_key", "--subsystem", subsystem, "--dhchap-key", badhostdhchap13])
     assert f'Failure changing DH-HMAC-CHAP key for subsystem {subsystem}: ' \
-           f'Invalid DH-HMAC-CHAP key ' \
-           f'"{badhostdhchap13}": CRC-32 checksums mismatch' in caplog.text
+           f'Invalid DH-HMAC-CHAP key: CRC-32 checksums mismatch' in caplog.text
 
 
 def test_delete_key(caplog, gateway):
