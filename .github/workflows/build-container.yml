@@ -1,8 +1,6 @@
 ---
 # yamllint disable rule:line-length
 name: "CI"
-permissions:
-  contents: read
 on:  # yamllint disable rule:truthy
   push:
     tags:
@@ -11,9 +9,7 @@ on:  # yamllint disable rule:truthy
       - '*'
   pull_request:
     branches:
-      - devel
-  schedule:
-    - cron: '0 21 * * *'
+      - '*'
   workflow_dispatch:
   release:
     types:
@@ -760,139 +756,3 @@ jobs:
   #       with:
   #         name: atom-artifact
   #         path: /home/cephnvme/artifact_m8.tar.gz
-
-  push-images-to-ceph-registry:
-    if: github.event_name == 'release'
-    needs: [pytest, demo, discovery, ha, atom]
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Download container images (nvmeof)
-        uses: actions/download-artifact@v4
-        with:
-          pattern: container_images_nvmeof*
-          merge-multiple: true
-
-      - name: Download container image (spdk)
-        uses: actions/download-artifact@v4
-        with:
-          pattern: container_image_spdk
-          merge-multiple: true
-
-      - name: Load container images
-        run: |
-          docker load < nvmeof.tar
-          docker load < nvmeof-cli.tar
-          docker load < spdk.tar
-
-      - name: Login to quay.io
-        uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772
-        with:
-          registry: ${{ vars.CONTAINER_REGISTRY }}
-          username: '${{ vars.CONTAINER_REGISTRY_USERNAME }}'
-          password: '${{ secrets.CONTAINER_REGISTRY_PASSWORD }}'
-
-      - name: Publish nvmeof containers and spdk when release/tag is created
-        run: |
-          make push
-
-  push-devel-image-to-ceph-registry:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/devel'
-    needs: [pytest, demo, discovery, ha, atom]
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Download container images
-        uses: actions/download-artifact@v4
-        with:
-          pattern: container_images_nvmeof*
-          merge-multiple: true
-
-      - name: Load container images
-        run: |
-          docker load < nvmeof.tar
-          docker load < nvmeof-cli.tar
-
-      - name: Login to quay.io
-        uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772
-        with:
-          registry: ${{ vars.CONTAINER_REGISTRY }}
-          username: '${{ vars.CONTAINER_REGISTRY_USERNAME }}'
-          password: '${{ secrets.CONTAINER_REGISTRY_PASSWORD }}'
-
-      - name: Publish nvmeof containers when merged to devel
-        run: |
-          . .env
-          for image in nvmeof nvmeof-cli; do
-            docker tag $CONTAINER_REGISTRY/$image:$NVMEOF_VERSION $CONTAINER_REGISTRY/$image:devel
-            docker push $CONTAINER_REGISTRY/$image:devel
-          done
-
-  pull-and-run-images:
-    needs: [push-images-to-ceph-registry]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: setup
-        run: make setup
-
-      - name: Pull Docker images from Quay.io
-        run: |
-          make pull || true  # Continue even if some images fail to pull
-
-      - name: List pulled images
-        run: docker images
-
-      - name: Verify downloaded images
-        run: |
-          . .env
-          REQUIRED_IMAGES=(
-            $QUAY_SPDK:$SPDK_VERSION
-            $QUAY_NVMEOFCLI:$NVMEOF_CLI_VERSION
-            $QUAY_NVMEOF:$NVMEOF_VERSION
-            $QUAY_CEPH:$CEPH_VERSION
-          )
-            
-          echo "Checking which required images are available:"
-          for image in "${REQUIRED_IMAGES[@]}"; do
-            if docker image inspect "$image" > /dev/null 2>&1; then
-              echo "✅ $image is available."
-            else
-              echo "❌ $image is missing."
-              exit 1  # Fail the job
-            fi
-          done
-
-      - name: Run Docker containers
-        run: make up
-
-      - name: Wait for the Gateway to be listening
-        timeout-minutes: 3
-        run: |
-          . .env
-
-          echo using gateway $NVMEOF_IP_ADDRESS port $NVMEOF_GW_PORT
-          until nc -z $NVMEOF_IP_ADDRESS $NVMEOF_GW_PORT; do
-            echo -n .
-            sleep ${{ env.WAIT_INTERVAL_SECS }}
-          done
-        
-      - name: check health
-        run: make ps
-
-      - name: Run demo
-        run: make demo
-      
-      - name: Tear down
-        if: success() || failure()
-        run: |
-          make down
-          make clean
