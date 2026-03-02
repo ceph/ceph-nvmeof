@@ -203,60 +203,60 @@ def test_create_secure_list(caplog, gateway):
 def test_create_secure_bad_key(caplog, gateway):
     caplog.clear()
     cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn3, "--psk", badhostpsk0])
-    assert f'Failure adding host {hostnqn3} to {subsystem}: Invalid PSK key ' \
-           f'"{badhostpsk0}": key must start with "NVMeTLSkey-1:' in caplog.text
+    assert f'Failure adding host {hostnqn3} to {subsystem}: Invalid PSK key' \
+           f': key must start with "NVMeTLSkey-1:' in caplog.text
     caplog.clear()
     cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn3, "--psk", badhostpsk1])
-    assert f'Failure adding host {hostnqn3} to {subsystem}: Invalid PSK key ' \
-           f'"{badhostpsk1}": key must start with "NVMeTLSkey-1:' in caplog.text
+    assert f'Failure adding host {hostnqn3} to {subsystem}: Invalid PSK key' \
+           f': key must start with "NVMeTLSkey-1:' in caplog.text
     caplog.clear()
     cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn3, "--psk", badhostpsk2])
-    assert f'Failure adding host {hostnqn3} to {subsystem}: Invalid PSK key ' \
-           f'"{badhostpsk2}": should contain a ":" delimiter' in caplog.text
+    assert f'Failure adding host {hostnqn3} to {subsystem}: Invalid PSK key' \
+           f': should contain a ":" delimiter' in caplog.text
     caplog.clear()
     cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn3, "--psk", badhostpsk3])
-    assert f'Failure adding host {hostnqn3} to {subsystem}: Invalid PSK key ' \
-           f'"{badhostpsk3}": invalid key length' in caplog.text
+    assert f'Failure adding host {hostnqn3} to {subsystem}: Invalid PSK key' \
+           f': invalid key length' in caplog.text
     caplog.clear()
     cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn3, "--psk", badhostpsk4])
-    assert f'Failure adding host {hostnqn3} to {subsystem}: Invalid PSK key ' \
-           f'"{badhostpsk4}": missing hash' in caplog.text
+    assert f'Failure adding host {hostnqn3} to {subsystem}: Invalid PSK key' \
+           f': missing hash' in caplog.text
     caplog.clear()
     cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn3, "--psk", badhostpsk5])
-    assert f'Failure adding host {hostnqn3} to {subsystem}: Invalid PSK key ' \
-           f'"{badhostpsk5}": non numeric hash "' in caplog.text
+    assert f'Failure adding host {hostnqn3} to {subsystem}: Invalid PSK key' \
+           f': non numeric hash "' in caplog.text
     caplog.clear()
     cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn3, "--psk", badhostpsk6])
-    assert f'Failure adding host {hostnqn3} to {subsystem}: Invalid PSK key ' \
-           f'"{badhostpsk6}": base64 part is missing' in caplog.text
+    assert f'Failure adding host {hostnqn3} to {subsystem}: Invalid PSK key' \
+           f': base64 part is missing' in caplog.text
     caplog.clear()
     cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn3, "--psk", badhostpsk7])
-    assert f'Failure adding host {hostnqn3} to {subsystem}: Invalid PSK key ' \
-           f'"{badhostpsk7}": invalid key length' in caplog.text
+    assert f'Failure adding host {hostnqn3} to {subsystem}: Invalid PSK key' \
+           f': invalid key length' in caplog.text
     caplog.clear()
     cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn3, "--psk", badhostpsk8])
-    assert f'Failure adding host {hostnqn3} to {subsystem}: Invalid PSK key ' \
-           f'"{badhostpsk8}": key must end with ":"' in caplog.text
+    assert f'Failure adding host {hostnqn3} to {subsystem}: Invalid PSK key' \
+           f': key must end with ":"' in caplog.text
     caplog.clear()
     cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn3, "--psk", badhostpsk9])
-    assert f'Failure adding host {hostnqn3} to {subsystem}: Invalid PSK key ' \
-           f'"{badhostpsk9}": invalid key length' in caplog.text
+    assert f'Failure adding host {hostnqn3} to {subsystem}: Invalid PSK key' \
+           f': invalid key length' in caplog.text
     caplog.clear()
     cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn3, "--psk", badhostpsk10])
-    assert f'Failure adding host {hostnqn3} to {subsystem}: Invalid PSK key ' \
-           f'"{badhostpsk10}": invalid key length' in caplog.text
+    assert f'Failure adding host {hostnqn3} to {subsystem}: Invalid PSK key' \
+           f': invalid key length' in caplog.text
     caplog.clear()
     cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn3, "--psk", badhostpsk11])
-    assert f'Failure adding host {hostnqn3} to {subsystem}: Invalid PSK key ' \
-           f'"{badhostpsk11}": base64 part is invalid' in caplog.text
+    assert f'Failure adding host {hostnqn3} to {subsystem}: Invalid PSK key' \
+           f': base64 part is invalid' in caplog.text
     caplog.clear()
     cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn3, "--psk", badhostpsk12])
-    assert f'Failure adding host {hostnqn3} to {subsystem}: Invalid PSK key ' \
-           f'"{badhostpsk12}": base64 part is invalid' in caplog.text
+    assert f'Failure adding host {hostnqn3} to {subsystem}: Invalid PSK key' \
+           f': base64 part is invalid' in caplog.text
     caplog.clear()
     cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn3, "--psk", badhostpsk13])
-    assert f'Failure adding host {hostnqn3} to {subsystem}: Invalid PSK key ' \
-           f'"{badhostpsk13}": CRC-32 checksums mismatch' in caplog.text
+    assert f'Failure adding host {hostnqn3} to {subsystem}: Invalid PSK key' \
+           f': CRC-32 checksums mismatch' in caplog.text
 
 
 def test_create_secure_no_key(caplog, gateway):
