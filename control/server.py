@@ -355,8 +355,6 @@ class GatewayServer:
             "daemon_type": "gateway",          # "nvmeof: 3 <daemon_type> active (3 hosts)"
             "group": self.config.get_with_default("gateway", "group", ""),
         }
-        metadata["id"] = metadata["id"].removeprefix(
-            f"{metadata['pool_name']}.{metadata['group']}.")
         self.ceph_utils.service_daemon_register(conn, metadata)
 
     def _monitor_client_version(self) -> str:
