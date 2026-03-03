@@ -16,6 +16,7 @@ import grpc
 import json
 import threading
 import time
+import platform
 from concurrent import futures
 from google.protobuf import json_format
 
@@ -110,6 +111,7 @@ class GatewayServer:
 
     MAX_TIME_TO_WAIT_FOR_GATEWAY_EXIT = 30
     SPDK_PING_INTERVAL_DEFAULT = 2.0
+    DSA_SUPPORTED_ARCHITECTURES = ["x86_64", "amd64"]
 
     def __init__(self, config: GatewayConfig):
         self.config = config
@@ -135,6 +137,7 @@ class GatewayServer:
         self.crypto = None
         self.gateway_state = None
         self.exiting = False
+        self.dsa_enabled = None
         enc_key = None
         enc_key_file = self.config.get_with_default("gateway", "encryption_key", "")
         if enc_key_file:
@@ -890,16 +893,34 @@ class GatewayServer:
 
     def _accel_config(self):
         # Instantiate DsaUtils and run config
-        if self.config.getboolean_with_default("spdk", "enable_dsa_acceleration", True):
+        self.dsa_enabled = self.config.getboolean_with_default("spdk",
+                                                               "enable_dsa_acceleration",
+                                                               True)
+        if self.dsa_enabled and not GatewayServer._is_dsa_supported_on_machine():
+            self.dsa_enabled = False
+            self.logger.warning("DSA acceleration is not supported on "
+                                "this machine, will disable it")
+        if self.dsa_enabled:
             dsa_utils = DsaUtils(self.logger)
             dsa_utils.config()
         else:
             self.logger.info("DSA acceleration device configuration is disabled")
 
+    @staticmethod
+    def _is_dsa_supported_on_machine() -> bool:
+        try:
+            gw_arch = platform.machine()
+            if gw_arch is not None:
+                if gw_arch.strip().lower() not in GatewayServer.DSA_SUPPORTED_ARCHITECTURES:
+                    return False
+        except Exception:
+            pass
+        return True
+
     def _probe_dsa(self):
         """Initializes dsa accel module offload."""
         try:
-            if self.config.getboolean_with_default("spdk", "enable_dsa_acceleration", True):
+            if self.dsa_enabled:
                 res = self.spdk_rpc_client.dsa_scan_accel_module(config_kernel_mode=True)
                 self.logger.debug(f"dsa_scan_accel_module: {res=}")
             else:

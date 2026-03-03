@@ -24,9 +24,6 @@ from typing import Iterator, Callable
 from collections import defaultdict
 import logging
 import shutil
-from base64 import b64decode
-from binascii import Error
-from binascii import crc32
 
 from spdk.rpc.client import JSONRPCException
 from google.protobuf import json_format
@@ -39,6 +36,7 @@ from .config import GatewayConfig
 from .utils import GatewayEnumUtils
 from .utils import GatewayUtils
 from .utils import GatewayUtilsCrypto
+from .utils import GatewayKeyUtils
 from .utils import GatewayLogger
 from .utils import NICS
 from .state import GatewayState, GatewayStateHandler, OmapLock
@@ -100,9 +98,6 @@ class MonitorGroupService(monitor_pb2_grpc.MonitorGroupServicer):
 
 
 class SubsystemHostAuth:
-    MAX_PSK_KEY_NAME_LENGTH = 200     # taken from SPDK SPDK_TLS_PSK_MAX_LEN
-    MAX_DHCHAP_KEY_NAME_LENGTH = 256
-
     def __init__(self):
         self.subsys_allow_any_hosts = defaultdict(dict)
         self.subsys_created_without_key = defaultdict(set)
@@ -113,160 +108,6 @@ class SubsystemHostAuth:
         self.host_nqn = defaultdict(set)
         self.host_ka_timeout = defaultdict(set)
         self.host_ka_timeout_lock = threading.Lock()
-
-    def is_valid_psk(self, psk: str):
-        PSK_CRC32_SIZE_BYTES = 4
-        PSK_DELIM = ":"
-        PSK_PREFIX = "NVMeTLSkey-1"
-        PSK_HASH_ALGORITHMS = [0, 1, 2]
-        PSK_HASH_LENGTHS = [-1, 32, 48]
-
-        failure_prefix = "Invalid PSK key"
-        if not psk:
-            return (errno.ENOKEY, f"{failure_prefix}: key can't be empty")
-
-        failure_prefix += f" \"{psk}\""
-        if not isinstance(psk, str):
-            return (errno.EINVAL, f"{failure_prefix}: key must be a string")
-
-        if not psk.startswith(PSK_PREFIX + PSK_DELIM):
-            return (errno.EINVAL,
-                    f"{failure_prefix}: key must start with \"{PSK_PREFIX}{PSK_DELIM}\"")
-
-        if len(psk) >= SubsystemHostAuth.MAX_PSK_KEY_NAME_LENGTH:
-            return (errno.E2BIG,
-                    f"{failure_prefix}: key is too long, must be shorter than "
-                    f"{SubsystemHostAuth.MAX_PSK_KEY_NAME_LENGTH} characters")
-
-        if not psk.endswith(PSK_DELIM):
-            return (errno.EINVAL,
-                    f"{failure_prefix}: key must end with \"{PSK_DELIM}\"")
-
-        psk_parts = psk.removeprefix(PSK_PREFIX + PSK_DELIM).removesuffix(PSK_DELIM).split(":", 1)
-        if len(psk_parts) != 2:
-            return (errno.EINVAL,
-                    f"{failure_prefix}: should contain a \"{PSK_DELIM}\" delimiter")
-
-        if not len(psk_parts[0]):
-            return (errno.EINVAL,
-                    f"{failure_prefix}: missing hash")
-
-        try:
-            key_hash = int(psk_parts[0])
-        except ValueError:
-            return (errno.EINVAL,
-                    f"{failure_prefix}: non numeric hash \"{psk_parts[0]}\"")
-
-        if key_hash not in PSK_HASH_ALGORITHMS:
-            return (errno.EINVAL,
-                    f"{failure_prefix}: invalid key length")
-
-        if not len(psk_parts[1]):
-            return (errno.EINVAL,
-                    f"{failure_prefix}: base64 part is missing")
-
-        try:
-            decoded = b64decode(psk_parts[1], validate=True)
-        except Error:
-            return (errno.EINVAL,
-                    f"{failure_prefix}: base64 part is invalid")
-
-        if not decoded:
-            return (errno.EINVAL,
-                    f"{failure_prefix}: base64 part is missing")
-
-        if PSK_HASH_LENGTHS[key_hash] >= 0:
-            if len(decoded) != PSK_HASH_LENGTHS[key_hash] + PSK_CRC32_SIZE_BYTES:
-                return (errno.EINVAL,
-                        f"{failure_prefix}: invalid key length")
-
-        crc32_part = decoded[-PSK_CRC32_SIZE_BYTES:]
-        key_part = decoded[:-PSK_CRC32_SIZE_BYTES]
-        computed_crc32 = crc32(key_part)
-        crc32_intval = int.from_bytes(crc32_part, byteorder='little', signed=False)
-        if computed_crc32 != crc32_intval:
-            return (errno.EINVAL,
-                    f"{failure_prefix}: CRC-32 checksums mismatch")
-
-        return (0, os.strerror(0))
-
-    def is_valid_dhchap_key(self, dhchap_key: str, is_ctrlr: bool = False):
-        DHCHAP_CRC32_SIZE_BYTES = 4
-        DHCHAP_DELIM = ":"
-        DHCHAP_PREFIX = "DHHC-1"
-        DHCHAP_HASH_ALGORITHMS = [0, 1, 2, 3]
-        DHCHAP_HASH_LENGTHS = [-1, 32, 48, 64]
-
-        ctrlr_txt = "controller " if is_ctrlr else ""
-        failure_prefix = f"Invalid DH-HMAC-CHAP {ctrlr_txt}key"
-        if not dhchap_key:
-            return (errno.ENOKEY, f"{failure_prefix}: key can't be empty")
-
-        failure_prefix += f" \"{dhchap_key}\""
-        if not isinstance(dhchap_key, str):
-            return (errno.EINVAL, "{failure_prefix}: key must be a string")
-
-        if not dhchap_key.startswith(DHCHAP_PREFIX + DHCHAP_DELIM):
-            return (errno.EINVAL,
-                    f"{failure_prefix}: key must start with \"{DHCHAP_PREFIX}{DHCHAP_DELIM}\"")
-
-        if len(dhchap_key) >= SubsystemHostAuth.MAX_DHCHAP_KEY_NAME_LENGTH:
-            return (errno.E2BIG,
-                    f"{failure_prefix}: key is too long, must be shorter than "
-                    f"{SubsystemHostAuth.MAX_DHCHAP_KEY_NAME_LENGTH} characters")
-
-        if not dhchap_key.endswith(DHCHAP_DELIM):
-            return (errno.EINVAL,
-                    f"{failure_prefix}: key must end with \"{DHCHAP_DELIM}\"")
-
-        dhchap_parts = dhchap_key.removeprefix(
-            DHCHAP_PREFIX + DHCHAP_DELIM).removesuffix(DHCHAP_DELIM).split(":", 1)
-        if len(dhchap_parts) != 2:
-            return (errno.EINVAL,
-                    f"{failure_prefix}: should contain a \"{DHCHAP_DELIM}\" delimiter")
-
-        if not len(dhchap_parts[0]):
-            return (errno.EINVAL,
-                    f"{failure_prefix}: missing hash")
-
-        try:
-            key_hash = int(dhchap_parts[0])
-        except ValueError:
-            return (errno.EINVAL,
-                    f"{failure_prefix}: non numeric hash \"{dhchap_parts[0]}\"")
-
-        if key_hash not in DHCHAP_HASH_ALGORITHMS:
-            return (errno.EINVAL,
-                    f"{failure_prefix}: invalid key length")
-
-        if not len(dhchap_parts[1]):
-            return (errno.EINVAL,
-                    f"{failure_prefix}: base64 part is missing")
-
-        try:
-            decoded = b64decode(dhchap_parts[1], validate=True)
-        except Error:
-            return (errno.EINVAL,
-                    f"{failure_prefix}: base64 part is invalid")
-
-        if not decoded:
-            return (errno.EINVAL,
-                    f"{failure_prefix}: base64 part is missing")
-
-        if DHCHAP_HASH_LENGTHS[key_hash] >= 0:
-            if len(decoded) != DHCHAP_HASH_LENGTHS[key_hash] + DHCHAP_CRC32_SIZE_BYTES:
-                return (errno.EINVAL,
-                        f"{failure_prefix}: invalid key length")
-
-        crc32_part = decoded[-DHCHAP_CRC32_SIZE_BYTES:]
-        key_part = decoded[:-DHCHAP_CRC32_SIZE_BYTES]
-        computed_crc32 = crc32(key_part)
-        crc32_intval = int.from_bytes(crc32_part, byteorder='little', signed=False)
-        if computed_crc32 != crc32_intval:
-            return (errno.EINVAL,
-                    f"{failure_prefix}: CRC-32 checksums mismatch")
-
-        return (0, os.strerror(0))
 
     def clean_subsystem(self, subsys):
         self.host_psk_key.pop(subsys, None)
@@ -385,12 +226,29 @@ class SubsystemHostAuth:
 
     def reset_host_keepalive_timeout_disconnection(self, subsys, hostnqn=None):
         with self.host_ka_timeout_lock:
-            self.host_ka_timeout[subsys].discard(hostnqn)
-            if hostnqn is None or not self.host_ka_timeout[subsys]:
+            if subsys not in self.host_ka_timeout:
+                return
+            if hostnqn is None:
+                # No host NQN, clear the entire subsystem
                 self.host_ka_timeout.pop(subsys, None)
+                return
+            self.host_ka_timeout[subsys].discard(hostnqn)
+            if not self.host_ka_timeout[subsys]:
+                # We removed the last host of this subsystem, delete it
+                self.host_ka_timeout.pop(subsys, None)
+
+    def get_keepalive_timeout_disconnections(self, subsys):
+        disconnected_list = []
+        with self.host_ka_timeout_lock:
+            if subsys in self.host_ka_timeout:
+                for h in self.host_ka_timeout[subsys]:
+                    disconnected_list.append(h)
+        return disconnected_list
 
     def was_host_disconnected_due_to_keepalive_timeout(self, subsys, hostnqn) -> bool:
         with self.host_ka_timeout_lock:
+            if subsys not in self.host_ka_timeout:
+                return False
             return hostnqn in self.host_ka_timeout[subsys]
 
     def allow_any_host(self, subsys):
@@ -1889,7 +1747,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         if context and self.verify_keys:
             if request.dhchap_key:
-                rc = self.host_info.is_valid_dhchap_key(request.dhchap_key)
+                rc = GatewayKeyUtils.is_valid_dhchap_key(request.dhchap_key)
                 if rc[0] != 0:
                     errmsg = f"{create_subsystem_error_prefix}: {rc[1]}"
                     self.logger.error(errmsg)
@@ -2465,15 +2323,16 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 ns_image = GatewayStateHandler._normalize_json_string(ns_image)
                 ns_rados_namespace = ns.rados_namespace_name
                 ns_rados_namespace = GatewayStateHandler._normalize_json_string(ns_rados_namespace)
-                path = f"{ns_pool}/{ns_rados_namespace}/{ns_image}" \
-                    if ns_rados_namespace else f"{ns_pool}/{ns_image}"
-                if pool_name and pool_name != ns_pool:
+                # Notice that the normalized values can't be None. None will be changed into ""
+                if pool_name != ns_pool:
                     continue
-                if image_name and image_name != ns_image:
+                if image_name != ns_image:
                     continue
-                if rados_namespace_name and rados_namespace_name != ns_rados_namespace:
+                if rados_namespace_name != ns_rados_namespace:
                     continue
                 nqn = ns.subsystem_nqn
+                path = f"{ns_pool}/{ns_rados_namespace}/{ns_image}" \
+                    if ns_rados_namespace else f"{ns_pool}/{ns_image}"
                 errmsg = f"RBD image {path} is already used by a namespace " \
                          f"in subsystem {nqn}"
                 break
@@ -3919,49 +3778,56 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                    subsystem_nqn=request.subsystem,
                                    namespaces=namespaces)
 
-    def namespace_get_io_stats(self, request, context=None):
-        """Get namespace's IO stats."""
-
-        failure_prefix = f"Failure getting IO stats for namespace {request.nsid} " \
-                         f"on {request.subsystem_nqn}"
+    def list_namespaces_io_stats(self, request, context=None):
+        """Get namespaces IO stats."""
         peer_msg = self.get_peer_message(context)
-        self.logger.info(f"Received request to get IO stats for namespace {request.nsid} on "
-                         f"{request.subsystem_nqn}, context: {context}{peer_msg}")
-        if not request.nsid:
+        self.logger.info(f"Received request to list IO stats for namespaces with "
+                         f"nsid: {request.nsid}, subsystem: {request.subsystem_nqn}, "
+                         f"context: {context}{peer_msg}")
+        failure_prefix = "Failure listing IO stats for namespaces"
+        if (request.nsid):
+            failure_prefix += f" with ID {request.nsid}"
+        if (request.subsystem_nqn):
+            failure_prefix += f" on subsystem {request.subsystem_nqn}"
+
+        if (request.subsystem_nqn and not request.nsid):
             errmsg = "Failure getting IO stats for namespace, missing ID"
             self.logger.error(errmsg)
-            return pb2.namespace_io_stats_info(status=errno.EINVAL, error_message=errmsg)
+            return pb2.list_namespaces_io_stats_info(status=errno.EINVAL, error_message=errmsg)
 
-        if not request.subsystem_nqn:
-            errmsg = f"Failure getting IO stats for namespace {request.nsid}, \
-                missing subsystem NQN"
+        if (request.nsid and not request.subsystem_nqn):
+            errmsg = f"Failure getting IO stats for namespace {request.nsid}, " \
+                     "missing subsystem NQN"
             self.logger.error(errmsg)
-            return pb2.namespace_io_stats_info(status=errno.EINVAL, error_message=errmsg)
+            return pb2.list_namespaces_io_stats_info(status=errno.EINVAL, error_message=errmsg)
 
         # If this is not set the subsystem was not created yet
-        if request.subsystem_nqn not in self.subsys_serial:
+        if request.subsystem_nqn and (request.subsystem_nqn not in self.subsys_serial):
             errmsg = f"Failure getting IO stats for namespace {request.nsid}, can't find " \
                      f"subsystem \"{request.subsystem_nqn}\""
             self.logger.error(errmsg)
-            return pb2.namespace_io_stats_info(status=errno.ENOENT, error_message=errmsg)
+            return pb2.list_namespaces_io_stats_info(status=errno.ENOENT, error_message=errmsg)
 
+        target_bdev_name = None
         with self.rpc_lock:
-            find_ret = self.subsystem_nsid_bdev_and_uuid.find_namespace(
-                request.subsystem_nqn, request.nsid)
-            if find_ret.empty():
-                errmsg = f"{failure_prefix}: Can't find namespace"
-                self.logger.error(errmsg)
-                return pb2.namespace_io_stats_info(status=errno.ENODEV, error_message=errmsg)
-            uuid = find_ret.uuid
-            bdev_name = find_ret.bdev
-            if not bdev_name:
-                errmsg = f"{failure_prefix}: Can't find associated block device"
-                self.logger.error(errmsg)
-                return pb2.namespace_io_stats_info(status=errno.ENODEV, error_message=errmsg)
+            if request.nsid:
+                find_ret = self.subsystem_nsid_bdev_and_uuid.find_namespace(
+                    request.subsystem_nqn, request.nsid)
+                if find_ret.empty():
+                    errmsg = f"{failure_prefix}: Can't find namespace"
+                    self.logger.error(errmsg)
+                    return pb2.list_namespaces_io_stats_info(status=errno.ENODEV,
+                                                             error_message=errmsg)
+                target_bdev_name = find_ret.bdev
+                if not target_bdev_name:
+                    errmsg = f"{failure_prefix}: Can't find associated block device"
+                    self.logger.error(errmsg)
+                    return pb2.list_namespaces_io_stats_info(status=errno.ENODEV,
+                                                             error_message=errmsg)
 
             try:
-                ret = self.spdk_rpc_client.bdev_get_iostat(name=bdev_name)
-                self.logger.debug(f"get_bdev_iostat {bdev_name}: {ret}")
+                ret = self.spdk_rpc_client.bdev_get_iostat(name=target_bdev_name)
+                self.logger.debug(f"get_bdev_iostat: {ret}")
             except Exception as ex:
                 self.logger.exception(failure_prefix)
                 errmsg = f"{failure_prefix}:\n{ex}"
@@ -3970,69 +3836,145 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 if resp:
                     status = resp["code"]
                     errmsg = f"{failure_prefix}: {resp['message']}"
-                return pb2.namespace_io_stats_info(status=status, error_message=errmsg)
+                return pb2.list_namespaces_io_stats_info(status=status, error_message=errmsg)
 
         # Just in case SPDK failed with no exception
         if not ret:
             self.logger.error(failure_prefix)
-            return pb2.namespace_io_stats_info(status=errno.EINVAL, error_message=failure_prefix)
+            return pb2.list_namespaces_io_stats_info(status=errno.EINVAL,
+                                                     error_message=failure_prefix)
 
         exmsg = ""
         try:
             bdevs = ret["bdevs"]
             if not bdevs:
-                return pb2.namespace_io_stats_info(
+                return pb2.list_namespaces_io_stats_info(
                     status=errno.ENODEV,
                     error_message=f"{failure_prefix}: No associated block device found")
-            if len(bdevs) > 1:
-                self.logger.warning("More than one associated block device found for namespace, "
-                                    "will use the first one")
-            bdev = bdevs[0]
-            io_errs = []
-            try:
-                io_error = bdev["io_error"]
-                for err_name in io_error.keys():
-                    one_error = pb2.namespace_io_error(name=err_name, value=io_error[err_name])
-                    io_errs.append(one_error)
-            except Exception:
-                self.logger.exception("failure getting io errors")
-            io_stats = pb2.namespace_io_stats_info(
+
+            if target_bdev_name and len(bdevs) > 1:
+                self.logger.warning("More than one associated block device found for namespace")
+
+            bdev_iostats = []
+            for bdev in bdevs:
+                io_errs = []
+                try:
+                    io_error = bdev["io_error"]
+                    for err_name in io_error.keys():
+                        one_error = pb2.namespace_io_error(name=err_name, value=io_error[err_name])
+                        io_errs.append(one_error)
+                except Exception:
+                    self.logger.exception("failure getting io errors")
+                io_stats = pb2.bdev_io_stats_info(
+                    bdev_name=bdev["name"],
+                    bytes_read=bdev["bytes_read"],
+                    num_read_ops=bdev["num_read_ops"],
+                    bytes_written=bdev["bytes_written"],
+                    num_write_ops=bdev["num_write_ops"],
+                    bytes_unmapped=bdev["bytes_unmapped"],
+                    num_unmap_ops=bdev["num_unmap_ops"],
+                    bytes_copied=bdev["bytes_copied"],
+                    num_copy_ops=bdev["num_copy_ops"],
+                    read_latency_ticks=bdev["read_latency_ticks"],
+                    max_read_latency_ticks=bdev["max_read_latency_ticks"],
+                    min_read_latency_ticks=bdev["min_read_latency_ticks"],
+                    write_latency_ticks=bdev["write_latency_ticks"],
+                    max_write_latency_ticks=bdev["max_write_latency_ticks"],
+                    min_write_latency_ticks=bdev["min_write_latency_ticks"],
+                    unmap_latency_ticks=bdev["unmap_latency_ticks"],
+                    max_unmap_latency_ticks=bdev["max_unmap_latency_ticks"],
+                    min_unmap_latency_ticks=bdev["min_unmap_latency_ticks"],
+                    copy_latency_ticks=bdev["copy_latency_ticks"],
+                    max_copy_latency_ticks=bdev["max_copy_latency_ticks"],
+                    min_copy_latency_ticks=bdev["min_copy_latency_ticks"],
+                    io_error=io_errs)
+                bdev_iostats.append(io_stats)
+            return pb2.list_namespaces_io_stats_info(
                 status=0,
                 error_message=os.strerror(0),
-                subsystem_nqn=request.subsystem_nqn,
-                nsid=request.nsid,
-                uuid=uuid,
-                bdev_name=bdev_name,
                 tick_rate=ret["tick_rate"],
                 ticks=ret["ticks"],
-                bytes_read=bdev["bytes_read"],
-                num_read_ops=bdev["num_read_ops"],
-                bytes_written=bdev["bytes_written"],
-                num_write_ops=bdev["num_write_ops"],
-                bytes_unmapped=bdev["bytes_unmapped"],
-                num_unmap_ops=bdev["num_unmap_ops"],
-                read_latency_ticks=bdev["read_latency_ticks"],
-                max_read_latency_ticks=bdev["max_read_latency_ticks"],
-                min_read_latency_ticks=bdev["min_read_latency_ticks"],
-                write_latency_ticks=bdev["write_latency_ticks"],
-                max_write_latency_ticks=bdev["max_write_latency_ticks"],
-                min_write_latency_ticks=bdev["min_write_latency_ticks"],
-                unmap_latency_ticks=bdev["unmap_latency_ticks"],
-                max_unmap_latency_ticks=bdev["max_unmap_latency_ticks"],
-                min_unmap_latency_ticks=bdev["min_unmap_latency_ticks"],
-                copy_latency_ticks=bdev["copy_latency_ticks"],
-                max_copy_latency_ticks=bdev["max_copy_latency_ticks"],
-                min_copy_latency_ticks=bdev["min_copy_latency_ticks"],
-                io_error=io_errs)
-            return io_stats
+                namespaces=bdev_iostats
+            )
         except Exception as ex:
             self.logger.exception("parse error")
             exmsg = str(ex)
             pass
+        return pb2.list_namespaces_io_stats_info(status=errno.EINVAL,
+                                                 error_message=f"{failure_prefix}: Error "
+                                                 f"parsing returned stats:\n{exmsg}")
 
-        return pb2.namespace_io_stats_info(status=errno.EINVAL,
-                                           error_message=f"{failure_prefix}: Error "
-                                                         f"parsing returned stats:\n{exmsg}")
+    def namespace_get_io_stats(self, request, context=None):
+        """Get namespace's IO stats."""
+
+        failure_prefix = f"Failure getting IO stats for namespace {request.nsid} " \
+                         f"on {request.subsystem_nqn}"
+        peer_msg = self.get_peer_message(context)
+        self.logger.info(f"Received request to get IO stats for namespace {request.nsid} on "
+                         f"{request.subsystem_nqn}, context: {context}{peer_msg}")
+
+        list_req = pb2.list_namespaces_io_stats_req(
+            subsystem_nqn=request.subsystem_nqn,
+            nsid=request.nsid
+        )
+        list_ret = self.list_namespaces_io_stats(list_req, context)
+
+        if list_ret.status != 0:
+            return pb2.namespace_io_stats_info(
+                status=list_ret.status,
+                error_message=list_ret.error_message
+            )
+
+        if not list_ret.namespaces:
+            return pb2.namespace_io_stats_info(
+                status=errno.ENODEV,
+                error_message=f"{failure_prefix}: No namespace found"
+            )
+
+        if len(list_ret.namespaces) > 1:
+            self.logger.warning("Found multiple devices for same ID, will use first one")
+        bdev_stats = list_ret.namespaces[0]
+
+        # get uuid
+        with self.rpc_lock:
+            find_ret = self.subsystem_nsid_bdev_and_uuid.find_namespace(
+                request.subsystem_nqn, request.nsid)
+            if find_ret.empty():
+                return pb2.namespace_io_stats_info(
+                    status=errno.ENODEV,
+                    error_message=f"{failure_prefix}: Can't find namespace"
+                )
+            uuid = find_ret.uuid
+
+        return pb2.namespace_io_stats_info(
+            status=0,
+            error_message=os.strerror(0),
+            subsystem_nqn=request.subsystem_nqn,
+            nsid=request.nsid,
+            uuid=uuid,
+            bdev_name=bdev_stats.bdev_name,
+            tick_rate=list_ret.tick_rate,
+            ticks=list_ret.ticks,
+            bytes_read=bdev_stats.bytes_read,
+            num_read_ops=bdev_stats.num_read_ops,
+            bytes_written=bdev_stats.bytes_written,
+            num_write_ops=bdev_stats.num_write_ops,
+            bytes_unmapped=bdev_stats.bytes_unmapped,
+            num_unmap_ops=bdev_stats.num_unmap_ops,
+            read_latency_ticks=bdev_stats.read_latency_ticks,
+            max_read_latency_ticks=bdev_stats.max_read_latency_ticks,
+            min_read_latency_ticks=bdev_stats.min_read_latency_ticks,
+            write_latency_ticks=bdev_stats.write_latency_ticks,
+            max_write_latency_ticks=bdev_stats.max_write_latency_ticks,
+            min_write_latency_ticks=bdev_stats.min_write_latency_ticks,
+            unmap_latency_ticks=bdev_stats.unmap_latency_ticks,
+            max_unmap_latency_ticks=bdev_stats.max_unmap_latency_ticks,
+            min_unmap_latency_ticks=bdev_stats.min_unmap_latency_ticks,
+            copy_latency_ticks=bdev_stats.copy_latency_ticks,
+            max_copy_latency_ticks=bdev_stats.max_copy_latency_ticks,
+            min_copy_latency_ticks=bdev_stats.min_copy_latency_ticks,
+            io_error=bdev_stats.io_error
+        )
 
     @staticmethod
     def is_optional_field_in_message(request, fld):
@@ -4832,7 +4774,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 errmsg = f"{all_host_failure_prefix}: Can't allow any host access " \
                          f"on a subsystem having a DH-HMAC-CHAP key"
                 self.logger.error(errmsg)
-                return pb2.req_status(errno.EACCES, error_message=errmsg)
+                return pb2.req_status(status=errno.EACCES, error_message=errmsg)
             dhchap_host_list = self.host_info.get_hosts_with_any_dhchap_key(request.subsystem_nqn)
             if dhchap_host_list:
                 errmsg = f"{all_host_failure_prefix}: Can't allow any host access " \
@@ -4913,21 +4855,21 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         if context and self.verify_keys:
             if request.psk:
-                rc = self.host_info.is_valid_psk(request.psk)
+                rc = GatewayKeyUtils.is_valid_psk(request.psk)
                 if rc[0] != 0:
                     errmsg = f"{host_failure_prefix}: {rc[1]}"
                     self.logger.error(errmsg)
                     return pb2.req_status(status=rc[0], error_message=errmsg)
 
             if request.dhchap_key:
-                rc = self.host_info.is_valid_dhchap_key(request.dhchap_key)
+                rc = GatewayKeyUtils.is_valid_dhchap_key(request.dhchap_key)
                 if rc[0] != 0:
                     errmsg = f"{host_failure_prefix}: {rc[1]}"
                     self.logger.error(errmsg)
                     return pb2.req_status(status=rc[0], error_message=errmsg)
 
             if request.dhchap_ctrlr_key:
-                rc = self.host_info.is_valid_dhchap_key(request.dhchap_ctrlr_key, True)
+                rc = GatewayKeyUtils.is_valid_dhchap_key(request.dhchap_ctrlr_key, True)
                 if rc[0] != 0:
                     errmsg = f"{host_failure_prefix}: {rc[1]}"
                     self.logger.error(errmsg)
@@ -5049,9 +4991,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
             psk_key_name = GatewayService.construct_key_name_for_keyring(request.subsystem_nqn,
                                                                          request.host_nqn,
                                                                          GatewayService.PSK_PREFIX)
-            if len(psk_key_name) >= SubsystemHostAuth.MAX_PSK_KEY_NAME_LENGTH:
+            if len(psk_key_name) >= GatewayKeyUtils.MAX_PSK_KEY_NAME_LENGTH:
                 errmsg = f"{host_failure_prefix}: PSK key name {psk_key_name} is too long, " \
-                         f"max length is {SubsystemHostAuth.MAX_PSK_KEY_NAME_LENGTH}"
+                         f"max length is {GatewayKeyUtils.MAX_PSK_KEY_NAME_LENGTH}"
                 self.logger.error(errmsg)
                 return pb2.req_status(status=errno.E2BIG, error_message=errmsg)
 
@@ -5284,8 +5226,6 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     self.remove_all_host_key_files(request.subsystem_nqn, request.host_nqn)
                     self.remove_all_host_keys_from_keyring(request.subsystem_nqn, request.host_nqn)
                     self.host_info.remove_host_nqn(request.subsystem_nqn, request.host_nqn)
-                    self.host_info.reset_host_keepalive_timeout_disconnection(
-                        request.subsystem_nqn, request.host_nqn)
             except Exception as ex:
                 if request.host_nqn == "*":
                     self.logger.exception(all_host_failure_prefix)
@@ -5415,14 +5355,14 @@ class GatewayService(pb2_grpc.GatewayServicer):
         if context and self.verify_keys:
             if request.dhchap_key:
                 if request.dhchap_key != GatewayUtilsCrypto.EXISTING_DHCHAP_KEY:
-                    rc = self.host_info.is_valid_dhchap_key(request.dhchap_key)
+                    rc = GatewayKeyUtils.is_valid_dhchap_key(request.dhchap_key)
                     if rc[0] != 0:
                         errmsg = f"{host_failure_prefix}: {rc[1]}"
                         self.logger.error(errmsg)
                         return pb2.req_status(status=rc[0], error_message=errmsg)
             if request.dhchap_ctrlr_key:
                 if request.dhchap_ctrlr_key != GatewayUtilsCrypto.EXISTING_DHCHAP_KEY:
-                    rc = self.host_info.is_valid_dhchap_key(request.dhchap_ctrlr_key, True)
+                    rc = GatewayKeyUtils.is_valid_dhchap_key(request.dhchap_ctrlr_key, True)
                     if rc[0] != 0:
                         errmsg = f"{ctrlr_failure_prefix}: {rc[1]}"
                         self.logger.error(errmsg)
@@ -5502,10 +5442,14 @@ class GatewayService(pb2_grpc.GatewayServicer):
                          f"when the subsystem has a key as well, remove the subsystem's key first"
                 self.logger.error(errmsg)
                 return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
-            else:
-                dhchap_ctrlr_key_to_use = dhchap_subsystem_key
-                has_dhchap_ctrlr_key = True
-                ctrlr_key_taken_from_subsystem = True
+            if not request.dhchap_ctrlr_key:
+                errmsg = f"{failure_prefix}: Can't delete host DH-HMAC-CHAP controller key " \
+                         f"as it was defined in the subsystem"
+                self.logger.error(errmsg)
+                return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
+            dhchap_ctrlr_key_to_use = dhchap_subsystem_key
+            has_dhchap_ctrlr_key = True
+            ctrlr_key_taken_from_subsystem = True
 
         if has_dhchap_key and not has_dhchap_ctrlr_key:
             self.logger.warning(f"Host {request.host_nqn} has a DH-HMAC-CHAP key but no "
@@ -5650,7 +5594,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 self.remove_all_host_key_files(request.subsystem_nqn, request.host_nqn)
                 self.remove_all_host_keys_from_keyring(request.subsystem_nqn, request.host_nqn)
 
-            if dhchap_ctrlr_key_name:
+            if dhchap_ctrlr_key_name and not ctrlr_key_taken_from_subsystem:
                 self.host_info.add_dhchap_ctrlr_host(request.subsystem_nqn,
                                                      request.host_nqn, dhchap_ctrlr_key_to_use)
             else:
@@ -5900,14 +5844,23 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 except Exception:
                     host_nqns = []
                     pass
+                subsystem_has_dhchap_key = self.host_info.does_subsystem_have_dhchap_key(
+                    request.subsystem)
                 for h in host_nqns:
                     host_nqn = h.nqn
                     psk = self.host_info.is_psk_host(request.subsystem, host_nqn)
                     dhchap = self.host_info.is_dhchap_host(request.subsystem, host_nqn)
+                    if self.host_info.is_dhchap_ctrlr_host(request.subsystem, host_nqn):
+                        dhchap_ctrlr = pb2.DHCHAPControllerKeyOrigin.host_specific
+                    elif subsystem_has_dhchap_key:
+                        dhchap_ctrlr = pb2.DHCHAPControllerKeyOrigin.subsystem_implicit
+                    else:
+                        dhchap_ctrlr = pb2.DHCHAPControllerKeyOrigin.no_key
                     was_ka_timeout = \
                         self.host_info.was_host_disconnected_due_to_keepalive_timeout(
                             request.subsystem, host_nqn)
                     one_host = pb2.host(nqn=host_nqn, use_psk=psk, use_dhchap=dhchap,
+                                        dhchap_controller_origin=dhchap_ctrlr,
                                         disconnected_due_to_keepalive_timeout=was_ka_timeout)
                     hosts.append(one_host)
                     if was_ka_timeout and request.clear_alerts:
@@ -6060,6 +6013,14 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 self.logger.exception(f"{s=} parse error")
                 pass
 
+        disconnected_hosts = self.host_info.get_keepalive_timeout_disconnections(subsystem)
+        if disconnected_hosts:
+            self.logger.debug(f"disconnected hosts: {disconnected_hosts}")
+        for h in disconnected_hosts:
+            if h not in host_nqns:
+                host_nqns.append(h)
+
+        subsystem_has_dhchap_key = self.host_info.does_subsystem_have_dhchap_key(subsystem)
         for conn in ctrl_ret:
             try:
                 traddr = ""
@@ -6069,8 +6030,14 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 hostnqn = conn["hostnqn"]
                 found = False
                 secure = False
-                psk = False
-                dhchap = False
+                psk = self.host_info.is_psk_host(subsystem, hostnqn)
+                dhchap = self.host_info.is_dhchap_host(subsystem, hostnqn)
+                if self.host_info.is_dhchap_ctrlr_host(subsystem, hostnqn):
+                    dhchap_ctrlr = pb2.DHCHAPControllerKeyOrigin.host_specific
+                elif subsystem_has_dhchap_key:
+                    dhchap_ctrlr = pb2.DHCHAPControllerKeyOrigin.subsystem_implicit
+                else:
+                    dhchap_ctrlr = pb2.DHCHAPControllerKeyOrigin.no_key
 
                 for qp in qpair_ret:
                     try:
@@ -6104,9 +6071,6 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     self.logger.debug(f"Can't find active qpair for connection {conn}")
                     continue
 
-                psk = self.host_info.is_psk_host(subsystem, hostnqn)
-                dhchap = self.host_info.is_dhchap_host(subsystem, hostnqn)
-
                 if subsystem in self.subsystem_listeners:
                     for active in [False, True]:
                         lstnr = (adrfam, traddr, trsvcid, True, active)
@@ -6127,6 +6091,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                           qpairs_count=conn["num_io_qpairs"],
                                           controller_id=conn["cntlid"],
                                           secure=secure, use_psk=psk, use_dhchap=dhchap,
+                                          dhchap_controller_origin=dhchap_ctrlr,
                                           subsystem=subsystem,
                                           disconnected_due_to_keepalive_timeout=was_ka_timeout)
                 connections.append(one_conn)
@@ -6137,16 +6102,22 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 pass
 
         for nqn in host_nqns:
-            psk = False
-            dhchap = False
             psk = self.host_info.is_psk_host(subsystem, nqn)
             dhchap = self.host_info.is_dhchap_host(subsystem, nqn)
+            if self.host_info.is_dhchap_ctrlr_host(subsystem, nqn):
+                dhchap_ctrlr = pb2.DHCHAPControllerKeyOrigin.host_specific
+            elif subsystem_has_dhchap_key:
+                dhchap_ctrlr = pb2.DHCHAPControllerKeyOrigin.subsystem_implicit
+            else:
+                dhchap_ctrlr = pb2.DHCHAPControllerKeyOrigin.no_key
             was_ka_timeout = \
                 self.host_info.was_host_disconnected_due_to_keepalive_timeout(
                     subsystem, nqn)
             one_conn = pb2.connection(nqn=nqn, connected=False, traddr="<n/a>", trsvcid=0,
                                       qpairs_count=-1, controller_id=-1,
-                                      use_psk=psk, use_dhchap=dhchap, subsystem=subsystem,
+                                      use_psk=psk, use_dhchap=dhchap,
+                                      dhchap_controller_origin=dhchap_ctrlr,
+                                      subsystem=subsystem,
                                       disconnected_due_to_keepalive_timeout=was_ka_timeout)
             connections.append(one_conn)
 
@@ -6920,7 +6891,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         if context and self.verify_keys:
             if request.dhchap_key:
-                rc = self.host_info.is_valid_dhchap_key(request.dhchap_key)
+                rc = GatewayKeyUtils.is_valid_dhchap_key(request.dhchap_key)
                 if rc[0] != 0:
                     errmsg = f"{failure_prefix}: {rc[1]}"
                     self.logger.error(errmsg)

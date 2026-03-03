@@ -25,6 +25,7 @@ import base64
 import json
 import subprocess
 from pathlib import Path
+from binascii import Error, crc32
 
 
 class GatewayEnumUtils:
@@ -313,6 +314,168 @@ class GatewayUtilsCrypto:
         else:
             plain = msg
         return plain
+
+
+class GatewayKeyUtils:
+    MAX_PSK_KEY_NAME_LENGTH = 200     # taken from SPDK SPDK_TLS_PSK_MAX_LEN
+    PSK_CRC32_SIZE_BYTES = 4
+    PSK_DELIM = ":"
+    PSK_PREFIX = "NVMeTLSkey-1"
+    PSK_HASH_ALGORITHMS = [0, 1, 2]
+    PSK_HASH_LENGTHS = [-1, 32, 48]
+    MAX_DHCHAP_KEY_NAME_LENGTH = 256
+    DHCHAP_CRC32_SIZE_BYTES = 4
+    DHCHAP_DELIM = ":"
+    DHCHAP_PREFIX = "DHHC-1"
+    DHCHAP_HASH_ALGORITHMS = [0, 1, 2, 3]
+    DHCHAP_HASH_LENGTHS = [-1, 32, 48, 64]
+
+    @classmethod
+    def is_valid_psk(cls, psk: str):
+
+        failure_prefix = "Invalid PSK key"
+        if not psk:
+            return (errno.ENOKEY, f"{failure_prefix}: key can't be empty")
+
+        if not isinstance(psk, str):
+            return (errno.EINVAL, f"{failure_prefix}: key must be a string")
+
+        if not psk.startswith(cls.PSK_PREFIX + cls.PSK_DELIM):
+            return (errno.EINVAL,
+                    f"{failure_prefix}: key must start with \"{cls.PSK_PREFIX}{cls.PSK_DELIM}\"")
+
+        if len(psk) >= cls.MAX_PSK_KEY_NAME_LENGTH:
+            return (errno.E2BIG,
+                    f"{failure_prefix}: key is too long, must be shorter than "
+                    f"{cls.MAX_PSK_KEY_NAME_LENGTH} characters")
+
+        if not psk.endswith(cls.PSK_DELIM):
+            return (errno.EINVAL,
+                    f"{failure_prefix}: key must end with \"{cls.PSK_DELIM}\"")
+
+        psk_parts = psk.removeprefix(
+            cls.PSK_PREFIX + cls.PSK_DELIM).removesuffix(cls.PSK_DELIM).split(cls.PSK_DELIM, 1)
+        if len(psk_parts) != 2:
+            return (errno.EINVAL,
+                    f"{failure_prefix}: should contain a \"{cls.PSK_DELIM}\" delimiter")
+
+        if not len(psk_parts[0]):
+            return (errno.EINVAL,
+                    f"{failure_prefix}: missing hash")
+
+        try:
+            key_hash = int(psk_parts[0])
+        except ValueError:
+            return (errno.EINVAL,
+                    f"{failure_prefix}: non numeric hash \"{psk_parts[0]}\"")
+
+        if key_hash not in cls.PSK_HASH_ALGORITHMS:
+            return (errno.EINVAL,
+                    f"{failure_prefix}: invalid key length")
+
+        if not len(psk_parts[1]):
+            return (errno.EINVAL,
+                    f"{failure_prefix}: base64 part is missing")
+
+        try:
+            decoded = base64.b64decode(psk_parts[1], validate=True)
+        except Error:
+            return (errno.EINVAL,
+                    f"{failure_prefix}: base64 part is invalid")
+
+        if not decoded:
+            return (errno.EINVAL,
+                    f"{failure_prefix}: base64 part is missing")
+
+        if cls.PSK_HASH_LENGTHS[key_hash] >= 0:
+            if len(decoded) != cls.PSK_HASH_LENGTHS[key_hash] + cls.PSK_CRC32_SIZE_BYTES:
+                return (errno.EINVAL,
+                        f"{failure_prefix}: invalid key length")
+
+        crc32_part = decoded[-cls.PSK_CRC32_SIZE_BYTES:]
+        key_part = decoded[:-cls.PSK_CRC32_SIZE_BYTES]
+        computed_crc32 = crc32(key_part)
+        crc32_intval = int.from_bytes(crc32_part, byteorder='little', signed=False)
+        if computed_crc32 != crc32_intval:
+            return (errno.EINVAL,
+                    f"{failure_prefix}: CRC-32 checksums mismatch")
+
+        return (0, os.strerror(0))
+
+    @classmethod
+    def is_valid_dhchap_key(cls, dhchap_key: str, is_ctrlr: bool = False):
+
+        ctrlr_txt = "controller " if is_ctrlr else ""
+        failure_prefix = f"Invalid DH-HMAC-CHAP {ctrlr_txt}key"
+        if not dhchap_key:
+            return (errno.ENOKEY, f"{failure_prefix}: key can't be empty")
+
+        if not isinstance(dhchap_key, str):
+            return (errno.EINVAL, f"{failure_prefix}: key must be a string")
+
+        if not dhchap_key.startswith(cls.DHCHAP_PREFIX + cls.DHCHAP_DELIM):
+            return (errno.EINVAL,
+                    f"{failure_prefix}: key must start with \"{cls.DHCHAP_PREFIX}"
+                    f"{cls.DHCHAP_DELIM}\"")
+
+        if len(dhchap_key) >= cls.MAX_DHCHAP_KEY_NAME_LENGTH:
+            return (errno.E2BIG,
+                    f"{failure_prefix}: key is too long, must be shorter than "
+                    f"{cls.MAX_DHCHAP_KEY_NAME_LENGTH} characters")
+
+        if not dhchap_key.endswith(cls.DHCHAP_DELIM):
+            return (errno.EINVAL,
+                    f"{failure_prefix}: key must end with \"{cls.DHCHAP_DELIM}\"")
+
+        dhchap_parts = dhchap_key.removeprefix(
+            cls.DHCHAP_PREFIX + cls.DHCHAP_DELIM).removesuffix(
+                cls.DHCHAP_DELIM).split(cls.DHCHAP_DELIM, 1)
+        if len(dhchap_parts) != 2:
+            return (errno.EINVAL,
+                    f"{failure_prefix}: should contain a \"{cls.DHCHAP_DELIM}\" delimiter")
+
+        if not len(dhchap_parts[0]):
+            return (errno.EINVAL,
+                    f"{failure_prefix}: missing hash")
+
+        try:
+            key_hash = int(dhchap_parts[0])
+        except ValueError:
+            return (errno.EINVAL,
+                    f"{failure_prefix}: non numeric hash \"{dhchap_parts[0]}\"")
+
+        if key_hash not in cls.DHCHAP_HASH_ALGORITHMS:
+            return (errno.EINVAL,
+                    f"{failure_prefix}: invalid key length")
+
+        if not len(dhchap_parts[1]):
+            return (errno.EINVAL,
+                    f"{failure_prefix}: base64 part is missing")
+
+        try:
+            decoded = base64.b64decode(dhchap_parts[1], validate=True)
+        except Error:
+            return (errno.EINVAL,
+                    f"{failure_prefix}: base64 part is invalid")
+
+        if not decoded:
+            return (errno.EINVAL,
+                    f"{failure_prefix}: base64 part is missing")
+
+        if cls.DHCHAP_HASH_LENGTHS[key_hash] >= 0:
+            if len(decoded) != cls.DHCHAP_HASH_LENGTHS[key_hash] + cls.DHCHAP_CRC32_SIZE_BYTES:
+                return (errno.EINVAL,
+                        f"{failure_prefix}: invalid key length")
+
+        crc32_part = decoded[-cls.DHCHAP_CRC32_SIZE_BYTES:]
+        key_part = decoded[:-cls.DHCHAP_CRC32_SIZE_BYTES]
+        computed_crc32 = crc32(key_part)
+        crc32_intval = int.from_bytes(crc32_part, byteorder='little', signed=False)
+        if computed_crc32 != crc32_intval:
+            return (errno.EINVAL,
+                    f"{failure_prefix}: CRC-32 checksums mismatch")
+
+        return (0, os.strerror(0))
 
 
 class GatewayLogger:

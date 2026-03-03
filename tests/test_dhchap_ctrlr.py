@@ -8,6 +8,7 @@ import grpc
 import copy
 import os
 import errno
+import re
 
 pool = "rbd"
 subsystem1 = "nqn.2016-06.io.spdk:cnode1"
@@ -91,16 +92,14 @@ def two_gateways(config):
         gatewayB.server.stop(grace=1)
 
 
-def test_create_subsystem(caplog, two_gateways):
+@pytest.fixture(scope="module", autouse=True)
+def create_subsystem(two_gateways):
     gatewayA, _, _, _ = two_gateways
-    caplog.clear()
-    cli(["subsystem", "add", "--subsystem", subsystem1, "--no-group-append"])
-    assert f"Adding subsystem {subsystem1}: Successful" in caplog.text
-    caplog.clear()
-    cli(["subsystem", "add", "--subsystem", subsystem2, "--dhchap-key", dhchapkey1,
-         "--no-group-append"])
-    assert f"Adding subsystem {subsystem2}: Successful" in caplog.text
-    caplog.clear()
+    rc = cli(["subsystem", "add", "--subsystem", subsystem1, "--no-group-append"])
+    assert rc == 0
+    rc = cli(["subsystem", "add", "--subsystem", subsystem2, "--dhchap-key", dhchapkey1,
+              "--no-group-append"])
+    assert rc == 0
     state = gatewayA.gateway_state.omap.get_state()
     for key, val in state.items():
         if not key.startswith(gatewayA.gateway_state.local.SUBSYSTEM_PREFIX):
@@ -198,12 +197,32 @@ def test_set_subsystem_key_with_nokey_host(caplog, two_gateways):
     assert f"Removing host {hostnqn1} access from {subsystem1}: Successful" in caplog.text
 
 
+def find_in_caplog(lookfor, captext) -> bool:
+    regex = re.compile(lookfor, re.MULTILINE)
+    if re.search(regex, captext) is not None:
+        return True
+    return False
+
+
 def test_host_with_controller_key(caplog, two_gateways):
     gatewayA, _, _, _ = two_gateways
     caplog.clear()
     cli(["host", "add", "--subsystem", subsystem1, "--host-nqn", hostnqn1,
          "--dhchap-key", dhchapkey2, "--dhchap-controller-key", dhchapkey3])
     assert f"Adding host {hostnqn1} to {subsystem1}: Successful" in caplog.text
+    caplog.clear()
+    cli(["--format", "json", "host", "list", "--subsystem", subsystem1])
+    assert f'"nqn": "{hostnqn1}"' in caplog.text
+    assert '"use_psk": false' in caplog.text
+    assert '"use_psk": true' not in caplog.text
+    assert '"use_dhchap": false' not in caplog.text
+    assert '"use_dhchap": true' in caplog.text
+    assert '"dhchap_controller_origin": "host_specific"' in caplog.text
+    assert '"dhchap_controller_origin": "no_key"' not in caplog.text
+    assert '"dhchap_controller_origin": "subsystem_implicit"' not in caplog.text
+    caplog.clear()
+    cli(["--format", "plain", "host", "list", "--subsystem", subsystem1])
+    assert find_in_caplog(rf"^\s*{re.escape(hostnqn1)}\s*No\s*Yes\s*Host Specific\s*$", caplog.text)
     state = gatewayA.gateway_state.omap.get_state()
     for key, val in state.items():
         if not key.startswith(gatewayA.gateway_state.local.SUBSYSTEM_PREFIX):
@@ -387,6 +406,16 @@ def test_del_controller_key_instead_of_subsystem_key(caplog, two_gateways):
     cli(["host", "add", "--subsystem", subsystem2, "--host-nqn", hostnqn2,
          "--dhchap-key", dhchapkey8])
     assert f"Adding host {hostnqn2} to {subsystem2}: Successful" in caplog.text
+    caplog.clear()
+    cli(["--format", "json", "host", "list", "--subsystem", subsystem2])
+    assert f'"nqn": "{hostnqn2}"' in caplog.text
+    assert '"use_psk": false' in caplog.text
+    assert '"use_psk": true' not in caplog.text
+    assert '"use_dhchap": false' not in caplog.text
+    assert '"use_dhchap": true' in caplog.text
+    assert '"dhchap_controller_origin": "host_specific"' not in caplog.text
+    assert '"dhchap_controller_origin": "no_key"' not in caplog.text
+    assert '"dhchap_controller_origin": "subsystem_implicit"' in caplog.text
     state = gatewayA.gateway_state.omap.get_state()
     for key, val in state.items():
         if not key.startswith(gatewayA.gateway_state.local.HOST_PREFIX):
@@ -401,5 +430,40 @@ def test_del_controller_key_instead_of_subsystem_key(caplog, two_gateways):
             break
     caplog.clear()
     cli(["host", "del_controller_key", "--subsystem", subsystem2, "--host-nqn", hostnqn2])
-    assert f"Deleting DH-HMAC-CHAP key for controller of host {hostnqn2} on subsystem " \
+    assert f"Failure deleting DH-HMAC-CHAP controller key for host {hostnqn2} on " \
+           f"subsystem {subsystem2}: Can't delete host DH-HMAC-CHAP controller key " \
+           f"as it was defined in the subsystem" in caplog.text
+
+
+def test_del_subsystem_key(caplog, two_gateways):
+    caplog.clear()
+    cli(["subsystem", "del_key", "--subsystem", subsystem2])
+    assert f"Deleting DH-HMAC-CHAP key for subsystem {subsystem2}: Successful" in caplog.text
+    caplog.clear()
+    cli(["--format", "json", "host", "list", "--subsystem", subsystem2])
+    assert f'"nqn": "{hostnqn2}"' in caplog.text
+    assert '"use_psk": false' in caplog.text
+    assert '"use_psk": true' not in caplog.text
+    assert '"use_dhchap": false' not in caplog.text
+    assert '"use_dhchap": true' in caplog.text
+    assert '"dhchap_controller_origin": "host_specific"' not in caplog.text
+    assert '"dhchap_controller_origin": "no_key"' in caplog.text
+    assert '"dhchap_controller_origin": "subsystem_implicit"' not in caplog.text
+
+
+def test_add_controller_key_after_subsystem_del_key(caplog, two_gateways):
+    caplog.clear()
+    cli(["host", "change_controller_key", "--subsystem", subsystem2, "--host-nqn", hostnqn2,
+         "--dhchap-controller-key", dhchapkey5])
+    assert f"Changing DH-HMAC-CHAP key for controller of host {hostnqn2} on subsystem " \
            f"{subsystem2}: Successful" in caplog.text
+    caplog.clear()
+    cli(["--format", "json", "host", "list", "--subsystem", subsystem2])
+    assert f'"nqn": "{hostnqn2}"' in caplog.text
+    assert '"use_psk": false' in caplog.text
+    assert '"use_psk": true' not in caplog.text
+    assert '"use_dhchap": false' not in caplog.text
+    assert '"use_dhchap": true' in caplog.text
+    assert '"dhchap_controller_origin": "host_specific"' in caplog.text
+    assert '"dhchap_controller_origin": "no_key"' not in caplog.text
+    assert '"dhchap_controller_origin": "subsystem_implicit"' not in caplog.text
