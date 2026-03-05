@@ -177,3 +177,11 @@ class TestAutoListener:
         assert listeners.listeners[1].active
         assert not listeners.listeners[1].secure
         assert not listeners.listeners[1].manual
+
+    def test_fail_delete_auto_listener(self, caplog, gateway):
+        caplog.clear()
+        cli(["listener", "del", "--subsystem", subsystem, "--host-name", host_name,
+             "--traddr", addr, "--trsvcid", "4420"])
+        assert f"Failed to delete listener {addr}:4420 from {subsystem}: " \
+               f"Listener was created automatically as part of the subsystem's " \
+               f"network mask. To remove it, modify the network mask." in caplog.text

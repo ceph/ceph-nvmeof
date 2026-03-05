@@ -2198,7 +2198,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                             subsys_entry, preserving_proto_field_name=True,
                             including_default_value_fields=True)
                         self.gateway_state.add_subsystem(request.subsystem_nqn, json_req)
-                    self.logger.info(f"Added network {request.network_mask} for subsystem"
+                    self.logger.info(f"Added network {request.network_mask} for subsystem "
                                      f"{request.subsystem_nqn}")
             except Exception as ex:
                 errmsg = f"Failure occured:\n{ex}"
@@ -6649,6 +6649,30 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     errmsg = f"{delete_listener_error_prefix}: Listener not found"
                     self.logger.error(errmsg)
                     return pb2.req_status(status=errno.ENOENT, error_message=errmsg)
+
+                if context:
+                    state = self.gateway_state.local.get_state()
+                    listener_prefix = GatewayState.build_partial_listener_key(
+                        request.nqn, None)
+                    is_in_omap = False
+                    for key, val in state.items():
+                        if not key.startswith(listener_prefix):
+                            continue
+                        try:
+                            lstnr = json_format.Parse(val, pb2.create_listener_req(),
+                                                      ignore_unknown_fields=True)
+                            if lstnr.traddr == traddr and lstnr.trsvcid == request.trsvcid:
+                                is_in_omap = True
+                                break
+                        except Exception:
+                            self.logger.exception(f"Got exception while parsing {val}")
+                            continue
+                    if not is_in_omap:
+                        errmsg = f"{delete_listener_error_prefix}: Listener was created " \
+                                 f"automatically as part of the subsystem's network mask. " \
+                                 f"To remove it, modify the network mask."
+                        self.logger.error(errmsg)
+                        return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
 
                 if request.host_name == self.host_name or request.force:
                     if is_active:
