@@ -35,7 +35,7 @@ all: setup $(ALL)
 
 verify: ## Run Python source files through flake8
 	@echo Verifying Python source files
-	flake8 control/*.py tests/*.py
+	flake8 control/*.py tests/*.py tests/kmip/*.py
 
 setup: ## Configure huge-pages (requires sudo/root password)
 
