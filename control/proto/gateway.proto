@@ -71,6 +71,15 @@ service Gateway {
 	// Delete a subsystem network
 	rpc del_subsystem_network(del_subsystem_network_req) returns(req_status) {}
 
+	// Add a KMIP server
+	rpc add_kmip_server(add_kmip_server_req) returns(req_status) {}
+
+	// Delete a KMIP server
+	rpc del_kmip_server(del_kmip_server_req) returns(req_status) {}
+
+	// List KMIP servers
+	rpc list_kmip_servers(list_kmip_servers_req) returns(kmip_servers_info) {}
+
 	// List namespaces
 	rpc list_namespaces(list_namespaces_req) returns(namespaces_info) {}
 
@@ -314,6 +323,34 @@ message add_subsystem_network_req {
 message del_subsystem_network_req {
 	string subsystem_nqn = 1;
 	string network_mask = 2;
+}
+
+message add_kmip_server_req {
+	string subsystem_nqn = 1;
+	string address = 2;
+	optional uint32 port = 3;
+}
+
+message del_kmip_server_req {
+	string subsystem_nqn = 1;
+	string address = 2;
+	optional uint32 port = 3;
+}
+
+message list_kmip_servers_req {
+	string subsystem_nqn = 1;
+}
+
+message kmip_server {
+	string subsystem = 1;
+	string address = 2;
+	uint32 port = 3;
+}
+
+message kmip_servers_info {
+	int32 status = 1;
+	string error_message = 2;
+	repeated kmip_server servers = 3;
 }
 
 message list_namespaces_req {

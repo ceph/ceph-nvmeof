@@ -17,35 +17,36 @@ Prerequisites:
 """
 
 import subprocess
-import threading
 import time
 import sys
 import os
 from typing import List, Tuple
+from kmip.pie import client
+from kmip.pie import objects
+from kmip import enums
 
 
 # Get the project root (2 levels up from tests/kmip/)
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, project_root)
 
+from control.kmip_client import NVMeoFKMIPClient     # noqa: E402
+from control.config import GatewayConfig             # noqa: E402
+
 print(f"Python path: {project_root}")
 
-from control.kmip_client import NVMeoFKMIPClient
-from control.config import GatewayConfig
-from kmip.pie import client
-from kmip.services.server import KmipServer
-from kmip import enums
 
 def print_separator():
     print("=" * 70)
 
+
 class KMIPServerManager:
     """Manages multiple KMIP mock servers for testing"""
-    
+
     def __init__(self, base_dir: str):
         self.base_dir = base_dir
         self.servers = []  # List of (hostname, port, process)
-    
+
     def start_server(self, hostname: str, port: int) -> subprocess.Popen:
         """Start a KMIP mock server subprocess"""
 
@@ -69,10 +70,10 @@ class KMIPServerManager:
             bufsize=1
         )
         self.servers.append((hostname, port, process))
-        
+
         # Wait for server to be ready and print output
         time.sleep(2)
-        
+
         # Check if process is still running
         if process.poll() is not None:
             # Process died
@@ -80,9 +81,8 @@ class KMIPServerManager:
             print(f"Server {hostname}:{port} failed to start:")
             print(output)
             raise RuntimeError(f"Server {hostname}:{port} failed to start")
-        
-        print(f"Started KMIP server {hostname}:{port} (PID: {process.pid})")
 
+        print(f"Started KMIP server {hostname}:{port} (PID: {process.pid})")
 
     def stop_all(self):
         """Stop all running servers"""
@@ -95,7 +95,7 @@ class KMIPServerManager:
                 except subprocess.TimeoutExpired:
                     process.kill()
                     process.wait()
-        
+
         # remove the database files (for next test run)
         for hostname, port, _ in self.servers:
             db_path = os.path.join(self.base_dir, f'kmip_server_{port}.db')
@@ -104,26 +104,26 @@ class KMIPServerManager:
 
         self.servers.clear()
 
- 
+
 def setup_test_keys(servers: List[Tuple[str, int]], base_dir: str):
     """
     Populate KMIP servers with test keys in non-overlapping ranges
-    
+
     Server 1: key-1, key-2, key-3 -> UUIDs 1,2,3
     Server 2: key-1, key-2, key-3, key-4, key-5  -> UUIDs 1,2,3,4,5
     Server 3: key-1, key-2, key-3, key-4, key-5, key-6, key-7 -> UUIDs 1,2,3,4,5,6,7
-    
+
     This way:
     - key-1, key-2, key-3 exist on ALL servers (UUIDs 1,2,3)
     - key-4, key-5 exist ONLY on servers 2&3 (UUIDs 4,5)
     - key-6, key-7 exist ONLY on server 3 (UUIDs 6,7)
     """
 
-    
     keys_per_server = [
-        (['key-1', 'key-2', 'key-3'], servers[0]),                              # Server 1: 3 keys
+        (['key-1', 'key-2', 'key-3'], servers[0]),                             # Server 1: 3 keys
         (['key-1', 'key-2', 'key-3', 'key-4', 'key-5'], servers[1]),           # Server 2: 5 keys
-        (['key-1', 'key-2', 'key-3', 'key-4', 'key-5', 'key-6', 'key-7'], servers[2])  # Server 3: 7 keys
+        (['key-1', 'key-2', 'key-3', 'key-4', 'key-5',
+          'key-6', 'key-7'], servers[2])                                       # Server 3: 7 keys
     ]
 
     # Store mapping: {key_name: {(hostname, port): uuid}}
@@ -132,7 +132,7 @@ def setup_test_keys(servers: List[Tuple[str, int]], base_dir: str):
     for key_names, (hostname, port) in keys_per_server:
         server_num = keys_per_server.index((key_names, (hostname, port))) + 1
         print(f"\nPopulating Server {server_num} - ({hostname}:{port}) with keys: {key_names}")
-        
+
         c = client.ProxyKmipClient(
             hostname=hostname,
             port=port,
@@ -140,9 +140,9 @@ def setup_test_keys(servers: List[Tuple[str, int]], base_dir: str):
             key=f'{base_dir}/certs/client_key.pem',
             ca=f'{base_dir}/certs/ca_cert.pem'
         )
-        
+
         c.open()
-        
+
         for key_name in key_names:
             try:
                 # Create AES-256 key
@@ -151,26 +151,38 @@ def setup_test_keys(servers: List[Tuple[str, int]], base_dir: str):
                     length=256,
                     name=key_name
                 )
-                
+
                 # Activate it
                 c.activate(key_uuid)
-                
+
                 # Store mapping
                 if key_name not in key_map:
                     key_map[key_name] = {}
-                key_map[key_name][(hostname, port)] = key_uuid    
+                key_map[key_name][(hostname, port)] = key_uuid
 
                 print(f"  Created key '{key_name}' with UUID: {key_uuid}")
             except Exception as e:
                 print(f"  Error creating key '{key_name}': {e}")
-        
+
+            try:
+                # Create also passphrases using key names
+                secret_data = objects.SecretData(key_name.encode(),
+                                                 enums.SecretDataType.PASSWORD,
+                                                 masks=[enums.CryptographicUsageMask.DERIVE_KEY])
+                password_id = c.register(secret_data)
+                c.activate(password_id)
+                print(f"  Created passphrase '{key_name}' with ID: {password_id}")
+            except Exception as e:
+                print(f"  Error creating passphrase '{key_name}': {e}")
+
         c.close()
     return key_map
+
 
 def create_test_config(base_dir: str) -> GatewayConfig:
     """Create a minimal test config"""
     config_path = f"{base_dir}/test_gateway.conf"
-    
+
     with open(config_path, 'w') as f:
         f.write("""[gateway]
 name=test-gateway
@@ -180,20 +192,20 @@ log_directory=/tmp/kmip_test_logs
 log_files_enabled=false
 log_level=DEBUG
 """)
-    
+
     return GatewayConfig(config_path)
 
 
 def run_tests(base_dir: str, key_map: dict):
     """Run test scenarios"""
-    
+
     print_separator()
     print("KMIP CLIENT TEST SUITE")
     print_separator()
-    
+
     # Create config
     config = create_test_config(base_dir)
-    
+
     # Initialize KMIP client
     kmip_client = NVMeoFKMIPClient(
         logger_config=config,
@@ -201,7 +213,7 @@ def run_tests(base_dir: str, key_map: dict):
         key_path=f'{base_dir}/certs/client_key.pem',
         ca_path=f'{base_dir}/certs/ca_cert.pem'
     )
-    
+
     servers = [
         ('127.0.0.1', 5696),
         ('127.0.0.1', 5697),
@@ -212,16 +224,16 @@ def run_tests(base_dir: str, key_map: dict):
     total_tests = 9
     passed_tests = 0
 
-
     print("\nKey Distribution:")
     print("  Server 1 (5696): key-1, key-2, key-3              (UUIDs: 1,2,3)")
     print("  Server 2 (5697): key-1, key-2, key-3, key-4, key-5    (UUIDs: 1,2,3,4,5)")
-    print("  Server 3 (5698): key-1, key-2, key-3, key-4, key-5, key-6, key-7 (UUIDs: 1,2,3,4,5,6,7)")
+    print("  Server 3 (5698): key-1, key-2, key-3, key-4, key-5, "
+          "key-6, key-7 (UUIDs: 1,2,3,4,5,6,7)")
     print()
 
     # Test Case 1: Key exists on first server
     print_separator()
-    print(f"TEST 1: Key exists on first server (GREEN CASE)")
+    print("TEST 1: Key exists on first server (GREEN CASE)")
     print_separator()
     try:
         key1_uuid = key_map['key-1'][servers[0]]
@@ -231,7 +243,7 @@ def run_tests(base_dir: str, key_map: dict):
         passed_tests += 1
     except Exception as e:
         print(f"FAILED: {e}")
-    
+
     # Test Case 2: Key-4 NOT on server 1, exists on servers 2&3
     print_separator()
     print("TEST 2: Key-4 missing on server 1, exists on servers 2&3")
@@ -245,7 +257,7 @@ def run_tests(base_dir: str, key_map: dict):
         passed_tests += 1
     except Exception as e:
         print(f"FAILED: {e}")
-    
+
     # Test Case 3: Key exists on multiple servers (should get from first available)
     print_separator()
     print("TEST 3: Key exists on multiple servers")
@@ -258,7 +270,7 @@ def run_tests(base_dir: str, key_map: dict):
         passed_tests += 1
     except Exception as e:
         print(f"FAILED: {e}")
-    
+
     # Test Case 4: Connection reuse
     print_separator()
     print("TEST 4: Connection reuse (fetch key-1 again)")
@@ -271,20 +283,20 @@ def run_tests(base_dir: str, key_map: dict):
         passed_tests += 1
     except Exception as e:
         print(f"FAILED: {e}")
-    
+
     # Test Case 5: Key doesn't exist on any server
     print_separator()
     print("TEST 5: Key doesn't exist on any server")
     print_separator()
     try:
-        junk_uuid = '99999' # FYI - the dummy kmip server use simple integer strings as UUIDs..
+        junk_uuid = '99999'  # FYI - the dummy kmip server use simple integer strings as UUIDs..
         key = kmip_client.get_key_for_rbd_image(junk_uuid, servers)
         print(f"UNEXPECTED: Should have failed but got key ({len(key)} bytes)")
     except Exception as e:
-        print(f"SUCCESS: Correctly failed with error")
+        print("SUCCESS: Correctly failed with error")
         print(f"  Error: {e}")
         passed_tests += 1
-    
+
     # Test Case 6: Wrong server address
     print_separator()
     print("TEST 6: Cannot connect to server (wrong address)")
@@ -301,7 +313,7 @@ def run_tests(base_dir: str, key_map: dict):
         passed_tests += 1
     except Exception as e:
         print(f"FAILED: {e}")
-    
+
     # Test Case 7: All servers unreachable
     print_separator()
     print("TEST 7: All servers unreachable")
@@ -313,12 +325,12 @@ def run_tests(base_dir: str, key_map: dict):
     try:
         key1_uuid = key_map['key-1'][servers[0]]
         key = kmip_client.get_key_for_rbd_image(key1_uuid, bad_servers_all)
-        print(f"UNEXPECTED: Should have failed but got key")
+        print("UNEXPECTED: Should have failed but got key")
     except Exception as e:
-        print(f"SUCCESS: Correctly failed")
+        print("SUCCESS: Correctly failed")
         print(f"  Error: {str(e)[:100]}...")
         passed_tests += 1
-    
+
     # Test Case 8: Different key from different server
     print_separator()
     print("TEST 8: Fetch key-6 (only on server 3)")
@@ -333,7 +345,7 @@ def run_tests(base_dir: str, key_map: dict):
         passed_tests += 1
     except Exception as e:
         print(f"FAILED: {e}")
-    
+
     # Test Case 9: Fetch from subset of servers
     print_separator()
     print("TEST 9: Fetch key using only servers 2 and 3")
@@ -350,7 +362,7 @@ def run_tests(base_dir: str, key_map: dict):
         passed_tests += 1
     except Exception as e:
         print(f"FAILED: {e}")
-    
+
     print_separator()
     print("TEST RESULTS")
     print_separator()
@@ -369,12 +381,13 @@ def run_tests(base_dir: str, key_map: dict):
 
 def main():
     """Main test runner"""
-    
+
     # first call to setup_kmip_test.sh for initial setup (generate certs, create config, etc)
 
     try:
         setup_script = os.path.join(project_root, "tests", "kmip", "setup_kmip_test.sh")
-        result = subprocess.run([setup_script, "/tmp/kmip_test"], check=True, capture_output=True, text=True)
+        result = subprocess.run([setup_script, "/tmp/kmip_test"], check=True,
+                                capture_output=True, text=True)
         print("Setup script output:")
         print(result.stdout)
     except subprocess.CalledProcessError as e:
@@ -382,28 +395,28 @@ def main():
         sys.exit(1)
 
     base_dir = "/tmp/kmip_test"
-    
+
     # Create directory structure
     os.makedirs(f"{base_dir}/certs", exist_ok=True)
     os.makedirs(f"{base_dir}/policies", exist_ok=True)
     os.makedirs(f"{base_dir}/logs", exist_ok=True)
-    
+
     print("KMIP Client Test Setup")
-    print("="*70)
-    
+    print("=" * 70)
+
     # Check if certificates exist
     if not os.path.exists(f"{base_dir}/certs/ca_cert.pem"):
         print("\nCertificates not found!")
         print("\nPlease run the setup script first:")
         print(f"  ./setup_kmip_test.sh {base_dir}")
         sys.exit(1)
-    
+
     print("Certificates found")
-    
+
     # Start servers
     print("\nStarting KMIP mock servers...")
     server_manager = KMIPServerManager(base_dir)
-    
+
     try:
         # Start 3 servers on different ports
         servers = [
@@ -411,24 +424,24 @@ def main():
             ('127.0.0.1', 5697),
             ('127.0.0.1', 5698)
         ]
-        
+
         for hostname, port in servers:
             server_manager.start_server(hostname, port)
-        
+
         print("All servers started")
-        
+
         # Populate servers with keys
         print("\nPopulating servers with test keys...")
         key_map = setup_test_keys(servers, base_dir)
         print("Keys created")
-        
+
         # Run tests
         run_tests(base_dir, key_map)
-        
+
         print_separator()
         print("TEST SUITE COMPLETE")
         print_separator()
-        
+
     except KeyboardInterrupt:
         print("\n\nTest interrupted by user")
     except Exception as e:
