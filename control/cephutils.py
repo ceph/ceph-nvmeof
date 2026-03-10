@@ -279,26 +279,24 @@ class CephUtils:
 
     def rados_namespace_exists(self, pool, namespace) -> bool:
         """Check if RADOS namespace exists in pool."""
+        found = False
         if not pool or not namespace:
             return False
         try:
             with rados.Rados(conffile=self.ceph_conf, rados_id=self.rados_id) as cluster:
                 with cluster.open_ioctx(pool) as ioctx:
                     rbd_inst = rbd.RBD()
-                    existing_namespaces = rbd_inst.namespace_list(ioctx)  # RADOS namespaces
-
-                    if namespace in existing_namespaces:
+                    found = rbd_inst.namespace_exists(ioctx, namespace)
+                    if found:
                         self.logger.debug(f"RADOS namespace {namespace} exists in pool {pool}")
-                        return True
                     else:
-                        self.logger.error(f"RADOS namespace {namespace} \
-                                          does NOT exist in pool {pool}")
-                        return False
+                        self.logger.error(f"RADOS namespace {namespace} "
+                                          f"does NOT exist in pool {pool}")
         except Exception:
-            self.logger.exception(f"Can't check if RADOS namespace {namespace} \
-                                  exists in pool {pool}")
+            self.logger.exception(f"Can't check if RADOS namespace {namespace} "
+                                  f"exists in pool {pool}")
 
-        return False
+        return found
 
     def service_daemon_register(self, cluster, metadata):
         try:
