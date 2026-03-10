@@ -50,6 +50,7 @@ class GatewayState(ABC):
     NAMESPACE_TRASH_IMAGE_PREFIX = "ns-trash-image" + OMAP_KEY_DELIMITER
     NAMESPACE_AUTO_RESIZE_PREFIX = "ns-auto-resize" + OMAP_KEY_DELIMITER
     NAMESPACE_REFRESH_SIZE_PREFIX = "ns-refresh-size" + OMAP_KEY_DELIMITER
+    KMIP_SERVER_PREFIX = "kmip-server" + OMAP_KEY_DELIMITER
 
     def is_key_element_valid(s: str) -> bool:
         if not isinstance(s, str):
@@ -189,6 +190,14 @@ class GatewayState(ABC):
         return GatewayState.build_partial_listener_key(subsystem_nqn, host) + \
             GatewayState.build_listener_key_suffix(None, trtype, traddr, str(trsvcid))
 
+    def build_kmip_server_key(subsystem_nqn: str, address: str, port: int) -> str:
+        key = GatewayState.KMIP_SERVER_PREFIX + subsystem_nqn + GatewayState.OMAP_KEY_DELIMITER
+        if address is not None:
+            key += address + GatewayState.OMAP_KEY_DELIMITER
+            if port:
+                key += str(port)
+        return key
+
     @abstractmethod
     def get_state(self, allow_abort_on_error=True) -> Dict[str, str]:
         """Returns the state dictionary."""
@@ -282,6 +291,8 @@ class GatewayState(ABC):
                 self._remove_key(key)
             elif key.startswith(GatewayState.build_partial_listener_key(subsystem_nqn, None)):
                 self._remove_key(key)
+            elif key.startswith(GatewayState.build_kmip_server_key(subsystem_nqn, None, 0)):
+                self._remove_key(key)
 
     def add_host(self, subsystem_nqn: str, host_nqn: str, val: str):
         """Adds a host to the state data store."""
@@ -300,6 +311,16 @@ class GatewayState(ABC):
         for key in state.keys():
             if key.startswith(GatewayState.build_host_key_key(subsystem_nqn, host_nqn)):
                 self._remove_key(key)
+
+    def add_kmip_server(self, subsystem_nqn: str, address: str, port: int, val: str):
+        """Adds a KMIP server to the state data store."""
+        key = GatewayState.build_kmip_server_key(subsystem_nqn, address, port)
+        self._add_key(key, val)
+
+    def remove_kmip_server(self, subsystem_nqn: str, address: str, port: int):
+        """Removes a KMIP server from the state data store."""
+        key = GatewayState.build_kmip_server_key(subsystem_nqn, address, port)
+        self._remove_key(key)
 
     def add_listener(self, subsystem_nqn: str, gateway: str, trtype: str,
                      traddr: str, trsvcid: int, val: str):
@@ -1251,6 +1272,16 @@ class GatewayStateHandler:
         self.omap.remove_host(subsystem_nqn, host_nqn)
         self.local.remove_host(subsystem_nqn, host_nqn)
 
+    def add_kmip_server(self, subsystem_nqn: str, address: str, port: int, val: str):
+        """Adds a KMIP server to the state data store."""
+        self.omap.add_kmip_server(subsystem_nqn, address, port, val)
+        self.local.add_kmip_server(subsystem_nqn, address, port, val)
+
+    def remove_kmip_server(self, subsystem_nqn: str, address: str, port: int):
+        """Removes a KMIP server from the state data store."""
+        self.omap.remove_kmip_server(subsystem_nqn, address, port)
+        self.local.remove_kmip_server(subsystem_nqn, address, port)
+
     def add_listener(self, subsystem_nqn: str, gateway: str, trtype: str, traddr: str,
                      trsvcid: str, val: str):
         """Adds a listener to the state data store."""
@@ -1646,6 +1677,7 @@ class GatewayStateHandler:
             prefix_list = [
                 GatewayState.SUBSYSTEM_PREFIX,
                 GatewayState.HOST_PREFIX,
+                GatewayState.KMIP_SERVER_PREFIX,
                 GatewayState.NAMESPACE_PREFIX,
                 GatewayState.NAMESPACE_QOS_PREFIX,
                 GatewayState.NAMESPACE_VISIBILITY_OFF_PREFIX,
