@@ -44,6 +44,7 @@ class CephUtils:
         self.num_gws = 0
         self.last_sent = time.time()
         self.ana_group_to_location: dict = {}
+        self.gw_id_to_location: dict = {}
 
     def execute_ceph_monitor_command(self, cmd):
         self.logger.debug(f"Execute monitor command: {cmd}")
@@ -116,6 +117,13 @@ class CephUtils:
                 ana_group_locaton_list.append(ana_grp)
         return ana_group_locaton_list
 
+    def get_gateway_location(self, pool, group, gateway_id):
+        if not gateway_id:
+            return ""
+        self.get_number_created_gateways(pool, group, True)
+        location = self.gw_id_to_location.get(gateway_id, "")
+        return location
+
     def get_number_created_gateways(self, pool, group, caching=True):
         now = time.time()
         if caching and ((now - self.last_sent) < 10) and self.anagroup_list:
@@ -125,9 +133,9 @@ class CephUtils:
             try:
                 self.anagroup_list = []
                 self.last_sent = now
-                str = '{' + f'"prefix":"nvme-gw show", "pool":"{pool}", "group":"{group}"' + '}'
-                self.logger.debug(f"nvme-show string: {str}")
-                rply = self.execute_ceph_monitor_command(str)
+                cmd = '{' + f'"prefix":"nvme-gw show", "pool":"{pool}", "group":"{group}"' + '}'
+                self.logger.debug(f"nvme-show string: {cmd}")
+                rply = self.execute_ceph_monitor_command(cmd)
                 self.logger.debug(f"reply \"{rply}\"")
                 conv_str = rply[1].decode()
                 pos = conv_str.find('"LB"')
@@ -145,16 +153,20 @@ class CephUtils:
                     gateways = data.get("Created Gateways:", [])
                     # self.logger.info(f"gateways: {gateways}")
                     self.ana_group_to_location: dict = {}
+                    self.gw_id_to_location: dict = {}
                     for gw in gateways:
                         try:
                             ana_id = int(gw["anagrp-id"])
                             location = gw.get("location", "")
+                            gw_id = gw.get("gw-id", "")
                             self.ana_group_to_location[ana_id] = location
+                            if gw_id and location:
+                                self.gw_id_to_location[gw_id] = location
                         except (KeyError, ValueError, TypeError) as e:
                             self.logger.info(f"ana-location error: gw ,{gw},reason {repr(e)}")
                             continue
                     self.logger.debug(f"ana-location dict:  {self.ana_group_to_location}")
-
+                    self.logger.debug(f"gw_id-location dict:  {self.gw_id_to_location}")
                 else:
                     self.rebalance_supported = False
                 pos = conv_str.find("[")

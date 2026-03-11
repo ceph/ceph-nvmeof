@@ -7525,6 +7525,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
         addr = self.config.get_with_default("gateway", "addr", "")
         port = self.config.get_with_default("gateway", "port", "")
         initialization_over = self.gateway_state.is_initialization_over()
+        location = self.ceph_utils.get_gateway_location(self.gateway_pool,
+                                                        self.gateway_group,
+                                                        self.gateway_name)
         ret = pb2.gateway_info(cli_version=request.cli_version,
                                version=gw_version_string,
                                spdk_version=spdk_version_string,
@@ -7542,6 +7545,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                max_hosts=self.max_hosts,
                                gateway_initialization_over=initialization_over,
                                io_stats_enabled=self.io_stats_enabled,
+                               location=location,
                                status=0,
                                error_message=os.strerror(0))
         cli_ver = self.parse_version(cli_version_string)

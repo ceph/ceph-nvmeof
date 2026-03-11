@@ -16,8 +16,6 @@ location = "USA"
 location2 = "China"
 subsystem = "nqn.2016-06.io.spdk:cnode1"
 subsystem2 = "nqn.2016-06.io.spdk:cnode2"
-location1 = "USA"
-location2 = "China"
 config = "ceph-nvmeof.conf"
 
 
@@ -89,6 +87,13 @@ def two_gateways(config):
         gatewayB.gateway_rpc.gateway_state.delete_state()
         gatewayA.server.stop(grace=1)
         gatewayB.server.stop(grace=1)
+
+
+def test_get_gw_info(caplog, two_gateways):
+    _, _ = two_gateways
+    caplog.clear()
+    cli(["--format", "json", "gateway", "info"])
+    assert f'"location": "{location}"' in caplog.text
 
 
 def test_change_namespace_location(caplog, two_gateways):

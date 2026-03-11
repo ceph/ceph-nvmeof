@@ -398,6 +398,8 @@ class GatewayClient:
                     out_func(f"Gateway's version: {gw_info.version}")
                 if gw_info.name:
                     out_func(f"Gateway's name: {gw_info.name}")
+                location = gw_info.location if gw_info.location else "<default>"
+                out_func(f"Gateway's location: {location}")
                 if gw_info.group:
                     out_func(f"Gateway's group: {gw_info.group}")
                 if gw_info.hostname:

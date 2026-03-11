@@ -602,6 +602,7 @@ message gateway_info {
 	optional uint32 max_hosts = 17;
 	optional bool gateway_initialization_over = 18;
 	optional bool io_stats_enabled = 19;
+	optional string location = 20;
 }
 
 message cli_version {
