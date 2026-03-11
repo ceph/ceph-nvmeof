@@ -4103,6 +4103,7 @@ type GatewayInfo struct {
 	MaxHosts                  *uint32                `protobuf:"varint,17,opt,name=max_hosts,json=maxHosts,proto3,oneof" json:"max_hosts,omitempty"`
 	GatewayInitializationOver *bool                  `protobuf:"varint,18,opt,name=gateway_initialization_over,json=gatewayInitializationOver,proto3,oneof" json:"gateway_initialization_over,omitempty"`
 	IoStatsEnabled            *bool                  `protobuf:"varint,19,opt,name=io_stats_enabled,json=ioStatsEnabled,proto3,oneof" json:"io_stats_enabled,omitempty"`
+	Location                  *string                `protobuf:"bytes,20,opt,name=location,proto3,oneof" json:"location,omitempty"`
 	unknownFields             protoimpl.UnknownFields
 	sizeCache                 protoimpl.SizeCache
 }
@@ -4268,6 +4269,13 @@ func (x *GatewayInfo) GetIoStatsEnabled() bool {
 		return *x.IoStatsEnabled
 	}
 	return false
+}
+
+func (x *GatewayInfo) GetLocation() string {
+	if x != nil && x.Location != nil {
+		return *x.Location
+	}
+	return ""
 }
 
 type CliVersion struct {
@@ -7180,7 +7188,7 @@ const file_gateway_proto_rawDesc = "" +
 	"\fnetwork_mask\x18\r \x03(\tR\vnetworkMaskB\x11\n" +
 	"\x0f_has_dhchap_keyB\x11\n" +
 	"\x0f_allow_any_hostB\x16\n" +
-	"\x14_created_without_key\"\x96\a\n" +
+	"\x14_created_without_key\"\xc4\a\n" +
 	"\fgateway_info\x12\x1f\n" +
 	"\vcli_version\x18\x01 \x01(\tR\n" +
 	"cliVersion\x12\x18\n" +
@@ -7203,7 +7211,8 @@ const file_gateway_proto_rawDesc = "" +
 	"\x1cmax_namespaces_per_subsystem\x18\x10 \x01(\rH\x04R\x19maxNamespacesPerSubsystem\x88\x01\x01\x12 \n" +
 	"\tmax_hosts\x18\x11 \x01(\rH\x05R\bmaxHosts\x88\x01\x01\x12C\n" +
 	"\x1bgateway_initialization_over\x18\x12 \x01(\bH\x06R\x19gatewayInitializationOver\x88\x01\x01\x12-\n" +
-	"\x10io_stats_enabled\x18\x13 \x01(\bH\aR\x0eioStatsEnabled\x88\x01\x01B\x0f\n" +
+	"\x10io_stats_enabled\x18\x13 \x01(\bH\aR\x0eioStatsEnabled\x88\x01\x01\x12\x1f\n" +
+	"\blocation\x18\x14 \x01(\tH\bR\blocation\x88\x01\x01B\x0f\n" +
 	"\r_spdk_versionB\x11\n" +
 	"\x0f_max_subsystemsB\x11\n" +
 	"\x0f_max_namespacesB\x1a\n" +
@@ -7212,7 +7221,8 @@ const file_gateway_proto_rawDesc = "" +
 	"\n" +
 	"_max_hostsB\x1e\n" +
 	"\x1c_gateway_initialization_overB\x13\n" +
-	"\x11_io_stats_enabled\"d\n" +
+	"\x11_io_stats_enabledB\v\n" +
+	"\t_location\"d\n" +
 	"\vcli_version\x12\x16\n" +
 	"\x06status\x18\x01 \x01(\x05R\x06status\x12#\n" +
 	"\rerror_message\x18\x02 \x01(\tR\ferrorMessage\x12\x18\n" +
