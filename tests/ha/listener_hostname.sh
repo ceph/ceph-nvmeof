@@ -23,11 +23,11 @@ echo "ℹ️  bdevperf tcp connect ip: $GW2_IP port: 4420 nqn: $NQN"
 devs=`make -s exec SVC=bdevperf OPTS=-T CMD="$rpc -v -s $BDEVPERF_SOCKET bdev_nvme_attach_controller -b Nvme0 -t tcp -a $GW2_IP -s 4420 -f ipv4 -n $NQN -q ${NQN}host -l -1 -o 10"`
 [[ "$devs" == "Nvme0n1" ]]
 
-grep "Received request to create $GW2_NAME TCP ipv4 listener for $NQN at ${GW2_IP}:4420, secure: False, verify host name: False, context: <grpc._server" /var/log/ceph/nvmeof-$GW1_NAME/nvmeof-log
+grep "Received request to create $GW2_NAME TCP ipv4 listener for $NQN at ${GW2_IP}:4420, secure: False, verify host name: False, force: False, context: <grpc._server" /var/log/ceph/nvmeof-$GW1_NAME/nvmeof-log
 grep "Listener will be stashed to be used later by the right gateway." /var/log/ceph/nvmeof-$GW1_NAME/nvmeof-log
 [[ `grep "create_listener: " /var/log/ceph/nvmeof-$GW1_NAME/nvmeof-log | wc -l` == 0 ]]
 
-grep "Received request to create $GW2_NAME TCP ipv4 listener for $NQN at ${GW2_IP}:4420, secure: False, verify host name: True, context: None" /var/log/ceph/nvmeof-$GW2_NAME/nvmeof-log
+grep "Received request to create $GW2_NAME TCP ipv4 listener for $NQN at ${GW2_IP}:4420, secure: False, verify host name: True, force: False, context: None" /var/log/ceph/nvmeof-$GW2_NAME/nvmeof-log
 grep "create_listener: True" /var/log/ceph/nvmeof-$GW2_NAME/nvmeof-log
 
 echo "ℹ️  bdevperf tcp connect ip: $GW1_IP port: 4420 nqn: $NQN, should fail"

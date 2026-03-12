@@ -15,7 +15,6 @@ import sys
 import errno
 import os
 import yaml
-import ipaddress
 
 from functools import wraps
 from google.protobuf import json_format
@@ -301,21 +300,9 @@ class GatewayClient:
         return rc
 
     def validate_ip_address(self, addr, family):
-        ipaddr = None
-        try:
-            ipaddr = ipaddress.ip_address(addr)
-        except ValueError:
-            ipaddr = None
-        if ipaddr is None:
-            self.cli.parser.error(f"invalid IP address {addr}")
-        if not family or family.lower() == "ipv4":
-            if ipaddr.version != 4:
-                self.cli.parser.error(f"IP address {addr} is not an IPv4 address")
-        elif family.lower() == "ipv6":
-            if ipaddr.version != 6:
-                self.cli.parser.error(f"IP address {addr} is not an IPv6 address")
-        else:
-            self.cli.parser.error(f"invalid address family {family}")
+        err = GatewayUtils.is_valid_ip_address(addr, family)
+        if err:
+            self.cli.parser.error(err)
 
     @cli.cmd()
     def version(self, args):
@@ -1004,13 +991,22 @@ class GatewayClient:
     def subsystem_add(self, args):
         """Create a subsystem"""
 
-        out_func, err_func, _ = self.get_output_functions(args)
+        out_func, err_func, wrn_func = self.get_output_functions(args)
         if args.max_namespaces is not None and args.max_namespaces <= 0:
             self.cli.parser.error("--max-namespaces value must be positive")
         if args.subsystem == GatewayUtils.DISCOVERY_NQN:
             self.cli.parser.error("Can't add a discovery subsystem")
         if args.dhchap_key == "":
             self.cli.parser.error("DH-HMAC-CHAP key can't be empty")
+        if args.port is not None:
+            if not args.network_mask:
+                self.cli.parser.error("Port cannot be set without a network mask")
+            if args.port <= 0:
+                self.cli.parser.error("Port value must be positive")
+            elif args.port > 0xffff:
+                self.cli.parser.error("Port value must be smaller than 65536")
+        if args.secure_listeners and not args.network_mask:
+            self.cli.parser.error("Secure listeners cannot be set without a network mask")
 
         req = pb2.create_subsystem_req(subsystem_nqn=args.subsystem,
                                        serial_number=args.serial_number,
@@ -1019,6 +1015,7 @@ class GatewayClient:
                                        no_group_append=args.no_group_append,
                                        dhchap_key=args.dhchap_key,
                                        network_mask=args.network_mask,
+                                       port=args.port,
                                        secure_listeners=args.secure_listeners)
         try:
             ret = self.stub.create_subsystem(req)
@@ -1027,6 +1024,10 @@ class GatewayClient:
                 status=errno.EINVAL,
                 error_message=f"Failure adding subsystem {args.subsystem}:\n{ex}",
                 nqn=args.subsystem)
+
+        orig_status = ret.status
+        if ret.status == errno.EAGAIN:
+            ret.status = 0
 
         new_nqn = ""
         try:
@@ -1040,6 +1041,8 @@ class GatewayClient:
         if args.format == "text" or args.format == "plain":
             if ret.status == 0:
                 out_func(f"Adding subsystem {new_nqn}: Successful")
+                if orig_status != 0:
+                    wrn_func(ret.error_message)
             else:
                 err_func(f"{ret.error_message}")
         elif args.format == "json" or args.format == "yaml":
@@ -1306,8 +1309,11 @@ class GatewayClient:
 
         out_func, err_func, wrn_func = self.get_output_functions(args)
 
-        if args.port is not None and args.port <= 0:
-            self.cli.parser.error("Server's port must be positive")
+        if args.port is not None:
+            if args.port <= 0:
+                self.cli.parser.error("Server's port must be positive")
+            elif args.port > 0xffff:
+                self.cli.parser.error("Server's port must be smaller than 65536")
         if not GatewayUtils.is_valid_host_name(args.address):
             self.cli.parser.error(f"Invalid server address {args.address}")
         req = pb2.add_kmip_server_req(subsystem_nqn=args.subsystem,
@@ -1353,8 +1359,11 @@ class GatewayClient:
 
         out_func, err_func, wrn_func = self.get_output_functions(args)
 
-        if args.port is not None and args.port <= 0:
-            self.cli.parser.error("Server's port must be positive")
+        if args.port is not None:
+            if args.port <= 0:
+                self.cli.parser.error("Server's port must be positive")
+            elif args.port > 0xffff:
+                self.cli.parser.error("Server's port must be smaller than 65536")
         if not GatewayUtils.is_valid_host_name(args.address):
             self.cli.parser.error(f"Invalid server address {args.address}")
         req = pb2.del_kmip_server_req(subsystem_nqn=args.subsystem,
@@ -1472,6 +1481,11 @@ class GatewayClient:
         argument("--network-mask",
                  help="For this subnet, automatically create listeners for this subsystem",
                  nargs='+',
+                 required=False),
+        argument("--port",
+                 "-p",
+                 help="Port to use for the created listeners",
+                 type=int,
                  required=False),
         argument("--secure-listeners",
                  help="Make all the auto-listeners for this subsystem secure",
@@ -1637,12 +1651,11 @@ class GatewayClient:
 
         out_func, err_func, wrn_func = self.get_output_functions(args)
 
-        if args.trsvcid is None:
-            args.trsvcid = 4420
-        elif args.trsvcid <= 0:
-            self.cli.parser.error("trsvcid value must be positive")
-        elif args.trsvcid > 0xffff:
-            self.cli.parser.error("trsvcid value must be smaller than 65536")
+        if args.trsvcid is not None:
+            if args.trsvcid <= 0:
+                self.cli.parser.error("trsvcid value must be positive")
+            elif args.trsvcid > 0xffff:
+                self.cli.parser.error("trsvcid value must be smaller than 65536")
         if not args.adrfam:
             args.adrfam = "IPV4"
 
@@ -1662,15 +1675,17 @@ class GatewayClient:
             traddr=traddr,
             trsvcid=args.trsvcid,
             secure=args.secure,
-            verify_host_name=args.verify_host_name
+            verify_host_name=args.verify_host_name,
+            force=args.force
         )
 
+        lstnr_addr = f"{traddr}:{args.trsvcid}" if args.trsvcid else traddr
         try:
             ret = self.stub.create_listener(req)
         except Exception as ex:
             ret = pb2.req_status(status=errno.EINVAL,
                                  error_message=f"Failure adding {traddr} listener at "
-                                               f"{traddr}:{args.trsvcid}:\n{ex}")
+                                               f"{lstnr_addr}:\n{ex}")
 
         orig_status = ret.status
         if ret.status == errno.EREMOTE:
@@ -1678,9 +1693,10 @@ class GatewayClient:
 
         if args.format == "text" or args.format == "plain":
             if orig_status == 0:
-                out_func(f"Adding {args.subsystem} listener at {traddr}:{args.trsvcid}: Successful")
+                out_func(f"Adding {args.subsystem} listener at {lstnr_addr}: "
+                         f"Successful")
             elif orig_status == errno.EREMOTE:
-                wrn_func(f"Adding {args.subsystem} listener at {traddr}:{args.trsvcid}: "
+                wrn_func(f"Adding {args.subsystem} listener at {lstnr_addr}: "
                          f"listener will only be active when appropriate gateway is up")
             else:
                 err_func(f"{ret.error_message}")
@@ -1704,10 +1720,12 @@ class GatewayClient:
         """Delete a listener"""
 
         out_func, err_func, _ = self.get_output_functions(args)
-        if args.trsvcid <= 0:
-            self.cli.parser.error("trsvcid value must be positive")
-        elif args.trsvcid > 0xffff:
-            self.cli.parser.error("trsvcid value must be smaller than 65536")
+
+        if args.trsvcid is not None:
+            if args.trsvcid <= 0:
+                self.cli.parser.error("trsvcid value must be positive")
+            elif args.trsvcid > 0xffff:
+                self.cli.parser.error("trsvcid value must be smaller than 65536")
         if not args.adrfam:
             args.adrfam = "IPV4"
 
@@ -1857,6 +1875,10 @@ class GatewayClient:
                  choices=get_enum_keys_list(pb2.AddressFamily)),
         argument("--secure",
                  help="Use secure channel",
+                 action='store_true',
+                 required=False),
+        argument("--force",
+                 help="Allow contradiction in security with existing listeners",
                  action='store_true',
                  required=False),
     ]

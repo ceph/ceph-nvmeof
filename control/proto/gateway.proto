@@ -302,6 +302,7 @@ message create_subsystem_req {
 	optional bool key_encrypted = 7;
 	repeated string network_mask = 8;
 	optional bool secure_listeners = 9;
+	optional uint32 port = 10;
 }
 
 message delete_subsystem_req {
@@ -407,6 +408,7 @@ message create_listener_req {
 	optional uint32 trsvcid = 6;
 	optional bool secure = 7;
 	optional bool verify_host_name = 8;
+	optional bool force = 9;
 }
 
 message delete_listener_req {

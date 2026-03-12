@@ -27,8 +27,10 @@ test_listeners()
    for i in $(seq $NUM_SUBSYSTEMS); do
       NQN="nqn.2016-06.io.spdk:cnode0$i"
       is_secure=No
+      port="4420"
       if [ "$NQN" = "$NQN2" ]; then
          is_secure=Yes 
+         port="4421"
       fi
       is_manual=No
       if [ "$NQN" = "$NQN3" ]; then
@@ -40,14 +42,14 @@ test_listeners()
       cat /tmp/listeners.txt
       [[ `cat /tmp/listeners.txt | grep "${ip_1}" | awk '{print $2}'` == "TCP" ]]
       [[ `cat /tmp/listeners.txt | grep "${ip_1}" | awk '{print $3}'` == "IPv4" ]]
-      [[ `cat /tmp/listeners.txt | grep "${ip_1}" | awk '{print $4}'` == "${ip_1}:4420" ]]
+      [[ `cat /tmp/listeners.txt | grep "${ip_1}" | awk '{print $4}'` == "${ip_1}:${port}" ]]
       [[ `cat /tmp/listeners.txt | grep "${ip_1}" | awk '{print $5}'` == "$is_secure" ]]
       [[ `cat /tmp/listeners.txt | grep "${ip_1}" | awk '{print $6}'` == "Yes" ]]
       [[ `cat /tmp/listeners.txt | grep "${ip_1}" | awk '{print $7}'` == "$is_manual" ]]
       if [ -n "$ip_2" ]; then
          [[ `cat /tmp/listeners.txt | grep "${ip_2}" | awk '{print $2}'` == "TCP" ]]
          [[ `cat /tmp/listeners.txt | grep "${ip_2}" | awk '{print $3}'` == "IPv4" ]]
-         [[ `cat /tmp/listeners.txt | grep "${ip_2}" | awk '{print $4}'` == "${ip_2}:4420" ]]
+         [[ `cat /tmp/listeners.txt | grep "${ip_2}" | awk '{print $4}'` == "${ip_2}:${port}" ]]
          [[ `cat /tmp/listeners.txt | grep "${ip_2}" | awk '{print $5}'` == "$is_secure" ]]
          [[ `cat /tmp/listeners.txt | grep "${ip_2}" | awk '{print $6}'` == "No" ]]
          [[ `cat /tmp/listeners.txt | grep "${ip_2}" | awk '{print $7}'` == "$is_manual" ]]
@@ -58,7 +60,7 @@ test_listeners()
       cat /tmp/gw_listeners.txt
       [[ `cat /tmp/gw_listeners.txt | grep "${ip_1}" | awk '{print $2}'` == "TCP" ]]
       [[ `cat /tmp/gw_listeners.txt | grep "${ip_1}" | awk '{print $3}'` == "IPv4" ]]
-      [[ `cat /tmp/gw_listeners.txt | grep "${ip_1}" | awk '{print $4}'` == "${ip_1}:4420" ]]
+      [[ `cat /tmp/gw_listeners.txt | grep "${ip_1}" | awk '{print $4}'` == "${ip_1}:${port}" ]]
       [[ `cat /tmp/gw_listeners.txt | grep "${ip_1}" | awk '{print $5}'` == "$is_secure" ]]
       [[ `cat /tmp/gw_listeners.txt | grep "${ip_1}" | awk '{print $6}'` == "Yes" ]]
       if [ -n "$ip_2" ]; then
@@ -66,7 +68,7 @@ test_listeners()
          cat /tmp/gw_listeners.txt
          [[ `cat /tmp/gw_listeners.txt | grep "${ip_2}" | awk '{print $2}'` == "TCP" ]]
          [[ `cat /tmp/gw_listeners.txt | grep "${ip_2}" | awk '{print $3}'` == "IPv4" ]]
-         [[ `cat /tmp/gw_listeners.txt | grep "${ip_2}" | awk '{print $4}'` == "${ip_2}:4420" ]]
+         [[ `cat /tmp/gw_listeners.txt | grep "${ip_2}" | awk '{print $4}'` == "${ip_2}:${port}" ]]
          [[ `cat /tmp/gw_listeners.txt | grep "${ip_2}" | awk '{print $5}'` == "$is_secure" ]]
          [[ `cat /tmp/gw_listeners.txt | grep "${ip_2}" | awk '{print $6}'` == "Yes" ]]
       fi
