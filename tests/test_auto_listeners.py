@@ -5,6 +5,7 @@ from control.cli import main as cli
 from control.cli import main_test as cli_test
 from control.cephutils import CephUtils
 import grpc
+from control.proto import gateway_pb2 as pb2
 from control.proto import gateway_pb2_grpc as pb2_grpc
 import time
 
@@ -112,6 +113,54 @@ class TestAutoListener:
         assert listeners.listeners[0].secure
         assert not listeners.listeners[0].manual
 
+    def test_create_subsystem_invalid_network_mask(self, caplog, gateway):
+        _, stub = gateway
+        caplog.clear()
+        serial = "Ceph00000000000001"
+        invalid_subnet = "nosubnet"
+        req = pb2.create_subsystem_req(subsystem_nqn=subsystem, max_namespaces=256,
+                                       serial_number=serial, enable_ha=True,
+                                       network_mask=[invalid_subnet])
+        ret = stub.create_subsystem(req)
+        assert ret.status != 0
+        assert f"Failure creating subsystem {subsystem}: Invalid subnet for " \
+               f"network_mask \"{invalid_subnet}\"" in caplog.text
+
+        caplog.clear()
+        req = pb2.create_subsystem_req(subsystem_nqn=subsystem, max_namespaces=256,
+                                       serial_number=serial, enable_ha=True,
+                                       network_mask=[addr_subnet, invalid_subnet])
+        ret = stub.create_subsystem(req)
+        assert ret.status != 0
+        assert f"Failure creating subsystem {subsystem}: Invalid subnet for " \
+               f"network_mask \"{invalid_subnet}\"" in caplog.text
+        caplog.clear()
+
+    def test_del_network_mask_param_fail(self, caplog, gateway):
+        _, stub = gateway
+        caplog.clear()
+        no_subsystem_param = pb2.del_subsystem_network_req(network_mask=addr_subnet)
+        ret = stub.del_subsystem_network(no_subsystem_param)
+        assert ret.status != 0
+        assert "Failure deleting network_mask, missing subsystem NQN" in caplog.text
+
+        caplog.clear()
+        no_netmask_param = pb2.del_subsystem_network_req(subsystem_nqn=subsystem)
+        ret = stub.del_subsystem_network(no_netmask_param)
+        assert ret.status != 0
+        assert f"Failure deleting network_mask for subsystem {subsystem}: " \
+               "Missing network_mask" in caplog.text
+
+        caplog.clear()
+        invalid_subnet = "nosubnet"
+        invalid_netmask_param = pb2.del_subsystem_network_req(subsystem_nqn=subsystem,
+                                                              network_mask=invalid_subnet)
+        ret = stub.del_subsystem_network(invalid_netmask_param)
+        assert ret.status != 0
+        assert f"Failure deleting network_mask for subsystem {subsystem}: " \
+               f"Invalid subnet \"{invalid_subnet}\"" in caplog.text
+        caplog.clear()
+
     def test_del_network_mask(self, caplog, gateway):
         cli(["subsystem", "list"])
         caplog.clear()
@@ -140,6 +189,31 @@ class TestAutoListener:
         assert listeners.listeners[0].active
         assert not listeners.listeners[0].secure
         assert not listeners.listeners[0].manual
+
+    def test_add_network_mask_param_fail(self, caplog, gateway):
+        _, stub = gateway
+        caplog.clear()
+        no_subsystem_param = pb2.add_subsystem_network_req(network_mask=addr_subnet)
+        ret = stub.add_subsystem_network(no_subsystem_param)
+        assert ret.status != 0
+        assert "Failure adding network_mask, missing subsystem NQN" in caplog.text
+
+        caplog.clear()
+        no_netmask_param = pb2.add_subsystem_network_req(subsystem_nqn=subsystem)
+        ret = stub.add_subsystem_network(no_netmask_param)
+        assert ret.status != 0
+        assert f"Failure adding network_mask for subsystem {subsystem}: " \
+               "Missing network_mask" in caplog.text
+
+        caplog.clear()
+        invalid_subnet = "nosubnet"
+        invalid_netmask_param = pb2.add_subsystem_network_req(subsystem_nqn=subsystem,
+                                                              network_mask=invalid_subnet)
+        ret = stub.add_subsystem_network(invalid_netmask_param)
+        assert ret.status != 0
+        assert f"Failure adding network_mask for subsystem {subsystem}: " \
+               f"Invalid subnet \"{invalid_subnet}\"" in caplog.text
+        caplog.clear()
 
     def test_add_network_mask(self, caplog, gateway):
         cli(["subsystem", "list"])
