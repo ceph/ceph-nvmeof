@@ -107,9 +107,7 @@ listener_list_negative_port = [["-t", host_name, "-a", addr, "-s", "-2000"]]
 listener_list_big_port = [["-t", host_name, "-a", addr, "-s", "70000"]]
 listener_list_wrong_host = [["-t", "WRONG", "-a", addr, "-s", "5015", "-f", "ipv4"]]
 listener_list_bad_ips = [["127.1.1.1", 5011, "ipv4"],
-                         ["[fe80::a00:27ff:fe38:1d48]", 5022, "ipv6"],
-                         [addr, 5033, "ipv6"],
-                         [f"[{addr_ipv6}]", 5044, "ipv4"]]
+                         ["[fe80::a00:27ff:fe38:1d48]", 5022, "ipv6"]]
 config = "ceph-nvmeof.conf"
 group_name = "GROUPNAME"
 
@@ -1797,7 +1795,7 @@ class TestCreate:
         cli(["listener", "add", "--subsystem", subsystem, "--host-name", host_name,
              "--verify-host-name"] + listener)
         assert "ipv4" in caplog.text.lower()
-        assert f"Adding {subsystem} listener at {listener[1]}:4420: Successful" in caplog.text
+        assert f"Adding {subsystem} listener at {listener[1]}: Successful" in caplog.text
 
     @pytest.mark.parametrize("listener", listener_list_no_adrfam)
     def test_create_listener_no_adrfam(self, caplog, listener, gateway):
@@ -1950,6 +1948,57 @@ class TestCreate:
             pass
         assert "error: argument --adrfam/-f: invalid choice: 'junk'" in caplog.text
         assert rc == 2
+
+    def test_create_listener_invalid_ip(self, caplog, gateway):
+        gw, stub = gateway
+        caplog.clear()
+        rc = 0
+        try:
+            cli(["listener", "add", "--subsystem", subsystem, "--host-name", host_name,
+                 "-a", f"    {addr}   ", "-s", "4450", "-f", "ipv4"])
+        except SystemExit as sysex:
+            rc = sysex.code
+        assert f'error: Invalid IP address "    {addr}   "' in caplog.text
+        assert rc == 2
+        caplog.clear()
+        rc = 0
+        try:
+            cli(["listener", "add", "--subsystem", subsystem, "--host-name", host_name,
+                 "-a", addr, "-s", "4450", "-f", "ipv6"])
+        except SystemExit as sysex:
+            rc = sysex.code
+        assert f"error: IP address {addr} is not an IPv6 address" in caplog.text
+        assert rc == 2
+        caplog.clear()
+        rc = 0
+        try:
+            cli(["listener", "add", "--subsystem", subsystem, "--host-name", host_name,
+                 "-a", addr_ipv6, "-s", "4450", "-f", "ipv4"])
+        except SystemExit as sysex:
+            rc = sysex.code
+        assert f"error: IP address {addr_ipv6} is not an IPv4 address" in caplog.text
+        assert rc == 2
+        caplog.clear()
+        req = pb2.create_listener_req(nqn=subsystem, host_name=host_name,
+                                      traddr=f"[    {addr}   ]",
+                                      adrfam="ipv4", trsvcid=4450)
+        stub.create_listener(req)
+        assert f'Failure adding {subsystem} listener at [    {addr}   ]:4450: Invalid ' \
+               f'IP address "    {addr}   "' in caplog.text
+        caplog.clear()
+        req = pb2.create_listener_req(nqn=subsystem, host_name=host_name,
+                                      traddr=addr,
+                                      adrfam="ipv6", trsvcid=4450)
+        stub.create_listener(req)
+        assert f"Failure adding {subsystem} listener at {addr}:4450: IP address {addr} " \
+               f"is not an IPv6 address" in caplog.text
+        caplog.clear()
+        req = pb2.create_listener_req(nqn=subsystem, host_name=host_name,
+                                      traddr=addr_ipv6,
+                                      adrfam="ipv4", trsvcid=4450)
+        stub.create_listener(req)
+        assert f"Failure adding {subsystem} listener at {addr_ipv6}:4450: IP address " \
+               f"{addr_ipv6} is not an IPv4 address" in caplog.text
 
     @pytest.mark.parametrize("listener", listener_list_discovery)
     def test_create_listener_on_discovery(self, caplog, listener, gateway):
@@ -2628,7 +2677,7 @@ class TestListenerBadIPAddresses:
         except SystemExit as sysex:
             rc = sysex.code
             pass
-        assert "error: invalid IP address 3.4" in caplog.text
+        assert 'error: Invalid IP address "3.4"' in caplog.text
         assert rc == 2
         rc = 0
         try:

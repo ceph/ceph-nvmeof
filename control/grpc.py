@@ -857,6 +857,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
     MAX_SUBSYSTEMS_DEFAULT = 128
     MAX_NAMESPACES_DEFAULT = 4096
     MAX_NAMESPACES_PER_SUBSYSTEM_DEFAULT = 512
+    LISTENER_PORT_DEFAULT = 4420
+    SECURE_LISTENER_PORT_DEFAULT = 4421
     # The actual highest value seems to be 3647, so pick a lower value
     MAX_VALUE_FOR_MAX_NAMESPACES_PER_SUBSYSTEM = 2048
     MAX_HOSTS_PER_SUBSYS_DEFAULT = 128
@@ -992,6 +994,15 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 self.io_stats_enabled = False
         else:
             self.logger.info("Gateway's IO statistics is disabled")
+
+        self.default_listener_port = self.config.getint_with_default(
+            "gateway",
+            "default_listener_port",
+            GatewayService.LISTENER_PORT_DEFAULT)
+        self.default_secure_listener_port = self.config.getint_with_default(
+            "gateway",
+            "default_secure_listener_port",
+            GatewayService.SECURE_LISTENER_PORT_DEFAULT)
 
         self.fsid = None
         spdk_notifications_interval = self.config.getint_with_default("spdk",
@@ -1835,6 +1846,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
             f"Received request to create subsystem {request.subsystem_nqn}, enable_ha: "
             f"{request.enable_ha}, max_namespaces: {request.max_namespaces}, no group "
             f"append: {request.no_group_append}, network mask: {request.network_mask}, "
+            f"port: {request.port}, "
             f"secure listeners: {request.secure_listeners}, context: {context}{peer_msg}")
 
         if not request.enable_ha:
@@ -1870,6 +1882,13 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                     f"greater than the limit on the number of namespaces per "
                                     f"subsystem ({self.max_namespaces_per_subsystem}), "
                                     f"will continue")
+
+        if request.port > 0xffff:
+            errmsg = f"{create_subsystem_error_prefix}: Port value must be smaller than 65536"
+            self.logger.error(errmsg)
+            return pb2.subsys_status(status=errno.EINVAL,
+                                     error_message=errmsg,
+                                     nqn=request.subsystem_nqn)
 
         errmsg = ""
         if not GatewayState.is_key_element_valid(request.subsystem_nqn):
@@ -2052,13 +2071,15 @@ class GatewayService(pb2_grpc.GatewayServicer):
             try:
                 rt = self._create_auto_listeners_safe(request)
                 if rt.status != 0:
-                    status = rt.status
+                    status = errno.EAGAIN
                     error_message = f"Subsystem {request.subsystem_nqn} created successfully; " \
-                                    "Failed to create one or more NVMeoF listeners (network mask)."
+                                    f"Failed to create one or more NVMeoF listeners " \
+                                    f"(network mask). You can try adding these listeners manually."
             except Exception:
-                status = errno.EINVAL
-                error_message = f"Created subsystem {request.subsystem_nqn}. "
-                error_message += "An error occured when adding network mask."
+                status = errno.EAGAIN
+                error_message = f"Created subsystem {request.subsystem_nqn}. " \
+                                f"An error occurred when adding network mask. Try " \
+                                f"adding the listeners manually."
                 self.logger.exception(error_message)
         return pb2.subsys_status(status=status, error_message=error_message,
                                  nqn=request.subsystem_nqn)
@@ -2067,11 +2088,15 @@ class GatewayService(pb2_grpc.GatewayServicer):
         err_prefix = f"Failure creating subsystem {request.subsystem_nqn}: "
         return self.execute_grpc_function(self.create_subsystem_safe, request, context, err_prefix)
 
-    def add_listeners(self, subsystem_nqn, ip_list, is_secure):
+    def add_listeners(self, subsystem_nqn, ip_list, is_secure, port):
         req_status = 0
         for ip in ip_list:
             hostname = self.host_name
-            port = os.getenv("NVMEOF_IO_PORT") or "4420"
+            if not port:
+                if is_secure:
+                    port = self.default_secure_listener_port
+                else:
+                    port = self.default_listener_port
             adrfam = f'ipv{ip_address(ip).version}'
             secure = is_secure
             lstnr_req = pb2.create_listener_req(
@@ -2079,7 +2104,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 host_name=hostname,
                 adrfam=adrfam,
                 traddr=ip,
-                trsvcid=int(port),
+                trsvcid=port,
                 secure=secure,
                 verify_host_name=False)
             rt = self.create_listener_safe(lstnr_req, None)
@@ -2096,11 +2121,15 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                  f'{subsystem_nqn}')
         return req_status
 
-    def del_listeners(self, subsystem_nqn, ip_list):
+    def del_listeners(self, subsystem_nqn, ip_list, is_secure, port):
         req_status = 0
+        if not port:
+            if is_secure:
+                port = self.default_secure_listener_port
+            else:
+                port = self.default_listener_port
         for ip in ip_list:
             hostname = self.host_name
-            port = os.getenv("NVMEOF_IO_PORT") or "4420"
             adrfam = f'ipv{ip_address(ip).version}'
             lstnr_req = pb2.delete_listener_req(
                 nqn=subsystem_nqn,
@@ -2134,7 +2163,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         for subnet in set(network_mask_subnets):
             found_host_ips = NICS(self.logger, True).get_ips_in_subnet(subnet)
             req_status = self.add_listeners(request.subsystem_nqn, found_host_ips,
-                                            request.secure_listeners)
+                                            request.secure_listeners, request.port)
         if req_status != 0:
             err_msg = f"Failed to create auto-listeners for subsystem {request.subsystem_nqn}"
             return pb2.req_status(status=req_status, error_message=err_msg)
@@ -2182,7 +2211,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
                 found_ips = NICS(self.logger, True).get_ips_in_subnet(network_to_add)
                 req_status = self.add_listeners(request.subsystem_nqn, found_ips,
-                                                subsys_entry.secure_listeners)
+                                                subsys_entry.secure_listeners, subsys_entry.port)
                 if req_status != 0:
                     self.logger.error(f'Failed to add all listeners in network mask '
                                       f'{request.network_mask} (all IPs: {found_ips}) '
@@ -2201,7 +2230,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     self.logger.info(f"Added network {request.network_mask} for subsystem "
                                      f"{request.subsystem_nqn}")
             except Exception as ex:
-                errmsg = f"Failure occured:\n{ex}"
+                errmsg = f"Failure occurred:\n{ex}"
                 self.logger.error(errmsg)
                 return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
         err_msg = os.strerror(0)
@@ -2253,7 +2282,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     return pb2.req_status(status=0, error_message=os.strerror(0))
 
                 found_ips = NICS(self.logger, True).get_ips_in_subnet(network_to_delete)
-                req_status = self.del_listeners(request.subsystem_nqn, found_ips)
+                req_status = self.del_listeners(request.subsystem_nqn, found_ips,
+                                                subsys_entry.secure_listeners, subsys_entry.port)
                 if req_status != 0:
                     self.logger.error(f'Failed to delete all listeners under network mask '
                                       f'{request.network_mask} (all IPs: {found_ips}) '
@@ -2272,7 +2302,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     self.logger.info(f"Deleted network {network_to_delete} for subsystem "
                                      f"{request.subsystem_nqn}")
             except Exception as ex:
-                errmsg = f"Failure occured:\n{ex}"
+                errmsg = f"Failure occurred:\n{ex}"
                 self.logger.error(errmsg)
                 return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
         err_msg = os.strerror(0)
@@ -6290,11 +6320,31 @@ class GatewayService(pb2_grpc.GatewayServicer):
         err_prefix = "Failure listing connections: "
         return self.execute_grpc_function(self.list_connections_safe, request, context, err_prefix)
 
+    def _check_for_listener_security_contradiction(self, req_addr, req_adrfam,
+                                                   req_port, req_secure):
+        any_host = GatewayUtils.is_any_host_address(req_addr, req_adrfam)
+        for nqn in self.subsystem_listeners:
+            for (adrfam, addr, port, secure, _) in self.subsystem_listeners[nqn]:
+                if req_port != port:
+                    continue
+                if not any_host and not GatewayUtils.is_any_host_address(addr, adrfam):
+                    if req_addr != addr:
+                        continue
+                if secure != req_secure:
+                    return (nqn, addr, port, secure)
+        return None
+
     def create_listener_safe(self, request, context):
         """Creates a listener for a subsystem at a given IP/Port."""
 
         assert self.rpc_lock.locked(), "RPC is unlocked when calling create_listener_safe()"
         ret = True
+        if not request.trsvcid:
+            if request.secure:
+                request.trsvcid = self.default_secure_listener_port
+            else:
+                request.trsvcid = self.default_listener_port
+            self.logger.debug(f"Port was set to default value {request.trsvcid}")
         create_listener_error_prefix = f"Failure adding {request.nqn} listener at " \
                                        f"{request.traddr}:{request.trsvcid}"
 
@@ -6314,6 +6364,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                          f" TCP {adrfam} listener for {request.nqn} at"
                          f" {request.traddr}:{request.trsvcid}, secure: {request.secure},"
                          f" verify host name: {request.verify_host_name},"
+                         f" force: {request.force},"
                          f" context: {context}{peer_msg}")
 
         traddr = GatewayUtils.unescape_address(request.traddr)
@@ -6347,6 +6398,12 @@ class GatewayService(pb2_grpc.GatewayServicer):
             self.logger.error(errmsg)
             return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
 
+        err = GatewayUtils.is_valid_ip_address(traddr, adrfam)
+        if err:
+            errmsg = f"{create_listener_error_prefix}: {err}"
+            self.logger.error(errmsg)
+            return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
+
         if request.secure and self.host_info.is_any_host_allowed(request.nqn):
             errmsg = f"{create_listener_error_prefix}: Secure channel is only allowed " \
                      f"for subsystems in which \"allow any host\" is off"
@@ -6357,6 +6414,35 @@ class GatewayService(pb2_grpc.GatewayServicer):
             errmsg = f"{create_listener_error_prefix}: Secure channel must be used"
             self.logger.error(errmsg)
             return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
+
+        if request.trsvcid and request.trsvcid > 0xffff:
+            errmsg = f"{create_listener_error_prefix}: trsvcid value must be smaller than 65536"
+            self.logger.error(errmsg)
+            return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
+
+        lstnr_contradiction = None
+        if context:
+            lstnr_contradiction = self._check_for_listener_security_contradiction(traddr,
+                                                                                  adrfam,
+                                                                                  request.trsvcid,
+                                                                                  request.secure)
+        if lstnr_contradiction is not None:
+            self.logger.debug(f"listener contradiction: {lstnr_contradiction}")
+            sec_txt = "secure" if lstnr_contradiction[3] else "insecure"
+            if request.force:
+                self.logger.warning(f"The listener clashes with the existing {sec_txt} listener"
+                                    f" on {lstnr_contradiction[0]}, address "
+                                    f"{lstnr_contradiction[1]}:"
+                                    f"{lstnr_contradiction[2]}, will continue as the \"force\" "
+                                    f"parameter was used")
+            else:
+                errmsg = f"{create_listener_error_prefix}: The listener clashes with the " \
+                         f"existing {sec_txt} listener on {lstnr_contradiction[0]}, address " \
+                         f"{lstnr_contradiction[1]}:" \
+                         f"{lstnr_contradiction[2]}, either remove that listener or use the "\
+                         f"\"force\" parameter"
+                self.logger.error(errmsg)
+                return pb2.req_status(status=errno.EBUSY, error_message=errmsg)
 
         add_listener_args = {}
         add_listener_args["nqn"] = request.nqn
@@ -6605,6 +6691,11 @@ class GatewayService(pb2_grpc.GatewayServicer):
         if GatewayUtils.is_discovery_nqn(request.nqn):
             errmsg = f"{delete_listener_error_prefix}: " \
                      f"Can't delete a listener from a discovery subsystem"
+            self.logger.error(errmsg)
+            return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
+
+        if request.trsvcid > 0xffff:
+            errmsg = f"{delete_listener_error_prefix}: trsvcid value must be smaller than 65536"
             self.logger.error(errmsg)
             return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
 

@@ -10,6 +10,8 @@ import os
 image = "mytestdevimage"
 pool = "rbd"
 subsystem = "nqn.2016-06.io.spdk:cnode1"
+subsystem2 = "nqn.2016-06.io.spdk:cnode2"
+subsystem3 = "nqn.2016-06.io.spdk:cnode3"
 hostnqn1 = "nqn.2014-08.org.nvmexpress:uuid:22207d09-d8af-4ed2-84ec-a6d80b0cf7eb"
 hostnqn2 = "nqn.2014-08.org.nvmexpress:uuid:22207d09-d8af-4ed2-84ec-a6d80b0cf7ec"
 hostnqn3 = "nqn.2014-08.org.nvmexpress:uuid:22207d09-d8af-4ed2-84ec-a6d80b0cf7ee"
@@ -132,7 +134,7 @@ def gateway_no_encryption_key(config):
 def test_setup(caplog, gateway):
     caplog.clear()
     cli(["subsystem", "add", "--subsystem", subsystem])
-    assert f"create_subsystem {subsystem}: True" in caplog.text
+    assert f"Adding subsystem {subsystem}: Successful" in caplog.text
     caplog.clear()
     cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool,
          "--rbd-image", image, "--rbd-create-image", "--size", "16MB"])
@@ -393,3 +395,39 @@ def test_add_host_with_no_encryption_key(caplog, gateway_no_encryption_key):
          "--host-nqn", hostnqn15, "--psk", hostpsk1])
     assert f"Failure adding host {hostnqn15} to {subsystem}: No encryption key or the wrong " \
            f"key was found but we need to encrypt host {hostnqn15} PSK key" in caplog.text
+
+
+def test_listener_security_clash(caplog, gateway):
+    gw = gateway
+    caplog.clear()
+    cli(["subsystem", "add", "--subsystem", subsystem2])
+    assert f"Adding subsystem {subsystem2}: Successful" in caplog.text
+    caplog.clear()
+    cli(["subsystem", "add", "--subsystem", subsystem3])
+    assert f"Adding subsystem {subsystem3}: Successful" in caplog.text
+    cli(["listener", "add", "--subsystem", subsystem2,
+         "--host-name", gw.gateway_name, "-a", addr, "-s", "5100", "--secure"])
+    assert f"Adding {subsystem2} listener at {addr}:5100: Successful" in caplog.text
+    caplog.clear()
+    cli(["listener", "add", "--subsystem", subsystem3,
+         "--host-name", gw.gateway_name, "-a", addr, "-s", "5100"])
+    assert f'Failure adding {subsystem3} listener at {addr}:5100: The listener clashes with ' \
+           f'the existing secure listener on {subsystem2}, address {addr}:5100, either ' \
+           f'remove that listener or use the "force" parameter' in caplog.text
+    caplog.clear()
+    cli(["listener", "add", "--subsystem", subsystem3,
+         "--host-name", gw.gateway_name, "-a", addr, "-s", "5100", "--force"])
+    assert f"Adding {subsystem3} listener at {addr}:5100: Successful" in caplog.text
+    assert f'The listener clashes with the existing secure listener on {subsystem2}, address ' \
+           f'{addr}:5100, will continue as the "force" parameter was used' in caplog.text
+    caplog.clear()
+    cli(["listener", "del", "--subsystem", subsystem3,
+         "--host-name", gw.gateway_name, "-a", addr, "-s", "5100"])
+    assert f"Deleting listener {addr}:5100 from {subsystem3} " \
+           f"for host {gw.gateway_name}: Successful" in caplog.text
+    caplog.clear()
+    cli(["listener", "add", "--subsystem", subsystem3,
+         "--host-name", gw.gateway_name, "-a", "0.0.0.0", "-s", "5100"])
+    assert f'Failure adding {subsystem3} listener at 0.0.0.0:5100: The listener clashes with ' \
+           f'the existing secure listener on {subsystem2}, address {addr}:5100, either ' \
+           f'remove that listener or use the "force" parameter' in caplog.text
