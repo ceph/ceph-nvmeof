@@ -4,6 +4,9 @@
 # the exit code will be the same as the exit code of the failed command.
 # see https://github.com/ceph/ceph-nvmeof/actions/runs/11928539421/job/33246031083
 set -e
+# pipefail ensures that a pipeline returns the exit status of the first failing command
+# rather than the last command (e.g., tee), so docker failures are properly captured
+set -o pipefail
 
 
 VERSION=$1
