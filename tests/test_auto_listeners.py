@@ -12,6 +12,8 @@ pool = "rbd"
 subsystem = "nqn.2016-06.io.spdk:cnode1"
 subsystem2 = "nqn.2016-06.io.spdk:cnode2"
 subsystem3 = "nqn.2016-06.io.spdk:cnode3"
+subsystem4 = "nqn.2016-06.io.spdk:cnode4"
+subsystem5 = "nqn.2016-06.io.spdk:cnode5"
 
 host_name = socket.gethostname()
 addr = "127.0.0.1"
@@ -60,11 +62,10 @@ class TestAutoListener:
              '--network-mask', addr_subnet, addr_ipv6_subnet])
         assert f"Adding subsystem {subsystem}: Successful" in caplog.text
         assert "ipv4" in caplog.text.lower()
-        assert (f"Automatically created listener at {addr}:4420 for {subsystem}"
-                in caplog.text)
+        assert f"Automatically created listener at {addr}:4420 for {subsystem}" in caplog.text
         assert "ipv6" in caplog.text.lower()
-        assert (f"Automatically created listener at [{addr_ipv6}]:4420 for {subsystem}"
-                in caplog.text)
+        assert f"Automatically created listener at [{addr_ipv6}]:4420 for " \
+               f"{subsystem}" in caplog.text
 
     def test_listener_list(self, caplog, gateway):
         cli(["subsystem", "list"])
@@ -94,11 +95,10 @@ class TestAutoListener:
     def test_auto_listener_secure(self, caplog, gateway):
         caplog.clear()
         cli(["subsystem", "add", "--subsystem", subsystem2, "--no-group-append",
-             '--network-mask', f'{addr}/24', '--secure-listeners'])
+             '--network-mask', addr_subnet, '--secure-listeners'])
         assert f"Adding subsystem {subsystem2}: Successful" in caplog.text
         assert "ipv4" in caplog.text.lower()
-        assert (f"Automatically created listener at {addr}:4420 for {subsystem2}"
-                in caplog.text)
+        assert f"Automatically created listener at {addr}:4421 for {subsystem2}" in caplog.text
 
     def test_auto_listener_list_secure(self, caplog, gateway):
         cli(["subsystem", "list"])
@@ -107,7 +107,7 @@ class TestAutoListener:
         listeners = cli_test(["listener", "list", "--subsystem", subsystem2])
         assert listeners.listeners[0].trtype == "TCP"
         assert listeners.listeners[0].traddr == addr
-        assert listeners.listeners[0].trsvcid == 4420
+        assert listeners.listeners[0].trsvcid == 4421
         assert listeners.listeners[0].active
         assert listeners.listeners[0].secure
         assert not listeners.listeners[0].manual
@@ -116,12 +116,11 @@ class TestAutoListener:
         cli(["subsystem", "list"])
         caplog.clear()
         cli(["subsystem", "del_network", "--subsystem", subsystem,
-             '--network-mask', f'{addr}/24'])
-        assert (f"Removed network {addr}/24 for subsystem {subsystem}")
-        assert (f"Automatically deleted listener at {addr}:4420 for {subsystem}"
-                in caplog.text)
-        assert (f"Automatically created listener at {addr}:4420 for {subsystem}"
-                not in caplog.text)
+             '--network-mask', addr_subnet])
+        assert f"Network mask {addr_subnet} deleted for subsystem {subsystem}: " \
+               f"Successful" in caplog.text
+        assert f"Automatically deleted listener at {addr}:4420 for {subsystem}" in caplog.text
+        assert f"Automatically created listener at {addr}:4420 for {subsystem}" not in caplog.text
 
     def test_del_network_subsystem_list(self, caplog, gateway):
         subsystems = cli_test(["subsystem", "list", "--subsystem", subsystem])
@@ -146,12 +145,10 @@ class TestAutoListener:
         cli(["subsystem", "list"])
         caplog.clear()
         cli(["subsystem", "add_network", "--subsystem", subsystem,
-             '--network-mask', f'{addr}/24'])
-        assert (f"Added network {addr}/24 for subsystem {subsystem}")
-        assert (f"Automatically created listener at {addr}:4420 for {subsystem}"
-                in caplog.text)
-        assert (f"Automatically deleted listener at {addr}:4420 for {subsystem}"
-                not in caplog.text)
+             '--network-mask', addr_subnet])
+        assert f"Added network {addr_subnet} for subsystem {subsystem}" in caplog.text
+        assert f"Automatically created listener at {addr}:4420 for {subsystem}" in caplog.text
+        assert f"Automatically deleted listener at {addr}:4420 for {subsystem}" not in caplog.text
 
     def test_add_network_subsystem_list(self, caplog, gateway):
         subsystems = cli_test(["subsystem", "list", "--subsystem", subsystem])
@@ -185,3 +182,91 @@ class TestAutoListener:
         assert f"Failed to delete listener {addr}:4420 from {subsystem}: " \
                f"Listener was created automatically as part of the subsystem's " \
                f"network mask. To remove it, modify the network mask." in caplog.text
+
+    def test_subsystem_with_networks_and_port(self, caplog, gateway):
+        cli(["subsystem", "list"])
+        caplog.clear()
+        cli(["subsystem", "add", "--subsystem", subsystem3, "--no-group-append",
+             '--network-mask', addr_subnet, addr_ipv6_subnet, "--port", "4500"])
+        assert f"Adding subsystem {subsystem3}: Successful" in caplog.text
+        assert "ipv4" in caplog.text.lower()
+        assert f"Automatically created listener at {addr}:4500 for {subsystem3}" in caplog.text
+        assert "ipv6" in caplog.text.lower()
+        assert f"Automatically created listener at [{addr_ipv6}]:4500 for " \
+               f"{subsystem3}" in caplog.text
+        cli(["subsystem", "list"])
+        time.sleep(30)
+        caplog.clear()
+        listeners = cli_test(["listener", "list", "--subsystem", subsystem3])
+        assert len(listeners.listeners) == 2
+        assert listeners.listeners[0].trtype == "TCP"
+        assert listeners.listeners[0].trsvcid == 4500
+        assert listeners.listeners[0].active
+        assert not listeners.listeners[0].secure
+        assert not listeners.listeners[0].manual
+        assert {listeners.listeners[0].traddr,
+                listeners.listeners[1].traddr} == {addr, addr_ipv6}
+        assert listeners.listeners[1].trtype == "TCP"
+        assert listeners.listeners[1].trsvcid == 4500
+        assert listeners.listeners[1].active
+        assert not listeners.listeners[1].secure
+        assert not listeners.listeners[1].manual
+
+    def test_auto_listener_secure_with_port(self, caplog, gateway):
+        caplog.clear()
+        cli(["subsystem", "add", "--subsystem", subsystem4, "--no-group-append",
+             '--network-mask', addr_subnet, '--secure-listeners', "--port", "4501"])
+        assert f"Adding subsystem {subsystem4}: Successful" in caplog.text
+        assert "ipv4" in caplog.text.lower()
+        assert f"Automatically created listener at {addr}:4501 for {subsystem4}" in caplog.text
+        cli(["subsystem", "list"])
+        time.sleep(30)
+        caplog.clear()
+        listeners = cli_test(["listener", "list", "--subsystem", subsystem4])
+        assert listeners.listeners[0].trtype == "TCP"
+        assert listeners.listeners[0].traddr == addr
+        assert listeners.listeners[0].trsvcid == 4501
+        assert listeners.listeners[0].active
+        assert listeners.listeners[0].secure
+        assert not listeners.listeners[0].manual
+
+    def test_del_and_add_network_mask(self, caplog, gateway):
+        caplog.clear()
+        cli(["subsystem", "del_network", "--subsystem", subsystem3, '--network-mask', addr_subnet])
+        assert f"Network mask {addr_subnet} deleted for subsystem {subsystem3}: " \
+               f"Successful" in caplog.text
+        cli(["subsystem", "list"])
+        time.sleep(30)
+        listeners = cli_test(["listener", "list", "--subsystem", subsystem3])
+        assert len(listeners.listeners) == 1
+        caplog.clear()
+        cli(["subsystem", "add_network", "--subsystem", subsystem3,
+             '--network-mask', addr_subnet])
+        assert f"Added network {addr_subnet} for subsystem {subsystem3}" in caplog.text
+        assert f"Automatically created listener at {addr}:4500 for {subsystem3}" in caplog.text
+        cli(["subsystem", "list"])
+        time.sleep(30)
+        listeners = cli_test(["listener", "list", "--subsystem", subsystem3])
+        assert len(listeners.listeners) == 2
+        assert listeners.listeners[0].trsvcid == 4500
+        assert listeners.listeners[1].trsvcid == 4500
+
+    def test_use_port_and_secure_without_network_mask(self, caplog, gateway):
+        caplog.clear()
+        rc = 0
+        try:
+            cli(["subsystem", "add", "--subsystem", subsystem5, "--no-group-append",
+                 "--port", "4700"])
+        except SystemExit as sysex:
+            rc = sysex.code
+        assert "Port cannot be set without a network mask" in caplog.text
+        assert rc == 2
+        caplog.clear()
+        rc = 0
+        try:
+            cli(["subsystem", "add", "--subsystem", subsystem5, "--no-group-append",
+                 "--secure-listeners"])
+        except SystemExit as sysex:
+            rc = sysex.code
+        assert "Secure listeners cannot be set without a network mask" in caplog.text
+        assert rc == 2

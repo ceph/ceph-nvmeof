@@ -70,26 +70,31 @@ class GatewayUtils:
 
     # We need to enclose IPv6 addresses in brackets before concatenating
     # a colon and port number to it
+    @staticmethod
     def escape_address_if_ipv6(addr: str) -> str:
         ret_addr = addr
         if ":" in addr and not addr.strip().startswith("["):
             ret_addr = f"[{addr}]"
         return ret_addr
 
+    @staticmethod
     def unescape_address(addr: str) -> str:
         ret_addr = addr.strip()
         ret_addr = ret_addr.removeprefix("[").removesuffix("]")
         return ret_addr
 
+    @staticmethod
     def unescape_address_if_ipv6(addr: str, adrfam: str) -> str:
         ret_addr = addr.strip()
         if adrfam.lower() == "ipv6":
             ret_addr = GatewayUtils.unescape_address(addr)
         return ret_addr
 
-    def is_discovery_nqn(nqn) -> bool:
-        return nqn == GatewayUtils.DISCOVERY_NQN
+    @classmethod
+    def is_discovery_nqn(cls, nqn) -> bool:
+        return nqn == cls.DISCOVERY_NQN
 
+    @staticmethod
     def is_valid_host_name(hostname) -> bool:
         if not hostname:
             return False
@@ -128,6 +133,34 @@ class GatewayUtils:
             logger.error(f'error in get_hostname: {e}')
         return ''
 
+    @staticmethod
+    def is_any_host_address(addr: str, adrfam: str) -> bool:
+        if adrfam.lower() == "ipv4":
+            return addr == "0.0.0.0"
+        elif adrfam.lower() == "ipv6":
+            return addr == "::"
+        return False
+
+    @staticmethod
+    def is_valid_ip_address(addr: str, adrfam: str) -> str:
+        ipaddr = None
+        try:
+            ipaddr = ipaddress.ip_address(addr)
+        except ValueError:
+            ipaddr = None
+        if ipaddr is None:
+            return f'Invalid IP address "{addr}"'
+        if not adrfam or adrfam.lower() == "ipv4":
+            if ipaddr.version != 4:
+                return f"IP address {addr} is not an IPv4 address"
+        elif adrfam.lower() == "ipv6":
+            if ipaddr.version != 6:
+                return f"IP address {addr} is not an IPv6 address"
+        else:
+            return f'Invalid address family "{adrfam}"'
+        return ""
+
+    @staticmethod
     def is_valid_rev_domain(rev_domain):
         domain_parts = rev_domain.split(".")
         for lbl in domain_parts:
@@ -150,6 +183,7 @@ class GatewayUtils:
 
         return (0, os.strerror(0))
 
+    @staticmethod
     def is_valid_uuid(uuid_val) -> bool:
         UUID_STRING_LENGTH = len(str(uuid.uuid4()))
 
@@ -178,6 +212,7 @@ class GatewayUtils:
 
         return True
 
+    @staticmethod
     def is_valid_nqn(nqn):
         NQN_MIN_LENGTH = 11
         NQN_MAX_LENGTH = 223
@@ -760,16 +795,10 @@ class NICS:
             self.adapters[device_name] = nic
 
     def verify_ip_address(self, addr: str, family: str) -> bool:
-        family = family.lower()
         # Allow "any host" address
-        if family == "ipv4":
-            if addr == "0.0.0.0":
-                return True
-        elif family == "ipv6":
-            if addr == "::":
-                return True
-        else:
-            assert False, f"Invalid address family {family}"
+        if GatewayUtils.is_any_host_address(addr, family):
+            return True
+        family = family.lower()
         if addr not in self.addresses:
             return False
         dev_name = self.addresses[addr]

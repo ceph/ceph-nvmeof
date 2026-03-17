@@ -1397,6 +1397,7 @@ type CreateSubsystemReq struct {
 	KeyEncrypted    *bool                  `protobuf:"varint,7,opt,name=key_encrypted,json=keyEncrypted,proto3,oneof" json:"key_encrypted,omitempty"`
 	NetworkMask     []string               `protobuf:"bytes,8,rep,name=network_mask,json=networkMask,proto3" json:"network_mask,omitempty"`
 	SecureListeners *bool                  `protobuf:"varint,9,opt,name=secure_listeners,json=secureListeners,proto3,oneof" json:"secure_listeners,omitempty"`
+	Port            *uint32                `protobuf:"varint,10,opt,name=port,proto3,oneof" json:"port,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -1492,6 +1493,13 @@ func (x *CreateSubsystemReq) GetSecureListeners() bool {
 		return *x.SecureListeners
 	}
 	return false
+}
+
+func (x *CreateSubsystemReq) GetPort() uint32 {
+	if x != nil && x.Port != nil {
+		return *x.Port
+	}
+	return 0
 }
 
 type DeleteSubsystemReq struct {
@@ -2455,6 +2463,7 @@ type CreateListenerReq struct {
 	Trsvcid        *uint32                `protobuf:"varint,6,opt,name=trsvcid,proto3,oneof" json:"trsvcid,omitempty"`
 	Secure         *bool                  `protobuf:"varint,7,opt,name=secure,proto3,oneof" json:"secure,omitempty"`
 	VerifyHostName *bool                  `protobuf:"varint,8,opt,name=verify_host_name,json=verifyHostName,proto3,oneof" json:"verify_host_name,omitempty"`
+	Force          *bool                  `protobuf:"varint,9,opt,name=force,proto3,oneof" json:"force,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -2534,6 +2543,13 @@ func (x *CreateListenerReq) GetSecure() bool {
 func (x *CreateListenerReq) GetVerifyHostName() bool {
 	if x != nil && x.VerifyHostName != nil {
 		return *x.VerifyHostName
+	}
+	return false
+}
+
+func (x *CreateListenerReq) GetForce() bool {
+	if x != nil && x.Force != nil {
+		return *x.Force
 	}
 	return false
 }
@@ -6923,7 +6939,7 @@ const file_gateway_proto_rawDesc = "" +
 	"\x19namespace_delete_host_req\x12#\n" +
 	"\rsubsystem_nqn\x18\x01 \x01(\tR\fsubsystemNqn\x12\x12\n" +
 	"\x04nsid\x18\x02 \x01(\rR\x04nsid\x12\x19\n" +
-	"\bhost_nqn\x18\x03 \x01(\tR\ahostNqn\"\xd4\x03\n" +
+	"\bhost_nqn\x18\x03 \x01(\tR\ahostNqn\"\xf6\x03\n" +
 	"\x14create_subsystem_req\x12#\n" +
 	"\rsubsystem_nqn\x18\x01 \x01(\tR\fsubsystemNqn\x12#\n" +
 	"\rserial_number\x18\x02 \x01(\tR\fserialNumber\x12*\n" +
@@ -6934,12 +6950,15 @@ const file_gateway_proto_rawDesc = "" +
 	"dhchap_key\x18\x06 \x01(\tH\x02R\tdhchapKey\x88\x01\x01\x12(\n" +
 	"\rkey_encrypted\x18\a \x01(\bH\x03R\fkeyEncrypted\x88\x01\x01\x12!\n" +
 	"\fnetwork_mask\x18\b \x03(\tR\vnetworkMask\x12.\n" +
-	"\x10secure_listeners\x18\t \x01(\bH\x04R\x0fsecureListeners\x88\x01\x01B\x11\n" +
+	"\x10secure_listeners\x18\t \x01(\bH\x04R\x0fsecureListeners\x88\x01\x01\x12\x17\n" +
+	"\x04port\x18\n" +
+	" \x01(\rH\x05R\x04port\x88\x01\x01B\x11\n" +
 	"\x0f_max_namespacesB\x12\n" +
 	"\x10_no_group_appendB\r\n" +
 	"\v_dhchap_keyB\x10\n" +
 	"\x0e_key_encryptedB\x13\n" +
-	"\x11_secure_listeners\"\x8f\x01\n" +
+	"\x11_secure_listenersB\a\n" +
+	"\x05_port\"\x8f\x01\n" +
 	"\x14delete_subsystem_req\x12#\n" +
 	"\rsubsystem_nqn\x18\x01 \x01(\tR\fsubsystemNqn\x12\x19\n" +
 	"\x05force\x18\x02 \x01(\bH\x00R\x05force\x88\x01\x01\x12\x1f\n" +
@@ -7025,7 +7044,7 @@ const file_gateway_proto_rawDesc = "" +
 	"\x14list_connections_req\x12\x1c\n" +
 	"\tsubsystem\x18\x01 \x01(\tR\tsubsystem\x12&\n" +
 	"\fclear_alerts\x18\x02 \x01(\bH\x00R\vclearAlerts\x88\x01\x01B\x0f\n" +
-	"\r_clear_alerts\"\xab\x02\n" +
+	"\r_clear_alerts\"\xd0\x02\n" +
 	"\x13create_listener_req\x12\x10\n" +
 	"\x03nqn\x18\x01 \x01(\tR\x03nqn\x12\x1b\n" +
 	"\thost_name\x18\x02 \x01(\tR\bhostName\x12\x16\n" +
@@ -7033,12 +7052,14 @@ const file_gateway_proto_rawDesc = "" +
 	"\x06adrfam\x18\x05 \x01(\x0e2\x0e.AddressFamilyH\x00R\x06adrfam\x88\x01\x01\x12\x1d\n" +
 	"\atrsvcid\x18\x06 \x01(\rH\x01R\atrsvcid\x88\x01\x01\x12\x1b\n" +
 	"\x06secure\x18\a \x01(\bH\x02R\x06secure\x88\x01\x01\x12-\n" +
-	"\x10verify_host_name\x18\b \x01(\bH\x03R\x0everifyHostName\x88\x01\x01B\t\n" +
+	"\x10verify_host_name\x18\b \x01(\bH\x03R\x0everifyHostName\x88\x01\x01\x12\x19\n" +
+	"\x05force\x18\t \x01(\bH\x04R\x05force\x88\x01\x01B\t\n" +
 	"\a_adrfamB\n" +
 	"\n" +
 	"\b_trsvcidB\t\n" +
 	"\a_secureB\x13\n" +
-	"\x11_verify_host_name\"\xe4\x01\n" +
+	"\x11_verify_host_nameB\b\n" +
+	"\x06_force\"\xe4\x01\n" +
 	"\x13delete_listener_req\x12\x10\n" +
 	"\x03nqn\x18\x01 \x01(\tR\x03nqn\x12\x1b\n" +
 	"\thost_name\x18\x02 \x01(\tR\bhostName\x12\x16\n" +
