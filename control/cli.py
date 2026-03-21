@@ -1498,7 +1498,7 @@ class GatewayClient:
                  help="Subsystem NQN",
                  required=True),
         argument("--force",
-                 help="Delete subsytem's namespaces if any, then delete subsystem. If not set "
+                 help="Delete subsystem's namespaces if any, then delete subsystem. If not set "
                       "a subsystem deletion would fail in case it contains namespaces",
                  action='store_true', required=False),
         argument("--i-am-sure",

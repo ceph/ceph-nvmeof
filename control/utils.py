@@ -819,6 +819,16 @@ class NICS:
                     return True
         return False
 
+    @staticmethod
+    def is_valid_subnet(subnet: str) -> bool:
+        if not subnet:
+            return False
+        try:
+            ipaddress.ip_network(subnet, strict=False)
+            return True
+        except Exception:
+            return False
+
     def get_ips_in_subnet(self, subnet):
         if not subnet:
             return []
