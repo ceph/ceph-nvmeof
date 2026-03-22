@@ -38,8 +38,8 @@ class NVMeoFKMIPClient:
             Initialize KMIP connection
 
             Args:
-                hostname: KMIP server hostname
-                port: KMIP server port
+                hostname: KMIP server endpoint hostname
+                port: KMIP server endpoint port
                 cert: Client certificate path
                 key: Client key path
                 ca: CA certificate path
@@ -56,11 +56,11 @@ class NVMeoFKMIPClient:
             self.connected = False
 
         def connect(self) -> None:
-            """Establish connection to KMIP server"""
+            """Establish connection to KMIP server endpoint"""
             if self.connected:
                 return
             try:
-                self.logger.debug(f"Connecting to KMIP server {self.hostname}:{self.port}")
+                self.logger.debug(f"Connecting to KMIP server endpoint {self.hostname}:{self.port}")
 
                 # Create KMIP client
                 self.client = client.ProxyKmipClient(
@@ -75,14 +75,15 @@ class NVMeoFKMIPClient:
                 self.client.open()
 
                 self.connected = True
-                self.logger.debug(f"Connected to KMIP server {self.hostname}:{self.port}")
+                self.logger.debug(f"Connected to KMIP server endpoint {self.hostname}:{self.port}")
             except exceptions.ClientConnectionFailure:
-                self.logger.warning(f"Connection already exists to {self.hostname}:{self.port}")
+                self.logger.warning(f"Connection already exists to endpoint "
+                                    f"{self.hostname}:{self.port}")
                 return
 
             except Exception:
                 self.logger.exception(
-                    f"Unexpected error connecting to {self.hostname}:{self.port}")
+                    f"Unexpected error connecting to endpoint {self.hostname}:{self.port}")
                 self.connected = False
                 self.client = None
                 raise
@@ -90,13 +91,15 @@ class NVMeoFKMIPClient:
         def disconnect(self) -> None:
             """Close connection"""
             if not self.connected or self.client is None:
-                self.logger.debug(f"Already disconnected from {self.hostname}:{self.port}")
+                self.logger.debug(f"Already disconnected from endpoint {self.hostname}:{self.port}")
                 return
             try:
                 self.client.close()
-                self.logger.debug(f"Disconnected from KMIP server {self.hostname}:{self.port}")
+                self.logger.debug(f"Disconnected from KMIP server endpoint "
+                                  f"{self.hostname}:{self.port}")
             except Exception:
-                self.logger.exception(f"Error disconnecting from {self.hostname}:{self.port}")
+                self.logger.exception(f"Error disconnecting from endpoint "
+                                      f"{self.hostname}:{self.port}")
                 raise
             finally:
                 self.connected = False
@@ -104,7 +107,7 @@ class NVMeoFKMIPClient:
 
         def get_key(self, key_uuid: str) -> bytes:
             """
-            Retrieve encryption key from KMIP server
+            Retrieve encryption key from KMIP server endpoint
 
             Args:
                 key_uuid: Unique identifier of the key
@@ -117,9 +120,10 @@ class NVMeoFKMIPClient:
                 Exception: If retrieval fails
             """
             if not self.connected or self.client is None:
-                raise RuntimeError("Not connected to KMIP server")
+                raise RuntimeError("Not connected to KMIP server endpoint")
             try:
-                self.logger.debug(f"Retrieving key {key_uuid} from KMIP server {self.hostname}")
+                self.logger.debug(f"Retrieving key {key_uuid} from KMIP server endpoint "
+                                  f"{self.hostname}:{self.port}")
                 result = self.client.get(key_uuid)
                 key_bytes = result.value
                 self.logger.info(f"Retrieved {len(key_bytes)}-byte key {key_uuid} "
@@ -149,26 +153,26 @@ class NVMeoFKMIPClient:
         # Active connections: {hostname: KMIPConnection}
         self.active_connections: Dict[Tuple[str, int], NVMeoFKMIPClient.KMIPConnection] = {}
 
-    def get_key_for_rbd_image(self, key_uuid: str, servers: List[Tuple[str, int]]) -> bytes:
+    def get_key_for_rbd_image(self, key_uuid: str, endpoints: List[Tuple[str, int]]) -> bytes:
         """
         Get encryption key for RBD image.
-        Tries each server in order until key is found.
+        Tries each server endpoint in order until key is found.
 
         Args:
             key_uuid: Key UUID string
-            servers: List of KMIP server IP and port tuples
+            endpoints: List of KMIP server endpoints IP and port tuples
 
         Returns:
             bytes: Encryption key material
 
         Raises:
-            Exception: If failed to connect to any server or retrieve key
-            OR If key not found on any server.
+            Exception: If failed to connect to any server endpoint or retrieve key
+            OR If key not found on any server endpoint.
         """
         errors = []
-        for hostname, port in servers:
+        for hostname, port in endpoints:
             try:
-                # Get or create connection to this specific server
+                # Get or create connection to this specific server endpoint
                 conn = self._get_or_create_connection(hostname, port)
                 # Try to get the key from this server
                 key_bytes = conn.get_key(key_uuid)
@@ -181,8 +185,8 @@ class NVMeoFKMIPClient:
                 errors.append(f"{hostname}:{port}: {e}")
                 continue
 
-        # All servers failed
-        error_msg = f"Key {key_uuid} not found on any KMIP server. Errors: {errors}"
+        # All endpoints failed
+        error_msg = f"Key {key_uuid} wasn't found on any KMIP server endpoint. Errors: {errors}"
         self.logger.error(error_msg)
         raise Exception(error_msg)
 
@@ -191,23 +195,23 @@ class NVMeoFKMIPClient:
             hostname: str,
             port: int) -> 'NVMeoFKMIPClient.KMIPConnection':
         """
-        Get or create connection to a specific server
+        Get or create connection to a specific server endpoint
 
         Args:
-            hostname: Server hostname
-            port: Server port
+            hostname: Server endpoint hostname
+            port: Server endpoint port
 
         Returns:
-            KMIPConnection: Working connection to this server
+            KMIPConnection: Working connection to this server endpoint
 
         Raises:
             Exception: If connection fails
         """
-        server_key = (hostname, port)
+        server_endpoint_key = (hostname, port)
 
         # Check if we already have a connection to this server
-        if server_key in self.active_connections:
-            conn = self.active_connections[server_key]
+        if server_endpoint_key in self.active_connections:
+            conn = self.active_connections[server_endpoint_key]
             if conn.connected:
                 self.logger.debug(f"Reusing connection to {hostname}:{port}")
                 return conn
@@ -228,7 +232,7 @@ class NVMeoFKMIPClient:
         conn.connect()
 
         # Store in active connections
-        self.active_connections[server_key] = conn
+        self.active_connections[server_endpoint_key] = conn
 
         self.logger.info(f"Successfully connected to {hostname}:{port}")
         return conn
@@ -237,11 +241,11 @@ class NVMeoFKMIPClient:
         """Close all connections and clear cache"""
         self.logger.info("Disconnecting all KMIP connections")
 
-        for server_key, conn in list(self.active_connections.items()):
+        for server_endpoint_key, conn in list(self.active_connections.items()):
             try:
                 conn.disconnect()
             except Exception:
-                hostname, port = server_key
+                hostname, port = server_endpoint_key
                 self.logger.exception(f"Error disconnecting from {hostname}:{port}")
 
         self.active_connections.clear()

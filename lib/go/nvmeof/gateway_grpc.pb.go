@@ -34,9 +34,9 @@ const (
 	Gateway_ChangeSubsystemKey_FullMethodName                = "/Gateway/change_subsystem_key"
 	Gateway_AddSubsystemNetwork_FullMethodName               = "/Gateway/add_subsystem_network"
 	Gateway_DelSubsystemNetwork_FullMethodName               = "/Gateway/del_subsystem_network"
-	Gateway_AddKmipServer_FullMethodName                     = "/Gateway/add_kmip_server"
-	Gateway_DelKmipServer_FullMethodName                     = "/Gateway/del_kmip_server"
-	Gateway_ListKmipServers_FullMethodName                   = "/Gateway/list_kmip_servers"
+	Gateway_AddKmipServerEndpoints_FullMethodName            = "/Gateway/add_kmip_server_endpoints"
+	Gateway_DelKmipServerEndpoints_FullMethodName            = "/Gateway/del_kmip_server_endpoints"
+	Gateway_ListKmipServerEndpoints_FullMethodName           = "/Gateway/list_kmip_server_endpoints"
 	Gateway_ListNamespaces_FullMethodName                    = "/Gateway/list_namespaces"
 	Gateway_NamespaceResize_FullMethodName                   = "/Gateway/namespace_resize"
 	Gateway_NamespaceGetIoStats_FullMethodName               = "/Gateway/namespace_get_io_stats"
@@ -90,12 +90,12 @@ type GatewayClient interface {
 	AddSubsystemNetwork(ctx context.Context, in *AddSubsystemNetworkReq, opts ...grpc.CallOption) (*ReqStatus, error)
 	// Delete a subsystem network
 	DelSubsystemNetwork(ctx context.Context, in *DelSubsystemNetworkReq, opts ...grpc.CallOption) (*ReqStatus, error)
-	// Add a KMIP server
-	AddKmipServer(ctx context.Context, in *AddKmipServerReq, opts ...grpc.CallOption) (*ReqStatus, error)
-	// Delete a KMIP server
-	DelKmipServer(ctx context.Context, in *DelKmipServerReq, opts ...grpc.CallOption) (*ReqStatus, error)
-	// List KMIP servers
-	ListKmipServers(ctx context.Context, in *ListKmipServersReq, opts ...grpc.CallOption) (*KmipServersInfo, error)
+	// Add KMIP server endpoints
+	AddKmipServerEndpoints(ctx context.Context, in *AddKmipServerEndpointsReq, opts ...grpc.CallOption) (*ReqStatus, error)
+	// Delete KMIP server endpoints
+	DelKmipServerEndpoints(ctx context.Context, in *DelKmipServerEndpointsReq, opts ...grpc.CallOption) (*ReqStatus, error)
+	// List KMIP server endpoints
+	ListKmipServerEndpoints(ctx context.Context, in *ListKmipServerEndpointsReq, opts ...grpc.CallOption) (*KmipServerEndpointsInfo, error)
 	// List namespaces
 	ListNamespaces(ctx context.Context, in *ListNamespacesReq, opts ...grpc.CallOption) (*NamespacesInfo, error)
 	// Resizes a namespace
@@ -236,30 +236,30 @@ func (c *gatewayClient) DelSubsystemNetwork(ctx context.Context, in *DelSubsyste
 	return out, nil
 }
 
-func (c *gatewayClient) AddKmipServer(ctx context.Context, in *AddKmipServerReq, opts ...grpc.CallOption) (*ReqStatus, error) {
+func (c *gatewayClient) AddKmipServerEndpoints(ctx context.Context, in *AddKmipServerEndpointsReq, opts ...grpc.CallOption) (*ReqStatus, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ReqStatus)
-	err := c.cc.Invoke(ctx, Gateway_AddKmipServer_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, Gateway_AddKmipServerEndpoints_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *gatewayClient) DelKmipServer(ctx context.Context, in *DelKmipServerReq, opts ...grpc.CallOption) (*ReqStatus, error) {
+func (c *gatewayClient) DelKmipServerEndpoints(ctx context.Context, in *DelKmipServerEndpointsReq, opts ...grpc.CallOption) (*ReqStatus, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ReqStatus)
-	err := c.cc.Invoke(ctx, Gateway_DelKmipServer_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, Gateway_DelKmipServerEndpoints_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *gatewayClient) ListKmipServers(ctx context.Context, in *ListKmipServersReq, opts ...grpc.CallOption) (*KmipServersInfo, error) {
+func (c *gatewayClient) ListKmipServerEndpoints(ctx context.Context, in *ListKmipServerEndpointsReq, opts ...grpc.CallOption) (*KmipServerEndpointsInfo, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(KmipServersInfo)
-	err := c.cc.Invoke(ctx, Gateway_ListKmipServers_FullMethodName, in, out, cOpts...)
+	out := new(KmipServerEndpointsInfo)
+	err := c.cc.Invoke(ctx, Gateway_ListKmipServerEndpoints_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -632,12 +632,12 @@ type GatewayServer interface {
 	AddSubsystemNetwork(context.Context, *AddSubsystemNetworkReq) (*ReqStatus, error)
 	// Delete a subsystem network
 	DelSubsystemNetwork(context.Context, *DelSubsystemNetworkReq) (*ReqStatus, error)
-	// Add a KMIP server
-	AddKmipServer(context.Context, *AddKmipServerReq) (*ReqStatus, error)
-	// Delete a KMIP server
-	DelKmipServer(context.Context, *DelKmipServerReq) (*ReqStatus, error)
-	// List KMIP servers
-	ListKmipServers(context.Context, *ListKmipServersReq) (*KmipServersInfo, error)
+	// Add KMIP server endpoints
+	AddKmipServerEndpoints(context.Context, *AddKmipServerEndpointsReq) (*ReqStatus, error)
+	// Delete KMIP server endpoints
+	DelKmipServerEndpoints(context.Context, *DelKmipServerEndpointsReq) (*ReqStatus, error)
+	// List KMIP server endpoints
+	ListKmipServerEndpoints(context.Context, *ListKmipServerEndpointsReq) (*KmipServerEndpointsInfo, error)
 	// List namespaces
 	ListNamespaces(context.Context, *ListNamespacesReq) (*NamespacesInfo, error)
 	// Resizes a namespace
@@ -736,14 +736,14 @@ func (UnimplementedGatewayServer) AddSubsystemNetwork(context.Context, *AddSubsy
 func (UnimplementedGatewayServer) DelSubsystemNetwork(context.Context, *DelSubsystemNetworkReq) (*ReqStatus, error) {
 	return nil, status.Error(codes.Unimplemented, "method DelSubsystemNetwork not implemented")
 }
-func (UnimplementedGatewayServer) AddKmipServer(context.Context, *AddKmipServerReq) (*ReqStatus, error) {
-	return nil, status.Error(codes.Unimplemented, "method AddKmipServer not implemented")
+func (UnimplementedGatewayServer) AddKmipServerEndpoints(context.Context, *AddKmipServerEndpointsReq) (*ReqStatus, error) {
+	return nil, status.Error(codes.Unimplemented, "method AddKmipServerEndpoints not implemented")
 }
-func (UnimplementedGatewayServer) DelKmipServer(context.Context, *DelKmipServerReq) (*ReqStatus, error) {
-	return nil, status.Error(codes.Unimplemented, "method DelKmipServer not implemented")
+func (UnimplementedGatewayServer) DelKmipServerEndpoints(context.Context, *DelKmipServerEndpointsReq) (*ReqStatus, error) {
+	return nil, status.Error(codes.Unimplemented, "method DelKmipServerEndpoints not implemented")
 }
-func (UnimplementedGatewayServer) ListKmipServers(context.Context, *ListKmipServersReq) (*KmipServersInfo, error) {
-	return nil, status.Error(codes.Unimplemented, "method ListKmipServers not implemented")
+func (UnimplementedGatewayServer) ListKmipServerEndpoints(context.Context, *ListKmipServerEndpointsReq) (*KmipServerEndpointsInfo, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListKmipServerEndpoints not implemented")
 }
 func (UnimplementedGatewayServer) ListNamespaces(context.Context, *ListNamespacesReq) (*NamespacesInfo, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListNamespaces not implemented")
@@ -979,56 +979,56 @@ func _Gateway_DelSubsystemNetwork_Handler(srv interface{}, ctx context.Context, 
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Gateway_AddKmipServer_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(AddKmipServerReq)
+func _Gateway_AddKmipServerEndpoints_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AddKmipServerEndpointsReq)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(GatewayServer).AddKmipServer(ctx, in)
+		return srv.(GatewayServer).AddKmipServerEndpoints(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: Gateway_AddKmipServer_FullMethodName,
+		FullMethod: Gateway_AddKmipServerEndpoints_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(GatewayServer).AddKmipServer(ctx, req.(*AddKmipServerReq))
+		return srv.(GatewayServer).AddKmipServerEndpoints(ctx, req.(*AddKmipServerEndpointsReq))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Gateway_DelKmipServer_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(DelKmipServerReq)
+func _Gateway_DelKmipServerEndpoints_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DelKmipServerEndpointsReq)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(GatewayServer).DelKmipServer(ctx, in)
+		return srv.(GatewayServer).DelKmipServerEndpoints(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: Gateway_DelKmipServer_FullMethodName,
+		FullMethod: Gateway_DelKmipServerEndpoints_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(GatewayServer).DelKmipServer(ctx, req.(*DelKmipServerReq))
+		return srv.(GatewayServer).DelKmipServerEndpoints(ctx, req.(*DelKmipServerEndpointsReq))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Gateway_ListKmipServers_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ListKmipServersReq)
+func _Gateway_ListKmipServerEndpoints_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListKmipServerEndpointsReq)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(GatewayServer).ListKmipServers(ctx, in)
+		return srv.(GatewayServer).ListKmipServerEndpoints(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: Gateway_ListKmipServers_FullMethodName,
+		FullMethod: Gateway_ListKmipServerEndpoints_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(GatewayServer).ListKmipServers(ctx, req.(*ListKmipServersReq))
+		return srv.(GatewayServer).ListKmipServerEndpoints(ctx, req.(*ListKmipServerEndpointsReq))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1695,16 +1695,16 @@ var Gateway_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _Gateway_DelSubsystemNetwork_Handler,
 		},
 		{
-			MethodName: "add_kmip_server",
-			Handler:    _Gateway_AddKmipServer_Handler,
+			MethodName: "add_kmip_server_endpoints",
+			Handler:    _Gateway_AddKmipServerEndpoints_Handler,
 		},
 		{
-			MethodName: "del_kmip_server",
-			Handler:    _Gateway_DelKmipServer_Handler,
+			MethodName: "del_kmip_server_endpoints",
+			Handler:    _Gateway_DelKmipServerEndpoints_Handler,
 		},
 		{
-			MethodName: "list_kmip_servers",
-			Handler:    _Gateway_ListKmipServers_Handler,
+			MethodName: "list_kmip_server_endpoints",
+			Handler:    _Gateway_ListKmipServerEndpoints_Handler,
 		},
 		{
 			MethodName: "list_namespaces",

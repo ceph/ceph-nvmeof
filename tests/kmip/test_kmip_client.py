@@ -41,13 +41,13 @@ def print_separator():
 
 
 class KMIPServerManager:
-    """Manages multiple KMIP mock servers for testing"""
+    """Manages multiple KMIP mock server endpoints for testing"""
 
     def __init__(self, base_dir: str):
         self.base_dir = base_dir
-        self.servers = []  # List of (hostname, port, process)
+        self.endpoints = []  # List of (hostname, port, process)
 
-    def start_server(self, hostname: str, port: int) -> subprocess.Popen:
+    def start_server(self, hostname: str, port: int) -> None:
         """Start a KMIP mock server subprocess"""
 
         # Get path to dummy server script
@@ -69,7 +69,7 @@ class KMIPServerManager:
             text=True,
             bufsize=1
         )
-        self.servers.append((hostname, port, process))
+        self.endpoints.append((hostname, port, process))
 
         # Wait for server to be ready and print output
         time.sleep(2)
@@ -85,10 +85,10 @@ class KMIPServerManager:
         print(f"Started KMIP server {hostname}:{port} (PID: {process.pid})")
 
     def stop_all(self):
-        """Stop all running servers"""
-        for hostname, port, process in self.servers:
+        """Stop all running endpoints"""
+        for hostname, port, process in self.endpoints:
             if process.poll() is None:  # Still running
-                print(f"Stopping server {hostname}:{port} (PID: {process.pid})")
+                print(f"Stopping server endpoint {hostname}:{port} (PID: {process.pid})")
                 try:
                     process.terminate()
                     process.wait(timeout=3)
@@ -97,33 +97,33 @@ class KMIPServerManager:
                     process.wait()
 
         # remove the database files (for next test run)
-        for hostname, port, _ in self.servers:
+        for hostname, port, _ in self.endpoints:
             db_path = os.path.join(self.base_dir, f'kmip_server_{port}.db')
             if os.path.exists(db_path):
                 os.remove(db_path)
 
-        self.servers.clear()
+        self.endpoints.clear()
 
 
-def setup_test_keys(servers: List[Tuple[str, int]], base_dir: str):
+def setup_test_keys(endpoints: List[Tuple[str, int]], base_dir: str):
     """
-    Populate KMIP servers with test keys in non-overlapping ranges
+    Populate KMIP server endpoints with test keys in non-overlapping ranges
 
-    Server 1: key-1, key-2, key-3 -> UUIDs 1,2,3
-    Server 2: key-1, key-2, key-3, key-4, key-5  -> UUIDs 1,2,3,4,5
-    Server 3: key-1, key-2, key-3, key-4, key-5, key-6, key-7 -> UUIDs 1,2,3,4,5,6,7
+    Server endpoint 1: key-1, key-2, key-3 -> UUIDs 1,2,3
+    Server endpoint 2: key-1, key-2, key-3, key-4, key-5  -> UUIDs 1,2,3,4,5
+    Server endpoint 3: key-1, key-2, key-3, key-4, key-5, key-6, key-7 -> UUIDs 1,2,3,4,5,6,7
 
     This way:
-    - key-1, key-2, key-3 exist on ALL servers (UUIDs 1,2,3)
-    - key-4, key-5 exist ONLY on servers 2&3 (UUIDs 4,5)
-    - key-6, key-7 exist ONLY on server 3 (UUIDs 6,7)
+    - key-1, key-2, key-3 exist on ALL server endpoints (UUIDs 1,2,3)
+    - key-4, key-5 exist ONLY on server endpoints 2&3 (UUIDs 4,5)
+    - key-6, key-7 exist ONLY on server endpoint 3 (UUIDs 6,7)
     """
 
     keys_per_server = [
-        (['key-1', 'key-2', 'key-3'], servers[0]),                             # Server 1: 3 keys
-        (['key-1', 'key-2', 'key-3', 'key-4', 'key-5'], servers[1]),           # Server 2: 5 keys
+        (['key-1', 'key-2', 'key-3'], endpoints[0]),                            # Endpoint 1: 3 keys
+        (['key-1', 'key-2', 'key-3', 'key-4', 'key-5'], endpoints[1]),          # Endpoint 2: 5 keys
         (['key-1', 'key-2', 'key-3', 'key-4', 'key-5',
-          'key-6', 'key-7'], servers[2])                                       # Server 3: 7 keys
+          'key-6', 'key-7'], endpoints[2])                                      # Endpoint 3: 7 keys
     ]
 
     # Store mapping: {key_name: {(hostname, port): uuid}}
@@ -131,7 +131,8 @@ def setup_test_keys(servers: List[Tuple[str, int]], base_dir: str):
 
     for key_names, (hostname, port) in keys_per_server:
         server_num = keys_per_server.index((key_names, (hostname, port))) + 1
-        print(f"\nPopulating Server {server_num} - ({hostname}:{port}) with keys: {key_names}")
+        print(f"\nPopulating Server endpoint {server_num} - ({hostname}:{port}) with "
+              f"keys: {key_names}")
 
         c = client.ProxyKmipClient(
             hostname=hostname,
@@ -214,7 +215,7 @@ def run_tests(base_dir: str, key_map: dict):
         ca_path=f'{base_dir}/certs/ca_cert.pem'
     )
 
-    servers = [
+    endpoints = [
         ('127.0.0.1', 5696),
         ('127.0.0.1', 5697),
         ('127.0.0.1', 5698)
@@ -236,36 +237,36 @@ def run_tests(base_dir: str, key_map: dict):
     print("TEST 1: Key exists on first server (GREEN CASE)")
     print_separator()
     try:
-        key1_uuid = key_map['key-1'][servers[0]]
-        key = kmip_client.get_key_for_rbd_image(key1_uuid, servers)
+        key1_uuid = key_map['key-1'][endpoints[0]]
+        key = kmip_client.get_key_for_rbd_image(key1_uuid, endpoints)
         print(f"SUCCESS: Retrieved key-1 ({len(key)} bytes)")
         print(f"  First 8 bytes: {key[:8].hex()}")
         passed_tests += 1
     except Exception as e:
         print(f"FAILED: {e}")
 
-    # Test Case 2: Key-4 NOT on server 1, exists on servers 2&3
+    # Test Case 2: Key-4 NOT on server 1, exists on endpoints 2&3
     print_separator()
-    print("TEST 2: Key-4 missing on server 1, exists on servers 2&3")
+    print("TEST 2: Key-4 missing on server 1, exists on endpoints 2&3")
     print_separator()
     try:
         # key-4 only exists on server 2
-        key4_uuid = key_map['key-4'][servers[1]]
-        key = kmip_client.get_key_for_rbd_image(key4_uuid, servers)
+        key4_uuid = key_map['key-4'][endpoints[1]]
+        key = kmip_client.get_key_for_rbd_image(key4_uuid, endpoints)
         print(f"SUCCESS: Retrieved key-4 from server 2 ({len(key)} bytes)")
         print(f"  First 8 bytes: {key[:8].hex()}")
         passed_tests += 1
     except Exception as e:
         print(f"FAILED: {e}")
 
-    # Test Case 3: Key exists on multiple servers (should get from first available)
+    # Test Case 3: Key exists on multiple endpoints (should get from first available)
     print_separator()
-    print("TEST 3: Key exists on multiple servers")
+    print("TEST 3: Key exists on multiple endpoints")
     print_separator()
     try:
         # key-2 exists on both server 1 and server 2
-        key2_uuid = key_map['key-2'][servers[0]]
-        key = kmip_client.get_key_for_rbd_image(key2_uuid, servers)
+        key2_uuid = key_map['key-2'][endpoints[0]]
+        key = kmip_client.get_key_for_rbd_image(key2_uuid, endpoints)
         print(f"SUCCESS: Retrieved key-2 (should be from server 1) ({len(key)} bytes)")
         passed_tests += 1
     except Exception as e:
@@ -276,8 +277,8 @@ def run_tests(base_dir: str, key_map: dict):
     print("TEST 4: Connection reuse (fetch key-1 again)")
     print_separator()
     try:
-        key1_uuid = key_map['key-1'][servers[0]]
-        key = kmip_client.get_key_for_rbd_image(key1_uuid, servers)
+        key1_uuid = key_map['key-1'][endpoints[0]]
+        key = kmip_client.get_key_for_rbd_image(key1_uuid, endpoints)
         print(f"SUCCESS: Retrieved key-1 using cached connection ({len(key)} bytes)")
         print(f"  Active connections: {len(kmip_client.active_connections)}")
         passed_tests += 1
@@ -290,7 +291,7 @@ def run_tests(base_dir: str, key_map: dict):
     print_separator()
     try:
         junk_uuid = '99999'  # FYI - the dummy kmip server use simple integer strings as UUIDs..
-        key = kmip_client.get_key_for_rbd_image(junk_uuid, servers)
+        key = kmip_client.get_key_for_rbd_image(junk_uuid, endpoints)
         print(f"UNEXPECTED: Should have failed but got key ({len(key)} bytes)")
     except Exception as e:
         print("SUCCESS: Correctly failed with error")
@@ -301,30 +302,30 @@ def run_tests(base_dir: str, key_map: dict):
     print_separator()
     print("TEST 6: Cannot connect to server (wrong address)")
     print_separator()
-    bad_servers = [
+    bad_endpoints = [
         ('192.0.2.1', 5696),  # Non-routable address
-        ('127.0.0.1', 5697)   # Good server
+        ('127.0.0.1', 5697)   # Good address
     ]
     try:
         # key-4 exists on server 2
-        key4_uuid = key_map['key-4'][servers[1]]
-        key = kmip_client.get_key_for_rbd_image(key4_uuid, bad_servers)
-        print(f"SUCCESS: Failover worked, got key from server 2 ({len(key)} bytes)")
+        key4_uuid = key_map['key-4'][endpoints[1]]
+        key = kmip_client.get_key_for_rbd_image(key4_uuid, bad_endpoints)
+        print(f"SUCCESS: Failover worked, got key from endpoint 2 ({len(key)} bytes)")
         passed_tests += 1
     except Exception as e:
         print(f"FAILED: {e}")
 
-    # Test Case 7: All servers unreachable
+    # Test Case 7: All endpoints unreachable
     print_separator()
-    print("TEST 7: All servers unreachable")
+    print("TEST 7: All endpoints unreachable")
     print_separator()
-    bad_servers_all = [
+    bad_endpoints_all = [
         ('192.0.2.1', 5696),
         ('192.0.2.2', 5697),
     ]
     try:
-        key1_uuid = key_map['key-1'][servers[0]]
-        key = kmip_client.get_key_for_rbd_image(key1_uuid, bad_servers_all)
+        key1_uuid = key_map['key-1'][endpoints[0]]
+        key = kmip_client.get_key_for_rbd_image(key1_uuid, bad_endpoints_all)
         print("UNEXPECTED: Should have failed but got key")
     except Exception as e:
         print("SUCCESS: Correctly failed")
@@ -336,8 +337,8 @@ def run_tests(base_dir: str, key_map: dict):
     print("TEST 8: Fetch key-6 (only on server 3)")
     print_separator()
     try:
-        key6_uuid = key_map['key-6'][servers[2]]
-        key = kmip_client.get_key_for_rbd_image(key6_uuid, servers)
+        key6_uuid = key_map['key-6'][endpoints[2]]
+        key = kmip_client.get_key_for_rbd_image(key6_uuid, endpoints)
         print(f"SUCCESS: Retrieved key-6 from server 3 ({len(key)} bytes)")
         print(f"  Active connections: {len(kmip_client.active_connections)}")
         for server_key in kmip_client.active_connections:
@@ -346,18 +347,18 @@ def run_tests(base_dir: str, key_map: dict):
     except Exception as e:
         print(f"FAILED: {e}")
 
-    # Test Case 9: Fetch from subset of servers
+    # Test Case 9: Fetch from subset of endpoints
     print_separator()
-    print("TEST 9: Fetch key using only servers 2 and 3")
+    print("TEST 9: Fetch key using only endpoints 2 and 3")
     print_separator()
-    subset_servers = [
+    subset_endpoints = [
         ('127.0.0.1', 5697),
         ('127.0.0.1', 5698)
     ]
     try:
         # key-5 exists on both server 2 and 3
-        key5_uuid = key_map['key-5'][servers[1]]
-        key = kmip_client.get_key_for_rbd_image(key5_uuid, subset_servers)
+        key5_uuid = key_map['key-5'][endpoints[1]]
+        key = kmip_client.get_key_for_rbd_image(key5_uuid, subset_endpoints)
         print(f"SUCCESS: Retrieved key-5 from subset ({len(key)} bytes)")
         passed_tests += 1
     except Exception as e:
@@ -413,26 +414,26 @@ def main():
 
     print("Certificates found")
 
-    # Start servers
-    print("\nStarting KMIP mock servers...")
+    # Start server endpoints
+    print("\nStarting KMIP mock server endpoints...")
     server_manager = KMIPServerManager(base_dir)
 
     try:
-        # Start 3 servers on different ports
-        servers = [
+        # Start 3 server endpoints on different ports
+        endpoints = [
             ('127.0.0.1', 5696),
             ('127.0.0.1', 5697),
             ('127.0.0.1', 5698)
         ]
 
-        for hostname, port in servers:
+        for hostname, port in endpoints:
             server_manager.start_server(hostname, port)
 
-        print("All servers started")
+        print("All server endpoints started")
 
-        # Populate servers with keys
-        print("\nPopulating servers with test keys...")
-        key_map = setup_test_keys(servers, base_dir)
+        # Populate server endpoints with keys
+        print("\nPopulating server endpoints with test keys...")
+        key_map = setup_test_keys(endpoints, base_dir)
         print("Keys created")
 
         # Run tests
@@ -449,9 +450,9 @@ def main():
         import traceback
         traceback.print_exc()
     finally:
-        print("\nStopping all servers...")
+        print("\nStopping all server endpoints...")
         server_manager.stop_all()
-        print("All servers stopped")
+        print("All server endpoints stopped")
 
 
 if __name__ == '__main__':
