@@ -2665,7 +2665,7 @@ class TestSubsystemWithIdenticalPrefix:
 
 
 class TestListenerBadIPAddresses:
-    def test_listener_bad_ip_adresses(self, caplog, gateway):
+    def test_listener_bad_ip_addresses(self, caplog, gateway):
         gw, stub = gateway
         caplog.clear()
         cli(["subsystem", "add", "--subsystem", subsystem11, "--no-group-append"])
