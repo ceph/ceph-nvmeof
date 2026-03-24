@@ -20,8 +20,9 @@ import tempfile
 import time
 from ipaddress import ip_address
 from pathlib import Path
-from typing import Iterator, Callable
+from typing import Iterator, Callable, Optional
 from collections import defaultdict
+from copy import deepcopy
 import logging
 import shutil
 from base64 import b64decode
@@ -45,6 +46,7 @@ from .state import GatewayState, GatewayStateHandler, OmapLock
 from .cephutils import CephUtils
 from .rebalance import Rebalance
 from .cluster import get_cluster_allocator
+from .kmip_client import NVMeoFKMIPClient
 
 # Assuming max of 32 gateways and protocol min 1 max 65519
 CNTLID_RANGE_SIZE = 2040
@@ -832,6 +834,122 @@ class ImageIdentification:
         return result
 
 
+class KMIPServerEndpoint:
+    def __init__(self, address, port):
+        self.address = address
+        self.port = port
+
+
+class KMIPServerEndpointList():
+    KMIP_DEFAULT_PORT = 5696
+
+    def __init__(self):
+        self.kmip_server_endpoints_lock = threading.Lock()
+        # the server endpoint list consists of elements of a server name
+        # and a set of endpoints address and port
+        self.kmip_server_endpoints = {}
+
+    def add_server_endpoint(self, nqn: str, name: str, endpoint: KMIPServerEndpoint) -> None:
+        with self.kmip_server_endpoints_lock:
+            if nqn not in self.kmip_server_endpoints:
+                self.kmip_server_endpoints[nqn] = {"name": name, "endpoints": set()}
+            self.kmip_server_endpoints[nqn]["endpoints"].add((endpoint.address, endpoint.port))
+
+    def remove_server_endpoint(self, nqn: str, name: str, endpoint: KMIPServerEndpoint) -> None:
+        with self.kmip_server_endpoints_lock:
+            entry = self.kmip_server_endpoints.get(nqn)
+            if entry is None or name != entry["name"]:
+                return
+            entry["endpoints"].discard((endpoint.address, endpoint.port))
+            if len(entry["endpoints"]) == 0:
+                del self.kmip_server_endpoints[nqn]
+
+    def get_subsystem_server_name(self, nqn: str) -> Optional[str]:
+        if not nqn:
+            return None
+        with self.kmip_server_endpoints_lock:
+            entry = self.kmip_server_endpoints.get(nqn)
+            if entry is None:
+                return None
+            return entry["name"]
+
+    def subsystem_has_server_endpoints(self, nqn: str) -> bool:
+        if not nqn:
+            return False
+        with self.kmip_server_endpoints_lock:
+            entry = self.kmip_server_endpoints.get(nqn)
+            return entry is not None and len(entry["endpoints"]) > 0
+
+    def remove_subsystem_server_endpoints(self, nqn: str) -> None:
+        if not nqn:
+            return
+        with self.kmip_server_endpoints_lock:
+            self.kmip_server_endpoints.pop(nqn, None)
+
+    def get_server_endpoint_list(self, nqn=None, name=None) -> list:
+        endpoint_list = []
+        with self.kmip_server_endpoints_lock:
+            if nqn is not None:
+                nqn_list = [nqn]
+            else:
+                nqn_list = list(self.kmip_server_endpoints.keys())
+
+            for subsys in nqn_list:
+                entry = self.kmip_server_endpoints.get(subsys)
+                if entry is None:
+                    continue
+                if name is not None and name != entry["name"]:
+                    continue
+                for (addr, port) in entry["endpoints"]:
+                    endpoint_list.append((subsys, entry["name"],
+                                          KMIPServerEndpoint(addr, port)))
+        return endpoint_list
+
+    def does_kmip_server_endpoint_exist(self, nqn: str, name: str,
+                                        endpoint: KMIPServerEndpoint) -> bool:
+        if not nqn or not name:
+            return False
+        with self.kmip_server_endpoints_lock:
+            entry = self.kmip_server_endpoints.get(nqn)
+            if entry is None or name != entry["name"]:
+                return False
+            return (endpoint.address, endpoint.port) in entry["endpoints"]
+
+
+class KMIPClientList():
+    def __init__(self, config, cert, key, ca):
+        self.kmip_clients_lock = threading.Lock()
+        self.config = config
+        self.cert = cert
+        self.key = key
+        self.ca = ca
+        # for each subsystem we keep a KMIP client object which will handle the keys needed
+        # by encrypted namespaces in that subsystem
+        self.kmip_clients = dict()
+
+    def add_client(self, cert_dir, nqn) -> Optional[NVMeoFKMIPClient]:
+        if not cert_dir or not self.cert or not self.key or not self.ca:
+            return None
+        with self.kmip_clients_lock:
+            client = self.kmip_clients.get(nqn)
+            if client is not None:
+                return client
+            client = NVMeoFKMIPClient(logger_config=self.config,
+                                      cert_path=os.path.join(cert_dir, self.cert),
+                                      key_path=os.path.join(cert_dir, self.key),
+                                      ca_path=os.path.join(cert_dir, self.ca))
+            self.kmip_clients[nqn] = client
+        return client
+
+    def remove_client(self, nqn):
+        with self.kmip_clients_lock:
+            client = self.kmip_clients.get(nqn)
+            if client is None:
+                return
+            client.disconnect_all()
+            self.kmip_clients.pop(nqn, None)
+
+
 class GatewayService(pb2_grpc.GatewayServicer):
     """Implements gateway service interface.
 
@@ -961,6 +1079,18 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                 f"than the global maximal number of namespaces, will truncate "
                                 f"to {self.max_namespaces}")
             self.max_namespaces_per_subsystem = self.max_namespaces
+
+        self.kmip_cert_dir = self.config.get_with_default("kmip",
+                                                          "cert_dir",
+                                                          "./certs/kmip/{server_name}")
+        if not self.kmip_cert_dir:
+            self.kmip_cert_dir = "."
+        self.kmip_client_cert = self.config.get_with_default("kmip", "client_cert", None)
+        self.kmip_client_key = self.config.get_with_default("kmip", "client_key", None)
+        self.kmip_ca_cert = self.config.get_with_default("kmip", "ca_cert", None)
+        self.kmip_server_endpoints = KMIPServerEndpointList()
+        self.kmip_clients = KMIPClientList(self.config, self.kmip_client_cert,
+                                           self.kmip_client_key, self.kmip_ca_cert)
 
         for i in range(self.max_ana_grps + 1):
             self.ana_grp_ns_load[i] = 0
@@ -1586,7 +1716,6 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 passphrase = None
                 if len(encryption_entries) > 0:
                     enc_format = encryption_entries[0].format
-                    # TODO: fetch the actual pass phrase from the KMIP server using the key ID
                     passphrase = encryption_entries[0].key_id
                 rc = self.ceph_utils.create_image(rbd_pool_name, rbd_data_pool_name,
                                                   rados_namespace_name,
@@ -1654,7 +1783,6 @@ class GatewayService(pb2_grpc.GatewayServicer):
             assert rbd_format is not None and rbd_format >= 0, \
                 f"Invalid encryption format {ent.format}"
             enc_format_list.append(rbd_format)
-            # TODO: fetch the actual pass phrase from the KMIP server using the key ID
             passphrase_list.append(ent.key_id)
         try:
             cluster_name = self.cluster_allocator.get_cluster(anagrp)
@@ -2272,7 +2400,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                           context, err_prefix)
 
     def del_subsystem_network_safe(self, request, context):
-
+        """Delete a network mask on subsystem"""
         assert self.rpc_lock.locked(), \
             "RPC is unlocked when calling del_subsystem_network_safe()"
 
@@ -2354,11 +2482,360 @@ class GatewayService(pb2_grpc.GatewayServicer):
         return pb2.req_status(status=req_status, error_message=err_msg)
 
     def del_subsystem_network(self, request, context=None):
-        """Delete a network_mask on subsystem"""
+        """Delete a network mask on subsystem"""
         err_prefix = f"Failure deleting network {request.network_mask} for " \
                      f"subsystem {request.subsystem_nqn}: "
         return self.execute_grpc_function(self.del_subsystem_network_safe, request,
                                           context, err_prefix)
+
+    def _add_one_kmip_server_endpoint(self, subsys, server, endpoint, context):
+        """Add a KMIP server endpoint to the subsystem"""
+
+        if not endpoint.HasField("port") or endpoint.port is None:
+            endpoint.port = KMIPServerEndpointList.KMIP_DEFAULT_PORT
+            self.logger.info(f"KMIP server {server} endpoint's port wasn't specified, will use "
+                             f"default port {KMIPServerEndpointList.KMIP_DEFAULT_PORT}")
+
+        error_prefix = f"Failure adding an endpoint, with address " \
+                       f"{endpoint.address}:{endpoint.port}, to " \
+                       f"KMIP server \"{server}\" on subsystem {subsys}"
+
+        if endpoint.port <= 0 or endpoint.port > 0xffff:
+            errmsg = f"{error_prefix}: Server endpoint's port must be between 1 and 65535"
+            self.logger.error(errmsg)
+            return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
+
+        if not server.strip():
+            errmsg = f"{error_prefix}: Invalid KMIP server name \"{server}\", " \
+                     f"name can't be empty"
+            self.logger.error(errmsg)
+            return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
+
+        if not GatewayState.is_key_element_valid(server) or os.path.sep in server:
+            errmsg = f"{error_prefix}: Invalid KMIP server name \"{server}\", " \
+                     f"contains invalid characters"
+            self.logger.error(errmsg)
+            return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
+
+        normsrvr = os.path.normpath(server)
+        if normsrvr in (".", ".."):
+            errmsg = f"{error_prefix}: Invalid KMIP server name \"{server}\""
+            self.logger.error(errmsg)
+            return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
+
+        if not GatewayState.is_key_element_valid(endpoint.address):
+            errmsg = f"{error_prefix}: Invalid KMIP server endpoint address " \
+                     f"\"{endpoint.address}\", contains invalid characters"
+            self.logger.error(errmsg)
+            return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
+
+        if not GatewayState.is_key_element_valid(subsys):
+            errmsg = f"{error_prefix}: Invalid subsystem NQN \"{subsys}\"," \
+                     f" contains invalid characters"
+            self.logger.error(errmsg)
+            return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
+
+        # If this is not set the subsystem was not created yet
+        if subsys not in self.subsys_serial:
+            errmsg = f"{error_prefix}: Can't find subsystem {subsys}"
+            self.logger.error(errmsg)
+            return pb2.req_status(status=errno.ENOENT, error_message=errmsg)
+
+        if not GatewayUtils.is_valid_host_name(endpoint.address):
+            errmsg = f"{error_prefix}: Invalid KMIP server endpoint " \
+                     f"address \"{endpoint.address}\""
+            self.logger.error(errmsg)
+            return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
+
+        try:
+            cert_dir = self.kmip_cert_dir.format(server_name=server)
+        except Exception:
+            self.logger.exception(f"Error formatting {self.kmip_cert_dir}")
+            errmsg = f"{error_prefix}: Invalid KMIP certificate directory " \
+                     f"configuration \"{self.kmip_cert_dir}\""
+            self.logger.error(errmsg)
+            return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
+
+        if not self.kmip_client_cert:
+            errmsg = f"{error_prefix}: Client certificate name is undefined"
+            self.logger.error(errmsg)
+            return pb2.req_status(status=errno.ENOKEY, error_message=errmsg)
+        client_cert = os.path.join(cert_dir, self.kmip_client_cert)
+        if not Path(client_cert).is_file():
+            errmsg = f"{error_prefix}: Missing client certificate {client_cert}"
+            self.logger.error(errmsg)
+            return pb2.req_status(status=errno.ENOKEY, error_message=errmsg)
+
+        if not self.kmip_client_key:
+            errmsg = f"{error_prefix}: Client key name is undefined"
+            self.logger.error(errmsg)
+            return pb2.req_status(status=errno.ENOKEY, error_message=errmsg)
+        client_key = os.path.join(cert_dir, self.kmip_client_key)
+        if not Path(client_key).is_file():
+            errmsg = f"{error_prefix}: Missing client key {client_key}"
+            self.logger.error(errmsg)
+            return pb2.req_status(status=errno.ENOKEY, error_message=errmsg)
+
+        if not self.kmip_ca_cert:
+            errmsg = f"{error_prefix}: CA certificate is undefined"
+            self.logger.error(errmsg)
+            return pb2.req_status(status=errno.ENOKEY, error_message=errmsg)
+        ca_cert = os.path.join(cert_dir, self.kmip_ca_cert)
+        if not Path(ca_cert).is_file():
+            errmsg = f"{error_prefix}: Missing CA certificate {ca_cert}"
+            self.logger.error(errmsg)
+            return pb2.req_status(status=errno.ENOKEY, error_message=errmsg)
+
+        # if we have a server endpoint with the exact attributes, just issue a warning
+        ep = KMIPServerEndpoint(endpoint.address, endpoint.port)
+        if self.kmip_server_endpoints.does_kmip_server_endpoint_exist(subsys, server, ep):
+            errmsg = f"{error_prefix}: Server endpoint already exists"
+            self.logger.warning(errmsg)
+            return pb2.req_status(status=errno.EEXIST, error_message=errmsg)
+
+        subsys_server_name = self.kmip_server_endpoints.get_subsystem_server_name(subsys)
+        if subsys_server_name and subsys_server_name != server:
+            errmsg = f"{error_prefix}: Subsystem already uses KMIP server " \
+                     f"\"{subsys_server_name}\", no other server is allowed"
+            self.logger.error(errmsg)
+            return pb2.req_status(status=errno.EADDRINUSE, error_message=errmsg)
+
+        omap_lock = self.omap_lock.get_omap_lock_to_use(context)
+        with omap_lock:
+            if context:
+                # Update gateway state
+                try:
+                    request = pb2.add_kmip_server_endpoints_req(subsystem_nqn=subsys,
+                                                                server_name=server,
+                                                                endpoints=[endpoint])
+                    json_req = json_format.MessageToJson(
+                        request, preserving_proto_field_name=True,
+                        including_default_value_fields=True)
+                    self.gateway_state.add_kmip_server_endpoint(subsys,
+                                                                server,
+                                                                endpoint.address,
+                                                                endpoint.port,
+                                                                json_req)
+                except Exception as ex:
+                    errmsg = f"Error persisting addition of " \
+                             f"endpoint with address {endpoint.address}:{endpoint.port} " \
+                             f"for KMIP server {server} on subsystem {subsys}"
+                    self.logger.exception(errmsg)
+                    errmsg = f"{errmsg}:\n{ex}"
+                    return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
+        self.kmip_server_endpoints.add_server_endpoint(subsys,
+                                                       server,
+                                                       KMIPServerEndpoint(endpoint.address,
+                                                                          endpoint.port))
+        return pb2.req_status(status=0, error_message=os.strerror(0))
+
+    def add_kmip_server_endpoints_safe(self, request, context):
+        """Add KMIP server endpoints to the subsystem"""
+
+        assert self.rpc_lock.locked(), \
+            "RPC is unlocked when calling add_kmip_server_endpoints_safe()"
+
+        peer_msg = self.get_peer_message(context)
+        self.logger.info(
+            f"Received request to add KMIP server endpoints to subsystem {request.subsystem_nqn}, "
+            f"server name: {request.server_name}, endpoints: {request.endpoints}, "
+            f"context: {context}{peer_msg}")
+
+        if not request.endpoints:
+            errmsg = f"Failure adding endpoints to KMIP server \"{request.server_name}\" on " \
+                     f"subsystem {request.subsystem_nqn}: No endpoints were specified"
+            self.logger.error(errmsg)
+            return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
+
+        had_one_ok_status = False
+        final_ret = None
+        for endpoint in request.endpoints:
+            ret = self._add_one_kmip_server_endpoint(request.subsystem_nqn,
+                                                     request.server_name,
+                                                     endpoint,
+                                                     context)
+            if ret.status == 0:
+                had_one_ok_status = True
+            if not final_ret:
+                final_ret = ret
+            if final_ret.status == 0 and ret.status != 0:
+                final_ret = ret
+            if final_ret.status == errno.EEXIST and ret.status != 0:
+                final_ret = ret
+
+        if final_ret:
+            if final_ret.status == errno.EEXIST and had_one_ok_status:
+                final_ret.status = 0
+                final_ret.error_message = os.strerror(0)
+        else:
+            final_ret = pb2.req_status(status=0, error_message=os.strerror(0))
+
+        return pb2.req_status(status=final_ret.status, error_message=final_ret.error_message)
+
+    def add_kmip_server_endpoints(self, request, context=None):
+        """Add KMIP server endpoints to the subsystem"""
+        err_prefix = f"Failure adding KMIP server endpoints to " \
+                     f"subsystem {request.subsystem_nqn}: "
+        return self.execute_grpc_function(self.add_kmip_server_endpoints_safe, request,
+                                          context, err_prefix)
+
+    def _del_one_kmip_server_endpoint(self, subsys, server, endpoint, context):
+        """Delete a KMIP server endpoint from the subsystem"""
+
+        if not endpoint.HasField("port") or endpoint.port is None:
+            endpoint.port = KMIPServerEndpointList.KMIP_DEFAULT_PORT
+            self.logger.info(f"KMIP server {server} endpoint's port wasn't specified, will use "
+                             f"default port {KMIPServerEndpointList.KMIP_DEFAULT_PORT}")
+
+        error_prefix = f"Failure deleting endpoint, with address " \
+                       f"{endpoint.address}:{endpoint.port}, from " \
+                       f"KMIP server \"{server}\" on subsystem {subsys}"
+
+        if endpoint.port <= 0 or endpoint.port > 0xffff:
+            errmsg = f"{error_prefix}: Server endpoint's port must be between 1 and 65535"
+            self.logger.error(errmsg)
+            return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
+
+        if not server.strip():
+            errmsg = f"{error_prefix}: Invalid KMIP server name \"{server}\", " \
+                     f"name can't be empty"
+            self.logger.error(errmsg)
+            return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
+
+        if not GatewayState.is_key_element_valid(server) or os.path.sep in server:
+            errmsg = f"{error_prefix}: Invalid KMIP server name \"{server}\", " \
+                     f"contains invalid characters"
+            self.logger.error(errmsg)
+            return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
+
+        normsrvr = os.path.normpath(server)
+        if normsrvr in (".", ".."):
+            errmsg = f"{error_prefix}: Invalid KMIP server name \"{server}\""
+            self.logger.error(errmsg)
+            return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
+
+        if not GatewayState.is_key_element_valid(endpoint.address):
+            errmsg = f"{error_prefix}: Invalid KMIP server endpoint address " \
+                     f"\"{endpoint.address}\", contains invalid characters"
+            self.logger.error(errmsg)
+            return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
+
+        if not GatewayState.is_key_element_valid(subsys):
+            errmsg = f"{error_prefix}: Invalid subsystem NQN \"{subsys}\"," \
+                     f" contains invalid characters"
+            self.logger.error(errmsg)
+            return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
+
+        # If this is not set the subsystem was not created yet
+        if subsys not in self.subsys_serial:
+            errmsg = f"{error_prefix}: Can't find subsystem {subsys}"
+            self.logger.error(errmsg)
+            return pb2.req_status(status=errno.ENOENT, error_message=errmsg)
+
+        if not GatewayUtils.is_valid_host_name(endpoint.address):
+            errmsg = f"{error_prefix}: Invalid KMIP server endpoint " \
+                     f"address \"{endpoint.address}\""
+            self.logger.error(errmsg)
+            return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
+
+        ep = KMIPServerEndpoint(endpoint.address, endpoint.port)
+        if not self.kmip_server_endpoints.does_kmip_server_endpoint_exist(subsys, server, ep):
+            errmsg = f"{error_prefix}: server endpoint not found"
+            self.logger.error(errmsg)
+            return pb2.req_status(status=errno.ENOENT, error_message=errmsg)
+
+        omap_lock = self.omap_lock.get_omap_lock_to_use(context)
+        with omap_lock:
+            if context:
+                # Update gateway state
+                try:
+                    self.gateway_state.remove_kmip_server_endpoint(subsys, server,
+                                                                   endpoint.address, endpoint.port)
+                except Exception as ex:
+                    errmsg = f"Error persisting removal of KMIP server endpoint " \
+                             f"{endpoint.address}:{endpoint.port}"
+                    self.logger.exception(errmsg)
+                    errmsg = f"{errmsg}:\n{ex}"
+                    return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
+        self.kmip_server_endpoints.remove_server_endpoint(subsys,
+                                                          server,
+                                                          KMIPServerEndpoint(endpoint.address,
+                                                                             endpoint.port))
+        return pb2.req_status(status=0, error_message=os.strerror(0))
+
+    def del_kmip_server_endpoints_safe(self, request, context):
+        """Delete KMIP server endpoints from the subsystem"""
+        assert self.rpc_lock.locked(), \
+            "RPC is unlocked when calling del_kmip_server_endpoints_safe()"
+
+        peer_msg = self.get_peer_message(context)
+        self.logger.info(
+            f"Received request to delete KMIP server endpoints from subsystem "
+            f"{request.subsystem_nqn}, server name: {request.server_name}, "
+            f"endpoints: {request.endpoints}, context: {context}{peer_msg}")
+
+        if not request.endpoints:
+            errmsg = f"Failure deleting endpoints from KMIP server \"{request.server_name}\" on " \
+                     f"subsystem {request.subsystem_nqn}: No endpoints were specified"
+            self.logger.error(errmsg)
+            return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
+
+        had_eps = self.kmip_server_endpoints.subsystem_has_server_endpoints(request.subsystem_nqn)
+        final_ret = None
+        for endpoint in request.endpoints:
+            ret = self._del_one_kmip_server_endpoint(request.subsystem_nqn,
+                                                     request.server_name,
+                                                     endpoint,
+                                                     context)
+            if not final_ret:
+                final_ret = ret
+            if final_ret.status == 0 and ret.status != 0:
+                final_ret = ret
+
+        if not final_ret:
+            final_ret = pb2.req_status(status=0, error_message=os.strerror(0))
+
+        if had_eps:
+            has_eps = self.kmip_server_endpoints.subsystem_has_server_endpoints(
+                request.subsystem_nqn)
+            if not has_eps:
+                self.logger.info(f"Last server endpoint for subsystem "
+                                 f"{request.subsystem_nqn} was deleted")
+                self.kmip_clients.remove_client(request.subsystem_nqn)
+
+        return pb2.req_status(status=final_ret.status, error_message=final_ret.error_message)
+
+    def del_kmip_server_endpoints(self, request, context=None):
+        """Delete KMIP server endpoints from the subsystem"""
+        err_prefix = f"Failure deleting KMIP server endpoints from " \
+                     f"subsystem {request.subsystem_nqn}: "
+        return self.execute_grpc_function(self.del_kmip_server_endpoints_safe, request,
+                                          context, err_prefix)
+
+    def list_kmip_server_endpoints(self, request, context=None):
+        """List KMIP server endpoints for one or all subsystems"""
+
+        peer_msg = self.get_peer_message(context)
+        self.logger.info(f"Received request to list the KMIP server endpoints for "
+                         f"{request.subsystem_nqn}, server: {request.server_name}, "
+                         f"context: {context}{peer_msg}")
+        if not request.subsystem_nqn or request.subsystem_nqn == GatewayUtils.ALL_SUBSYSTEMS:
+            subsystem_nqn = None
+        else:
+            subsystem_nqn = request.subsystem_nqn
+
+        server_name = request.server_name if request.server_name else None
+
+        endpoints = self.kmip_server_endpoints.get_server_endpoint_list(subsystem_nqn, server_name)
+        endpoints_out = []
+        for s in endpoints:
+            endpoints_out.append(pb2.kmip_server_endpoint_cli(subsystem_nqn=s[0],
+                                                              server_name=s[1],
+                                                              address=s[2].address,
+                                                              port=s[2].port))
+        return pb2.kmip_server_endpoints_info(status=0,
+                                              error_message=os.strerror(0),
+                                              endpoints=endpoints_out)
 
     def get_subsystem_namespaces(self, nqn) -> list:
         ns_list = []
@@ -2422,6 +2899,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 self.subsys_max_ns.pop(request.subsystem_nqn)
                 self.subsys_serial.pop(request.subsystem_nqn)
                 self.subsys_network.pop(request.subsystem_nqn)
+                self.kmip_server_endpoints.remove_subsystem_server_endpoints(request.subsystem_nqn)
+                self.kmip_clients.remove_client(request.subsystem_nqn)
                 if request.subsystem_nqn in self.subsystem_listeners:
                     self.subsystem_listeners.pop(request.subsystem_nqn, None)
                 self.host_info.clean_subsystem(request.subsystem_nqn)
@@ -2834,7 +3313,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     enc_format = enc.format
             except Exception:
                 enc_format = enc.format
-            enc_entries_msg += f"(format: {enc_format}, key_id: {enc.key_id}), "
+            enc_entries_msg += f"(format: {enc_format}, key id: {enc.key_id}), "
         enc_entries_msg = "[" + enc_entries_msg.removesuffix(", ") + "]"
         enc_algorithm_msg = ""
         try:
@@ -2864,7 +3343,11 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         has_a_none_format = False
         has_non_none_format = False
-        for ent in request.encryption_entries:
+        decrypted_enc_entries = deepcopy(request.encryption_entries)
+        current_server_endpoints = []
+        server_name = None
+        kmip_client = None
+        for ent in decrypted_enc_entries:
             if ent.format == pb2.EncryptionFormat.none:
                 has_a_none_format = True
                 if ent.key_id:
@@ -2880,13 +3363,70 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     self.logger.error(errmsg)
                     return pb2.nsid_status(status=errno.ENOKEY, error_message=errmsg)
 
+                if not current_server_endpoints or not server_name:
+                    current_server_endpoints = []
+                    server_name = None
+                    endpoints = self.kmip_server_endpoints.get_server_endpoint_list(
+                        request.subsystem_nqn)
+                    if not endpoints:
+                        errmsg = f"Failure adding namespace {nsid_msg}to {request.subsystem_nqn}" \
+                                 f": No KMIP server endpoints were added to the subsystem but " \
+                                 f"encryption was requested"
+                        self.logger.error(errmsg)
+                        return pb2.nsid_status(status=errno.ENOKEY, error_message=errmsg)
+                    for s in endpoints:
+                        current_server_endpoints.append((s[2].address, s[2].port))
+
+                    server_name = endpoints[0][1]
+
+                if kmip_client is None:
+                    assert server_name, "KMIP server name is missing"
+                    try:
+                        cert_dir = self.kmip_cert_dir.format(server_name=server_name)
+                    except Exception:
+                        self.logger.exception(f"Error formatting {self.kmip_cert_dir}")
+                        errmsg = f"Failure adding namespace {nsid_msg}to " \
+                                 f"{request.subsystem_nqn}: Invalid KMIP certificate directory " \
+                                 f"configuration \"{self.kmip_cert_dir}\""
+                        self.logger.error(errmsg)
+                        return pb2.nsid_status(status=errno.EINVAL, error_message=errmsg)
+                    kmip_client = self.kmip_clients.add_client(cert_dir, request.subsystem_nqn)
+                    if kmip_client is None:
+                        errmsg = f"Failure adding namespace {nsid_msg}to " \
+                                 f"{request.subsystem_nqn}: " \
+                                 f"Can't add a KMIP client for fetching keys"
+                        self.logger.error(errmsg)
+                        return pb2.nsid_status(status=errno.ENOKEY, error_message=errmsg)
+
+                key_content = None
+                try:
+                    key_content = kmip_client.get_key_for_rbd_image(ent.key_id,
+                                                                    current_server_endpoints)
+                except Exception:
+                    self.logger.exception(f"Can't fetch passphrase for id {ent.key_id}, "
+                                          f"endpoints: {current_server_endpoints}")
+                if not key_content:
+                    errmsg = f"Failure adding namespace {nsid_msg}to {request.subsystem_nqn}: " \
+                             f"Can't fetch passphrase for id {ent.key_id}"
+                    self.logger.error(errmsg)
+                    return pb2.nsid_status(status=errno.ENOKEY, error_message=errmsg)
+
+                try:
+                    ent.key_id = key_content.decode()
+                except Exception:
+                    self.logger.exception("Error decoding key to string")
+                    errmsg = f"Failure adding namespace {nsid_msg}to {request.subsystem_nqn}: " \
+                             f"Can't decode passphrase to string"
+                    self.logger.error(errmsg)
+                    return pb2.nsid_status(status=errno.ENOKEY, error_message=errmsg)
+
         if has_a_none_format and has_non_none_format:
             errmsg = f"Failure adding namespace {nsid_msg}to {request.subsystem_nqn}: " \
                      f"Mismatch in encryption formats, either all should be set or none"
             self.logger.error(errmsg)
             return pb2.nsid_status(status=errno.EINVAL, error_message=errmsg)
 
-        if not request.encryption_entries or has_a_none_format:
+        if not decrypted_enc_entries or has_a_none_format:
             if request.encryption_algorithm != pb2.EncryptionAlgorithm.no_algorithm:
                 errmsg = f"Failure adding namespace {nsid_msg}to {request.subsystem_nqn}: " \
                          f"Can\'t have an encryption algorithm without an encryption format"
@@ -2972,7 +3512,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                         request.trash_image, request.size,
                                         request.disable_auto_resize, request.read_only,
                                         request.rados_namespace_name,
-                                        request.encryption_entries, request.encryption_algorithm,
+                                        decrypted_enc_entries, request.encryption_algorithm,
                                         context, peer_msg)
             if ret_bdev.status != 0:
                 errmsg = f"Failure adding namespace {nsid_msg}to {request.subsystem_nqn}: " \
