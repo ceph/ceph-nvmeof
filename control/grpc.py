@@ -966,15 +966,6 @@ class GatewayService(pb2_grpc.GatewayServicer):
         else:
             self.logger.info("Gateway's IO statistics is disabled")
 
-        self.default_listener_port = self.config.getint_with_default(
-            "gateway",
-            "default_listener_port",
-            GatewayService.LISTENER_PORT_DEFAULT)
-        self.default_secure_listener_port = self.config.getint_with_default(
-            "gateway",
-            "default_secure_listener_port",
-            GatewayService.SECURE_LISTENER_PORT_DEFAULT)
-
         self.fsid = None
         spdk_notifications_interval = self.config.getint_with_default("spdk",
                                                                       "notifications_interval",
@@ -2072,9 +2063,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
             hostname = self.host_name
             if not port:
                 if is_secure:
-                    port = self.default_secure_listener_port
+                    port = GatewayService.SECURE_LISTENER_PORT_DEFAULT
                 else:
-                    port = self.default_listener_port
+                    port = GatewayService.LISTENER_PORT_DEFAULT
             adrfam = f'ipv{ip_address(ip).version}'
             secure = is_secure
             lstnr_req = pb2.create_listener_req(
@@ -2103,9 +2094,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
         req_status = 0
         if not port:
             if is_secure:
-                port = self.default_secure_listener_port
+                port = GatewayService.SECURE_LISTENER_PORT_DEFAULT
             else:
-                port = self.default_listener_port
+                port = GatewayService.LISTENER_PORT_DEFAULT
         for ip in ip_list:
             hostname = self.host_name
             adrfam = f'ipv{ip_address(ip).version}'
@@ -6765,9 +6756,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
         ret = True
         if not request.trsvcid:
             if request.secure:
-                request.trsvcid = self.default_secure_listener_port
+                request.trsvcid = GatewayService.SECURE_LISTENER_PORT_DEFAULT
             else:
-                request.trsvcid = self.default_listener_port
+                request.trsvcid = GatewayService.LISTENER_PORT_DEFAULT
             self.logger.debug(f"Port was set to default value {request.trsvcid}")
         create_listener_error_prefix = f"Failure adding {request.nqn} listener at " \
                                        f"{request.traddr}:{request.trsvcid}"
