@@ -1894,7 +1894,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
             for netmask in list(request.network_mask):
                 if not NICS.is_valid_subnet(netmask):
                     errmsg = f"{create_subsystem_error_prefix}: Invalid subnet for " \
-                             f"network_mask \"{netmask}\""
+                             f"network mask \"{netmask}\""
                     self.logger.error(errmsg)
                     return pb2.subsys_status(status=errno.EADDRNOTAVAIL, error_message=errmsg,
                                              nqn=request.subsystem_nqn)
@@ -2196,18 +2196,18 @@ class GatewayService(pb2_grpc.GatewayServicer):
             f"network mask: {request.network_mask}, context: {context}")
 
         if not request.subsystem_nqn:
-            errmsg = "Failure adding network_mask, missing subsystem NQN"
+            errmsg = "Failure adding network mask, missing subsystem NQN"
             self.logger.error(errmsg)
             return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
 
         if not request.network_mask:
-            errmsg = f"Failure adding network_mask for subsystem " \
-                     f"{request.subsystem_nqn}: Missing network_mask"
+            errmsg = f"Failure adding network mask for subsystem " \
+                     f"{request.subsystem_nqn}: Missing network mask"
             self.logger.error(errmsg)
             return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
 
         if not NICS.is_valid_subnet(request.network_mask):
-            errmsg = f"Failure adding network_mask for subsystem " \
+            errmsg = f"Failure adding network mask for subsystem " \
                      f"{request.subsystem_nqn}: Invalid subnet \"{request.network_mask}\""
             self.logger.error(errmsg)
             return pb2.req_status(status=errno.EADDRNOTAVAIL, error_message=errmsg)
@@ -2281,18 +2281,18 @@ class GatewayService(pb2_grpc.GatewayServicer):
             f"network mask: {request.network_mask}, context: {context}")
 
         if not request.subsystem_nqn:
-            errmsg = "Failure deleting network_mask, missing subsystem NQN"
+            errmsg = "Failure deleting network mask, missing subsystem NQN"
             self.logger.error(errmsg)
             return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
 
         if not request.network_mask:
-            errmsg = f"Failure deleting network_mask for subsystem " \
-                     f"{request.subsystem_nqn}: Missing network_mask"
+            errmsg = f"Failure deleting network mask for subsystem " \
+                     f"{request.subsystem_nqn}: Missing network mask"
             self.logger.error(errmsg)
             return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
 
         if not NICS.is_valid_subnet(request.network_mask):
-            errmsg = f"Failure deleting network_mask for subsystem " \
+            errmsg = f"Failure deleting network mask for subsystem " \
                      f"{request.subsystem_nqn}: Invalid subnet \"{request.network_mask}\""
             self.logger.error(errmsg)
             return pb2.req_status(status=errno.EADDRNOTAVAIL, error_message=errmsg)
