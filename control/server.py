@@ -1322,13 +1322,13 @@ class GatewayServer:
                                             ignore_unknown_fields=True)
                     rc = self.gateway_rpc.del_subsystem_network(req)
                     abort_server_on_update_error(rc.status, rc.error_message)
-            elif key.startswith(GatewayState.KMIP_SERVER_PREFIX):
+            elif key.startswith(GatewayState.KMIP_SERVER_ENDPOINT_PREFIX):
                 if is_add_req:
-                    req = json_format.Parse(val, pb2.add_kmip_server_req(),
+                    req = json_format.Parse(val, pb2.add_kmip_server_endpoints_req(),
                                             ignore_unknown_fields=True)
-                    rc = self.gateway_rpc.add_kmip_server(req)
+                    rc = self.gateway_rpc.add_kmip_server_endpoints(req)
                 else:
-                    req = json_format.Parse(val, pb2.del_kmip_server_req(),
+                    req = json_format.Parse(val, pb2.del_kmip_server_endpoints_req(),
                                             ignore_unknown_fields=True)
-                    rc = self.gateway_rpc.del_kmip_server(req)
+                    rc = self.gateway_rpc.del_kmip_server_endpoints(req)
                 abort_server_on_update_error(rc.status, rc.error_message)

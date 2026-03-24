@@ -1304,25 +1304,31 @@ class GatewayClient:
 
         return ret.status
 
-    def subsystem_add_kmip_server(self, args):
-        """Add a KMIP server to the subsystem"""
+    def subsystem_add_kmip_server_endpoint(self, args):
+        """Add a KMIP server endpoint to the subsystem"""
 
         out_func, err_func, wrn_func = self.get_output_functions(args)
 
+        if not args.server_name or not args.server_name.strip():
+            self.cli.parser.error("Server's name can't be empty")
+
         if args.port is not None:
             if args.port <= 0:
-                self.cli.parser.error("Server's port must be positive")
+                self.cli.parser.error("Endpoint's port must be positive")
             elif args.port > 0xffff:
-                self.cli.parser.error("Server's port must be smaller than 65536")
+                self.cli.parser.error("Endpoint's port must be smaller than 65536")
         if not GatewayUtils.is_valid_host_name(args.address):
-            self.cli.parser.error(f"Invalid server address {args.address}")
-        req = pb2.add_kmip_server_req(subsystem_nqn=args.subsystem,
-                                      address=args.address,
-                                      port=args.port)
+            self.cli.parser.error(f"Invalid endpoint address {args.address}")
+        endpoint = pb2.kmip_server_endpoint(address=args.address, port=args.port)
+        req = pb2.add_kmip_server_endpoints_req(subsystem_nqn=args.subsystem,
+                                                server_name=args.server_name,
+                                                endpoints=[endpoint])
+        endpoint_addr = f"{args.address}:{args.port}" if args.port else args.address
         try:
-            ret = self.stub.add_kmip_server(req)
+            ret = self.stub.add_kmip_server_endpoints(req)
         except Exception as ex:
-            errmsg = f"Failure adding KMIP server {args.address} to subsystem {args.subsystem}"
+            errmsg = f"Failure adding an endpoint, with address {endpoint_addr}, to " \
+                     f"KMIP server {args.server_name} on subsystem {args.subsystem}"
             ret = pb2.req_status(status=errno.EINVAL, error_message=f"{errmsg}:\n{ex}")
 
         orig_status = ret.status
@@ -1331,11 +1337,12 @@ class GatewayClient:
 
         if args.format == "text" or args.format == "plain":
             if orig_status == 0:
-                out_func(f"KMIP server {args.address} added to subsystem "
-                         f"{args.subsystem}: Successful")
+                out_func(f"Adding an endpoint, with address {endpoint_addr}, to KMIP server "
+                         f"{args.server_name} on subsystem {args.subsystem}: Successful")
             elif orig_status == errno.EEXIST:
-                wrn_func(f"KMIP server {args.address} was not added to subsystem "
-                         f"{args.subsystem}, it already exists")
+                wrn_func(f"The endpoint, with address {endpoint_addr}, was not added "
+                         f"to KMIP server {args.server_name} on subsystem {args.subsystem} "
+                         f"as it's already there")
             else:
                 err_func(f"{ret.error_message}")
         elif args.format == "json" or args.format == "yaml":
@@ -1354,25 +1361,31 @@ class GatewayClient:
 
         return ret.status
 
-    def subsystem_del_kmip_server(self, args):
-        """Delete a KMIP server from the subsystem"""
+    def subsystem_del_kmip_server_endpoint(self, args):
+        """Delete a KMIP server endpoint from the subsystem"""
 
         out_func, err_func, wrn_func = self.get_output_functions(args)
 
+        if not args.server_name or not args.server_name.strip():
+            self.cli.parser.error("Server's name can't be empty")
+
         if args.port is not None:
             if args.port <= 0:
-                self.cli.parser.error("Server's port must be positive")
+                self.cli.parser.error("Endpoint's port must be positive")
             elif args.port > 0xffff:
-                self.cli.parser.error("Server's port must be smaller than 65536")
+                self.cli.parser.error("Endpoint's port must be smaller than 65536")
         if not GatewayUtils.is_valid_host_name(args.address):
-            self.cli.parser.error(f"Invalid server address {args.address}")
-        req = pb2.del_kmip_server_req(subsystem_nqn=args.subsystem,
-                                      address=args.address,
-                                      port=args.port)
+            self.cli.parser.error(f"Invalid endpoint address {args.address}")
+        endpoint = pb2.kmip_server_endpoint(address=args.address, port=args.port)
+        req = pb2.del_kmip_server_endpoints_req(subsystem_nqn=args.subsystem,
+                                                server_name=args.server_name,
+                                                endpoints=[endpoint])
+        endpoint_addr = f"{args.address}:{args.port}" if args.port else args.address
         try:
-            ret = self.stub.del_kmip_server(req)
+            ret = self.stub.del_kmip_server_endpoints(req)
         except Exception as ex:
-            err = f"Failure deleting KMIP server {args.address} from subsystem {args.subsystem}"
+            err = f"Failure deleting endpoint, with address {endpoint_addr}, from " \
+                  f"KMIP server {args.server_name} on subsystem {args.subsystem}"
             ret = pb2.req_status(status=errno.EINVAL, error_message=f"{err}:\n{ex}")
 
         orig_status = ret.status
@@ -1381,11 +1394,11 @@ class GatewayClient:
 
         if args.format == "text" or args.format == "plain":
             if orig_status == 0:
-                out_func(f"KMIP server {args.address} deleted from subsystem "
-                         f"{args.subsystem}: Successful")
+                out_func(f"Deleting endpoint, with address {endpoint_addr}, from KMIP server "
+                         f"{args.server_name} on subsystem {args.subsystem}: Successful")
             elif orig_status == errno.ENOENT:
-                wrn_func(f"KMIP server {args.address} was not found on "
-                         f"subsystem {args.subsystem}")
+                wrn_func(f"An endpoint with address {endpoint_addr} was not found "
+                         f"for KMIP server {args.server_name} on subsystem {args.subsystem}")
             else:
                 err_func(f"{ret.error_message}")
         elif args.format == "json" or args.format == "yaml":
@@ -1404,8 +1417,8 @@ class GatewayClient:
 
         return ret.status
 
-    def subsystem_list_kmip_servers(self, args):
-        """List the KMIP servers of a subsystem"""
+    def subsystem_list_kmip_server_endpoints(self, args):
+        """List the KMIP server endpoints of a subsystem"""
 
         out_func, err_func, _ = self.get_output_functions(args)
 
@@ -1413,35 +1426,46 @@ class GatewayClient:
             args.subsystem = GatewayUtils.ALL_SUBSYSTEMS
 
         try:
-            servers_info = self.stub.list_kmip_servers(pb2.list_kmip_servers_req(
-                subsystem_nqn=args.subsystem))
+            endpoints = self.stub.list_kmip_server_endpoints(pb2.list_kmip_server_endpoints_req(
+                subsystem_nqn=args.subsystem, server_name=args.server_name))
         except Exception as ex:
-            servers_info = pb2.kmip_servers_info(status=errno.EINVAL,
-                                                 error_message=f"Failure listing KMIP "
-                                                               f"servers:\n{ex}",
-                                                 servers=[])
+            endpoints = pb2.kmip_server_endpoints_info(status=errno.EINVAL,
+                                                       error_message=f"Failure listing KMIP "
+                                                                     f"server endpoints:\n{ex}",
+                                                       endpoints=[])
 
         if args.format == "text" or args.format == "plain":
-            if servers_info.status == 0:
-                server_list = []
-                for s in servers_info.servers:
-                    server_list.append([s.subsystem, s.address, s.port])
-                if len(server_list) > 0:
+            if endpoints.status == 0:
+                endpoint_list = []
+                for s in endpoints.endpoints:
+                    endpoint_list.append([s.subsystem_nqn,
+                                          s.server_name,
+                                          s.address,
+                                          s.port])
+                if len(endpoint_list) > 0:
                     table_format = "fancy_grid" if args.format == "text" else "plain"
-                    headers_list = ["Subsystem", "Address", "Port"]
-                    servers_out = tabulate(server_list,
-                                           headers=headers_list,
-                                           tablefmt=table_format, stralign="center")
-                    out_func(f"KMIP Servers:\n{servers_out}")
+                    headers_list = ["Subsystem", "Server Name", "Address", "Port"]
+                    endpoint_out = tabulate(endpoint_list,
+                                            headers=headers_list,
+                                            tablefmt=table_format, stralign="center")
+                    out_func(endpoint_out)
                 else:
                     if args.subsystem == GatewayUtils.ALL_SUBSYSTEMS:
-                        out_func("No KMIP servers on any subsystem")
+                        if args.server_name:
+                            out_func(f"No endpoints for KMIP server {args.server_name} "
+                                     f"on any subsystem")
+                        else:
+                            out_func("No KMIP server endpoints on any subsystem")
                     else:
-                        out_func(f"No KMIP servers on subsystem {args.subsystem}")
+                        if args.server_name:
+                            out_func(f"No endpoints for KMIP server {args.server_name} on "
+                                     f"subsystem {args.subsystem}")
+                        else:
+                            out_func(f"No KMIP server endpoints on subsystem {args.subsystem}")
             else:
-                err_func(f"{servers_info.error_message}")
+                err_func(f"{endpoints.error_message}")
         elif args.format == "json" or args.format == "yaml":
-            ret_str = json_format.MessageToJson(servers_info, indent=4,
+            ret_str = json_format.MessageToJson(endpoints, indent=4,
                                                 including_default_value_fields=True,
                                                 preserving_proto_field_name=True)
             if args.format == "json":
@@ -1450,11 +1474,11 @@ class GatewayClient:
                 obj = json.loads(ret_str)
                 out_func(yaml.dump(obj))
         elif args.format == "python":
-            return servers_info
+            return endpoints
         else:
             assert False
 
-        return servers_info.status
+        return endpoints.status
 
     subsys_add_args = [
         argument("--subsystem",
@@ -1550,40 +1574,52 @@ class GatewayClient:
                  help="New network mask to add",
                  required=True),
     ]
-    subsys_del_kmip_server_args = [
+    subsys_del_kmip_server_endpoint_args = [
         argument("--subsystem",
                  "-n",
                  help="Subsystem NQN",
                  required=True),
+        argument("--server-name",
+                 "-s",
+                 help="name of the KMIP server the endpoint points to",
+                 required=True),
         argument("--address",
                  "-a",
-                 help="KMIP server address",
+                 help="KMIP server endpoint address",
                  required=True),
         argument("--port",
                  "-p",
                  type=int,
-                 help="KMIP server port",
+                 help="KMIP server endpoint port",
                  required=False),
     ]
-    subsys_add_kmip_server_args = [
+    subsys_add_kmip_server_endpoint_args = [
         argument("--subsystem",
                  "-n",
                  help="Subsystem NQN",
                  required=True),
+        argument("--server-name",
+                 "-s",
+                 help="name of the KMIP server the endpoint points to",
+                 required=True),
         argument("--address",
                  "-a",
-                 help="KMIP server address",
+                 help="KMIP server endpoint address",
                  required=True),
         argument("--port",
                  "-p",
                  type=int,
-                 help="KMIP server port",
+                 help="KMIP server endpoint port",
                  required=False),
     ]
-    subsys_list_kmip_servers_args = [
+    subsys_list_kmip_server_endpoints_args = [
         argument("--subsystem",
                  "-n",
-                 help="Subsystem NQN",
+                 help="only show endpoints for this subsystem NQN",
+                 required=False),
+        argument("--server-name",
+                 "-s",
+                 help="only show endpoints for this KMIP server name",
                  required=False),
     ]
     subsystem_actions = []
@@ -1608,15 +1644,16 @@ class GatewayClient:
     subsystem_actions.append({"name": "del_network",
                               "args": subsys_del_network_args,
                               "help": "Delete a network mask in the subsystem"})
-    subsystem_actions.append({"name": "add_kmip_server",
-                              "args": subsys_add_kmip_server_args,
-                              "help": "Add a KMIP server to the subsystem"})
-    subsystem_actions.append({"name": "del_kmip_server",
-                              "args": subsys_del_kmip_server_args,
-                              "help": "Delete a KMIP server from the subsystem"})
-    subsystem_actions.append({"name": "list_kmip_servers",
-                              "args": subsys_list_kmip_servers_args,
-                              "help": "List KMIP servers for a subsystem or all subsystems"})
+    subsystem_actions.append({"name": "add_kmip_server_endpoint",
+                              "args": subsys_add_kmip_server_endpoint_args,
+                              "help": "Add a KMIP server endpoint to the subsystem"})
+    subsystem_actions.append({"name": "del_kmip_server_endpoint",
+                              "args": subsys_del_kmip_server_endpoint_args,
+                              "help": "Delete a KMIP server endpoint from the subsystem"})
+    subsystem_actions.append({"name": "list_kmip_server_endpoints",
+                              "args": subsys_list_kmip_server_endpoints_args,
+                              "help": "List KMIP server endpoints for a subsystem or "
+                                      "all subsystems"})
     subsystem_choices = get_actions(subsystem_actions)
 
     @cli.cmd(subsystem_actions)
@@ -1636,12 +1673,12 @@ class GatewayClient:
             return self.subsystem_add_network_mask(args)
         elif args.action == "del_network":
             return self.subsystem_del_network_mask(args)
-        elif args.action == "add_kmip_server":
-            return self.subsystem_add_kmip_server(args)
-        elif args.action == "del_kmip_server":
-            return self.subsystem_del_kmip_server(args)
-        elif args.action == "list_kmip_servers":
-            return self.subsystem_list_kmip_servers(args)
+        elif args.action == "add_kmip_server_endpoint":
+            return self.subsystem_add_kmip_server_endpoint(args)
+        elif args.action == "del_kmip_server_endpoint":
+            return self.subsystem_del_kmip_server_endpoint(args)
+        elif args.action == "list_kmip_server_endpoints":
+            return self.subsystem_list_kmip_server_endpoints(args)
         if not args.action:
             self.cli.parser.error(f"missing action for subsystem command (choose "
                                   f"from {GatewayClient.subsystem_choices})")
