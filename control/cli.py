@@ -2675,7 +2675,7 @@ class GatewayClient:
     def ns_add(self, args):
         """Adds a namespace to a subsystem."""
 
-        img_size = 0
+        img_size = None
         out_func, err_func, _ = self.get_output_functions(args)
         if args.block_size is None:
             args.block_size = 512
@@ -2697,10 +2697,12 @@ class GatewayClient:
             if img_size % mib:
                 self.cli.parser.error("size value must be aligned to MiBs")
 
+            if img_size % args.block_size:
+                self.cli.parser.error("size value must be a multiple of the block size")
+
             if args.encryption_format is not None and len(args.encryption_format) > 1:
                 self.cli.parser.error("at most one encryption format can be specified when "
                                       "creating a new image")
-
         else:
             if args.size is not None:
                 self.cli.parser.error("--size argument is not allowed for add command when "

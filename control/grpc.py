@@ -18,6 +18,7 @@ import threading
 import hashlib
 import tempfile
 import time
+import rbd
 from ipaddress import ip_address
 from pathlib import Path
 from typing import Iterator, Callable, Optional
@@ -1645,10 +1646,6 @@ class GatewayService(pb2_grpc.GatewayServicer):
                          f"{enc_format_msg}"
                          f"context={context}{peer_msg}")
 
-        if block_size == 0:
-            return BdevStatus(status=errno.EINVAL,
-                              error_message="Block size can't be zero")
-
         created_rbd_pool = None
         created_rbd_image_name = None
         if create_image:
@@ -1746,15 +1743,29 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 self.logger.exception(errmsg)
                 return BdevStatus(status=errcode, error_message=errmsg)
         else:
-            if not self.ceph_utils.does_image_exist(rbd_pool_name, rbd_image_name,
-                                                    rados_namespace_name):
+            try:
+                img_size = self.ceph_utils.get_image_size(rbd_pool_name, rbd_image_name,
+                                                          rados_namespace_name)
+                if img_size % block_size:
+                    errmsg = f"Image size {img_size} must be a multiple of the " \
+                             f"block size {block_size}"
+                    self.logger.error(errmsg)
+                    return BdevStatus(status=errno.EINVAL, error_message=errmsg)
+            except rbd.ImageNotFound:
                 self.logger.error(f"RBD image {image_path} "
                                   f"does not exist and '--rbd-create-image' "
                                   f"was not specified")
-                return BdevStatus(status=errno.EEXIST,
+                return BdevStatus(status=errno.ENOENT,
                                   error_message=f"RBD image {image_path} "
                                                 f"does not exist and '--rbd-create-image' "
                                                 f"was not specified")
+            except Exception:
+                self.logger.exception(f"Error getting {image_path} size")
+                self.logger.error(f"Error verifying RBD image {image_path} "
+                                  f"existence")
+                return BdevStatus(status=errno.EIO,
+                                  error_message=f"Error verifying RBD image {image_path} "
+                                                f"existence")
 
         if disable_auto_resize:
             try:
@@ -3331,6 +3342,26 @@ class GatewayService(pb2_grpc.GatewayServicer):
             self.logger.warning("Can't trash the RBD image on delete if it "
                                 "wasn't created by the gateway, will reset the flag")
             request.trash_image = False
+
+        if request.block_size <= 0:
+            errmsg = f"Failure adding namespace {nsid_msg}to {request.subsystem_nqn}: " \
+                     f"Block size must be positive"
+            self.logger.error(errmsg)
+            return pb2.nsid_status(status=errno.EINVAL, error_message=errmsg)
+
+        if context and (not request.HasField("create_image") or not request.create_image):
+            if request.HasField("size"):
+                errmsg = f"Failure adding namespace {nsid_msg}to {request.subsystem_nqn}: " \
+                         f"Size is only allowed when creating an image"
+                self.logger.error(errmsg)
+                return pb2.nsid_status(status=errno.EINVAL, error_message=errmsg)
+
+        if request.HasField("size") and (request.size % request.block_size):
+            errmsg = f"Failure adding namespace {nsid_msg}to {request.subsystem_nqn}: " \
+                     f"Image size {request.size} must be a multiple of the block " \
+                     f"size {request.block_size}"
+            self.logger.error(errmsg)
+            return pb2.nsid_status(status=errno.EINVAL, error_message=errmsg)
 
         has_a_none_format = False
         has_non_none_format = False
