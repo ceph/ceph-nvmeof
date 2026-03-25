@@ -2009,6 +2009,15 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                      error_message=errmsg,
                                      nqn=request.subsystem_nqn)
 
+        if request.network_mask:
+            for netmask in list(request.network_mask):
+                if not NICS.is_valid_subnet(netmask):
+                    errmsg = f"{create_subsystem_error_prefix}: Invalid subnet for " \
+                             f"network mask \"{netmask}\""
+                    self.logger.error(errmsg)
+                    return pb2.subsys_status(status=errno.EADDRNOTAVAIL, error_message=errmsg,
+                                             nqn=request.subsystem_nqn)
+
         errmsg = ""
         if not GatewayState.is_key_element_valid(request.subsystem_nqn):
             errmsg = f"{create_subsystem_error_prefix}: Invalid NQN " \
@@ -2305,6 +2314,23 @@ class GatewayService(pb2_grpc.GatewayServicer):
             f"Received request to add network to subsystem {request.subsystem_nqn}, "
             f"network mask: {request.network_mask}, context: {context}")
 
+        if not request.subsystem_nqn:
+            errmsg = "Failure adding network mask, missing subsystem NQN"
+            self.logger.error(errmsg)
+            return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
+
+        if not request.network_mask:
+            errmsg = f"Failure adding network mask for subsystem " \
+                     f"{request.subsystem_nqn}: Missing network mask"
+            self.logger.error(errmsg)
+            return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
+
+        if not NICS.is_valid_subnet(request.network_mask):
+            errmsg = f"Failure adding network mask for subsystem " \
+                     f"{request.subsystem_nqn}: Invalid subnet \"{request.network_mask}\""
+            self.logger.error(errmsg)
+            return pb2.req_status(status=errno.EADDRNOTAVAIL, error_message=errmsg)
+
         req_status = 0
         omap_lock = self.omap_lock.get_omap_lock_to_use(context)
         with omap_lock:
@@ -2372,6 +2398,23 @@ class GatewayService(pb2_grpc.GatewayServicer):
         self.logger.info(
             f"Received request to delete network to subsystem {request.subsystem_nqn}, "
             f"network mask: {request.network_mask}, context: {context}")
+
+        if not request.subsystem_nqn:
+            errmsg = "Failure deleting network mask, missing subsystem NQN"
+            self.logger.error(errmsg)
+            return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
+
+        if not request.network_mask:
+            errmsg = f"Failure deleting network mask for subsystem " \
+                     f"{request.subsystem_nqn}: Missing network mask"
+            self.logger.error(errmsg)
+            return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
+
+        if not NICS.is_valid_subnet(request.network_mask):
+            errmsg = f"Failure deleting network mask for subsystem " \
+                     f"{request.subsystem_nqn}: Invalid subnet \"{request.network_mask}\""
+            self.logger.error(errmsg)
+            return pb2.req_status(status=errno.EADDRNOTAVAIL, error_message=errmsg)
 
         req_status = 0
         omap_lock = self.omap_lock.get_omap_lock_to_use(context)
