@@ -151,6 +151,7 @@ services:
       - /tmp/coredump:/tmp/coredump # core dump
       - /var/log/ceph:/var/log/ceph
       - ceph-conf:/etc/ceph:ro
+      - /etc/kmip:/src/certs/kmip:ro
     cap_add:
       - SYS_ADMIN # huge-pages
       - CAP_SYS_NICE # RTE
