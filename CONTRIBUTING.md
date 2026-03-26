@@ -2,7 +2,7 @@
 
 ## New contributor guide
 
-## This is test
+## *This is test*
 The Ceph NVMe-oF Gateway project pivots around 2 other major Open Source projects:
 - [SPDK](https://spdk.io/) [[source code](https://github.com/spdk/spdk/)], which internally relies on the DPDK project.
 - [Ceph](https://ceph.io/) [[source code](https://github.com/ceph/ceph)].
