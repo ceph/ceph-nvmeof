@@ -14,6 +14,7 @@ CMD []
 
 #------------------------------------------------------------------------------
 # Base image for NVMEOF_TARGET=gateway (nvmeof-gateway)
+# this is test line
 FROM ${CONTAINER_REGISTRY:-quay.io/ceph}/spdk:${NVMEOF_SPDK_VERSION:-NULL} AS base-gateway
 RUN \
     --mount=type=cache,target=/var/cache/dnf \
