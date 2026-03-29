@@ -6961,6 +6961,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 return pb2.req_status(status=errno.EINVAL,
                                       error_message=create_listener_error_prefix)
 
+            self.logger.error(f"XXX will add ({adrfam}, {traddr}, {request.trsvcid}, "
+                              f"{request.secure}, {request.host_name == self.host_name}) "
+                              f"to local list")  # ###########
             self.subsystem_listeners[request.nqn].add((adrfam, traddr,
                                                        request.trsvcid, request.secure,
                                                        request.host_name == self.host_name))
@@ -7036,6 +7039,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     errmsg = f"{errmsg}:\n{ex}"
                     return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
 
+        self.logger.error(f"XXX local listeners: {self.subsystem_listeners}")  # ###################
         if listener_created:
             return pb2.req_status(status=0, error_message=os.strerror(0))
         else:
@@ -7167,6 +7171,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 self.logger.error(errmsg)
                 return pb2.req_status(status=errno.ENOTEMPTY, error_message=errmsg)
 
+        self.logger.error(f"XXX local listeners: {self.subsystem_listeners}")  # ###################
         omap_lock = self.omap_lock.get_omap_lock_to_use(context)
         with omap_lock:
             try:
@@ -7185,6 +7190,27 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 if not is_there:
                     errmsg = f"{delete_listener_error_prefix}: Listener not found"
                     self.logger.error(errmsg)
+                    # ###########################################################################
+                    state = self.gateway_state.local.get_state()
+                    self.logger.error(f"XXX OMAP: {state.items()}")  # ##############
+                    listener_prefix = GatewayState.build_partial_listener_key(
+                        request.nqn, None)
+                    is_in_omap = False
+                    for key, val in state.items():
+                        if not key.startswith(listener_prefix):
+                            continue
+                        try:
+                            lstnr = json_format.Parse(val, pb2.create_listener_req(),
+                                                      ignore_unknown_fields=True)
+                            self.logger.error(f"XXX parsed listener: {lstnr}")
+                            if lstnr.traddr == traddr and lstnr.trsvcid == request.trsvcid:
+                                self.logger.error("XXX found in omap")
+                                is_in_omap = True
+                                break
+                        except Exception:
+                            self.logger.exception(f"Got exception while parsing {val}")
+                            continue
+                    # ###########################################################################
                     return pb2.req_status(status=errno.ENOENT, error_message=errmsg)
 
                 if context:
