@@ -5304,6 +5304,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
             if context:
                 # Update gateway state
                 try:
+                    if not request.adrfam:
+                        request.adrfam = 0
+                    request.traddr = traddr
                     json_req = json_format.MessageToJson(
                         request, preserving_proto_field_name=True,
                         including_default_value_fields=True)
@@ -5329,7 +5332,14 @@ class GatewayService(pb2_grpc.GatewayServicer):
                      f"{request.traddr}:{request.trsvcid}: "
         return self.execute_grpc_function(self.create_listener_safe, request, context, err_prefix)
 
-    def remove_listener_from_state(self, nqn, host_name, traddr, port, context):
+    def remove_listener_from_state_and_local_list(self, nqn, host_name,
+                                                  adrfam, traddr, port, context) -> pb2.req_status:
+        rc = self.remove_listener_from_state(nqn, host_name, traddr, port, context)
+        if rc.status == 0:
+            self.remove_listener_from_local_list(nqn, adrfam, traddr, port)
+        return rc
+
+    def remove_listener_from_state(self, nqn, host_name, traddr, port, context) -> pb2.req_status:
         if not context:
             return pb2.req_status(status=0, error_message=os.strerror(0))
 
@@ -5383,7 +5393,16 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         return req_status
 
-    def delete_listener_safe(self, request, context):
+    def remove_listener_from_local_list(self, nqn, adrfam, traddr, port):
+        if nqn not in self.subsystem_listeners:
+            return
+        for secure in [False, True]:
+            for active in [False, True]:
+                lstnr = (adrfam, traddr, port, secure, active)
+                if lstnr in self.subsystem_listeners[nqn]:
+                    self.subsystem_listeners[nqn].remove(lstnr)
+
+    def delete_listener_safe(self, request, context) -> pb2.req_status:
         """Deletes a listener from a subsystem at a given IP/Port."""
 
         assert self.rpc_lock.locked(), "RPC is unlocked when calling delete_listener_safe()"
@@ -5446,25 +5465,51 @@ class GatewayService(pb2_grpc.GatewayServicer):
         omap_lock = self.omap_lock.get_omap_lock_to_use(context)
         with omap_lock:
             try:
-                is_there = False
+                is_in_local_list = False
                 is_active = False
                 if request.nqn in self.subsystem_listeners:
-                    for secur in [False, True]:
-                        if is_there:
-                            break
-                        for active in [False, True]:
-                            lstnr = (adrfam, traddr, request.trsvcid, secur, active)
-                            if lstnr in self.subsystem_listeners[request.nqn]:
-                                is_there = True
-                                is_active = active
+                    for secure in [False, True]:
+                        active_lstnr = (adrfam, traddr, request.trsvcid, secure, True)
+                        non_active_lstnr = (adrfam, traddr, request.trsvcid, secure, False)
+                        if active_lstnr in self.subsystem_listeners[request.nqn]:
+                            is_active = True
+                            is_in_local_list = True
+                        elif non_active_lstnr in self.subsystem_listeners[request.nqn]:
+                            is_in_local_list = True
+
+                if not is_in_local_list:
+                    self.logger.warning("Listener not found in local list, will continue")
+
+                if context:
+                    state = self.gateway_state.local.get_state()
+                    listener_prefix = GatewayState.build_partial_listener_key(
+                        request.nqn, None)
+                    is_in_omap = False
+                    for key, val in state.items():
+                        if not key.startswith(listener_prefix):
+                            continue
+                        try:
+                            lstnr = json_format.Parse(val, pb2.create_listener_req(),
+                                                      ignore_unknown_fields=True)
+                            if lstnr.traddr == traddr and lstnr.trsvcid == request.trsvcid:
+                                is_in_omap = True
                                 break
-                if not is_there:
-                    errmsg = f"{delete_listener_error_prefix}: Listener not found"
-                    self.logger.error(errmsg)
-                    return pb2.req_status(status=errno.ENOENT, error_message=errmsg)
+                        except Exception:
+                            self.logger.exception(f"Got exception while parsing {val}")
+                            continue
+                    if not is_in_omap:
+                        if is_in_local_list:
+                            self.remove_listener_from_state_and_local_list(request.nqn,
+                                                                           request.host_name,
+                                                                           adrfam, traddr,
+                                                                           request.trsvcid,
+                                                                           context)
+                            errmsg = f"{delete_listener_error_prefix}: Listener not found"
+                            self.logger.error(errmsg)
+                            return pb2.req_status(status=errno.ENOENT, error_message=errmsg)
 
                 if request.host_name == self.host_name or request.force:
-                    if is_active:
+                    if is_in_local_list and is_active:
                         ret = rpc_nvmf.nvmf_subsystem_remove_listener(
                             self.spdk_rpc_client,
                             nqn=request.nqn,
@@ -5474,12 +5519,6 @@ class GatewayService(pb2_grpc.GatewayServicer):
                             adrfam=adrfam,
                         )
                         self.logger.debug(f"delete_listener: {ret}")
-                    if request.nqn in self.subsystem_listeners:
-                        for secur in [False, True]:
-                            for active in [False, True]:
-                                lstnr = (adrfam, traddr, request.trsvcid, secur, active)
-                                if lstnr in self.subsystem_listeners[request.nqn]:
-                                    self.subsystem_listeners[request.nqn].remove(lstnr)
                 else:
                     errmsg = f"{delete_listener_error_prefix}: Gateway's host name must " \
                              f"match current host ({self.host_name}). You can continue to " \
@@ -5492,8 +5531,6 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 # just continue to remove from OMAP
                 if request.host_name == self.host_name:
                     errmsg = f"{delete_listener_error_prefix}:\n{ex}"
-                    self.remove_listener_from_state(request.nqn, request.host_name,
-                                                    traddr, request.trsvcid, context)
                     resp = self.parse_json_exeption(ex)
                     status = errno.EINVAL
                     if resp:
@@ -5505,13 +5542,12 @@ class GatewayService(pb2_grpc.GatewayServicer):
             # Just in case SPDK failed with no exception
             if not ret:
                 self.logger.error(delete_listener_error_prefix)
-                self.remove_listener_from_state(request.nqn, request.host_name,
-                                                traddr, request.trsvcid, context)
                 return pb2.req_status(status=errno.EINVAL,
                                       error_message=delete_listener_error_prefix)
 
-            return self.remove_listener_from_state(request.nqn, request.host_name,
-                                                   traddr, request.trsvcid, context)
+            return self.remove_listener_from_state_and_local_list(request.nqn, request.host_name,
+                                                                  adrfam, traddr,
+                                                                  request.trsvcid, context)
 
     def delete_listener(self, request, context=None):
         err_prefix = f"Failed to delete listener {request.traddr}:" \
