@@ -334,7 +334,7 @@ function demo_bdevperf_unsecured()
     [[ `cat /tmp/listeners.txt | jq -r '.listeners[1].active'` == "true" ]]
     [[ `cat /tmp/listeners.txt | jq -r '.listeners[2].trtype'` == "TCP" ]]
     [[ `cat /tmp/listeners.txt | jq -r '.listeners[2].adrfam'` == "ipv6" ]]
-    [[ `cat /tmp/listeners.txt | jq -r '.listeners[2].traddr'` == "[2001:db8::3]" ]]
+    [[ `cat /tmp/listeners.txt | jq -r '.listeners[2].traddr'` == "2001:db8::3" ]]
     [[ `cat /tmp/listeners.txt | jq -r '.listeners[2].trsvcid'` == "4420" ]]
     [[ `cat /tmp/listeners.txt | jq -r '.listeners[2].secure'` == "false" ]]
     [[ `cat /tmp/listeners.txt | jq -r '.listeners[2].active'` == "true" ]]
