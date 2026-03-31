@@ -1652,8 +1652,7 @@ class TestDelete:
         caplog.clear()
         cli(["listener", "del", "--subsystem", subsystem, "--host-name", host_name,
              "--traddr", "4.4.4.4", "--trsvcid", "1234"])
-        assert f"Failed to delete listener 4.4.4.4:1234 from {subsystem}: " \
-               f"Listener not found" in caplog.text
+        assert "Listener not found in local list, will continue" in caplog.text
 
     @pytest.mark.parametrize("listener", listener_list)
     def test_delete_listener(self, caplog, listener, gateway):
