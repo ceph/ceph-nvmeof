@@ -927,9 +927,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                                           "./certs/kmip/{server_name}")
         if not self.kmip_cert_dir:
             self.kmip_cert_dir = "."
-        self.kmip_client_cert = self.config.get_with_default("kmip", "client_cert", None)
-        self.kmip_client_key = self.config.get_with_default("kmip", "client_key", None)
-        self.kmip_ca_cert = self.config.get_with_default("kmip", "ca_cert", None)
+        self.kmip_client_cert = self.config.get_with_default("kmip", "client_cert",
+                                                             "client_cert.pem")
+        self.kmip_client_key = self.config.get_with_default("kmip", "client_key", "client_key.pem")
+        self.kmip_ca_cert = self.config.get_with_default("kmip", "ca_cert", "ca_cert.pem")
         self.kmip_server_endpoints = KMIPServerEndpointList()
         self.kmip_clients = KMIPClientList(self.config, self.kmip_client_cert,
                                            self.kmip_client_key, self.kmip_ca_cert)
