@@ -1101,6 +1101,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         self.bdev_params = {}
         self.subsystem_nsid_bdev_and_uuid = NamespacesLocalList()
         self.subsystem_listeners = defaultdict(set)
+        self.subsystem_auto_listeners = defaultdict(set)
         self.cluster_allocator = get_cluster_allocator(config, self)
         self.subsys_max_ns = {}
         self.subsys_serial = {}
@@ -2258,6 +2259,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 ip_ = GatewayUtils.escape_address_if_ipv6(ip)
                 self.logger.info(f'Automatically created listener at {ip_}:{port} for '
                                  f'{subsystem_nqn}')
+                self.subsystem_auto_listeners[subsystem_nqn].add((adrfam, ip, port))
         return req_status
 
     def del_listeners(self, subsystem_nqn, ip_list, is_secure, port):
@@ -2289,6 +2291,13 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 ip_ = GatewayUtils.escape_address_if_ipv6(ip)
                 self.logger.info(f'Automatically deleted listener at {ip_}:{port} for '
                                  f'{subsystem_nqn}')
+
+            if status == 0 or status == errno.ENOENT:
+                if subsystem_nqn in self.subsystem_auto_listeners:
+                    lstnr = (adrfam, ip, int(port))
+                    if lstnr in self.subsystem_auto_listeners[subsystem_nqn]:
+                        self.subsystem_auto_listeners[subsystem_nqn].remove(lstnr)
+
         return req_status
 
     def _create_auto_listeners_safe(self, request):
@@ -2905,6 +2914,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 self.kmip_clients.remove_client(request.subsystem_nqn)
                 if request.subsystem_nqn in self.subsystem_listeners:
                     self.subsystem_listeners.pop(request.subsystem_nqn, None)
+                if request.subsystem_nqn in self.subsystem_auto_listeners:
+                    self.subsystem_auto_listeners.pop(request.subsystem_nqn, None)
                 self.host_info.clean_subsystem(request.subsystem_nqn)
                 self.subsystem_nsid_bdev_and_uuid.remove_namespace(request.subsystem_nqn)
                 self.remove_all_subsystem_key_files(request.subsystem_nqn)
@@ -7366,6 +7377,16 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     state = self.gateway_state.local.get_state()
                     listener_prefix = GatewayState.build_partial_listener_key(
                         request.nqn, None)
+                    is_auto_listener = False
+                    if request.nqn in self.subsystem_auto_listeners:
+                        lsnr = (adrfam, traddr, request.trsvcid)
+                        is_auto_listener = lsnr in self.subsystem_auto_listeners[request.nqn]
+                    if is_auto_listener:
+                        errmsg = f"{delete_listener_error_prefix}: Listener was created " \
+                                 f"automatically as part of the subsystem's network mask. " \
+                                 f"To remove it, modify the network mask."
+                        self.logger.error(errmsg)
+                        return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
                     is_in_omap = False
                     for key, val in state.items():
                         if not key.startswith(listener_prefix):
@@ -7374,22 +7395,16 @@ class GatewayService(pb2_grpc.GatewayServicer):
                             lstnr = json_format.Parse(val, pb2.create_listener_req(),
                                                       ignore_unknown_fields=True)
                             if lstnr.traddr == traddr and lstnr.trsvcid == request.trsvcid:
-                                is_in_omap = True
-                                break
+                                if request.host_name == "*" or lstnr.host_name == request.host_name:
+                                    is_in_omap = True
+                                    break
                         except Exception:
                             self.logger.exception(f"Got exception while parsing {val}")
                             continue
                     if not is_in_omap:
-                        if is_in_local_list:
-                            errmsg = f"{delete_listener_error_prefix}: Listener was created " \
-                                     f"automatically as part of the subsystem's network mask. " \
-                                     f"To remove it, modify the network mask."
-                            self.logger.error(errmsg)
-                            return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
-                        else:
-                            errmsg = f"{delete_listener_error_prefix}: Listener not found"
-                            self.logger.error(errmsg)
-                            return pb2.req_status(status=errno.ENOENT, error_message=errmsg)
+                        errmsg = f"{delete_listener_error_prefix}: Listener not found"
+                        self.logger.error(errmsg)
+                        return pb2.req_status(status=errno.ENOENT, error_message=errmsg)
 
                 if request.host_name == self.host_name or request.force:
                     if is_in_local_list and is_active:

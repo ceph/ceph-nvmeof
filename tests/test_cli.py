@@ -2263,6 +2263,37 @@ class TestDelete:
         cli(["--format", "json", "listener", "list", "--subsystem", subsystem])
         assert f'"trsvcid": {listener[3]}' not in caplog.text
 
+    def test_delete_listener_wrong_host_name(self, caplog, gateway):
+        caplog.clear()
+        cli(["listener", "add", "--subsystem", subsystem, "--host-name", "JUNK",
+             "-a", addr, "-s", "5555", "-f", "ipv4"])
+        assert f"Adding {subsystem} listener at {addr}:5555: listener will only be active " \
+               f"when appropriate gateway is up" in caplog.text
+        caplog.clear()
+        cli(["listener", "add", "--subsystem", subsystem, "--host-name", host_name,
+             "-a", addr, "-s", "7777", "-f", "ipv4", "--verify-host-name"])
+        assert f"Adding {subsystem} listener at {addr}:7777: Successful" in caplog.text
+        caplog.clear()
+        cli(["listener", "del", "--subsystem", subsystem, "--host-name", host_name,
+             "-a", addr, "-s", "5555"])
+        assert f"Failed to delete listener {addr}:5555 from {subsystem}: " \
+               f"Listener not found" in caplog.text
+        caplog.clear()
+        cli(["listener", "del", "--subsystem", subsystem, "--host-name", "JUNK",
+             "-a", addr, "-s", "7777", "--force"])
+        assert f"Failed to delete listener {addr}:7777 from {subsystem}: " \
+               f"Listener not found" in caplog.text
+        caplog.clear()
+        cli(["listener", "del", "--subsystem", subsystem, "--host-name", "JUNK",
+             "-a", addr, "-s", "5555", "-f", "ipv4", "--force"])
+        assert f"Deleting listener {addr}:5555 from {subsystem} for " \
+               f"host JUNK: Successful" in caplog.text
+        caplog.clear()
+        cli(["listener", "del", "--subsystem", subsystem, "--host-name", host_name,
+             "-a", addr, "-s", "7777", "-f", "ipv4"])
+        assert f"Deleting listener {addr}:7777 from {subsystem} for " \
+               f"host {host_name}: Successful" in caplog.text
+
     def test_remove_namespace(self, caplog, gateway):
         gw, stub = gateway
         caplog.clear()
