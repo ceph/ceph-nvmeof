@@ -7402,6 +7402,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
                             self.logger.exception(f"Got exception while parsing {val}")
                             continue
                     if not is_in_omap:
+                        if is_in_local_list:
+                            self.remove_listener_from_local_list(request.nqn,
+                                                                 adrfam, traddr, request.trsvcid)
                         errmsg = f"{delete_listener_error_prefix}: Listener not found"
                         self.logger.error(errmsg)
                         return pb2.req_status(status=errno.ENOENT, error_message=errmsg)
