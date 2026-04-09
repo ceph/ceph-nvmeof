@@ -7245,7 +7245,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                             continue
                     if not is_in_omap:
                         if is_in_local_list:
-                            self.remove_listener_from_local_list(self, request.nqn,
+                            self.remove_listener_from_local_list(request.nqn,
                                                                  adrfam, traddr, request.trsvcid)
                         errmsg = f"{delete_listener_error_prefix}: Listener not found"
                         self.logger.error(errmsg)
