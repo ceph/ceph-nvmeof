@@ -5492,8 +5492,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
                             lstnr = json_format.Parse(val, pb2.create_listener_req(),
                                                       ignore_unknown_fields=True)
                             if lstnr.traddr == traddr and lstnr.trsvcid == request.trsvcid:
-                                is_in_omap = True
-                                break
+                                if request.host_name == "*" or lstnr.host_name == request.host_name:
+                                    is_in_omap = True
+                                    break
                         except Exception:
                             self.logger.exception(f"Got exception while parsing {val}")
                             continue
