@@ -1,0 +1,34 @@
+services:
+  kmip-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: kmip-server:latest
+    container_name: kmip-mock-server
+    ports:
+      - "5696:5696"
+    volumes:
+      # Persist logs in the named volume
+      - kmip-data:/kmip/logs
+    restart: unless-stopped
+    networks:
+      - kmip-net
+
+  # KMIP CLI Tool - for running administrative commands
+  kmip-cli:
+    build:
+      context: .
+      dockerfile: Dockerfile.cli
+    image: kmip-cli:latest
+    container_name: kmip-cli
+    networks:
+      - kmip-net
+    depends_on:
+      - kmip-server
+
+volumes:
+  kmip-data:
+
+networks:
+  kmip-net:
+    driver: bridge

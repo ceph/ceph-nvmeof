@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 # Setup script for KMIP test environment
 
 BASE_DIR=${1:-/tmp/kmip_test}
