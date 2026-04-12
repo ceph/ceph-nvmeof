@@ -13,7 +13,7 @@ Complete these steps before making any changes:
 **Purpose**: Provides block storage on top of Ceph for platforms without native Ceph RBD support (e.g., VMware) using the NVMe over Fabrics (NVMe-oF) protocol. Exports existing RBD images as NVMe-oF namespaces.
 
 **Project Type**: Python-based containerized service with gRPC API
-- **Size**: ~4.2MB of source code, 192 files total (51 Python files)
+- **Size**: Small-to-medium sized Python codebase
 - **Languages**: Python 3.9+, Protocol Buffers, Shell scripts
 - **Key Dependencies**: 
   - SPDK - Storage Performance Development Kit with DPDK
@@ -111,8 +111,10 @@ make run SVC="nvmeof" OPTS="--volume=$(pwd)/tests:/src/tests --entrypoint=python
 # - test_multi_gateway.py - Multi-gateway scenarios
 
 # Teardown after testing
-make down  # Stop and remove containers
-make clean # Clean up and reset huge-pages to 0
+make down  # Standard teardown: stop and remove containers
+# Optional full reset only: also resets huge-pages to 0 and deletes generated
+# protobuf Python files (control/proto/*_pb2*.py); rerun `make protoc` if needed
+make clean
 ```
 
 **Test execution time**: Individual tests range from 30 seconds to 5 minutes.
@@ -279,7 +281,7 @@ Checks for outdated dependencies.
 - Create with `--rbd-pool`, `--rbd-image`, `--size` parameters
 
 **Listeners**: Network endpoints where initiators connect
-- Requires host-name verification in multi-gateway setups
+- Associated with a `host_name`; `--verify-host-name` enforces creation only on the matching gateway, otherwise creating a listener for a different host may return `EREMOTE`
 
 **Hosts**: NQN-based access control (can use "*" for open access)
 
@@ -382,7 +384,7 @@ docker compose up nvmeof-devel  # Mounts source at runtime
 
 **Root directory** (selected files):
 ```
-.env                    - Environment variables (VERSIONS, CONTAINER_REGISTRY)
+.env                    - Environment variables (version variables, CONTAINER_REGISTRY)
 .gitmodules             - Git submodule configuration (spdk)
 Dockerfile              - Multi-stage build (gateway + CLI)
 Dockerfile.ceph         - Test Ceph cluster image
