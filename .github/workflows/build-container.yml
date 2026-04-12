@@ -153,6 +153,28 @@ jobs:
           path: |
             spdk-arm64.tar
 
+  build-kmip:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build KMIP container images
+        run: |
+          cd tests/kmip
+          make build
+      - name: Save KMIP container images
+        run: |
+          docker save kmip-server:latest > kmip-server.tar
+          docker save kmip-cli:latest > kmip-cli.tar
+      - name: Upload KMIP container images
+        uses: actions/upload-artifact@v4
+        with:
+          name: kmip_images
+          path: |
+            kmip-server.tar
+            kmip-cli.tar
+
   pytest:
     needs: [build, build-ceph]
     strategy:
