@@ -4,7 +4,7 @@
 # the exit code will be the same as the exit code of the failed command.
 # see https://github.com/ceph/ceph-nvmeof/actions/runs/11928539421/job/33246031083
 set -e
-
+set -o pipefail
 
 VERSION=$1
 CEPH_BRANCH=$2
@@ -99,7 +99,6 @@ if [ "$NIGHTLY" != "nightly" ]; then
         --nvmeof-daemon-remove \
         --redeploy-gws \
         --github-action-deployment \
-        --mtls \
         --journalctl-to-console \
         --dont-power-off-cloud-vms \
         --skip-lb-group-change-test \
