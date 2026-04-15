@@ -102,7 +102,6 @@ if [ "$NIGHTLY" != "nightly" ]; then
         --nvmeof-daemon-remove \
         --redeploy-gws \
         --github-action-deployment \
-        --mtls \
         --journalctl-to-console \
         --dont-power-off-cloud-vms \
         --skip-lb-group-change-test \

@@ -29,7 +29,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           submodules: recursive
 
@@ -85,7 +85,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Build container images - ceph
         run: make build SVC=ceph
@@ -106,7 +106,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           submodules: recursive
 
@@ -164,7 +164,7 @@ jobs:
       HUGEPAGES: 512  # for multi gateway test, approx 256 per gateway instance
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup huge pages
         run: |
@@ -295,7 +295,7 @@ jobs:
       HUGEPAGES: 512
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup huge-pages
         run: make setup HUGEPAGES=$HUGEPAGES
@@ -404,7 +404,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup huge-pages
         run: make setup HUGEPAGES=$HUGEPAGES
@@ -572,7 +572,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup huge-pages
         run: make setup HUGEPAGES=$HUGEPAGES
@@ -662,7 +662,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         
       - name: Download container images
         uses: actions/download-artifact@v4
@@ -682,7 +682,7 @@ jobs:
     runs-on: dailyAtomRunner
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Container_images_nvmeof folder (tar files) download
         run: |
@@ -768,7 +768,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Download container images (nvmeof)
         uses: actions/download-artifact@v4
@@ -806,7 +806,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Download container images
         uses: actions/download-artifact@v4
@@ -839,7 +839,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: setup
         run: make setup
