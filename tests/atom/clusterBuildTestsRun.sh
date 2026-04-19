@@ -74,7 +74,7 @@ if [ "$NIGHTLY" != "nightly" ]; then
     sudo docker run \
         -v /root/.ssh:/root/.ssh \
         nvmeof_atom:"$ATOM_SHA" \
-        bash -c "python3 atom.py \
+        bash -c "python3 atom_main.py \
         --project=nvmeof \
         --ceph-img=quay.ceph.io/ceph-ci/ceph:"$CEPH_SHA" \
         --ceph-branch="$CEPH_BRANCH" \
@@ -122,7 +122,7 @@ else
     sudo docker run \
         -v /root/.ssh:/root/.ssh \
         nvmeof_atom:"$ATOM_SHA" \
-        bash -c "python3 atom.py \
+        bash -c "python3 atom_main.py \
         --project=nvmeof \
         --ceph-img=quay.ceph.io/ceph-ci/ceph:"$CEPH_SHA" \
         --ceph-branch="$CEPH_BRANCH" \
