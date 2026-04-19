@@ -891,6 +891,10 @@ def test_create_with_encryption(caplog, two_gateways):
     assert f'encryption_entries: [(format: luks1, key id: {key_id})], encryption_algorithm: ' \
            f'no_algorithm, context: None' in caplog.text
     caplog.clear()
+    cli(["--format", "json", "namespace", "list", "--subsystem", subsystem1, "--nsid", "1"])
+    assert '"encryption_algorithm": "no_algorithm"' not in caplog.text
+    assert '"encryption_algorithm": "aes256"' in caplog.text
+    caplog.clear()
     cli(["namespace", "del", "--subsystem", subsystem1, "--nsid", "1"])
     assert f"Deleting namespace 1 from {subsystem1}: Successful" in caplog.text
     time.sleep(20)
