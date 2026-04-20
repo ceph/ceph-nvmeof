@@ -33,6 +33,7 @@ import json
 from typing import Optional, Dict, Any
 from kmip.pie import client
 from kmip.pie import objects
+from kmip.pie import exceptions as kmip_exceptions
 from kmip import enums
 
 
@@ -153,6 +154,23 @@ class KMIPCli:
     def destroy_passphrase(self, passphrase_uuid: str) -> None:
         """Destroy a passphrase"""
         try:
+            # Revoke first (required before destroy)
+            try:
+                self.client.revoke(
+                    revocation_reason=enums.RevocationReasonCode.CESSATION_OF_OPERATION,
+                    uid=passphrase_uuid
+                )
+            except kmip_exceptions.KmipOperationFailure as e:
+                # Object already revoked
+                if "ILLEGAL_OPERATION" in str(e) and "not active" in str(e):
+                    # Object already revoked - this is expected, continue to destroy
+                    pass
+                else:
+                    # Unexpected operation failure - re-raise
+                    raise
+            # Any other exception (TypeError, network errors, etc.) will propagate and fail
+
+            # Now destroy it
             self.client.destroy(passphrase_uuid)
             self._output(
                 f"Destroyed passphrase {passphrase_uuid}",
