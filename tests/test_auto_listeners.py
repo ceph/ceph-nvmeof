@@ -25,6 +25,18 @@ config = "ceph-nvmeof.conf"
 group_name = "GROUPNAME"
 
 
+def wait_for_listener_count(subsystem_nqn, expected_count, timeout=30):
+    for i in range(timeout):
+        try:
+            listeners = cli_test(["listener", "list", "--subsystem", subsystem_nqn])
+            if len(listeners.listeners) == expected_count:
+                return True
+        except Exception:
+            pass
+        time.sleep(1)
+    return False
+
+
 @pytest.fixture(scope="module")
 def gateway(config):
     """Sets up and tears down Gateway"""
@@ -70,7 +82,7 @@ class TestAutoListener:
 
     def test_listener_list(self, caplog, gateway):
         cli(["subsystem", "list"])
-        time.sleep(30)
+        assert wait_for_listener_count(subsystem, 2)
         caplog.clear()
         listeners = cli_test(["listener", "list", "--subsystem", subsystem])
         assert len(listeners.listeners) == 2
@@ -179,7 +191,7 @@ class TestAutoListener:
 
     def test_del_network_listener_list(self, caplog, gateway):
         cli(["subsystem", "list"])
-        time.sleep(30)
+        assert wait_for_listener_count(subsystem, 1)
         caplog.clear()
         listeners = cli_test(["listener", "list", "--subsystem", subsystem])
         assert len(listeners.listeners) == 1
@@ -232,7 +244,7 @@ class TestAutoListener:
 
     def test_add_network_listener_list(self, caplog, gateway):
         cli(["subsystem", "list"])
-        time.sleep(30)
+        assert wait_for_listener_count(subsystem, 2)
         caplog.clear()
         listeners = cli_test(["listener", "list", "--subsystem", subsystem])
         assert len(listeners.listeners) == 2
@@ -310,7 +322,7 @@ class TestAutoListener:
         assert f"Network mask {addr_subnet} deleted for subsystem {subsystem3}: " \
                f"Successful" in caplog.text
         cli(["subsystem", "list"])
-        time.sleep(30)
+        assert wait_for_listener_count(subsystem3, 1)
         listeners = cli_test(["listener", "list", "--subsystem", subsystem3])
         assert len(listeners.listeners) == 1
         caplog.clear()
@@ -319,7 +331,7 @@ class TestAutoListener:
         assert f"Added network {addr_subnet} for subsystem {subsystem3}" in caplog.text
         assert f"Automatically created listener at {addr}:4500 for {subsystem3}" in caplog.text
         cli(["subsystem", "list"])
-        time.sleep(30)
+        assert wait_for_listener_count(subsystem3, 2)
         listeners = cli_test(["listener", "list", "--subsystem", subsystem3])
         assert len(listeners.listeners) == 2
         assert listeners.listeners[0].trsvcid == 4500
@@ -344,3 +356,49 @@ class TestAutoListener:
             rc = sysex.code
         assert "Secure listeners cannot be set without a network mask" in caplog.text
         assert rc == 2
+
+    def test_overlapping_network_masks(self, caplog, gateway):
+        caplog.clear()
+        larger_subnet = "127.0.0.0/16"
+        smaller_subnet = addr_subnet  # 127.0.0.1/24
+        cli(["subsystem", "add", "--subsystem", subsystem5, "--no-group-append",
+             '--network-mask', larger_subnet, smaller_subnet])
+        assert f"Adding subsystem {subsystem5}: Successful" in caplog.text
+
+        subsystems = cli_test(["subsystem", "list", "--subsystem", subsystem5])
+        masks = subsystems.subsystems[0].network_mask
+        assert len(masks) == 2
+        assert set(masks) == {larger_subnet, smaller_subnet}
+
+        cli(["subsystem", "list"])
+        assert wait_for_listener_count(subsystem5, 1, timeout=30)
+
+        caplog.clear()
+        cli(["subsystem", "del_network", "--subsystem", subsystem5,
+             '--network-mask', smaller_subnet])
+        assert f"Network mask {smaller_subnet} deleted for subsystem " \
+               f"{subsystem5}: Successful" in caplog.text
+        assert f"Keeping 1 auto-listener(s) for {subsystem5}" in caplog.text
+
+        subsystems = cli_test(["subsystem", "list", "--subsystem", subsystem5])
+        masks = subsystems.subsystems[0].network_mask
+        assert len(masks) == 1
+        assert masks[0] == larger_subnet
+
+        assert wait_for_listener_count(subsystem5, 1)
+        listeners = cli_test(["listener", "list", "--subsystem", subsystem5])
+        assert len(listeners.listeners) == 1
+
+        caplog.clear()
+        cli(["subsystem", "del_network", "--subsystem", subsystem5,
+             '--network-mask', larger_subnet])
+        assert f"Network mask {larger_subnet} deleted for subsystem " \
+               f"{subsystem5}: Successful" in caplog.text
+
+        subsystems = cli_test(["subsystem", "list", "--subsystem", subsystem5])
+        masks = subsystems.subsystems[0].network_mask
+        assert len(masks) == 0
+
+        assert wait_for_listener_count(subsystem5, 0)
+        listeners = cli_test(["listener", "list", "--subsystem", subsystem5])
+        assert len(listeners.listeners) == 0
