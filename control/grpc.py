@@ -2115,6 +2115,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
     def add_listeners(self, subsystem_nqn, ip_list, is_secure, port):
         req_status = 0
+        nics = NICS(self.logger, True)
         for ip in ip_list:
             hostname = self.host_name
             if not port:
@@ -2124,6 +2125,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     port = GatewayService.LISTENER_PORT_DEFAULT
             adrfam = f'ipv{ip_address(ip).version}'
             secure = is_secure
+            if not nics.verify_ip_address(ip, adrfam):
+                self.logger.info(f'Skip to create auto-listener at {ip} for {subsystem_nqn}: '
+                                 f'Address not available as {adrfam} address')
+                continue
             lstnr_req = pb2.create_listener_req(
                 nqn=subsystem_nqn,
                 host_name=hostname,
@@ -2349,15 +2354,31 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     return pb2.req_status(status=0, error_message="")
 
                 found_ips = NICS(self.logger, True).get_ips_in_subnet(network_to_delete)
-                req_status = self.del_listeners(request.subsystem_nqn, found_ips,
+
+                existing_network_mask.remove(network_to_delete)
+                remaining_network_masks = list(existing_network_mask)
+
+                ips_to_delete = []
+                ips_to_keep = []
+                for ip in found_ips:
+                    if NICS.is_ip_in_network_masks(ip, remaining_network_masks):
+                        ips_to_keep.append(ip)
+                    else:
+                        ips_to_delete.append(ip)
+
+                if ips_to_keep:
+                    self.logger.info(f"Keeping {len(ips_to_keep)} auto-listener(s) for "
+                                     f"{request.subsystem_nqn}: {ips_to_keep} still covered by "
+                                     f"remaining network masks {remaining_network_masks}")
+
+                req_status = self.del_listeners(request.subsystem_nqn, ips_to_delete,
                                                 subsys_entry.secure_listeners, subsys_entry.port)
                 if req_status != 0:
                     self.logger.error(f'Failed to delete all listeners under network mask '
-                                      f'{request.network_mask} (all IPs: {found_ips}) '
+                                      f'{request.network_mask} (tried to remove: {ips_to_delete}) '
                                       f'for subsystem {request.subsystem_nqn}.')
                 else:
-                    existing_network_mask.remove(network_to_delete)
-                    new_network_mask = list(existing_network_mask)
+                    new_network_mask = remaining_network_masks
                     self.subsys_network[request.subsystem_nqn] = new_network_mask
                     if context:
                         # remove listener from subsystem's OMAP
