@@ -2213,6 +2213,14 @@ class GatewayService(pb2_grpc.GatewayServicer):
             ns["force"]
         except KeyError:
             ns["force"] = False
+        try:
+            ns["size"]
+        except KeyError:
+            ns["size"] = 0
+        try:
+            ns["create_image"]
+        except KeyError:
+            ns["create_image"] = False
 
     def namespace_change_load_balancing_group(self, request, context=None):
         """Changes a namespace load balancing group."""
