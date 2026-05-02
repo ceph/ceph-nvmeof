@@ -2060,10 +2060,15 @@ class GatewayClient:
         rc = 0
         ret_list = []
         out_func, err_func, wrn_func = self.get_output_functions(args)
+        if args.keep_connections:
+            if any(hnqn == "*" for hnqn in args.host_nqn):
+                self.cli.parser.error("Can only keep existing connections for specific host "
+                                      "NQNs, not '*'")
         for one_host_nqn in args.host_nqn:
             req = pb2.remove_host_req(subsystem_nqn=args.subsystem,
                                       host_nqn=one_host_nqn,
-                                      force=args.force)
+                                      force=args.force,
+                                      keep_connections=args.keep_connections)
 
             try:
                 ret = self.stub.remove_host(req)
@@ -2315,6 +2320,11 @@ class GatewayClient:
                  help="Delete the host even if it used in a namespace netmask",
                  action='store_true',
                  required=False),
+        argument("--keep-connections",
+                 "-k",
+                 help="Do not disconnect existing connections from that host",
+                 action='store_true',
+                 required=False),
     ]
     host_list_args = host_common_args + [
     ]
@@ -2440,7 +2450,8 @@ class GatewayClient:
                     timeout_col = [ka_timeout] if has_timeout else []
                     qp_text = conn.qpairs_count if conn.connected else "<n/a>"
                     ctrl_text = conn.controller_id if conn.connected else "<n/a>"
-                    connections_list.append(subsys_col + [conn.nqn,
+                    deleted_msg = " (deleted)" if conn.host_deleted else ""
+                    connections_list.append(subsys_col + [conn.nqn + deleted_msg,
                                                           conn_addr,
                                                           "Yes" if conn.connected else "No",
                                                           qp_text,

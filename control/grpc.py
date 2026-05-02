@@ -111,6 +111,8 @@ class SubsystemHostAuth:
         self.host_nqn = defaultdict(set)
         self.host_ka_timeout = defaultdict(set)
         self.host_ka_timeout_lock = threading.Lock()
+        self.connected_host_indication = defaultdict(set)
+        self.connected_host_indication_lock = threading.Lock()
 
     def clean_subsystem(self, subsys):
         self.host_psk_key.pop(subsys, None)
@@ -119,7 +121,10 @@ class SubsystemHostAuth:
         self.subsys_allow_any_hosts.pop(subsys, None)
         self.subsys_dhchap_key.pop(subsys, None)
         self.host_nqn.pop(subsys, None)
-        self.host_ka_timeout.pop(subsys, None)
+        with self.host_ka_timeout_lock:
+            self.host_ka_timeout.pop(subsys, None)
+        with self.connected_host_indication_lock:
+            self.connected_host_indication.pop(subsys, None)
 
     def add_psk_host(self, subsys, host, key):
         if key:
@@ -253,6 +258,25 @@ class SubsystemHostAuth:
             if subsys not in self.host_ka_timeout:
                 return False
             return hostnqn in self.host_ka_timeout[subsys]
+
+    def set_connected_host_indication(self, subsys, hostnqn):
+        with self.connected_host_indication_lock:
+            self.connected_host_indication[subsys].add(hostnqn)
+
+    def reset_connected_host_indication(self, subsys, hostnqn):
+        with self.connected_host_indication_lock:
+            if subsys not in self.connected_host_indication:
+                return
+            self.connected_host_indication[subsys].discard(hostnqn)
+            if not self.connected_host_indication[subsys]:
+                # We removed the last host of this subsystem, delete it
+                self.connected_host_indication.pop(subsys, None)
+
+    def is_connected_host_indication_set(self, subsys, hostnqn) -> bool:
+        with self.connected_host_indication_lock:
+            if subsys not in self.connected_host_indication:
+                return False
+            return hostnqn in self.connected_host_indication[subsys]
 
     def allow_any_host(self, subsys):
         self.subsys_allow_any_hosts[subsys] = True
@@ -5696,6 +5720,12 @@ class GatewayService(pb2_grpc.GatewayServicer):
                         dhchap_ctrlr_key=dhchap_ctrlr_key_name,
                     )
                     self.logger.debug(f"add_host {request.host_nqn}: {ret}")
+
+                    # If the host was deleted while keeping its connections we still have this info
+                    self.host_info.remove_psk_host(request.subsystem_nqn, request.host_nqn)
+                    self.host_info.remove_dhchap_host(request.subsystem_nqn, request.host_nqn)
+                    self.host_info.remove_dhchap_ctrlr_host(request.subsystem_nqn, request.host_nqn)
+
                     if psk_file:
                         self.host_info.add_psk_host(request.subsystem_nqn,
                                                     request.host_nqn, request.psk)
@@ -5764,6 +5794,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     self.remove_all_host_keys_from_keyring(request.subsystem_nqn, request.host_nqn)
                     return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
 
+        self.host_info.reset_connected_host_indication(request.subsystem_nqn,
+                                                       request.host_nqn)
+
         return pb2.req_status(status=0, error_message=os.strerror(0))
 
     def add_host(self, request, context=None):
@@ -5805,10 +5838,22 @@ class GatewayService(pb2_grpc.GatewayServicer):
             self.logger.info(
                 f"Received request to disable open host access to"
                 f" {request.subsystem_nqn}, context: {context}{peer_msg}")
+            if request.keep_connections:
+                errmsg = f"{all_host_failure_prefix}: Can only keep existing connections for " \
+                         f"specific host NQNs"
+                self.logger.error(errmsg)
+                return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
         else:
+            if not context:
+                request.keep_connections = self.host_info.is_connected_host_indication_set(
+                    request.subsystem_nqn, request.host_nqn)
+                if request.keep_connections:
+                    self.host_info.reset_connected_host_indication(request.subsystem_nqn,
+                                                                   request.host_nqn)
             self.logger.info(
                 f"Received request to remove host {request.host_nqn} access from"
                 f" {request.subsystem_nqn}, force: {request.force}, "
+                f"keep connections: {request.keep_connections}, "
                 f"context: {context}{peer_msg}")
 
         if self.verify_nqns:
@@ -5859,6 +5904,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         omap_lock = self.omap_lock.get_omap_lock_to_use(context)
         with omap_lock:
             try:
+                keep_conn = False
                 if request.host_nqn == "*":  # Disable allow any host access
                     ret = self.spdk_rpc_client.nvmf_subsystem_allow_any_host(
                         nqn=request.subsystem_nqn,
@@ -5872,15 +5918,18 @@ class GatewayService(pb2_grpc.GatewayServicer):
                         errmsg = f"{host_failure_prefix}: No such host"
                         self.logger.error(errmsg)
                         return pb2.req_status(status=errno.ENOENT, error_message=errmsg)
+                    keep_conn = request.keep_connections if removed_host_is_connected else False
                     ret = self.spdk_rpc_client.nvmf_subsystem_remove_host(
                         nqn=request.subsystem_nqn,
                         host=request.host_nqn,
+                        keep_connections=keep_conn,
                     )
                     self.logger.debug(f"remove_host {request.host_nqn}: {ret}")
-                    self.host_info.remove_psk_host(request.subsystem_nqn, request.host_nqn)
-                    self.host_info.remove_dhchap_host(request.subsystem_nqn, request.host_nqn)
-                    self.host_info.remove_dhchap_ctrlr_host(request.subsystem_nqn,
-                                                            request.host_nqn)
+                    if not keep_conn:
+                        self.host_info.remove_psk_host(request.subsystem_nqn, request.host_nqn)
+                        self.host_info.remove_dhchap_host(request.subsystem_nqn, request.host_nqn)
+                        self.host_info.remove_dhchap_ctrlr_host(request.subsystem_nqn,
+                                                                request.host_nqn)
                     self.remove_all_host_key_files(request.subsystem_nqn, request.host_nqn)
                     self.remove_all_host_keys_from_keyring(request.subsystem_nqn, request.host_nqn)
                     self.host_info.remove_host_nqn(request.subsystem_nqn, request.host_nqn)
@@ -5912,6 +5961,26 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 self.logger.error(errmsg)
                 self.remove_host_from_state(request.subsystem_nqn, request.host_nqn, context)
                 return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
+
+            if context:
+                try:
+                    if request.keep_connections:
+                        set_connected_req = pb2.set_keep_host_connected_req(
+                            subsystem_nqn=request.subsystem_nqn,
+                            host_nqn=request.host_nqn)
+                        json_req = json_format.MessageToJson(
+                            set_connected_req, preserving_proto_field_name=True,
+                            including_default_value_fields=True)
+                        self.gateway_state.add_connected_host(request.subsystem_nqn,
+                                                              request.host_nqn,
+                                                              json_req)
+                    else:
+                        self.gateway_state.remove_connected_host(request.subsystem_nqn,
+                                                                 request.host_nqn)
+                        self.host_info.reset_connected_host_indication(request.subsystem_nqn,
+                                                                       request.host_nqn)
+                except Exception:
+                    self.logger.exception("Error setting connected host indication")
 
             rc = self.remove_host_from_state(request.subsystem_nqn, request.host_nqn, context)
             if rc.status == 0:
@@ -5955,6 +6024,17 @@ class GatewayService(pb2_grpc.GatewayServicer):
         err_prefix = f"Failure removing host {request.host_nqn} access " \
                      f"from {request.subsystem_nqn}: "
         return self.execute_grpc_function(self.remove_host_safe, request, context, err_prefix)
+
+    def set_keep_host_connected(self, request, context=None):
+        """Set a connected host indication."""
+        peer_msg = self.get_peer_message(context)
+        self.logger.info(
+            f"Received request to set keep host connected indication for "
+            f"host {request.host_nqn} "
+            f"on subsystem {request.subsystem_nqn}, context: {context}{peer_msg}")
+        self.host_info.set_connected_host_indication(request.subsystem_nqn,
+                                                     request.host_nqn)
+        return pb2.req_status(status=0, error_message=os.strerror(0))
 
     def change_host_key_safe(self, request, context):
         """Changes host's inband authentication key and/or controller key."""
@@ -6743,6 +6823,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 was_ka_timeout = \
                     self.host_info.was_host_disconnected_due_to_keepalive_timeout(
                         subsystem, hostnqn)
+                host_still_there = self.host_info.does_host_exist(
+                    subsystem, hostnqn) or self.host_info.is_any_host_allowed(subsystem)
                 one_conn = pb2.connection(nqn=hostnqn, connected=True,
                                           traddr=traddr, trsvcid=trsvcid,
                                           trtype=trtype, adrfam=adrfam,
@@ -6751,6 +6833,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                           secure=secure, use_psk=psk, use_dhchap=dhchap,
                                           dhchap_controller_origin=dhchap_ctrlr,
                                           subsystem=subsystem,
+                                          host_deleted=not host_still_there,
                                           disconnected_due_to_keepalive_timeout=was_ka_timeout)
                 connections.append(one_conn)
                 if hostnqn in host_nqns:
