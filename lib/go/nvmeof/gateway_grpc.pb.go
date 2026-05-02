@@ -52,6 +52,7 @@ const (
 	Gateway_NamespaceDeleteHost_FullMethodName               = "/Gateway/namespace_delete_host"
 	Gateway_AddHost_FullMethodName                           = "/Gateway/add_host"
 	Gateway_RemoveHost_FullMethodName                        = "/Gateway/remove_host"
+	Gateway_SetKeepHostConnected_FullMethodName              = "/Gateway/set_keep_host_connected"
 	Gateway_ChangeHostKey_FullMethodName                     = "/Gateway/change_host_key"
 	Gateway_ListHosts_FullMethodName                         = "/Gateway/list_hosts"
 	Gateway_ListConnections_FullMethodName                   = "/Gateway/list_connections"
@@ -126,6 +127,8 @@ type GatewayClient interface {
 	AddHost(ctx context.Context, in *AddHostReq, opts ...grpc.CallOption) (*ReqStatus, error)
 	// Removes a host from a subsystem
 	RemoveHost(ctx context.Context, in *RemoveHostReq, opts ...grpc.CallOption) (*ReqStatus, error)
+	// Set keep host connected flag
+	SetKeepHostConnected(ctx context.Context, in *SetKeepHostConnectedReq, opts ...grpc.CallOption) (*ReqStatus, error)
 	// Changes a host inband authentication keys
 	ChangeHostKey(ctx context.Context, in *ChangeHostKeyReq, opts ...grpc.CallOption) (*ReqStatus, error)
 	// List hosts
@@ -416,6 +419,16 @@ func (c *gatewayClient) RemoveHost(ctx context.Context, in *RemoveHostReq, opts 
 	return out, nil
 }
 
+func (c *gatewayClient) SetKeepHostConnected(ctx context.Context, in *SetKeepHostConnectedReq, opts ...grpc.CallOption) (*ReqStatus, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ReqStatus)
+	err := c.cc.Invoke(ctx, Gateway_SetKeepHostConnected_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *gatewayClient) ChangeHostKey(ctx context.Context, in *ChangeHostKeyReq, opts ...grpc.CallOption) (*ReqStatus, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ReqStatus)
@@ -668,6 +681,8 @@ type GatewayServer interface {
 	AddHost(context.Context, *AddHostReq) (*ReqStatus, error)
 	// Removes a host from a subsystem
 	RemoveHost(context.Context, *RemoveHostReq) (*ReqStatus, error)
+	// Set keep host connected flag
+	SetKeepHostConnected(context.Context, *SetKeepHostConnectedReq) (*ReqStatus, error)
 	// Changes a host inband authentication keys
 	ChangeHostKey(context.Context, *ChangeHostKeyReq) (*ReqStatus, error)
 	// List hosts
@@ -789,6 +804,9 @@ func (UnimplementedGatewayServer) AddHost(context.Context, *AddHostReq) (*ReqSta
 }
 func (UnimplementedGatewayServer) RemoveHost(context.Context, *RemoveHostReq) (*ReqStatus, error) {
 	return nil, status.Error(codes.Unimplemented, "method RemoveHost not implemented")
+}
+func (UnimplementedGatewayServer) SetKeepHostConnected(context.Context, *SetKeepHostConnectedReq) (*ReqStatus, error) {
+	return nil, status.Error(codes.Unimplemented, "method SetKeepHostConnected not implemented")
 }
 func (UnimplementedGatewayServer) ChangeHostKey(context.Context, *ChangeHostKeyReq) (*ReqStatus, error) {
 	return nil, status.Error(codes.Unimplemented, "method ChangeHostKey not implemented")
@@ -1303,6 +1321,24 @@ func _Gateway_RemoveHost_Handler(srv interface{}, ctx context.Context, dec func(
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Gateway_SetKeepHostConnected_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetKeepHostConnectedReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GatewayServer).SetKeepHostConnected(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Gateway_SetKeepHostConnected_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GatewayServer).SetKeepHostConnected(ctx, req.(*SetKeepHostConnectedReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _Gateway_ChangeHostKey_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ChangeHostKeyReq)
 	if err := dec(in); err != nil {
@@ -1765,6 +1801,10 @@ var Gateway_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "remove_host",
 			Handler:    _Gateway_RemoveHost_Handler,
+		},
+		{
+			MethodName: "set_keep_host_connected",
+			Handler:    _Gateway_SetKeepHostConnected_Handler,
 		},
 		{
 			MethodName: "change_host_key",
