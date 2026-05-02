@@ -105,7 +105,7 @@ def test_multi_gateway_coordination(config, image, conn):
 
     nsListA = json.loads(json_format.MessageToJson(
         stubA.list_namespaces(list_namespaces_req),
-        preserving_proto_field_name=True, including_default_value_fields=True))['namespaces']
+        preserving_proto_field_name=True, always_print_fields_with_no_presence=True))['namespaces']
     assert len(nsListA) == 1
     assert nsListA[0]["nsid"] == nsid
     uuid = nsListA[0]["uuid"]
@@ -113,17 +113,21 @@ def test_multi_gateway_coordination(config, image, conn):
     # Watch/Notify
     if update_notify:
         time.sleep(15)
-        listB = json.loads(json_format.MessageToJson(
-            stubB.list_subsystems(list_subsystems_req),
-            preserving_proto_field_name=True, including_default_value_fields=True))['subsystems']
+        listB = json.loads(
+            json_format.MessageToJson(
+                stubB.list_subsystems(list_subsystems_req),
+                preserving_proto_field_name=True,
+                always_print_fields_with_no_presence=True))['subsystems']
         assert len(listB) == num_subsystems
         assert listB[num_subsystems - 1]["nqn"] == nqn
         assert listB[num_subsystems - 1]["serial_number"] == serial
         assert listB[num_subsystems - 1]["namespace_count"] == 1
 
-        nsListB = json.loads(json_format.MessageToJson(
-            stubB.list_namespaces(list_namespaces_req),
-            preserving_proto_field_name=True, including_default_value_fields=True))['namespaces']
+        nsListB = json.loads(
+            json_format.MessageToJson(
+                stubB.list_namespaces(list_namespaces_req),
+                preserving_proto_field_name=True,
+                always_print_fields_with_no_presence=True))['namespaces']
         assert len(nsListB) == 1
         assert nsListB[0]["nsid"] == nsid
         assert nsListB[0]["uuid"] == uuid
@@ -134,14 +138,14 @@ def test_multi_gateway_coordination(config, image, conn):
     time.sleep(update_interval_sec + 15)
     listB = json.loads(json_format.MessageToJson(
         stubB.list_subsystems(list_subsystems_req),
-        preserving_proto_field_name=True, including_default_value_fields=True))['subsystems']
+        preserving_proto_field_name=True, always_print_fields_with_no_presence=True))['subsystems']
     assert len(listB) == num_subsystems
     assert listB[num_subsystems - 1]["nqn"] == nqn
     assert listB[num_subsystems - 1]["serial_number"] == serial
     assert listB[num_subsystems - 1]["namespace_count"] == 1
     nsListB = json.loads(json_format.MessageToJson(
         stubB.list_namespaces(list_namespaces_req),
-        preserving_proto_field_name=True, including_default_value_fields=True))['namespaces']
+        preserving_proto_field_name=True, always_print_fields_with_no_presence=True))['namespaces']
     assert len(nsListB) == 1
     assert nsListB[0]["nsid"] == nsid
     assert nsListB[0]["uuid"] == uuid

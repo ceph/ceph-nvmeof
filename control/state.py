@@ -1904,7 +1904,7 @@ class GatewayStateHandler:
                             json_req = json_format.MessageToJson(
                                 req,
                                 preserving_proto_field_name=True,
-                                including_default_value_fields=True)
+                                always_print_fields_with_no_presence=True)
                             added[lbgroup_key] = json_req
                         except Exception:
                             self.logger.exception("Exception formatting change namespace "
@@ -1932,7 +1932,7 @@ class GatewayStateHandler:
                             json_req = json_format.MessageToJson(
                                 req,
                                 preserving_proto_field_name=True,
-                                including_default_value_fields=True)
+                                always_print_fields_with_no_presence=True)
                             added[visibility_key] = json_req
                         except Exception:
                             self.logger.exception("Exception formatting change namespace "
@@ -1957,7 +1957,7 @@ class GatewayStateHandler:
                             json_req = json_format.MessageToJson(
                                 req,
                                 preserving_proto_field_name=True,
-                                including_default_value_fields=True)
+                                always_print_fields_with_no_presence=True)
                             added[location_key] = json_req
                         except Exception:
                             self.logger.exception("Exception formatting change namespace "
@@ -1982,7 +1982,7 @@ class GatewayStateHandler:
                             json_req = json_format.MessageToJson(
                                 req,
                                 preserving_proto_field_name=True,
-                                including_default_value_fields=True)
+                                always_print_fields_with_no_presence=True)
                             added[trash_image_key] = json_req
                         except Exception:
                             self.logger.exception("Exception formatting set namespace "
@@ -2007,7 +2007,7 @@ class GatewayStateHandler:
                             json_req = json_format.MessageToJson(
                                 req,
                                 preserving_proto_field_name=True,
-                                including_default_value_fields=True)
+                                always_print_fields_with_no_presence=True)
                             added[auto_resize_key] = json_req
                         except Exception:
                             self.logger.exception("Exception formatting set namespace "
@@ -2047,7 +2047,7 @@ class GatewayStateHandler:
                             json_req = json_format.MessageToJson(
                                 req,
                                 preserving_proto_field_name=True,
-                                including_default_value_fields=True)
+                                always_print_fields_with_no_presence=True)
                             added[host_key_key] = json_req
                         except Exception:
                             self.logger.exception("Exception formatting change host key request")
@@ -2072,7 +2072,7 @@ class GatewayStateHandler:
                             json_req = json_format.MessageToJson(
                                 req,
                                 preserving_proto_field_name=True,
-                                including_default_value_fields=True)
+                                always_print_fields_with_no_presence=True)
                             added[subsys_key_key] = json_req
                         except Exception:
                             self.logger.exception("Exception formatting change subsystem "
@@ -2094,7 +2094,7 @@ class GatewayStateHandler:
                                 json_req = json_format.MessageToJson(
                                     req,
                                     preserving_proto_field_name=True,
-                                    including_default_value_fields=True)
+                                    always_print_fields_with_no_presence=True)
                                 changed[nadd_key] = json_req
                             for network_subnet in delete_n:
                                 req = pb2.del_subsystem_network_req(subsystem_nqn=subsys_nqn,
@@ -2104,7 +2104,7 @@ class GatewayStateHandler:
                                 json_req = json_format.MessageToJson(
                                     req,
                                     preserving_proto_field_name=True,
-                                    including_default_value_fields=True)
+                                    always_print_fields_with_no_presence=True)
                                 changed[ndel_key] = json_req
                         except Exception:
                             self.logger.exception("Exception formatting add/del subsystem "

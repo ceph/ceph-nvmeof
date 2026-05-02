@@ -237,12 +237,12 @@ def test_multi_gateway_omap_reread(config, conn_omap_reread, caplog):
     # only the discovery subsystem
     listB = json.loads(json_format.MessageToJson(
         stubB.list_subsystems(subsystem_list_req),
-        preserving_proto_field_name=True, including_default_value_fields=True))['subsystems']
+        preserving_proto_field_name=True, always_print_fields_with_no_presence=True))['subsystems']
     assert len(listB) == 1
 
     listA = json.loads(json_format.MessageToJson(
         stubA.list_subsystems(subsystem_list_req),
-        preserving_proto_field_name=True, including_default_value_fields=True))['subsystems']
+        preserving_proto_field_name=True, always_print_fields_with_no_presence=True))['subsystems']
     assert len(listA) == num_subsystems
 
     ns2_req = pb2.namespace_add_req(subsystem_nqn=nqn,
@@ -259,7 +259,7 @@ def test_multi_gateway_omap_reread(config, conn_omap_reread, caplog):
     # Make sure that after reading the OMAP file GW-B has the subsystem and namespace from GW-A
     listB = json.loads(json_format.MessageToJson(
         stubB.list_subsystems(subsystem_list_req),
-        preserving_proto_field_name=True, including_default_value_fields=True))['subsystems']
+        preserving_proto_field_name=True, always_print_fields_with_no_presence=True))['subsystems']
     assert len(listB) == num_subsystems
     assert listB[num_subsystems - 1]["nqn"] == nqn
     assert listB[num_subsystems - 1]["serial_number"] == serial
@@ -346,19 +346,19 @@ def test_multi_gateway_concurrent_changes(config, image, conn_concurrent, caplog
     subsystem_list_req = pb2.list_subsystems_req()
     subListA = json.loads(json_format.MessageToJson(
         stubA.list_subsystems(subsystem_list_req),
-        preserving_proto_field_name=True, including_default_value_fields=True))['subsystems']
+        preserving_proto_field_name=True, always_print_fields_with_no_presence=True))['subsystems']
     subListB = json.loads(json_format.MessageToJson(
         stubB.list_subsystems(subsystem_list_req),
-        preserving_proto_field_name=True, including_default_value_fields=True))['subsystems']
+        preserving_proto_field_name=True, always_print_fields_with_no_presence=True))['subsystems']
     for i in range(created_resource_count):
         subsystem = f"{subsystem_prefix}{i}"
         host_list_req = pb2.list_hosts_req(subsystem=subsystem)
         hostListA = json.loads(json_format.MessageToJson(
             stubA.list_hosts(host_list_req),
-            preserving_proto_field_name=True, including_default_value_fields=True))
+            preserving_proto_field_name=True, always_print_fields_with_no_presence=True))
         hostListB = json.loads(json_format.MessageToJson(
             stubB.list_hosts(host_list_req),
-            preserving_proto_field_name=True, including_default_value_fields=True))
+            preserving_proto_field_name=True, always_print_fields_with_no_presence=True))
         check_resource_by_index(i, subListA, hostListA)
         check_resource_by_index(i, subListB, hostListB)
 

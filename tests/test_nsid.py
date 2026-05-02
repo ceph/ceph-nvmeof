@@ -133,7 +133,7 @@ def test_multi_gateway_namespace_ids(config, image, caplog):
         namespace_list_req = pb2.list_namespaces_req(subsystem=subsystem)
         listA = json.loads(json_format.MessageToJson(
             stubA.list_namespaces(namespace_list_req),
-            preserving_proto_field_name=True, including_default_value_fields=True))
+            preserving_proto_field_name=True, always_print_fields_with_no_presence=True))
         assert listA["status"] == 0
         assert len(listA["namespaces"]) == 2
         nsidA1 = listA["namespaces"][0]["nsid"]
@@ -147,7 +147,7 @@ def test_multi_gateway_namespace_ids(config, image, caplog):
         time.sleep(30)
         listB = json.loads(json_format.MessageToJson(
             stubB.list_namespaces(namespace_list_req),
-            preserving_proto_field_name=True, including_default_value_fields=True))
+            preserving_proto_field_name=True, always_print_fields_with_no_presence=True))
         assert listB["status"] == 0
         assert len(listB["namespaces"]) == 2
         nsidB1 = listB["namespaces"][0]["nsid"]
@@ -188,7 +188,7 @@ def test_multi_gateway_namespace_ids(config, image, caplog):
         time.sleep(30)
         listB = json.loads(json_format.MessageToJson(
             stubB.list_namespaces(namespace_list_req),
-            preserving_proto_field_name=True, including_default_value_fields=True))
+            preserving_proto_field_name=True, always_print_fields_with_no_presence=True))
         assert listB["status"] == 0
         assert len(listB["namespaces"]) == 2
         nsidB1 = listB["namespaces"][0]["nsid"]

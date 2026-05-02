@@ -2062,7 +2062,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                         request.key_encrypted = key_encrypted_for_omap
                     json_req = json_format.MessageToJson(
                         request, preserving_proto_field_name=True,
-                        including_default_value_fields=True)
+                        always_print_fields_with_no_presence=True)
                     self.gateway_state.add_subsystem(request.subsystem_nqn, json_req)
                 except Exception as ex:
                     errmsg = f"Error persisting subsystem {request.subsystem_nqn}"
@@ -2256,7 +2256,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                         subsys_entry.network_mask[:] = new_network_mask
                         json_req = json_format.MessageToJson(
                             subsys_entry, preserving_proto_field_name=True,
-                            including_default_value_fields=True)
+                            always_print_fields_with_no_presence=True)
                         self.gateway_state.add_subsystem(request.subsystem_nqn, json_req)
                     self.logger.info(f"Added network {request.network_mask} for subsystem "
                                      f"{request.subsystem_nqn}")
@@ -2345,7 +2345,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                         subsys_entry.network_mask[:] = new_network_mask
                         json_req = json_format.MessageToJson(
                             subsys_entry, preserving_proto_field_name=True,
-                            including_default_value_fields=True)
+                            always_print_fields_with_no_presence=True)
                         self.gateway_state.add_subsystem(request.subsystem_nqn, json_req)
                     self.logger.info(f"Deleted network {network_to_delete} for subsystem "
                                      f"{request.subsystem_nqn}")
@@ -2487,7 +2487,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                                                 endpoints=[endpoint])
                     json_req = json_format.MessageToJson(
                         request, preserving_proto_field_name=True,
-                        including_default_value_fields=True)
+                        always_print_fields_with_no_presence=True)
                     self.gateway_state.add_kmip_server_endpoint(subsys,
                                                                 server,
                                                                 endpoint.address,
@@ -3477,7 +3477,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 try:
                     json_req = json_format.MessageToJson(
                         request, preserving_proto_field_name=True,
-                        including_default_value_fields=True)
+                        always_print_fields_with_no_presence=True)
                     self.gateway_state.add_namespace(request.subsystem_nqn, ret_ns.nsid, json_req)
                 except Exception as ex:
                     errmsg = f"Error persisting namespace {nsid_msg}on {request.subsystem_nqn}"
@@ -3663,7 +3663,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     ns_entry.anagrpid = request.anagrpid
                     json_req = json_format.MessageToJson(
                         ns_entry, preserving_proto_field_name=True,
-                        including_default_value_fields=True)
+                        always_print_fields_with_no_presence=True)
                     self.gateway_state.add_namespace(request.subsystem_nqn,
                                                      request.nsid, json_req)
                 except Exception as ex:
@@ -3815,7 +3815,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     ns_entry.no_auto_visible = not request.auto_visible
                     json_req = json_format.MessageToJson(
                         ns_entry, preserving_proto_field_name=True,
-                        including_default_value_fields=True)
+                        always_print_fields_with_no_presence=True)
                     self.gateway_state.add_namespace(request.subsystem_nqn, request.nsid, json_req)
 
                     # If we set the namespace to be visible, we need to remote its hosts
@@ -3916,7 +3916,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     ns_entry.location = request.location
                     json_req = json_format.MessageToJson(
                         ns_entry, preserving_proto_field_name=True,
-                        including_default_value_fields=True)
+                        always_print_fields_with_no_presence=True)
                     self.gateway_state.add_namespace(request.subsystem_nqn, request.nsid, json_req)
                 except Exception as ex:
                     errmsg = f"Error persisting location change for namespace " \
@@ -4020,7 +4020,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     ns_entry.trash_image = request.trash_image
                     json_req = json_format.MessageToJson(
                         ns_entry, preserving_proto_field_name=True,
-                        including_default_value_fields=True)
+                        always_print_fields_with_no_presence=True)
                     self.gateway_state.add_namespace(request.subsystem_nqn, request.nsid, json_req)
                 except Exception as ex:
                     errmsg = f"Error persisting change for RBD trash image flag of namespace " \
@@ -4162,7 +4162,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     ns_entry.disable_auto_resize = not request.auto_resize
                     json_req = json_format.MessageToJson(
                         ns_entry, preserving_proto_field_name=True,
-                        including_default_value_fields=True)
+                        always_print_fields_with_no_presence=True)
                     self.gateway_state.add_namespace(request.subsystem_nqn, request.nsid, json_req)
                 except Exception as ex:
                     errmsg = f"Error persisting auto resize flag change for namespace " \
@@ -4850,7 +4850,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 try:
                     json_req = json_format.MessageToJson(
                         request, preserving_proto_field_name=True,
-                        including_default_value_fields=True)
+                        always_print_fields_with_no_presence=True)
                     self.gateway_state.add_namespace_qos(request.subsystem_nqn,
                                                          request.nsid, json_req)
                 except Exception as ex:
@@ -5184,7 +5184,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     request.force = True
                     json_req = json_format.MessageToJson(
                         request, preserving_proto_field_name=True,
-                        including_default_value_fields=True)
+                        always_print_fields_with_no_presence=True)
                     self.gateway_state.add_namespace_host(request.subsystem_nqn,
                                                           request.nsid, request.host_nqn, json_req)
                 except Exception as ex:
@@ -5784,7 +5784,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     request.ctrlr_key_encrypted = ctrlr_key_encrypted_for_omap
                     json_req = json_format.MessageToJson(
                         request, preserving_proto_field_name=True,
-                        including_default_value_fields=True)
+                        always_print_fields_with_no_presence=True)
                     self.gateway_state.add_host(request.subsystem_nqn, request.host_nqn, json_req)
                 except Exception as ex:
                     errmsg = f"Error persisting host {request.host_nqn} access addition"
@@ -5970,7 +5970,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                             host_nqn=request.host_nqn)
                         json_req = json_format.MessageToJson(
                             set_connected_req, preserving_proto_field_name=True,
-                            including_default_value_fields=True)
+                            always_print_fields_with_no_presence=True)
                         self.gateway_state.add_connected_host(request.subsystem_nqn,
                                                               request.host_nqn,
                                                               json_req)
@@ -6351,7 +6351,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                                ctrlr_key_encrypted=ctrlr_key_encrypted_for_omap)
                     json_req = json_format.MessageToJson(
                         add_req, preserving_proto_field_name=True,
-                        including_default_value_fields=True)
+                        always_print_fields_with_no_presence=True)
                     self.gateway_state.add_host(request.subsystem_nqn, request.host_nqn, json_req)
                 except Exception as ex:
                     errmsg = f"Error persisting host change key for host {request.host_nqn}" \
@@ -7130,7 +7130,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     request.traddr = traddr
                     json_req = json_format.MessageToJson(
                         request, preserving_proto_field_name=True,
-                        including_default_value_fields=True,
+                        always_print_fields_with_no_presence=True,
                         use_integers_for_enums=True)
                     self.gateway_state.add_listener(request.nqn,
                                                     request.host_name,
@@ -7821,7 +7821,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     subsys_entry.key_encrypted = key_encrypted
                     json_req = json_format.MessageToJson(
                         subsys_entry, preserving_proto_field_name=True,
-                        including_default_value_fields=True)
+                        always_print_fields_with_no_presence=True)
                     self.gateway_state.add_subsystem(request.subsystem_nqn, json_req)
                 except Exception as ex:
                     errmsg = f"Error persisting subsystem key change for {request.subsystem_nqn}"
