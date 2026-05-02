@@ -64,7 +64,7 @@ build: export SPDK_CONFIGURE_DSA := $(SPDK_CONFIGURE_DSA)
 SHAMAN_FETCH_ATTEMPTS := 3
 
 # Fetch and export CEPH_CLUSTER_CEPH_REPO_BASEURL with retries
-CEPH_CLUSTER_CEPH_REPO_BASEURL = $(shell \
+CEPH_CLUSTER_CEPH_REPO_BASEURL := $(shell \
 	for i in $$(seq 1 $(SHAMAN_FETCH_ATTEMPTS)); do \
 		sha1="$(CEPH_SHA)"; \
 		if [ "$$sha1" = "latest" ]; then \
