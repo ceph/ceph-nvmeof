@@ -326,7 +326,7 @@ class GatewayClient:
             cli_ver = pb2.cli_version(status=rc, error_message=errmsg, version=ver)
             out_ver = json_format.MessageToJson(cli_ver,
                                                 indent=4,
-                                                including_default_value_fields=True,
+                                                always_print_fields_with_no_presence=True,
                                                 preserving_proto_field_name=True)
             if args.format == "json":
                 out_func(f"{out_ver}")
@@ -420,7 +420,7 @@ class GatewayClient:
                     err_func("Getting gateway's information returned status mismatch")
         elif args.format == "json" or args.format == "yaml":
             gw_info_str = json_format.MessageToJson(gw_info, indent=4,
-                                                    including_default_value_fields=True,
+                                                    always_print_fields_with_no_presence=True,
                                                     preserving_proto_field_name=True)
             if args.format == "json":
                 out_func(gw_info_str)
@@ -455,7 +455,7 @@ class GatewayClient:
                                     version=gw_info.version)
             out_ver = json_format.MessageToJson(gw_ver,
                                                 indent=4,
-                                                including_default_value_fields=True,
+                                                always_print_fields_with_no_presence=True,
                                                 preserving_proto_field_name=True)
             if args.format == "json":
                 out_func(f"{out_ver}")
@@ -490,7 +490,7 @@ class GatewayClient:
                 err_func(f"{ret.error_message}")
         elif args.format == "json" or args.format == "yaml":
             out_log_level = json_format.MessageToJson(ret, indent=4,
-                                                      including_default_value_fields=True,
+                                                      always_print_fields_with_no_presence=True,
                                                       preserving_proto_field_name=True)
             if args.format == "json":
                 out_func(out_log_level)
@@ -531,7 +531,7 @@ class GatewayClient:
                 err_func(f"{ret.error_message}")
         elif args.format == "json" or args.format == "yaml":
             ret_str = json_format.MessageToJson(ret, indent=4,
-                                                including_default_value_fields=True,
+                                                always_print_fields_with_no_presence=True,
                                                 preserving_proto_field_name=True)
             if args.format == "json":
                 out_func(ret_str)
@@ -573,7 +573,7 @@ class GatewayClient:
                 err_func(f"{thread_stats.error_message}")
         elif args.format == "json" or args.format == "yaml":
             ret_str = json_format.MessageToJson(thread_stats, indent=4,
-                                                including_default_value_fields=True,
+                                                always_print_fields_with_no_presence=True,
                                                 preserving_proto_field_name=True)
             if args.format == "json":
                 out_func(ret_str)
@@ -614,7 +614,7 @@ class GatewayClient:
                 err_func(f"{ret.error_message}")
         elif args.format == "json" or args.format == "yaml":
             ret_str = json_format.MessageToJson(ret, indent=4,
-                                                including_default_value_fields=True,
+                                                always_print_fields_with_no_presence=True,
                                                 preserving_proto_field_name=True)
             if args.format == "json":
                 out_func(ret_str)
@@ -670,7 +670,7 @@ class GatewayClient:
                 err_func(f"{gw_stats.error_message}")
         elif args.format == "json" or args.format == "yaml":
             ret_str = json_format.MessageToJson(gw_stats, indent=4,
-                                                including_default_value_fields=True,
+                                                always_print_fields_with_no_presence=True,
                                                 preserving_proto_field_name=True)
             if args.format == "json":
                 out_func(ret_str)
@@ -743,7 +743,7 @@ class GatewayClient:
                 err_func(f"{listeners_info.error_message}")
         elif args.format == "json" or args.format == "yaml":
             ret_str = json_format.MessageToJson(listeners_info, indent=4,
-                                                including_default_value_fields=True,
+                                                always_print_fields_with_no_presence=True,
                                                 preserving_proto_field_name=True)
             if args.format == "json":
                 out_func(ret_str)
@@ -843,7 +843,7 @@ class GatewayClient:
                 err_func(f"{ret.error_message}")
         elif args.format == "json" or args.format == "yaml":
             ret_str = json_format.MessageToJson(ret, indent=4,
-                                                including_default_value_fields=True,
+                                                always_print_fields_with_no_presence=True,
                                                 preserving_proto_field_name=True)
             if args.format == "json":
                 out_func(ret_str)
@@ -883,7 +883,7 @@ class GatewayClient:
                 err_func(f"{ret.error_message}")
         elif args.format == "json" or args.format == "yaml":
             out_log_level = json_format.MessageToJson(ret, indent=4,
-                                                      including_default_value_fields=True,
+                                                      always_print_fields_with_no_presence=True,
                                                       preserving_proto_field_name=True)
             if args.format == "json":
                 out_func(out_log_level)
@@ -931,7 +931,7 @@ class GatewayClient:
                 err_func(f"{ret.error_message}")
         elif args.format == "json" or args.format == "yaml":
             ret_str = json_format.MessageToJson(ret, indent=4,
-                                                including_default_value_fields=True,
+                                                always_print_fields_with_no_presence=True,
                                                 preserving_proto_field_name=True)
             if args.format == "json":
                 out_func(ret_str)
@@ -1047,7 +1047,7 @@ class GatewayClient:
                 err_func(f"{ret.error_message}")
         elif args.format == "json" or args.format == "yaml":
             ret_str = json_format.MessageToJson(ret, indent=4,
-                                                including_default_value_fields=True,
+                                                always_print_fields_with_no_presence=True,
                                                 preserving_proto_field_name=True)
             if args.format == "json":
                 out_func(ret_str)
@@ -1085,7 +1085,7 @@ class GatewayClient:
                 err_func(f"{ret.error_message}")
         elif args.format == "json" or args.format == "yaml":
             ret_str = json_format.MessageToJson(ret, indent=4,
-                                                including_default_value_fields=True,
+                                                always_print_fields_with_no_presence=True,
                                                 preserving_proto_field_name=True)
             if args.format == "json":
                 out_func(ret_str)
@@ -1175,7 +1175,7 @@ class GatewayClient:
                 err_func(f"{subsystems.error_message}")
         elif args.format == "json" or args.format == "yaml":
             ret_str = json_format.MessageToJson(subsystems, indent=4,
-                                                including_default_value_fields=True,
+                                                always_print_fields_with_no_presence=True,
                                                 preserving_proto_field_name=True)
             if args.format == "json":
                 out_func(ret_str)
@@ -1220,7 +1220,7 @@ class GatewayClient:
                 err_func(f"{ret.error_message}")
         elif args.format == "json" or args.format == "yaml":
             ret_str = json_format.MessageToJson(ret, indent=4,
-                                                including_default_value_fields=True,
+                                                always_print_fields_with_no_presence=True,
                                                 preserving_proto_field_name=True)
             if args.format == "json":
                 out_func(ret_str)
@@ -1255,7 +1255,7 @@ class GatewayClient:
                 err_func(f"{ret.error_message}")
         elif args.format == "json" or args.format == "yaml":
             ret_str = json_format.MessageToJson(ret, indent=4,
-                                                including_default_value_fields=True,
+                                                always_print_fields_with_no_presence=True,
                                                 preserving_proto_field_name=True)
             if args.format == "json":
                 out_func(ret_str)
@@ -1290,7 +1290,7 @@ class GatewayClient:
                 err_func(f"{ret.error_message}")
         elif args.format == "json" or args.format == "yaml":
             ret_str = json_format.MessageToJson(ret, indent=4,
-                                                including_default_value_fields=True,
+                                                always_print_fields_with_no_presence=True,
                                                 preserving_proto_field_name=True)
             if args.format == "json":
                 out_func(ret_str)
@@ -1347,7 +1347,7 @@ class GatewayClient:
                 err_func(f"{ret.error_message}")
         elif args.format == "json" or args.format == "yaml":
             ret_str = json_format.MessageToJson(ret, indent=4,
-                                                including_default_value_fields=True,
+                                                always_print_fields_with_no_presence=True,
                                                 preserving_proto_field_name=True)
             if args.format == "json":
                 out_func(ret_str)
@@ -1403,7 +1403,7 @@ class GatewayClient:
                 err_func(f"{ret.error_message}")
         elif args.format == "json" or args.format == "yaml":
             ret_str = json_format.MessageToJson(ret, indent=4,
-                                                including_default_value_fields=True,
+                                                always_print_fields_with_no_presence=True,
                                                 preserving_proto_field_name=True)
             if args.format == "json":
                 out_func(ret_str)
@@ -1466,7 +1466,7 @@ class GatewayClient:
                 err_func(f"{endpoints.error_message}")
         elif args.format == "json" or args.format == "yaml":
             ret_str = json_format.MessageToJson(endpoints, indent=4,
-                                                including_default_value_fields=True,
+                                                always_print_fields_with_no_presence=True,
                                                 preserving_proto_field_name=True)
             if args.format == "json":
                 out_func(ret_str)
@@ -1739,7 +1739,7 @@ class GatewayClient:
                 err_func(f"{ret.error_message}")
         elif args.format == "json" or args.format == "yaml":
             ret_str = json_format.MessageToJson(ret, indent=4,
-                                                including_default_value_fields=True,
+                                                always_print_fields_with_no_presence=True,
                                                 preserving_proto_field_name=True)
             if args.format == "json":
                 out_func(ret_str)
@@ -1802,7 +1802,7 @@ class GatewayClient:
                 err_func(f"{ret.error_message}")
         elif args.format == "json" or args.format == "yaml":
             ret_str = json_format.MessageToJson(ret, indent=4,
-                                                including_default_value_fields=True,
+                                                always_print_fields_with_no_presence=True,
                                                 preserving_proto_field_name=True)
             if args.format == "json":
                 out_func(ret_str)
@@ -1865,7 +1865,7 @@ class GatewayClient:
                 err_func(f"{listeners_info.error_message}")
         elif args.format == "json" or args.format == "yaml":
             ret_str = json_format.MessageToJson(listeners_info, indent=4,
-                                                including_default_value_fields=True,
+                                                always_print_fields_with_no_presence=True,
                                                 preserving_proto_field_name=True)
             if args.format == "json":
                 out_func(ret_str)
@@ -2037,7 +2037,7 @@ class GatewayClient:
                     err_func(f"{ret.error_message}")
             elif args.format == "json" or args.format == "yaml":
                 ret_str = json_format.MessageToJson(ret, indent=4,
-                                                    including_default_value_fields=True,
+                                                    always_print_fields_with_no_presence=True,
                                                     preserving_proto_field_name=True)
                 if args.format == "json":
                     out_func(ret_str)
@@ -2100,7 +2100,7 @@ class GatewayClient:
                     err_func(ret.error_message)
             elif args.format == "json" or args.format == "yaml":
                 ret_str = json_format.MessageToJson(ret, indent=4,
-                                                    including_default_value_fields=True,
+                                                    always_print_fields_with_no_presence=True,
                                                     preserving_proto_field_name=True)
                 if args.format == "json":
                     out_func(ret_str)
@@ -2156,7 +2156,7 @@ class GatewayClient:
                 err_func(ret.error_message)
         elif args.format == "json" or args.format == "yaml":
             ret_str = json_format.MessageToJson(ret, indent=4,
-                                                including_default_value_fields=True,
+                                                always_print_fields_with_no_presence=True,
                                                 preserving_proto_field_name=True)
             if args.format == "json":
                 out_func(ret_str)
@@ -2209,7 +2209,7 @@ class GatewayClient:
                 err_func(ret.error_message)
         elif args.format == "json" or args.format == "yaml":
             ret_str = json_format.MessageToJson(ret, indent=4,
-                                                including_default_value_fields=True,
+                                                always_print_fields_with_no_presence=True,
                                                 preserving_proto_field_name=True)
             if args.format == "json":
                 out_func(ret_str)
@@ -2271,7 +2271,7 @@ class GatewayClient:
                 err_func(f"{hosts_info.error_message}")
         elif args.format == "json" or args.format == "yaml":
             ret_str = json_format.MessageToJson(hosts_info, indent=4,
-                                                including_default_value_fields=True,
+                                                always_print_fields_with_no_presence=True,
                                                 preserving_proto_field_name=True)
             if args.format == "json":
                 out_func(ret_str)
@@ -2490,7 +2490,7 @@ class GatewayClient:
                 err_func(f"{connections_info.error_message}")
         elif args.format == "json" or args.format == "yaml":
             ret_str = json_format.MessageToJson(connections_info, indent=4,
-                                                including_default_value_fields=True,
+                                                always_print_fields_with_no_presence=True,
                                                 preserving_proto_field_name=True)
             if args.format == "json":
                 out_func(ret_str)
@@ -2579,7 +2579,7 @@ class GatewayClient:
                 err_func(ret.error_message)
         elif args.format == "json" or args.format == "yaml":
             ret_str = json_format.MessageToJson(ret, indent=4,
-                                                including_default_value_fields=True,
+                                                always_print_fields_with_no_presence=True,
                                                 preserving_proto_field_name=True)
             if args.format == "json":
                 out_func(ret_str)
@@ -2620,7 +2620,7 @@ class GatewayClient:
                 err_func(ret.error_message)
         elif args.format == "json" or args.format == "yaml":
             ret_str = json_format.MessageToJson(ret, indent=4,
-                                                including_default_value_fields=True,
+                                                always_print_fields_with_no_presence=True,
                                                 preserving_proto_field_name=True)
             if args.format == "json":
                 out_func(ret_str)
@@ -2789,7 +2789,7 @@ class GatewayClient:
                 err_func(ret.error_message)
         elif args.format == "json" or args.format == "yaml":
             ret_str = json_format.MessageToJson(ret, indent=4,
-                                                including_default_value_fields=True,
+                                                always_print_fields_with_no_presence=True,
                                                 preserving_proto_field_name=True)
             if args.format == "json":
                 out_func(ret_str)
@@ -2824,7 +2824,7 @@ class GatewayClient:
                 err_func(f"{ret.error_message}")
         elif args.format == "json" or args.format == "yaml":
             ret_str = json_format.MessageToJson(ret, indent=4,
-                                                including_default_value_fields=True,
+                                                always_print_fields_with_no_presence=True,
                                                 preserving_proto_field_name=True)
             if args.format == "json":
                 out_func(ret_str)
@@ -2869,7 +2869,7 @@ class GatewayClient:
                 err_func(f"{ret.error_message}")
         elif args.format == "json" or args.format == "yaml":
             ret_str = json_format.MessageToJson(ret, indent=4,
-                                                including_default_value_fields=True,
+                                                always_print_fields_with_no_presence=True,
                                                 preserving_proto_field_name=True)
             if args.format == "json":
                 out_func(ret_str)
@@ -3187,7 +3187,7 @@ class GatewayClient:
                 err_func(f"{namespaces_info.error_message}")
         elif args.format == "json" or args.format == "yaml":
             ret_str = json_format.MessageToJson(namespaces_info, indent=4,
-                                                including_default_value_fields=True,
+                                                always_print_fields_with_no_presence=True,
                                                 preserving_proto_field_name=True)
             if args.format == "json":
                 out_func(ret_str)
@@ -3284,7 +3284,7 @@ class GatewayClient:
                 err_func(f"{ns_io_stats.error_message}")
         elif args.format == "json" or args.format == "yaml":
             ret_str = json_format.MessageToJson(ns_io_stats, indent=4,
-                                                including_default_value_fields=True,
+                                                always_print_fields_with_no_presence=True,
                                                 preserving_proto_field_name=True)
             if args.format == "json":
                 out_func(ret_str)
@@ -3326,7 +3326,7 @@ class GatewayClient:
                 err_func(f"{ret.error_message}")
         elif args.format == "json" or args.format == "yaml":
             ret_str = json_format.MessageToJson(ret, indent=4,
-                                                including_default_value_fields=True,
+                                                always_print_fields_with_no_presence=True,
                                                 preserving_proto_field_name=True)
             if args.format == "json":
                 out_func(ret_str)
@@ -3408,7 +3408,7 @@ class GatewayClient:
                 err_func(f"{ret.error_message}")
         elif args.format == "json" or args.format == "yaml":
             ret_str = json_format.MessageToJson(ret, indent=4,
-                                                including_default_value_fields=True,
+                                                always_print_fields_with_no_presence=True,
                                                 preserving_proto_field_name=True)
             if args.format == "json":
                 out_func(ret_str)
@@ -3454,7 +3454,7 @@ class GatewayClient:
                     err_func(f"{ret.error_message}")
             elif args.format == "json" or args.format == "yaml":
                 ret_str = json_format.MessageToJson(ret, indent=4,
-                                                    including_default_value_fields=True,
+                                                    always_print_fields_with_no_presence=True,
                                                     preserving_proto_field_name=True)
                 if args.format == "json":
                     out_func(ret_str)
@@ -3502,7 +3502,7 @@ class GatewayClient:
                     err_func(f"{ret.error_message}")
             elif args.format == "json" or args.format == "yaml":
                 ret_str = json_format.MessageToJson(ret, indent=4,
-                                                    including_default_value_fields=True,
+                                                    always_print_fields_with_no_presence=True,
                                                     preserving_proto_field_name=True)
                 if args.format == "json":
                     out_func(ret_str)
@@ -3550,7 +3550,7 @@ class GatewayClient:
                 err_func(f"{ret.error_message}")
         elif args.format == "json" or args.format == "yaml":
             ret_str = json_format.MessageToJson(ret, indent=4,
-                                                including_default_value_fields=True,
+                                                always_print_fields_with_no_presence=True,
                                                 preserving_proto_field_name=True)
             if args.format == "json":
                 out_func(ret_str)
@@ -3592,7 +3592,7 @@ class GatewayClient:
                 err_func(f"{ret.error_message}")
         elif args.format == "json" or args.format == "yaml":
             ret_str = json_format.MessageToJson(ret, indent=4,
-                                                including_default_value_fields=True,
+                                                always_print_fields_with_no_presence=True,
                                                 preserving_proto_field_name=True)
             if args.format == "json":
                 out_func(ret_str)
@@ -3636,7 +3636,7 @@ class GatewayClient:
                 err_func(f"{ret.error_message}")
         elif args.format == "json" or args.format == "yaml":
             ret_str = json_format.MessageToJson(ret, indent=4,
-                                                including_default_value_fields=True,
+                                                always_print_fields_with_no_presence=True,
                                                 preserving_proto_field_name=True)
             if args.format == "json":
                 out_func(ret_str)
@@ -3680,7 +3680,7 @@ class GatewayClient:
                 err_func(f"{ret.error_message}")
         elif args.format == "json" or args.format == "yaml":
             ret_str = json_format.MessageToJson(ret, indent=4,
-                                                including_default_value_fields=True,
+                                                always_print_fields_with_no_presence=True,
                                                 preserving_proto_field_name=True)
             if args.format == "json":
                 out_func(ret_str)
@@ -3716,7 +3716,7 @@ class GatewayClient:
                 err_func(f"{ret.error_message}")
         elif args.format == "json" or args.format == "yaml":
             ret_str = json_format.MessageToJson(ret, indent=4,
-                                                including_default_value_fields=True,
+                                                always_print_fields_with_no_presence=True,
                                                 preserving_proto_field_name=True)
             if args.format == "json":
                 out_func(ret_str)
@@ -4065,9 +4065,12 @@ class GatewayClient:
         subsystems = self.stub.get_subsystems(pb2.get_subsystems_req())
         if args.format == "python":
             return subsystems
-        subsystems_out = json_format.MessageToJson(subsystems,
-                                                   indent=4, including_default_value_fields=True,
-                                                   preserving_proto_field_name=True)
+        subsystems_out = json_format.MessageToJson(
+            subsystems,
+            indent=4,
+            always_print_fields_with_no_presence=True,
+            preserving_proto_field_name=True,
+        )
         out_func(f"Get subsystems:\n{subsystems_out}")
 
 

@@ -1,11 +1,11 @@
 # syntax = docker/dockerfile:1.4
 # vim: syntax=dockerfile
-FROM quay.io/centos/centos:stream9-minimal AS build
+FROM quay.io/rockylinux/rockylinux:10-minimal AS build
 
 
 ARG CEPH_CLUSTER_VERSION
 ARG CEPH_CLUSTER_CEPH_REPO_BASEURL
-ARG CEPH_CLUSTER_EPEL_REPO_URL="https://copr.fedorainfracloud.org/coprs/ceph/el9/repo/epel-9/ceph-el9-epel-9.repo"
+ARG CEPH_CLUSTER_EPEL_REPO_URL=""
 
 ARG MICRODNF_OPTS="\
     --enablerepo crb \
@@ -29,6 +29,7 @@ ARG CEPH_PACKAGES="\
     jq \
     net-tools \
     iproute \
+    openssl \
     "
 # TODO: To remove when ceph-mgr-dashboard defines these as deps
 ARG EXTRA_PACKAGES="\
@@ -69,12 +70,12 @@ EOF
 
 RUN cat /etc/yum.repos.d/ceph.repo
 
-RUN rpm -vih https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
-RUN rpm --import 'https://download.ceph.com/keys/release.asc'
-RUN curl -O --output-dir /etc/yum.repos.d/ ${CEPH_CLUSTER_EPEL_REPO_URL:?}
+RUN rpm -vih https://dl.fedoraproject.org/pub/epel/epel-release-latest-10.noarch.rpm
+RUN if [ -n "$CEPH_CLUSTER_EPEL_REPO_URL" ]; then \
+      curl -fL -o /etc/yum.repos.d/ceph-epel.repo "$CEPH_CLUSTER_EPEL_REPO_URL"; \
+    fi
 
-RUN --mount=type=cache,target=/var/cache/microdnf \
-    microdnf install -y $MICRODNF_OPTS \
+RUN microdnf install -y $MICRODNF_OPTS \
       $CEPH_PACKAGES \
       $EXTRA_PACKAGES \
       $DEBUG_PACKAGES

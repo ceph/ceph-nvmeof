@@ -64,30 +64,35 @@ build: export SPDK_CONFIGURE_DSA := $(SPDK_CONFIGURE_DSA)
 SHAMAN_FETCH_ATTEMPTS := 3
 
 # Fetch and export CEPH_CLUSTER_CEPH_REPO_BASEURL with retries
-build: export CEPH_CLUSTER_CEPH_REPO_BASEURL != \
+CEPH_CLUSTER_CEPH_REPO_BASEURL = $(shell \
 	for i in $$(seq 1 $(SHAMAN_FETCH_ATTEMPTS)); do \
 		sha1="$(CEPH_SHA)"; \
 		if [ "$$sha1" = "latest" ]; then \
 			idx=$$((i - 1)); \
 			sha1=$$(curl -s \
-				"https://shaman.ceph.com/api/search/?status=ready&project=ceph&ref=$(CEPH_BRANCH)&flavor=default&distros=centos/9/$(ceph_repo_arch)" \
+				"https://shaman.ceph.com/api/search/?status=ready&project=ceph&ref=$(CEPH_BRANCH)&flavor=default&distros=rocky/10/$(ceph_repo_arch)" \
 				| jq -r "sort_by(.modified) | reverse | .[$$idx].sha1"); \
 			>&2 echo "Attempt ($$i): Using 'latest' SHA1 for arch=$(ceph_repo_arch), branch=$(CEPH_BRANCH): $$sha1"; \
 		fi; \
 		>&2 echo "Attempt ($$i): Fetching URL for arch=$(ceph_repo_arch), branch=$(CEPH_BRANCH), sha=$(CEPH_SHA)..."; \
-		url=$$(curl -s "https://shaman.ceph.com/api/repos/ceph/$(CEPH_BRANCH)/$$sha1/centos/9/" | jq -r '.[] | select(.status == "ready" and .archs[] == "$(ceph_repo_arch)") | .url'); \
-		if [ -n "$$url" ]; then \
+		url=$$(curl -s "https://shaman.ceph.com/api/repos/ceph/$(CEPH_BRANCH)/$$sha1/rocky/10/" | jq -r '.[] | select(.status == "ready" and .archs[] == "$(ceph_repo_arch)") | .url'); \
+		if [ -n "$$url" ] && [ "$$url" != "null" ]; then \
 			>&2 echo "Success: Retrieved URL for arch=$(ceph_repo_arch), branch=$(CEPH_BRANCH), sha=$(CEPH_SHA): $$url"; \
-			echo "$$url"; \
+			printf "%s" "$$url"; \
 			break; \
 		fi; \
 		>&2 echo "Retrying... Failed attempt ($$i) for arch=$(ceph_repo_arch), branch=$(CEPH_BRANCH), sha=$(CEPH_SHA)"; \
 		sleep 2; \
-	done; \
-	if [ -z "$$url" ]; then \
-		>&2 echo "Failure: Unable to retrieve a valid URL for arch=$(ceph_repo_arch), branch=$(CEPH_BRANCH), sha=$(CEPH_SHA) after $(SHAMAN_FETCH_ATTEMPTS) attempts"; \
-		exit 1; \
-	fi
+	done)
+
+build: export CEPH_CLUSTER_CEPH_REPO_BASEURL := $(CEPH_CLUSTER_CEPH_REPO_BASEURL)
+build: check-ceph-repo-url
+
+check-ceph-repo-url:
+	@test -n "$(CEPH_CLUSTER_CEPH_REPO_BASEURL)" && test "$(CEPH_CLUSTER_CEPH_REPO_BASEURL)" != "null" || \
+		(>&2 echo "Failure: No ready Ceph Shaman repo for arch=$(ceph_repo_arch), branch=$(CEPH_BRANCH), sha=$(CEPH_SHA) on rocky/10"; \
+		 >&2 echo "Shaman currently provides rocky/10 repos only for x86_64 in this branch/ref combination."; \
+		 exit 1)
 
 build: export TARGET_PLATFORM := $(TARGET_PLATFORM)
 build: export SPDK_TARGET_ARCH := $(SPDK_TARGET_ARCH)
@@ -130,4 +135,4 @@ export-python: run ## Build Ceph NVMe-oF Gateway Python package and copy it to /
 help: AUTOHELP_SUMMARY = Makefile to build and deploy the Ceph NVMe-oF Gateway
 help: autohelp
 
-.PHONY: all setup clean help update-lockfile protoc export-rpms export-python
+.PHONY: all setup clean help update-lockfile protoc export-rpms export-python check-ceph-repo-url
