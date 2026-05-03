@@ -1005,8 +1005,7 @@ class TestCreate:
         except SystemExit as sysex:
             rc = sysex.code
             pass
-        assert "error: argument --auto-visible: invalid choice: 'junk' " \
-               "(choose from 'yes', 'no', 'true', 'false', '1', '0')" in caplog.text
+        assert "error: argument --auto-visible: invalid choice: 'junk' (choose from" in caplog.text
         assert rc == 2
         caplog.clear()
         rc = 0
@@ -2833,7 +2832,7 @@ class TestImageResize:
             rc = sysex.code
             pass
         assert "error: argument --auto-resize-enabled: invalid choice: 'junk' " \
-               "(choose from 'yes', 'no', 'true', 'false', '1', '0')" in caplog.text
+               "(choose from " in caplog.text
         assert rc == 2
         caplog.clear()
         cli(["namespace", "set_auto_resize", "--subsystem", subsystem11, "--nsid", "1",

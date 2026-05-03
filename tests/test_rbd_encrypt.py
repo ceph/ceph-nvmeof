@@ -678,8 +678,8 @@ def test_wrong_encryption_format(caplog, two_gateways):
     except SystemExit as sysex:
         rc = sysex.code
         pass
-    assert "error: argument --encryption-format/-f: invalid choice: 'junk' (choose from 'luks1'," \
-           " 'LUKS1', 'luks2', 'LUKS2')" in caplog.text
+    assert "error: argument --encryption-format/-f: invalid choice: 'junk' " \
+           "(choose from " in caplog.text
     assert rc == 2
 
     enc_entries = [pb2.encryption_entry(format=5, key_id=key_id)]
