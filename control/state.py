@@ -39,6 +39,7 @@ class GatewayState(ABC):
     SUBSYSTEM_NETWORK_DEL_PREFIX = "net-del-subsystem" + OMAP_KEY_DELIMITER
     SUBSYSTEM_KEY_PREFIX = "key-subsystem" + OMAP_KEY_DELIMITER
     HOST_PREFIX = "host" + OMAP_KEY_DELIMITER
+    CONNECTED_HOST_PREFIX = "connected-del-host" + OMAP_KEY_DELIMITER
     HOST_KEY_PREFIX = "key-host" + OMAP_KEY_DELIMITER
     LISTENER_PREFIX = "listener" + OMAP_KEY_DELIMITER
     NAMESPACE_QOS_PREFIX = "qos" + OMAP_KEY_DELIMITER
@@ -141,6 +142,12 @@ class GatewayState(ABC):
             key += host_nqn
         return key
 
+    def build_connected_host_key(subsystem_nqn: str, host_nqn: str) -> str:
+        key = GatewayState.CONNECTED_HOST_PREFIX + subsystem_nqn + GatewayState.OMAP_KEY_DELIMITER
+        if host_nqn is not None:
+            key += host_nqn
+        return key
+
     def build_host_key_key(subsystem_nqn: str, host_nqn: str) -> str:
         key = GatewayState.HOST_KEY_PREFIX + subsystem_nqn + GatewayState.OMAP_KEY_DELIMITER
         if host_nqn is not None:
@@ -231,7 +238,7 @@ class GatewayState(ABC):
 
         # Delete all keys related to the namespace
         state = self.get_state()
-        for key in state.keys():
+        for key in list(state.keys()):
             # Separate if to several statements to keep flake8 happy
             if key.startswith(GatewayState.build_namespace_qos_key(subsystem_nqn, nsid)):
                 self._remove_key(key)
@@ -283,7 +290,7 @@ class GatewayState(ABC):
 
         # Delete all keys related to subsystem
         state = self.get_state()
-        for key in state.keys():
+        for key in list(state.keys()):
             # Separate if to several statements to keep flake8 happy
             if key.startswith(GatewayState.build_namespace_key(subsystem_nqn, None)):
                 self._remove_key(key)
@@ -306,6 +313,12 @@ class GatewayState(ABC):
         key = GatewayState.build_host_key(subsystem_nqn, host_nqn)
         self._add_key(key, val)
 
+        # No need for a connected-host indication for this host
+        state = self.get_state()
+        key = GatewayState.build_connected_host_key(subsystem_nqn, host_nqn)
+        if key in state:
+            self._remove_key(key)
+
     def remove_host(self, subsystem_nqn: str, host_nqn: str):
         """Removes a host from the state data store."""
         state = self.get_state()
@@ -315,9 +328,21 @@ class GatewayState(ABC):
 
         # Delete all keys related to the host
         state = self.get_state()
-        for key in state.keys():
+        for key in list(state.keys()):
             if key.startswith(GatewayState.build_host_key_key(subsystem_nqn, host_nqn)):
                 self._remove_key(key)
+
+    def add_connected_host(self, subsystem_nqn: str, host_nqn: str, val: str):
+        """Adds a connected host indication to the state data store."""
+        key = GatewayState.build_connected_host_key(subsystem_nqn, host_nqn)
+        self._add_key(key, val)
+
+    def remove_connected_host(self, subsystem_nqn: str, host_nqn: str):
+        """Removes a connected host indication from the state data store."""
+        state = self.get_state()
+        key = GatewayState.build_connected_host_key(subsystem_nqn, host_nqn)
+        if key in state:
+            self._remove_key(key)
 
     def add_kmip_server_endpoint(self,
                                  subsystem_nqn: str,
@@ -1284,6 +1309,16 @@ class GatewayStateHandler:
         self.omap.remove_host(subsystem_nqn, host_nqn)
         self.local.remove_host(subsystem_nqn, host_nqn)
 
+    def add_connected_host(self, subsystem_nqn: str, host_nqn: str, val: str):
+        """Adds a connected host indication to the state data store."""
+        self.omap.add_connected_host(subsystem_nqn, host_nqn, val)
+        self.local.add_connected_host(subsystem_nqn, host_nqn, val)
+
+    def remove_connected_host(self, subsystem_nqn: str, host_nqn: str):
+        """Removes a connected host indication from the state data store."""
+        self.omap.remove_connected_host(subsystem_nqn, host_nqn)
+        self.local.remove_connected_host(subsystem_nqn, host_nqn)
+
     def add_kmip_server_endpoint(self,
                                  subsystem_nqn: str,
                                  name: str,
@@ -1694,6 +1729,7 @@ class GatewayStateHandler:
             prefix_list = [
                 GatewayState.SUBSYSTEM_PREFIX,
                 GatewayState.HOST_PREFIX,
+                GatewayState.CONNECTED_HOST_PREFIX,
                 GatewayState.KMIP_SERVER_ENDPOINT_PREFIX,
                 GatewayState.NAMESPACE_PREFIX,
                 GatewayState.NAMESPACE_QOS_PREFIX,
@@ -1750,6 +1786,11 @@ class GatewayStateHandler:
                                                                     omap_state_dict[key])
                 }
                 grouped_changed = self._group_by_prefix(changed, prefix_list)
+                keep_connection = {
+                    key: omap_state_dict[key]
+                    for key in added_keys
+                    if key.startswith(GatewayState.CONNECTED_HOST_PREFIX)
+                }
 
                 # Handle some special cases in which we don't need to delete and re-add
                 ns_lb_group_changed = []
@@ -2097,7 +2138,11 @@ class GatewayStateHandler:
 
                 # Find OMAP removals
                 removed_keys = local_state_keys - omap_state_keys
-                removed = {key: local_state_dict[key] for key in removed_keys}
+                removed = {key: local_state_dict[key]
+                           for key in removed_keys
+                           if not key.startswith(GatewayState.CONNECTED_HOST_PREFIX)
+                           }
+                removed.update(keep_connection)
                 grouped_removed = self._group_by_prefix(removed, prefix_list)
 
                 # Handle OMAP removals and remove outdated changed components

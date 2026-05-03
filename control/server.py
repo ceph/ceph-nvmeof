@@ -1248,6 +1248,15 @@ class GatewayServer:
                                             ignore_unknown_fields=True)
                     rc = self.gateway_rpc.remove_host(req)
                 abort_server_on_update_error(rc.status, rc.error_message)
+            elif key.startswith(GatewayState.CONNECTED_HOST_PREFIX):
+                if is_add_req:
+                    # Do nothing for add, we only do that on removal
+                    pass
+                else:
+                    req = json_format.Parse(val, pb2.set_keep_host_connected_req(),
+                                            ignore_unknown_fields=True)
+                    rc = self.gateway_rpc.set_keep_host_connected(req)
+                    abort_server_on_update_error(rc.status, rc.error_message)
             elif key.startswith(GatewayState.LISTENER_PREFIX):
                 if is_add_req:
                     req = json_format.Parse(val, pb2.create_listener_req(),
