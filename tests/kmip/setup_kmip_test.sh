@@ -11,20 +11,20 @@ mkdir -p "$CERTS_DIR"
 mkdir -p "$BASE_DIR/policies"
 mkdir -p "$BASE_DIR/logs"
 
-cd "$CERTS_DIR"
+cd "$CERTS_DIR" || exit 1
 
 # Generate CA
 echo "Generating CA certificate..."
 openssl req -x509 -newkey rsa:4096 -sha256 -days 365 \
   -nodes -keyout ca_key.pem -out ca_cert.pem \
-  -subj "/CN=KMIP Test CA" 2>/dev/null
+  -subj "/CN=KMIP Test CA"
 
 # Generate server certificate
 echo "Generating server certificate..."
 openssl req -newkey rsa:4096 -nodes \
   -keyout server_key.pem \
   -out server_req.pem \
-  -subj "/CN=localhost" 2>/dev/null
+  -subj "/CN=localhost"
 
 cat > server_ext.cnf << EOF
 basicConstraints = CA:FALSE
@@ -37,14 +37,14 @@ openssl x509 -req -in server_req.pem \
   -CA ca_cert.pem -CAkey ca_key.pem \
   -CAcreateserial -out server_cert.pem \
   -days 365 -sha256 \
-  -extfile server_ext.cnf 2>/dev/null
+  -extfile server_ext.cnf
 
 # Generate client certificate
 echo "Generating client certificate..."
 openssl req -newkey rsa:4096 -nodes \
   -keyout client_key.pem \
   -out client_req.pem \
-  -subj "/CN=test_client" 2>/dev/null
+  -subj "/CN=test_client"
 
 cat > client_ext.cnf << EOF
 basicConstraints = CA:FALSE
@@ -56,13 +56,17 @@ openssl x509 -req -in client_req.pem \
   -CA ca_cert.pem -CAkey ca_key.pem \
   -CAcreateserial -out client_cert.pem \
   -days 365 -sha256 \
-  -extfile client_ext.cnf 2>/dev/null
+  -extfile client_ext.cnf
 
 # Verify
 echo ""
 echo "Verifying certificates..."
 openssl verify -CAfile ca_cert.pem server_cert.pem
 openssl verify -CAfile ca_cert.pem client_cert.pem
+
+echo ""
+echo "Generated files:"
+ls -1 "$CERTS_DIR"
 
 echo ""
 echo "Setup complete!"

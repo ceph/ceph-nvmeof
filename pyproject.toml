@@ -30,7 +30,7 @@ dependencies = [
     "prometheus_client ~= 0.19.0",
     "netifaces ~= 0.11.0",
     "cryptography>=43.0.3",
-    "PyKMIP",
+    "PyKMIP @ git+https://github.com/baum/PyKMIP.git@5b6d6164a78e92d620270fdfa253fb1a188b59ff",
     "setuptools<82.0.0",
 ]
 

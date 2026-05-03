@@ -17,7 +17,7 @@ FROM ${CONTAINER_REGISTRY:-quay.io/ceph}/spdk:${NVMEOF_SPDK_VERSION:-NULL} AS ba
 RUN \
     --mount=type=cache,target=/var/cache/dnf \
     --mount=type=cache,target=/var/lib/dnf \
-    dnf install -y python3-rados python3-rbd gdb dnf-plugins-core && \
+    dnf install -y python3-rados python3-rbd gdb dnf-plugins-core openssl && \
     dnf config-manager --set-enabled crb && \
     dnf install -y ceph-mon-client-nvmeof
 ENTRYPOINT ["python3", "-m", "control"]
@@ -128,7 +128,7 @@ ENV PDM_CHECK_UPDATE=0
 RUN \
     --mount=type=cache,target=/var/cache/dnf \
     --mount=type=cache,target=/var/lib/dnf \
-    dnf install -y python3-pip gcc gcc-c++ python3-devel libffi-devel
+    dnf install -y python3-pip gcc gcc-c++ python3-devel libffi-devel git
 RUN \
     --mount=type=cache,target=/root/.cache/pip \
     pip install -U pip "setuptools<82" wheel

@@ -1,19 +1,25 @@
-import pytest
-from control.server import GatewayServer
-from control.cli import main as cli
-from control.cli import main_test as cli_test
-from control.cephutils import CephUtils
-import grpc
-from control.proto import gateway_pb2 as pb2
-from control.proto import gateway_pb2_grpc as pb2_grpc
 import copy
 import os
-import time
+import ssl
 import subprocess
 import sys
-from kmip.pie import client
-from kmip.pie import objects
-from kmip import enums
+import time
+from functools import wraps
+
+import grpc
+import pytest
+
+from control.cephutils import CephUtils
+from control.cli import main as cli
+from control.cli import main_test as cli_test
+from control.proto import gateway_pb2 as pb2
+from control.proto import gateway_pb2_grpc as pb2_grpc
+from control.server import GatewayServer
+
+kmip = pytest.importorskip("kmip")
+from kmip import enums  # noqa: E402
+from kmip.pie import client  # noqa: E402
+from kmip.pie import objects  # noqa: E402
 
 image = "enc_test_image"
 pool = "rbd"
@@ -32,9 +38,50 @@ kmip_server_name1 = "blabla"
 kmip_server_name2 = "stam"
 
 
+def _install_ssl_wrap_socket_compat():
+    if hasattr(ssl, "wrap_socket"):
+        return
+
+    @wraps(ssl.SSLContext.wrap_socket)
+    def _wrap_socket(sock, keyfile=None, certfile=None, server_side=False,
+                     cert_reqs=ssl.CERT_NONE, ssl_version=ssl.PROTOCOL_TLS,
+                     ca_certs=None, do_handshake_on_connect=True,
+                     suppress_ragged_eofs=True, ciphers=None):
+        if ssl_version in (None, ssl.PROTOCOL_TLS):
+            protocol = ssl.PROTOCOL_TLS_SERVER if server_side else getattr(
+                ssl, "PROTOCOL_TLS_CLIENT", ssl.PROTOCOL_TLS
+            )
+        else:
+            protocol = ssl_version
+
+        context = ssl.SSLContext(protocol)
+        if hasattr(context, "minimum_version"):
+            context.minimum_version = ssl.TLSVersion.TLSv1_2
+
+        context.verify_mode = cert_reqs
+        if ca_certs:
+            context.load_verify_locations(ca_certs)
+        if certfile:
+            context.load_cert_chain(certfile=certfile, keyfile=keyfile)
+        if ciphers:
+            context.set_ciphers(ciphers)
+        return context.wrap_socket(
+            sock,
+            server_side=server_side,
+            do_handshake_on_connect=do_handshake_on_connect,
+            suppress_ragged_eofs=suppress_ragged_eofs,
+        )
+
+    ssl.wrap_socket = _wrap_socket
+
+
+_install_ssl_wrap_socket_compat()
+
+
 def start_kmip_server_endpoint(base_dir, addr, port, create_cert):
     """Sets up a KMIP server endpoint"""
-    if create_cert:
+    certs_dir = os.path.join(base_dir, "certs")
+    if create_cert or not os.path.exists(os.path.join(certs_dir, "client_cert.pem")):
         setup_path = os.path.join(".", "tests", "kmip", "setup_kmip_test.sh")
         subprocess.run([setup_path, base_dir], check=True,
                        capture_output=True, text=True)

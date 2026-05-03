@@ -5,7 +5,7 @@
 groups = ["default", "test"]
 strategy = ["inherit_metadata"]
 lock_version = "4.4.1"
-content_hash = "sha256:d51d10ae3d75df3c071f10f2f89ad10fa1090fa460f6377ced0e7c801d141145"
+content_hash = "sha256:9bb136028966d46d51e2e3a87ac58b2803fc06c414d088e97eb606aebfdb674a"
 
 [[package]]
 name = "certifi"
@@ -232,7 +232,11 @@ files = [
 
 [[package]]
 name = "pykmip"
-version = "0.10.0"
+version = "0.11.0.dev1"
+requires_python = ">= 3.8"
+git = "https://github.com/baum/PyKMIP.git"
+ref = "5b6d6164a78e92d620270fdfa253fb1a188b59ff"
+revision = "5b6d6164a78e92d620270fdfa253fb1a188b59ff"
 summary = "KMIP library"
 groups = ["default"]
 dependencies = [
@@ -241,9 +245,6 @@ dependencies = [
     "requests",
     "six",
     "sqlalchemy",
-]
-files = [
-    {file = "PyKMIP-0.10.0.tar.gz", hash = "sha256:bb6ff310bba8b1130ffe675347f668f7234d022ba3d51edea5ea7e2ea9523897"},
 ]
 
 [[package]]

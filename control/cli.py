@@ -74,6 +74,19 @@ class ErrorCatchingArgumentParser(argparse.ArgumentParser):
     def error(self, message):
         self.print_usage()
         if message:
+            invalid_choice_marker = "(choose from "
+            if invalid_choice_marker in message:
+                prefix, suffix = message.split(invalid_choice_marker, 1)
+                if ")" in suffix:
+                    choices_str, remainder = suffix.split(")", 1)
+                    normalized_choices = []
+                    for choice in choices_str.split(","):
+                        choice = choice.strip()
+                        if len(choice) >= 2 and choice[0] == choice[-1] and choice[0] in ("'", '"'):
+                            choice = choice[1:-1]
+                        normalized_choices.append(f"'{choice}'")
+                    quoted_choices = ", ".join(normalized_choices)
+                    message = f"{prefix}{invalid_choice_marker}{quoted_choices}){remainder}"
             self.logger.error(f"error: {message}")
         exit(2)
 

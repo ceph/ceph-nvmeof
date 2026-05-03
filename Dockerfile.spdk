@@ -186,7 +186,7 @@ RUN \
     dnf $DNF_OPTS install -y dnf-plugins-core \
     && rpm -ivh https://dl.fedoraproject.org/pub/epel/epel-release-latest-10.noarch.rpm \
     && dnf config-manager --set-enabled crb \
-    && rpm -ivh /accel-rpms/$(uname -m)/accel-config-libs-4*.rpm /accel-rpms/$(uname -m)/accel-config-4*.rpm \
+    && rpm -ivh /accel-rpms/$(uname -m)/accel-config-libs-[0-9]*.rpm /accel-rpms/$(uname -m)/accel-config-[0-9]*.rpm \
     && dnf $DNF_OPTS install -y /rpm/$(uname -m)/*.rpm \
     && dnf $DNF_OPTS update -y
 
