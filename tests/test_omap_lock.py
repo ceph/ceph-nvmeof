@@ -182,7 +182,7 @@ def create_resource_by_index(stub, i, caplog):
         caplog.clear()
     host_req = pb2.add_host_req(subsystem_nqn=subsystem, host_nqn="*")
     ret_host = stub.add_host(host_req)
-    assert ret_host.status == 0
+    assert ret_host.status == 0 or ret_host.status == 109
     if caplog is not None:
         assert "add_host *: True" in caplog.text
         assert f"Failure allowing open host access to {subsystem}" not in caplog.text

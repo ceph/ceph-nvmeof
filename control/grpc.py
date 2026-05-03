@@ -5431,6 +5431,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         all_host_failure_prefix = f"Failure allowing open host access to {request.subsystem_nqn}"
         host_failure_prefix = f"Failure adding host {request.host_nqn} to {request.subsystem_nqn}"
+        host_nqn_mix_warning = None
 
         if not GatewayState.is_key_element_valid(request.host_nqn):
             errmsg = f"{host_failure_prefix}: Invalid host NQN \"{request.host_nqn}\", " \
@@ -5467,12 +5468,18 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 return pb2.req_status(status=errno.EACCES, error_message=errmsg)
 
         if request.host_nqn != "*" and self.host_info.is_any_host_allowed(request.subsystem_nqn):
-            self.logger.warning(f"A specific host {request.host_nqn} was added to subsystem "
-                                f"{request.subsystem_nqn} in which all hosts are allowed")
+            host_nqn_mix_warning = f"Access was enabled for host {request.host_nqn} to subsystem " \
+                                   f"{request.subsystem_nqn} in which all hosts are already allowed"
+            self.logger.warning(host_nqn_mix_warning)
 
         if request.host_nqn == "*":
             self.logger.warning(f"Subsystem {request.subsystem_nqn} will be opened to be "
                                 f"accessed from any host. This might be a security breach")
+            if self.host_info.get_host_count(request.subsystem_nqn) > 0:
+                host_nqn_mix_warning = f"Subsystem {request.subsystem_nqn} was opened for " \
+                                       f"access from all hosts while it is already open " \
+                                       f"for access from specific hosts"
+                self.logger.warning(host_nqn_mix_warning)
 
         if self.verify_nqns:
             rc = GatewayService.is_valid_host_nqn(request.host_nqn)
@@ -5797,7 +5804,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
         self.host_info.reset_connected_host_indication(request.subsystem_nqn,
                                                        request.host_nqn)
 
-        return pb2.req_status(status=0, error_message=os.strerror(0))
+        if host_nqn_mix_warning is not None:
+            return pb2.req_status(status=errno.ETOOMANYREFS, error_message=host_nqn_mix_warning)
+        else:
+            return pb2.req_status(status=0, error_message=os.strerror(0))
 
     def add_host(self, request, context=None):
         err_prefix = f"Failure adding host {request.host_nqn} to {request.subsystem_nqn}: "
