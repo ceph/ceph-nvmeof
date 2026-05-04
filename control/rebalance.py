@@ -150,9 +150,14 @@ class Rebalance:
     def rebalance_logic(self, request, context) -> int:
         now = time.time()
         rebalance_attr = ()
+        prev_listeners = self.ceph_utils.get_num_listeners()
         grps_list = self.ceph_utils.get_number_created_gateways(self.gw_srv.gateway_pool,
                                                                 self.gw_srv.gateway_group, False)
         num_all_active_ana_groups = len(grps_list)
+        if self.ceph_utils.get_num_listeners() != prev_listeners:
+            self.logger.debug(f"Gateway listener count was changed from {prev_listeners} to "
+                              f"{self.ceph_utils.get_num_listeners()}. Will trigger an update")
+            self.gw_srv.trigger_update()
         worker_ana_group = self.ceph_utils.get_rebalance_ana_group()
         self.logger.debug(f"Called rebalance logic: current rebalancing ana "
                           f"group {worker_ana_group}")

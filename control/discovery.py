@@ -1049,14 +1049,15 @@ class DiscoveryService:
             if key.startswith(GatewayState.SUBSYSTEM_PREFIX):
                 should_send_async_event = True
                 self.logger.info(f"handle subsystem changes: {key} ")
-
                 break
             if key.startswith(GatewayState.LISTENER_PREFIX):
                 should_send_async_event = True
                 self.logger.info(f"handle listener changes: {key} ")
-
                 break
-
+            if key.startswith(GatewayState.UPDATE_TRIGGER_PREFIX):
+                should_send_async_event = True
+                self.logger.info(f"handle update trigger changes: {key} ")
+                break
         if not should_send_async_event:
             return
 

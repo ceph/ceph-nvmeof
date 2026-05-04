@@ -52,6 +52,7 @@ class GatewayState(ABC):
     NAMESPACE_AUTO_RESIZE_PREFIX = "ns-auto-resize" + OMAP_KEY_DELIMITER
     NAMESPACE_REFRESH_SIZE_PREFIX = "ns-refresh-size" + OMAP_KEY_DELIMITER
     KMIP_SERVER_ENDPOINT_PREFIX = "kmip-server-endpoint" + OMAP_KEY_DELIMITER
+    UPDATE_TRIGGER_PREFIX = "update-trigger"
 
     def is_key_element_valid(s: str) -> bool:
         if not isinstance(s, str):
@@ -918,6 +919,16 @@ class OmapGatewayState(GatewayState):
 
     OMAP_VERSION_KEY = "omap_version"
 
+    class UpdateTrigger():
+        """Used for trigerring an update even though there was no real change"""
+
+        value = 0
+
+        @staticmethod
+        def increase() -> int:
+            OmapGatewayState.UpdateTrigger.value += 1
+            return OmapGatewayState.UpdateTrigger.value
+
     def __init__(self, config, set_gateway_exit_message, id_text=""):
         self.config = config
         self.version = 1
@@ -925,6 +936,7 @@ class OmapGatewayState(GatewayState):
         self.ioctx = None
         self.watch = None
         self.omap_lock = None
+        self.update_trigger = OmapGatewayState.UpdateTrigger()
         gateway_group = self.config.get("gateway", "group")
         self.omap_name = f"nvmeof.{gateway_group}.state" if gateway_group else "nvmeof.state"
         self.notify_timeout = self.config.getint_with_default("gateway",
@@ -1147,6 +1159,12 @@ class OmapGatewayState(GatewayState):
             self.ioctx.notify(self.omap_name, timeout_ms=self.notify_timeout)
         except Exception:
             self.logger.warning("Failed to notify.")
+
+    def trigger_update(self):
+        """Trigger an update even if nothing has changed"""
+
+        val = self.update_trigger.increase()
+        self._add_key(GatewayState.UPDATE_TRIGGER_PREFIX, f"value: {val}")
 
     def delete_state(self):
         """Deletes OMAP object contents."""
@@ -1743,6 +1761,7 @@ class GatewayStateHandler:
                 GatewayState.SUBSYSTEM_NETWORK_MASK,
                 GatewayState.SUBSYSTEM_NETWORK_DEL_PREFIX,
                 GatewayState.SUBSYSTEM_NETWORK_ADD_PREFIX,
+                GatewayState.UPDATE_TRIGGER_PREFIX,
             ]
 
             if not self.omap.ioctx:

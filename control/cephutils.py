@@ -42,6 +42,7 @@ class CephUtils:
         self.rebalance_supported = False
         self.rebalance_ana_group = 0
         self.num_gws = 0
+        self.total_listeners = 0
         self.last_sent = time.time()
         self.ana_group_to_location: dict = {}
         self.gw_id_to_location: dict = {}
@@ -103,6 +104,9 @@ class CephUtils:
     def get_num_gws(self):
         return self.num_gws
 
+    def get_num_listeners(self):
+        return self.total_listeners
+
     def get_ana_grp_location(self):
         return self.ana_group_to_location
 
@@ -147,8 +151,11 @@ class CephUtils:
                         self.logger.info("illegal rebalance ana group  0")
                         self.rebalance_supported = False
                     self.num_gws = data.get("num gws", None)
+                    self.total_listeners = \
+                        self.total_listeners = sum(gw.get("num-listeners", 0)
+                                                   for gw in data.get("Created Gateways:", []))
                     self.logger.debug(f"Rebalance ana_group: {self.rebalance_ana_group}, "
-                                      f"num-gws: {self.num_gws}")
+                                      f"num-gws: {self.num_gws} listeners {self.total_listeners}")
 
                     gateways = data.get("Created Gateways:", [])
                     # self.logger.info(f"gateways: {gateways}")
