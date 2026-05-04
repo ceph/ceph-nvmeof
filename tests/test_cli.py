@@ -862,8 +862,6 @@ class TestCreate:
         assert f'"{host12}"' not in caplog.text
         caplog.clear()
         cli(["host", "add", "--subsystem", subsystem12, "--host-nqn", "*"])
-        assert f"Subsystem {subsystem12} will be opened to be accessed from any " \
-               f"host. This might be a security breach" in caplog.text
         assert f"Allowing open host access to {subsystem12}: Successful" in caplog.text
         assert f"Open host access to subsystem {subsystem12} might be a " \
                f"security breach" in caplog.text
@@ -1250,8 +1248,6 @@ class TestCreate:
         assert f"Adding host {host16} to {subsystem19}: Successful" in caplog.text
         caplog.clear()
         cli(["host", "add", "--subsystem", subsystem19, "--host-nqn", "*"])
-        assert f"Subsystem {subsystem19} will be opened to be accessed from any " \
-               f"host. This might be a security breach" in caplog.text
         assert f"Allowing open host access to {subsystem19}: Successful" in caplog.text
         assert f"Open host access to subsystem {subsystem19} might be a " \
                f"security breach" in caplog.text
@@ -1728,8 +1724,6 @@ class TestCreate:
         caplog.clear()
         cli(["host", "add", "--subsystem", subsystem, "--host-nqn", host])
         if host == "*":
-            assert f"Subsystem {subsystem} will be opened to be accessed from any " \
-                   f"host. This might be a security breach" in caplog.text
             assert f"Allowing open host access to {subsystem}: Successful" in caplog.text
             assert f"Open host access to subsystem {subsystem} might be a " \
                    f"security breach" in caplog.text
@@ -2003,8 +1997,8 @@ class TestCreate:
         assert f"Gateway's host name must match current host ({host_name})" in caplog.text
         caplog.clear()
         cli(["listener", "add", "--subsystem", subsystem] + listener)
-        assert f"Adding {subsystem} listener at {listener[3]}:{listener[5]}: " \
-               f"listener will only be active when appropriate gateway is up" in caplog.text
+        assert f"Host name mismatch, {subsystem} listener at {listener[3]}:{listener[5]} " \
+               f"will only be active when the appropriate gateway is up" in caplog.text
         caplog.clear()
         cli(["--format", "json", "listener", "list", "--subsystem", subsystem])
         assert f'"host_name": "{listener[1]}",' in caplog.text
@@ -2295,8 +2289,8 @@ class TestDelete:
         caplog.clear()
         cli(["listener", "add", "--subsystem", subsystem, "--host-name", "JUNK",
              "-a", addr, "-s", "5555", "-f", "ipv4"])
-        assert f"Adding {subsystem} listener at {addr}:5555: listener will only be active " \
-               f"when appropriate gateway is up" in caplog.text
+        assert f"Host name mismatch, {subsystem} listener at {addr}:5555 " \
+               f"will only be active when the appropriate gateway is up" in caplog.text
         caplog.clear()
         cli(["listener", "add", "--subsystem", subsystem, "--host-name", host_name,
              "-a", addr, "-s", "7777", "-f", "ipv4", "--verify-host-name"])
