@@ -2022,6 +2022,9 @@ class GatewayClient:
                     errmsg = f"Failure adding host {one_host_nqn} to {args.subsystem}"
                 ret = pb2.req_status(status=errno.EINVAL, error_message=f"{errmsg}:\n{ex}")
 
+            orig_status = ret.status
+            if ret.status == errno.ETOOMANYREFS:
+                ret.status = 0
             if not rc:
                 rc = ret.status
 
@@ -2033,8 +2036,10 @@ class GatewayClient:
                                  f"might be a security breach")
                     else:
                         out_func(f"Adding host {one_host_nqn} to {args.subsystem}: Successful")
+                    if orig_status == errno.ETOOMANYREFS:
+                        wrn_func(ret.error_message)
                 else:
-                    err_func(f"{ret.error_message}")
+                    err_func(ret.error_message)
             elif args.format == "json" or args.format == "yaml":
                 ret_str = json_format.MessageToJson(ret, indent=4,
                                                     including_default_value_fields=True,
