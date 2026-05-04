@@ -8313,3 +8313,15 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                   f"\"{GatewayLogger.NVME_GATEWAY_LOG_LEVEL_FILE_PATH}\"")
 
         return pb2.req_status(status=0, error_message="")
+
+    def trigger_update(self):
+        """Write a dummy value to OMAP to trigger an update"""
+
+        self.logger.info("Received request to trigger an update")
+
+        omap_lock = self.omap_lock.get_omap_lock_to_use("context")
+        with omap_lock:
+            try:
+                self.gateway_state.omap.trigger_update()
+            except Exception:
+                self.logger.exception("Error trigerring an update")
