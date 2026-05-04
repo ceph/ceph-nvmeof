@@ -823,6 +823,8 @@ class DiscoveryService:
             self_conn.allow_listeners = allow_listeners
 
         # Prepare all log page data segments
+        self.logger.info(f"log page len: {self_conn.unsent_log_page_len}"
+                         f"data len: {nvme_data_len}: num listnrs: {len(allow_listeners)}")
         if self_conn.unsent_log_page_len == 0 and nvme_data_len > 16:
             self_conn.unsent_log_page_len = 1024 * (len(allow_listeners) + 1)
             self_conn.log_page = bytearray(self_conn.unsent_log_page_len)
@@ -855,6 +857,7 @@ class DiscoveryService:
                     [c_ubyte(0x20)] * (32 - len(str_trsvcid))
                 # NVM subsystem qualified name
                 entry = allow_listeners[log_entry_counter]["nqn"]
+                self.logger.debug(f"adding subsystem nqn: {entry}")
                 log_entry.subnqn = (c_ubyte * 256)(*[c_ubyte(x) for x in entry.encode()])
                 log_entry.subnqn[len(allow_listeners[log_entry_counter]["nqn"]):] = \
                     [c_ubyte(0x00)] * (256 - len(allow_listeners[log_entry_counter]["nqn"]))
@@ -888,16 +891,29 @@ class DiscoveryService:
             nvme_get_log_page_reply = NVMeGetLogPage()
             nvme_get_log_page_reply.genctr = self_conn.gen_cnt
             nvme_get_log_page_reply.numrec = len(allow_listeners)
+            self.logger.info("reply based on the received get log page request packet")
+            # need to reset the conn data
+            self_conn.unsent_log_page_len = 0
+            self_conn.log_page = b''
+            self_conn.allow_listeners = []
 
             reply = pdu_reply + nvme_tcp_data_pdu + bytes(nvme_get_log_page_reply)[:nvme_data_len]
         elif nvme_data_len % 1024 == 0:
             # reply log pages
+            if nvme_data_len > self_conn.unsent_log_page_len:
+                self.logger.info(f"trim len {nvme_data_len} to {self_conn.unsent_log_page_len}")
+                nvme_data_len = self_conn.unsent_log_page_len
+                pdu_reply.packet_length = pdu_and_nvme_pdu_len + nvme_data_len
+                nvme_tcp_data_pdu.data_length = nvme_data_len
+
+            self_conn.unsent_log_page_len -= nvme_data_len
             reply = pdu_reply + nvme_tcp_data_pdu + \
                 self_conn.log_page[nvme_logpage_offset:nvme_logpage_offset + nvme_data_len]
-            self_conn.unsent_log_page_len -= nvme_data_len
             if self_conn.unsent_log_page_len == 0:
                 self_conn.log_page = b''
                 self_conn.allow_listeners = []
+            else:
+                self.logger.info(f"sent partial rsp. unset_len {self_conn.unsent_log_page_len}")
         else:
             self.logger.error(f"request log page: invalid length error {nvme_data_len=}")
             return -1
@@ -909,7 +925,7 @@ class DiscoveryService:
         except OSError as ex:
             self.logger.exception(f"got OS error {ex.errno}: {ex.strerror}")
             return -1
-        self.logger.debug("reply get log page request.")
+        self.logger.debug(f"reply get log page  size = {len(reply)} bytes")
         return 0
 
     def reply_keep_alive(self, conn, data, cmd_id):
@@ -1003,9 +1019,13 @@ class DiscoveryService:
         for key in update.keys():
             if key.startswith(GatewayState.SUBSYSTEM_PREFIX):
                 should_send_async_event = True
+                self.logger.info(f"handle subsystem changes: {key} ")
+
                 break
             if key.startswith(GatewayState.LISTENER_PREFIX):
                 should_send_async_event = True
+                self.logger.info(f"handle listener changes: {key} ")
+
                 break
 
         if not should_send_async_event:
