@@ -387,15 +387,13 @@ def test_re_add_kmip_server_endpoint_after_deletion(caplog, two_gateways):
 
 def test_re_add_kmip_server_endpoint(caplog, two_gateways):
     caplog.clear()
-    cli(["subsystem", "add_kmip_server_endpoint", "--subsystem", subsystem1,
-         "--address", kmip_addr,
-         "--server-name", kmip_server_name1,
-         "--port", str(kmip_port)])
+    rc = cli(["subsystem", "add_kmip_server_endpoint", "--subsystem", subsystem1,
+              "--address", kmip_addr,
+              "--server-name", kmip_server_name1,
+              "--port", str(kmip_port)])
+    assert rc == 0
     assert f"The endpoint, with address {kmip_addr}:{kmip_port}, was not added to KMIP server " \
            f"{kmip_server_name1} on subsystem {subsystem1} as it's already there" in caplog.text
-    assert f"Failure adding an endpoint, with address " \
-           f"{kmip_addr}:{kmip_port}, to KMIP server \"{kmip_server_name1}\" on subsystem " \
-           f"{subsystem1}: Server endpoint already exists" in caplog.text
 
 
 def test_add_kmip_server_endpoint_default_port(caplog, two_gateways):
@@ -421,23 +419,27 @@ def test_add_kmip_server_endpoint_default_port(caplog, two_gateways):
                                             server_name=kmip_server_name1,
                                             endpoints=[endpoint])
     caplog.clear()
-    stub.add_kmip_server_endpoints(req)
+    ret = stub.add_kmip_server_endpoints(req)
+    assert ret.status == 0
     assert f"KMIP server {kmip_server_name1} endpoint's port wasn't specified, will use " \
            f"default port 5696" in caplog.text
-    assert f"Failure adding an endpoint, with address " \
-           f"junk:5696, to KMIP server \"{kmip_server_name1}\" on subsystem " \
-           f"{subsystem1}: Server endpoint already exists" in caplog.text
+    assert f"The endpoint, with address junk:5696, was not added to KMIP server " \
+           f"{kmip_server_name1} on subsystem {subsystem1} as it's already there" in caplog.text
+    assert f"The endpoint, with address junk:5696, was not added to KMIP server " \
+           f"{kmip_server_name1} on subsystem {subsystem1} as " \
+           f"it's already there" in ret.error_message
 
 
 def test_del_non_existing_kmip_server_endpoint(caplog, two_gateways):
     caplog.clear()
-    cli(["subsystem", "del_kmip_server_endpoint", "--subsystem", subsystem1,
-         "--address", "junk",
-         "--server-name", kmip_server_name1,
-         "--port", "1234"])
-    assert f"Failure deleting endpoint, with address junk:1234, from " \
-           f"KMIP server \"{kmip_server_name1}\" on subsystem {subsystem1}: server endpoint " \
-           f"not found" in caplog.text
+    rc = cli(["subsystem", "del_kmip_server_endpoint", "--subsystem", subsystem1,
+              "--address", "junk",
+              "--server-name", kmip_server_name1,
+              "--port", "1234"])
+    assert rc == 0
+    assert f"Endpoint with address junk:1234, from " \
+           f"KMIP server \"{kmip_server_name1}\" on subsystem {subsystem1} was not found. " \
+           f"Nothing to do" in caplog.text
     caplog.clear()
     cli(["subsystem", "del_kmip_server_endpoint", "--subsystem", subsystem1, "--address", "junk",
          "--server-name", kmip_server_name1,

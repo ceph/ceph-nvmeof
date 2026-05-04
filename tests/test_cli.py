@@ -859,8 +859,6 @@ class TestCreate:
         assert f'"{host12}"' not in caplog.text
         caplog.clear()
         cli(["host", "add", "--subsystem", subsystem12, "--host-nqn", "*"])
-        assert f"Subsystem {subsystem12} will be opened to be accessed from any " \
-               f"host. This might be a security breach" in caplog.text
         assert f"Allowing open host access to {subsystem12}: Successful" in caplog.text
         assert f"Open host access to subsystem {subsystem12} might be a " \
                f"security breach" in caplog.text
@@ -1700,8 +1698,6 @@ class TestCreate:
         caplog.clear()
         cli(["host", "add", "--subsystem", subsystem, "--host-nqn", host])
         if host == "*":
-            assert f"Subsystem {subsystem} will be opened to be accessed from any " \
-                   f"host. This might be a security breach" in caplog.text
             assert f"Allowing open host access to {subsystem}: Successful" in caplog.text
             assert f"Open host access to subsystem {subsystem} might be a " \
                    f"security breach" in caplog.text
@@ -1729,14 +1725,14 @@ class TestCreate:
         caplog.clear()
         cli(["host", "add", "--subsystem", subsystem, "--host-nqn", host5, host6, host7])
         assert f"Adding host {host5} to {subsystem}: Successful" in caplog.text
-        assert f"A specific host {host5} was added to subsystem {subsystem} " \
-               f"in which all hosts are allowed" in caplog.text
+        assert f"Access was enabled for host {host5} to subsystem {subsystem} " \
+               f"in which all hosts are already allowed" in caplog.text
         assert f"Adding host {host6} to {subsystem}: Successful" in caplog.text
-        assert f"A specific host {host6} was added to subsystem {subsystem} " \
-               f"in which all hosts are allowed" in caplog.text
+        assert f"Access was enabled for host {host6} to subsystem {subsystem} " \
+               f"in which all hosts are already allowed" in caplog.text
         assert f"Adding host {host7} to {subsystem}: Successful" in caplog.text
-        assert f"A specific host {host7} was added to subsystem {subsystem} " \
-               f"in which all hosts are allowed" in caplog.text
+        assert f"Access was enabled for host {host7} to subsystem {subsystem} " \
+               f"in which all hosts are already allowed" in caplog.text
 
     def test_create_litener_wrong_subsystem(self, caplog):
         caplog.clear()
@@ -1975,8 +1971,8 @@ class TestCreate:
         assert f"Gateway's host name must match current host ({host_name})" in caplog.text
         caplog.clear()
         cli(["listener", "add", "--subsystem", subsystem] + listener)
-        assert f"Adding {subsystem} listener at {listener[3]}:{listener[5]}: " \
-               f"listener will only be active when appropriate gateway is up" in caplog.text
+        assert f"Host name mismatch, {subsystem} listener at {listener[3]}:{listener[5]} " \
+               f"will only be active when the appropriate gateway is up" in caplog.text
         caplog.clear()
         cli(["--format", "json", "listener", "list", "--subsystem", subsystem])
         assert f'"host_name": "{listener[1]}",' in caplog.text
@@ -2267,8 +2263,8 @@ class TestDelete:
         caplog.clear()
         cli(["listener", "add", "--subsystem", subsystem, "--host-name", "JUNK",
              "-a", addr, "-s", "5555", "-f", "ipv4"])
-        assert f"Adding {subsystem} listener at {addr}:5555: listener will only be active " \
-               f"when appropriate gateway is up" in caplog.text
+        assert f"Host name mismatch, {subsystem} listener at {addr}:5555 " \
+               f"will only be active when the appropriate gateway is up" in caplog.text
         caplog.clear()
         cli(["listener", "add", "--subsystem", subsystem, "--host-name", host_name,
              "-a", addr, "-s", "7777", "-f", "ipv4", "--verify-host-name"])

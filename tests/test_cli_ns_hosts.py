@@ -200,8 +200,6 @@ def test_remove_host_included_in_netmask(caplog, two_gateways):
 def test_add_host_open_access_success(caplog, two_gateways):
     caplog.clear()
     cli(["host", "add", "--subsystem", subsystem1, "--host-nqn", "*"])
-    assert f"Subsystem {subsystem1} will be opened to be accessed from any " \
-           f"host. This might be a security breach" in caplog.text
     assert f"Allowing open host access to {subsystem1}: Successful" in caplog.text
     assert f"Open host access to subsystem {subsystem1} might be a " \
            f"security breach" in caplog.text
@@ -236,7 +234,7 @@ def test_del_open_access(caplog, two_gateways):
     cli(["host", "del", "--subsystem", subsystem1, "--host-nqn", "*", "--force"])
     assert f"Disabling open host access to {subsystem1}: Successful" in caplog.text
     assert "One of the hosts in the netmask of namespace 1 relies on the subsystem being " \
-           "open for all hosts. Will continue as the \"force\" parameter was used" in caplog.text
+           "open for all hosts.\nWill continue as the \"force\" parameter was used" in caplog.text
     caplog.clear()
     cli(["namespace", "list_hosts", "--subsystem", subsystem1, "--nsid", "1"])
     assert hostnqn3 in caplog.text

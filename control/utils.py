@@ -181,7 +181,7 @@ class GatewayUtils:
                         f"domain label {lbl} contains a character which is "
                         f"not [a-z,A-Z,0-9,'-','.']")
 
-        return (0, os.strerror(0))
+        return (0, "")
 
     @staticmethod
     def is_valid_uuid(uuid_val) -> bool:
@@ -237,7 +237,7 @@ class GatewayUtils:
         if GatewayUtils.is_discovery_nqn(nqn):
             # The NQN is technically valid but we will probably reject it
             # later as being a discovery one
-            return (0, os.strerror(0))
+            return (0, "")
 
         if nqn.startswith(NQN_UUID_PREFIX):
             if len(nqn) != NQN_UUID_PREFIX_LENGTH + UUID_STRING_LENGTH:
@@ -245,7 +245,7 @@ class GatewayUtils:
             uuid_part = nqn[NQN_UUID_PREFIX_LENGTH:]
             if not GatewayUtils.is_valid_uuid(uuid_part):
                 return (errno.EINVAL, f"Invalid NQN \"{nqn}\": UUID is not formatted correctly")
-            return (0, os.strerror(0))
+            return (0, "")
 
         if not nqn.startswith(NQN_PREFIX):
             return (errno.EINVAL, f"Invalid NQN \"{nqn}\", doesn't start with \"{NQN_PREFIX}\"")
@@ -282,7 +282,7 @@ class GatewayUtils:
             return (errno.EINVAL,
                     f"Invalid NQN \"{nqn}\": reverse domain is not formatted correctly: {rc[1]}")
 
-        return (0, os.strerror(0))
+        return (0, "")
 
 
 class GatewayUtilsCrypto:

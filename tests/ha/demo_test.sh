@@ -470,7 +470,7 @@ function demo_bdevperf_unsecured()
     cat /tmp/hostdel.err
     grep -q "Host ${NQN}host33 is still connected to ${NQN}" /tmp/hostdel.err
     grep -q "Reconnecting the host would fail unless it is re-added to the subsystem" /tmp/hostdel.err
-    grep -q "Host ${NQN}host33 is included in the netmask of namespace 2 in subsystem ${NQN}. Will continue as the" /tmp/hostdel.err
+    grep -zoPq "Host ${NQN}host33 is included in the netmask of namespace 2 in subsystem ${NQN}.\nWill continue as the" /tmp/hostdel.err
     rm -f /tmp/hostdel.err
 
     return $?

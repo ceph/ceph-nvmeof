@@ -316,7 +316,7 @@ class GatewayClient:
             errmsg = "Can't get CLI version"
         else:
             rc = 0
-            errmsg = os.strerror(0)
+            errmsg = ""
         if args.format == "text" or args.format == "plain":
             if not ver:
                 err_func(errmsg)
@@ -1023,10 +1023,6 @@ class GatewayClient:
                 error_message=f"Failure adding subsystem {args.subsystem}:\n{ex}",
                 nqn=args.subsystem)
 
-        orig_status = ret.status
-        if ret.status == errno.EAGAIN:
-            ret.status = 0
-
         new_nqn = ""
         try:
             new_nqn = ret.nqn
@@ -1039,10 +1035,10 @@ class GatewayClient:
         if args.format == "text" or args.format == "plain":
             if ret.status == 0:
                 out_func(f"Adding subsystem {new_nqn}: Successful")
-                if orig_status != 0:
+                if ret.error_message:
                     wrn_func(ret.error_message)
             else:
-                err_func(f"{ret.error_message}")
+                err_func(ret.error_message)
         elif args.format == "json" or args.format == "yaml":
             ret_str = json_format.MessageToJson(ret, indent=4,
                                                 including_default_value_fields=True,
@@ -1333,20 +1329,14 @@ class GatewayClient:
                      f"KMIP server {args.server_name} on subsystem {args.subsystem}"
             ret = pb2.req_status(status=errno.EINVAL, error_message=f"{errmsg}:\n{ex}")
 
-        orig_status = ret.status
-        if ret.status == errno.EEXIST:
-            ret.status = 0
-
         if args.format == "text" or args.format == "plain":
-            if orig_status == 0:
+            if ret.status == 0:
                 out_func(f"Adding an endpoint, with address {endpoint_addr}, to KMIP server "
                          f"{args.server_name} on subsystem {args.subsystem}: Successful")
-            elif orig_status == errno.EEXIST:
-                wrn_func(f"The endpoint, with address {endpoint_addr}, was not added "
-                         f"to KMIP server {args.server_name} on subsystem {args.subsystem} "
-                         f"as it's already there")
+                if ret.error_message:
+                    wrn_func(ret.error_message)
             else:
-                err_func(f"{ret.error_message}")
+                err_func(ret.error_message)
         elif args.format == "json" or args.format == "yaml":
             ret_str = json_format.MessageToJson(ret, indent=4,
                                                 including_default_value_fields=True,
@@ -1391,19 +1381,14 @@ class GatewayClient:
                   f"KMIP server {args.server_name} on subsystem {args.subsystem}"
             ret = pb2.req_status(status=errno.EINVAL, error_message=f"{err}:\n{ex}")
 
-        orig_status = ret.status
-        if ret.status == errno.ENOENT:
-            ret.status = 0
-
         if args.format == "text" or args.format == "plain":
-            if orig_status == 0:
+            if ret.status == 0:
                 out_func(f"Deleting endpoint, with address {endpoint_addr}, from KMIP server "
                          f"{args.server_name} on subsystem {args.subsystem}: Successful")
-            elif orig_status == errno.ENOENT:
-                wrn_func(f"An endpoint with address {endpoint_addr} was not found "
-                         f"for KMIP server {args.server_name} on subsystem {args.subsystem}")
+                if ret.error_message:
+                    wrn_func(ret.error_message)
             else:
-                err_func(f"{ret.error_message}")
+                err_func(ret.error_message)
         elif args.format == "json" or args.format == "yaml":
             ret_str = json_format.MessageToJson(ret, indent=4,
                                                 including_default_value_fields=True,
@@ -1731,19 +1716,14 @@ class GatewayClient:
                                  error_message=f"Failure adding {traddr} listener at "
                                                f"{lstnr_addr}:\n{ex}")
 
-        orig_status = ret.status
-        if ret.status == errno.EREMOTE:
-            ret.status = 0
-
         if args.format == "text" or args.format == "plain":
-            if orig_status == 0:
+            if ret.status == 0:
                 out_func(f"Adding {args.subsystem} listener at {lstnr_addr}: "
                          f"Successful")
-            elif orig_status == errno.EREMOTE:
-                wrn_func(f"Adding {args.subsystem} listener at {lstnr_addr}: "
-                         f"listener will only be active when appropriate gateway is up")
+                if ret.error_message:
+                    wrn_func(ret.error_message)
             else:
-                err_func(f"{ret.error_message}")
+                err_func(ret.error_message)
         elif args.format == "json" or args.format == "yaml":
             ret_str = json_format.MessageToJson(ret, indent=4,
                                                 including_default_value_fields=True,
@@ -2036,10 +2016,10 @@ class GatewayClient:
                 if ret.status == 0:
                     if one_host_nqn == "*":
                         out_func(f"Allowing open host access to {args.subsystem}: Successful")
-                        wrn_func(f"Open host access to subsystem {args.subsystem} "
-                                 f"might be a security breach")
                     else:
                         out_func(f"Adding host {one_host_nqn} to {args.subsystem}: Successful")
+                    if ret.error_message:
+                        wrn_func(ret.error_message)
                 else:
                     err_func(f"{ret.error_message}")
             elif args.format == "json" or args.format == "yaml":
@@ -2086,13 +2066,8 @@ class GatewayClient:
                     errmsg = f"Failure removing host {one_host_nqn} access to {args.subsystem}"
                 ret = pb2.req_status(status=errno.EINVAL, error_message=f"{errmsg}:\n{ex}")
 
-            # EBUSY is just a warning, so do not fail command
-            if not rc and ret.status and ret.status != errno.EBUSY:
+            if not rc and ret.status:
                 rc = ret.status
-
-            orig_status = ret.status
-            if ret.status == errno.EBUSY:
-                ret.status = 0
 
             if args.format == "text" or args.format == "plain":
                 if ret.status == 0:
@@ -2101,7 +2076,7 @@ class GatewayClient:
                     else:
                         out_func(f"Removing host {one_host_nqn} access from "
                                  f"{args.subsystem}: Successful")
-                    if orig_status != 0:
+                    if ret.error_message:
                         wrn_func(ret.error_message)
                 else:
                     err_func(ret.error_message)
