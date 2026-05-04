@@ -80,13 +80,17 @@ _install_ssl_wrap_socket_compat()
 
 def start_kmip_server_endpoint(base_dir, addr, port, create_cert):
     """Sets up a KMIP server endpoint"""
+    import socket
+    
     certs_dir = os.path.join(base_dir, "certs")
     if create_cert or not os.path.exists(os.path.join(certs_dir, "client_cert.pem")):
         setup_path = os.path.join(".", "tests", "kmip", "setup_kmip_test.sh")
         subprocess.run([setup_path, base_dir], check=True,
                        capture_output=True, text=True)
     srvr_path = os.path.join(".", "tests", "kmip", "dummy_kmip_server.py")
-    subprocess.Popen(
+    
+    # Start server process
+    proc = subprocess.Popen(
         [
             sys.executable,
             srvr_path,
@@ -99,7 +103,32 @@ def start_kmip_server_endpoint(base_dir, addr, port, create_cert):
         text=True,
         bufsize=1
     )
-    time.sleep(15)
+    
+    # Wait for server to start and verify it's listening
+    max_retries = 30  # 30 seconds total
+    for i in range(max_retries):
+        time.sleep(1)
+        try:
+            # Try to connect to verify server is up
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(1)
+            result = sock.connect_ex((addr, port))
+            sock.close()
+            if result == 0:
+                print(f"KMIP server started successfully on {addr}:{port}")
+                return proc
+        except Exception:
+            pass
+        
+        # Check if process crashed
+        if proc.poll() is not None:
+            stdout, _ = proc.communicate()
+            raise RuntimeError(f"KMIP server failed to start on {addr}:{port}. Output:\n{stdout}")
+    
+    # Timeout - kill process and raise error
+    proc.kill()
+    stdout, _ = proc.communicate()
+    raise RuntimeError(f"KMIP server did not start within {max_retries} seconds on {addr}:{port}. Output:\n{stdout}")
 
 
 def add_key_to_kmip_server_endpoint(base_dir, addr, port, val):
