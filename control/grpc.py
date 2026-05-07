@@ -783,27 +783,33 @@ class KMIPServerEndpointList():
 
 
 class KMIPClientList():
-    def __init__(self, config, cert, key, ca):
+    KMIP_CLIENT_CERTIFICATE_FILE = "client_cert.pem"
+    KMIP_CLIENT_KEY_FILE = "client_key.pem"
+    KMIP_CA_CERTIFICATE_FILE = "ca_cert.pem"
+
+    def __init__(self, config):
         self.kmip_clients_lock = threading.Lock()
         self.config = config
-        self.cert = cert
-        self.key = key
-        self.ca = ca
         # for each subsystem we keep a KMIP client object which will handle the keys needed
         # by encrypted namespaces in that subsystem
         self.kmip_clients = dict()
 
     def add_client(self, cert_dir, nqn) -> Optional[NVMeoFKMIPClient]:
-        if not cert_dir or not self.cert or not self.key or not self.ca:
+        ret = self.are_files_valid(cert_dir)
+        if ret.status != 0:
             return None
+
         with self.kmip_clients_lock:
             client = self.kmip_clients.get(nqn)
             if client is not None:
                 return client
             client = NVMeoFKMIPClient(logger_config=self.config,
-                                      cert_path=os.path.join(cert_dir, self.cert),
-                                      key_path=os.path.join(cert_dir, self.key),
-                                      ca_path=os.path.join(cert_dir, self.ca))
+                                      cert_path=os.path.join(cert_dir,
+                                                             self.KMIP_CLIENT_CERTIFICATE_FILE),
+                                      key_path=os.path.join(cert_dir,
+                                                            self.KMIP_CLIENT_KEY_FILE),
+                                      ca_path=os.path.join(cert_dir,
+                                                           self.KMIP_CA_CERTIFICATE_FILE))
             self.kmip_clients[nqn] = client
         return client
 
@@ -814,6 +820,27 @@ class KMIPClientList():
                 return
             client.disconnect_all()
             self.kmip_clients.pop(nqn, None)
+
+    def are_files_valid(self, cert_dir: str) -> pb2.req_status:
+        if not cert_dir:
+            errmsg = "Certificate directory can't be empty"
+            return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
+
+        client_cert = os.path.join(cert_dir, self.KMIP_CLIENT_CERTIFICATE_FILE)
+        if not Path(client_cert).is_file():
+            errmsg = f"Missing client certificate {client_cert}"
+            return pb2.req_status(status=errno.ENOKEY, error_message=errmsg)
+
+        client_key = os.path.join(cert_dir, self.KMIP_CLIENT_KEY_FILE)
+        if not Path(client_key).is_file():
+            errmsg = f"Missing client key {client_key}"
+            return pb2.req_status(status=errno.ENOKEY, error_message=errmsg)
+
+        ca_cert = os.path.join(cert_dir, self.KMIP_CA_CERTIFICATE_FILE)
+        if not Path(ca_cert).is_file():
+            errmsg = f"Missing CA certificate {ca_cert}"
+            return pb2.req_status(status=errno.ENOKEY, error_message=errmsg)
+        return pb2.req_status(status=0, error_message="")
 
 
 class GatewayService(pb2_grpc.GatewayServicer):
@@ -951,13 +978,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                                           "./certs/kmip/{server_name}")
         if not self.kmip_cert_dir:
             self.kmip_cert_dir = "."
-        self.kmip_client_cert = self.config.get_with_default("kmip", "client_cert",
-                                                             "client_cert.pem")
-        self.kmip_client_key = self.config.get_with_default("kmip", "client_key", "client_key.pem")
-        self.kmip_ca_cert = self.config.get_with_default("kmip", "ca_cert", "ca_cert.pem")
         self.kmip_server_endpoints = KMIPServerEndpointList()
-        self.kmip_clients = KMIPClientList(self.config, self.kmip_client_cert,
-                                           self.kmip_client_key, self.kmip_ca_cert)
+        self.kmip_clients = KMIPClientList(self.config)
 
         for i in range(self.max_ana_grps + 1):
             self.ana_grp_ns_load[i] = 0
@@ -2430,35 +2452,11 @@ class GatewayService(pb2_grpc.GatewayServicer):
             self.logger.error(errmsg)
             return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
 
-        if not self.kmip_client_cert:
-            errmsg = f"{error_prefix}: Client certificate name is undefined"
+        ret = self.kmip_clients.are_files_valid(cert_dir)
+        if ret.status != 0:
+            errmsg = f"{error_prefix}: {ret.error_message}"
             self.logger.error(errmsg)
-            return pb2.req_status(status=errno.ENOKEY, error_message=errmsg)
-        client_cert = os.path.join(cert_dir, self.kmip_client_cert)
-        if not Path(client_cert).is_file():
-            errmsg = f"{error_prefix}: Missing client certificate {client_cert}"
-            self.logger.error(errmsg)
-            return pb2.req_status(status=errno.ENOKEY, error_message=errmsg)
-
-        if not self.kmip_client_key:
-            errmsg = f"{error_prefix}: Client key name is undefined"
-            self.logger.error(errmsg)
-            return pb2.req_status(status=errno.ENOKEY, error_message=errmsg)
-        client_key = os.path.join(cert_dir, self.kmip_client_key)
-        if not Path(client_key).is_file():
-            errmsg = f"{error_prefix}: Missing client key {client_key}"
-            self.logger.error(errmsg)
-            return pb2.req_status(status=errno.ENOKEY, error_message=errmsg)
-
-        if not self.kmip_ca_cert:
-            errmsg = f"{error_prefix}: CA certificate is undefined"
-            self.logger.error(errmsg)
-            return pb2.req_status(status=errno.ENOKEY, error_message=errmsg)
-        ca_cert = os.path.join(cert_dir, self.kmip_ca_cert)
-        if not Path(ca_cert).is_file():
-            errmsg = f"{error_prefix}: Missing CA certificate {ca_cert}"
-            self.logger.error(errmsg)
-            return pb2.req_status(status=errno.ENOKEY, error_message=errmsg)
+            return pb2.req_status(status=ret.status, error_message=errmsg)
 
         # if we have a server endpoint with the exact attributes, just issue a warning
         ep = KMIPServerEndpoint(endpoint.address, endpoint.port)
