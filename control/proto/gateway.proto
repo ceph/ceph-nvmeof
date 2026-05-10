@@ -125,6 +125,9 @@ service Gateway {
 	// Removes a host from a subsystem
 	rpc remove_host(remove_host_req) returns (req_status) {}
 
+	// Set keep host connected flag
+	rpc set_keep_host_connected(set_keep_host_connected_req) returns (req_status) {}
+
 	// Changes a host inband authentication keys
 	rpc change_host_key(change_host_key_req) returns (req_status) {}
 
@@ -395,6 +398,12 @@ message remove_host_req {
 	string subsystem_nqn = 1;
 	string host_nqn = 2;
 	optional bool force = 3;
+	optional bool keep_connections = 4;
+}
+
+message set_keep_host_connected_req {
+	string subsystem_nqn = 1;
+	string host_nqn = 2;
 }
 
 message list_hosts_req {
@@ -749,6 +758,7 @@ message connection {
 	optional string subsystem = 12;
 	optional bool disconnected_due_to_keepalive_timeout = 13;
 	optional DHCHAPControllerKeyOrigin dhchap_controller_origin = 14;
+	optional bool host_deleted = 15;
 }
 
 message connections_info {

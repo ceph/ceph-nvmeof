@@ -373,15 +373,13 @@ def test_re_add_kmip_server_endpoint_after_deletion(caplog, two_gateways):
 
 def test_re_add_kmip_server_endpoint(caplog, two_gateways):
     caplog.clear()
-    cli(["subsystem", "add_kmip_server_endpoint", "--subsystem", subsystem1,
-         "--address", kmip_addr,
-         "--server-name", kmip_server_name1,
-         "--port", str(kmip_port)])
+    rc = cli(["subsystem", "add_kmip_server_endpoint", "--subsystem", subsystem1,
+              "--address", kmip_addr,
+              "--server-name", kmip_server_name1,
+              "--port", str(kmip_port)])
+    assert rc == 0
     assert f"The endpoint, with address {kmip_addr}:{kmip_port}, was not added to KMIP server " \
            f"{kmip_server_name1} on subsystem {subsystem1} as it's already there" in caplog.text
-    assert f"Failure adding an endpoint, with address " \
-           f"{kmip_addr}:{kmip_port}, to KMIP server \"{kmip_server_name1}\" on subsystem " \
-           f"{subsystem1}: Server endpoint already exists" in caplog.text
 
 
 def test_add_kmip_server_endpoint_default_port(caplog, two_gateways):
@@ -407,23 +405,27 @@ def test_add_kmip_server_endpoint_default_port(caplog, two_gateways):
                                             server_name=kmip_server_name1,
                                             endpoints=[endpoint])
     caplog.clear()
-    stub.add_kmip_server_endpoints(req)
+    ret = stub.add_kmip_server_endpoints(req)
+    assert ret.status == 0
     assert f"KMIP server {kmip_server_name1} endpoint's port wasn't specified, will use " \
            f"default port 5696" in caplog.text
-    assert f"Failure adding an endpoint, with address " \
-           f"junk:5696, to KMIP server \"{kmip_server_name1}\" on subsystem " \
-           f"{subsystem1}: Server endpoint already exists" in caplog.text
+    assert f"The endpoint, with address junk:5696, was not added to KMIP server " \
+           f"{kmip_server_name1} on subsystem {subsystem1} as it's already there" in caplog.text
+    assert f"The endpoint, with address junk:5696, was not added to KMIP server " \
+           f"{kmip_server_name1} on subsystem {subsystem1} as " \
+           f"it's already there" in ret.error_message
 
 
 def test_del_non_existing_kmip_server_endpoint(caplog, two_gateways):
     caplog.clear()
-    cli(["subsystem", "del_kmip_server_endpoint", "--subsystem", subsystem1,
-         "--address", "junk",
-         "--server-name", kmip_server_name1,
-         "--port", "1234"])
-    assert f"Failure deleting endpoint, with address junk:1234, from " \
-           f"KMIP server \"{kmip_server_name1}\" on subsystem {subsystem1}: server endpoint " \
-           f"not found" in caplog.text
+    rc = cli(["subsystem", "del_kmip_server_endpoint", "--subsystem", subsystem1,
+              "--address", "junk",
+              "--server-name", kmip_server_name1,
+              "--port", "1234"])
+    assert rc == 0
+    assert f"Endpoint with address junk:1234, from " \
+           f"KMIP server \"{kmip_server_name1}\" on subsystem {subsystem1} was not found. " \
+           f"Nothing to do" in caplog.text
     caplog.clear()
     cli(["subsystem", "del_kmip_server_endpoint", "--subsystem", subsystem1, "--address", "junk",
          "--server-name", kmip_server_name1,
@@ -605,14 +607,46 @@ def test_del_kmip_server_endpoint_invalid_server_name(caplog, two_gateways):
 def test_add_kmip_server_endpoint_missing_client_key(caplog, two_gateways):
     os.rename(f"{kmip_dir1}/client_key.pem", f"{kmip_dir1}/client_key.XXX")
     caplog.clear()
-    cli(["subsystem", "add_kmip_server_endpoint", "--subsystem", subsystem1,
-         "--server-name", kmip_server_name1,
-         "--address", "junk", "-p", "1234"])
-    os.rename(f"{kmip_dir1}/client_key.XXX", f"{kmip_dir1}/client_key.pem")
+    try:
+        cli(["subsystem", "add_kmip_server_endpoint", "--subsystem", subsystem1,
+             "--server-name", kmip_server_name1,
+             "--address", "junk", "-p", "1234"])
+    finally:
+        os.rename(f"{kmip_dir1}/client_key.XXX", f"{kmip_dir1}/client_key.pem")
     assert f"Failure adding an endpoint, with address junk:1234, to " \
            f"KMIP server \"{kmip_server_name1}\" on subsystem {subsystem1}: " \
            f"Missing client key {kmip_dir_prefix}{kmip_server_name1}/certs/" \
            f"client_key.pem" in caplog.text
+
+
+def test_add_kmip_server_endpoint_missing_client_certificate(caplog, two_gateways):
+    os.rename(f"{kmip_dir1}/client_cert.pem", f"{kmip_dir1}/client_cert.XXX")
+    caplog.clear()
+    try:
+        cli(["subsystem", "add_kmip_server_endpoint", "--subsystem", subsystem1,
+             "--server-name", kmip_server_name1,
+             "--address", "junk", "-p", "5678"])
+    finally:
+        os.rename(f"{kmip_dir1}/client_cert.XXX", f"{kmip_dir1}/client_cert.pem")
+    assert f"Failure adding an endpoint, with address junk:5678, to " \
+           f"KMIP server \"{kmip_server_name1}\" on subsystem {subsystem1}: " \
+           f"Missing client certificate {kmip_dir_prefix}{kmip_server_name1}/certs/" \
+           f"client_cert.pem" in caplog.text
+
+
+def test_add_kmip_server_endpoint_missing_ca_certificate(caplog, two_gateways):
+    os.rename(f"{kmip_dir1}/ca_cert.pem", f"{kmip_dir1}/ca_cert.XXX")
+    caplog.clear()
+    try:
+        cli(["subsystem", "add_kmip_server_endpoint", "--subsystem", subsystem1,
+             "--server-name", kmip_server_name1,
+             "--address", "junk", "-p", "9012"])
+    finally:
+        os.rename(f"{kmip_dir1}/ca_cert.XXX", f"{kmip_dir1}/ca_cert.pem")
+    assert f"Failure adding an endpoint, with address junk:9012, to " \
+           f"KMIP server \"{kmip_server_name1}\" on subsystem {subsystem1}: " \
+           f"Missing CA certificate {kmip_dir_prefix}{kmip_server_name1}/certs/" \
+           f"ca_cert.pem" in caplog.text
 
 
 def test_add_kmip_server_endpoint_with_same_attributes_different_subsys(caplog, two_gateways):
@@ -1104,35 +1138,3 @@ def test_delete_subsystem(caplog, two_gateways):
     state = gw.gateway_state.omap.get_state()
     for key, val in state.items():
         assert not key.startswith(gw.gateway_state.local.KMIP_SERVER_ENDPOINT_PREFIX)
-
-
-def test_no_certificate_in_config(caplog, two_gateways):
-    gwA, _, gwB, _ = two_gateways
-    configA = gwA.gateway_rpc.config
-    configA.config["kmip"]["client_cert"] = ""
-    gwA.__exit__(None, None, None)
-    gwB.__exit__(None, None, None)
-    print("Restarting gateway A")
-    time.sleep(20)
-    gwA = GatewayServer(configA)
-    ceph_utils = CephUtils(configA)
-    ceph_utils.execute_ceph_monitor_command(
-        "{" + f'"prefix":"nvme-gw create", "id": "{gwA.name}", "pool": "{pool}", '
-        f'"group": "{group_name}"' + "}"
-    )
-    gwA.serve()
-
-    caplog.clear()
-    cli(["subsystem", "add", "--subsystem", subsystem1, "--no-group-append"])
-    assert f"Adding subsystem {subsystem1}: Successful" in caplog.text
-    time.sleep(20)
-    caplog.clear()
-    cli(["subsystem", "add_kmip_server_endpoint", "--subsystem", subsystem1,
-         "--server-name", kmip_server_name1,
-         "--address", kmip_addr, "--port", str(kmip_port)])
-    assert f"Failure adding an endpoint, with address " \
-           f"{kmip_addr}:{kmip_port}, to KMIP server \"{kmip_server_name1}\" on " \
-           f"subsystem {subsystem1}: Client certificate name is undefined" in caplog.text
-    caplog.clear()
-    cli(["subsystem", "del", "--subsystem", subsystem1])
-    assert f"Deleting subsystem {subsystem1}: Successful" in caplog.text
