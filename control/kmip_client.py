@@ -8,6 +8,8 @@
 #
 
 from typing import List, Optional, Dict, Tuple
+import ssl
+import time
 from kmip.pie import client
 from kmip.pie import exceptions
 
@@ -61,6 +63,7 @@ class NVMeoFKMIPClient:
                 return
             try:
                 self.logger.debug(f"Connecting to KMIP server endpoint {self.hostname}:{self.port}")
+                start_time = time.monotonic()
 
                 # Create KMIP client
                 self.client = client.ProxyKmipClient(
@@ -74,8 +77,10 @@ class NVMeoFKMIPClient:
                 # Open connection
                 self.client.open()
 
+                elapsed = time.monotonic() - start_time
                 self.connected = True
-                self.logger.debug(f"Connected to KMIP server endpoint {self.hostname}:{self.port}")
+                self.logger.info(f"Connected to KMIP server endpoint {self.hostname}:{self.port} "
+                                 f"in {elapsed:.3f} seconds")
             except exceptions.ClientConnectionFailure:
                 self.logger.warning(f"Connection already exists to endpoint "
                                     f"{self.hostname}:{self.port}")
@@ -117,22 +122,93 @@ class NVMeoFKMIPClient:
 
             Raises:
                 RuntimeError: If not connected
-                Exception: If retrieval fails
+                Exception: If retrieval fails after all retries
             """
             if not self.connected or self.client is None:
                 raise RuntimeError("Not connected to KMIP server endpoint")
+
+            # First attempt
             try:
                 self.logger.debug(f"Retrieving key {key_uuid} from KMIP server endpoint "
                                   f"{self.hostname}:{self.port}")
+                start_time = time.monotonic()
+
                 result = self.client.get(key_uuid)
+
+                elapsed = time.monotonic() - start_time
                 key_bytes = result.value
                 self.logger.info(f"Retrieved {len(key_bytes)}-byte key {key_uuid} "
-                                 f"from {self.hostname}:{self.port}")
+                                 f"from {self.hostname}:{self.port} "
+                                 f"in {elapsed:.3f} seconds")
                 return key_bytes
+
+            except (ssl.SSLError,      # SSL/TLS errors
+                    OSError,           # OS/network errors
+                    EOFError,          # Server closed connection
+                    ConnectionError    # Connection errors
+                    ) as e:
+                # First attempt failed - connection likely stale
+                first_attempt_elapsed = time.monotonic() - start_time
+                self.logger.warning(
+                    f"Connection error retrieving key {key_uuid} "
+                    f"from {self.hostname}:{self.port} "
+                    f"after {first_attempt_elapsed:.3f} seconds (attempt 1/2): "
+                    f"{type(e).__name__}: {e}"
+                )
+
             except Exception:
+                # Non-connection errors (auth, key-not-found, KMIP operation failures)
+                # Log with traceback then propagate to try next endpoint
+                first_attempt_elapsed = time.monotonic() - start_time
                 self.logger.exception(
-                    f"Error retrieving key {key_uuid} from {self.hostname}:{self.port}")
-                raise
+                    f"Operation failed retrieving key {key_uuid} "
+                    f"from {self.hostname}:{self.port} "
+                    f"after {first_attempt_elapsed:.3f} seconds"
+                )
+                raise  # Propagate to get_key_for_rbd_image() to try next endpoint
+
+            # Second attempt - reconnect and retry
+            try:
+                start_time = time.monotonic()
+
+                # Reconnect
+                self.logger.info(f"Attempting to reconnect to {self.hostname}:{self.port}")
+                if self.client is not None:
+                    try:
+                        self.disconnect()
+                    except Exception:
+                        pass
+                self.client = None
+                self.connect()
+                if not self.connected or self.client is None:
+                    raise RuntimeError(
+                        f"Reconnect to KMIP server endpoint {self.hostname}:{self.port} "
+                        f"did not establish an active connection"
+                    )
+                self.logger.info(f"Successfully reconnected to {self.hostname}:{self.port}")
+
+                # Retry operation
+                self.logger.debug(f"Retrieving key {key_uuid} from {self.hostname}:{self.port} "
+                                  f"(attempt 2/2)")
+
+                result = self.client.get(key_uuid)
+
+                elapsed = time.monotonic() - start_time
+                key_bytes = result.value
+                self.logger.info(f"Retrieved {len(key_bytes)}-byte key {key_uuid} "
+                                 f"from {self.hostname}:{self.port} "
+                                 f"in {elapsed:.3f} seconds (after reconnect)")
+                return key_bytes
+
+            except Exception:
+                # Reconnect or retry failed
+                elapsed = time.monotonic() - start_time
+                self.logger.exception(
+                    f"Failed to retrieve key {key_uuid} from {self.hostname}:{self.port} "
+                    f"after reconnect (attempt 2/2) "
+                    f"after {elapsed:.3f} seconds"
+                )
+                raise  # Preserve full traceback
 
     def __init__(self, logger_config: GatewayConfig, cert_path: str, key_path: str, ca_path: str):
         """
@@ -169,6 +245,7 @@ class NVMeoFKMIPClient:
             Exception: If failed to connect to any server endpoint or retrieve key
             OR If key not found on any server endpoint.
         """
+        overall_start = time.monotonic()
         errors = []
         for hostname, port in endpoints:
             try:
@@ -177,16 +254,22 @@ class NVMeoFKMIPClient:
                 # Try to get the key from this server
                 key_bytes = conn.get_key(key_uuid)
 
-                self.logger.info(f"Successfully retrieved key {key_uuid} from {hostname}:{port}")
+                overall_elapsed = time.monotonic() - overall_start
+                self.logger.info(f"Successfully retrieved key {key_uuid} from {hostname}:{port} "
+                                 f"(total time: {overall_elapsed:.3f} seconds)")
                 return key_bytes
             except Exception as e:
                 # This server doesn't have the key or failed, try next
-                self.logger.warning(f"Failed to get key {key_uuid} from {hostname}:{port}: {e}")
-                errors.append(f"{hostname}:{port}: {e}")
+                error_detail = f"{type(e).__name__}: {e}" if str(e) else type(e).__name__
+                self.logger.warning(f"Failed to get key {key_uuid} from {hostname}:{port}: "
+                                    f"{error_detail}")
+                errors.append(f"{hostname}:{port}: {error_detail}")
                 continue
 
         # All endpoints failed
-        error_msg = f"Key {key_uuid} wasn't found on any KMIP server endpoint. Errors: {errors}"
+        overall_elapsed = time.monotonic() - overall_start
+        error_msg = (f"Failed to retrieve key {key_uuid} from any KMIP server endpoint "
+                     f"(tried for {overall_elapsed:.3f} seconds). Errors: {errors}")
         self.logger.error(error_msg)
         raise Exception(error_msg)
 
@@ -213,10 +296,11 @@ class NVMeoFKMIPClient:
         if server_endpoint_key in self.active_connections:
             conn = self.active_connections[server_endpoint_key]
             if conn.connected:
-                self.logger.debug(f"Reusing connection to {hostname}:{port}")
+                self.logger.debug(f"Reusing existing connection to {hostname}:{port}")
                 return conn
 
         # Create new connection
+        start_time = time.monotonic()
         self.logger.debug(f"Creating new connection to {hostname}:{port}")
 
         conn = NVMeoFKMIPClient.KMIPConnection(
@@ -234,7 +318,9 @@ class NVMeoFKMIPClient:
         # Store in active connections
         self.active_connections[server_endpoint_key] = conn
 
-        self.logger.info(f"Successfully connected to {hostname}:{port}")
+        elapsed = time.monotonic() - start_time
+        self.logger.info(f"Successfully created and connected to {hostname}:{port} "
+                         f"in {elapsed:.3f} seconds")
         return conn
 
     def disconnect_all(self) -> None:
