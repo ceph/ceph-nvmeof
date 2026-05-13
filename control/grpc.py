@@ -7432,11 +7432,16 @@ class GatewayService(pb2_grpc.GatewayServicer):
                         )
                         self.logger.debug(f"delete_listener: {ret}")
                 else:
-                    errmsg = f"{delete_listener_error_prefix}: Gateway's host name must " \
-                             f"match current host ({self.host_name}). You can continue to " \
-                             f"delete the listener by adding the \"--force\" parameter."
-                    self.logger.error(errmsg)
-                    return pb2.req_status(status=errno.ENOENT, error_message=errmsg)
+                    if context:
+                        errmsg = f"{delete_listener_error_prefix}: Gateway's host name must " \
+                                 f"match current host ({self.host_name}). You can continue to " \
+                                 f"delete the listener by adding the \"--force\" parameter."
+                        self.logger.error(errmsg)
+                        return pb2.req_status(status=errno.ENOENT, error_message=errmsg)
+                    else:
+                        self.logger.warning(f"Listener not deleted as it belongs to gateway "
+                                            f"{request.host_name}, not this gateway "
+                                            f"({self.host_name})")
             except Exception as ex:
                 self.logger.exception(delete_listener_error_prefix)
                 # It's OK for SPDK to fail in case we used a different host name,
