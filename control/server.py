@@ -422,7 +422,10 @@ class GatewayServer:
                 self.monitor_client_log_file = open(self.monitor_client_log_file_path, "wt")
                 log_stderr = subprocess.STDOUT
             except Exception:
-                pass
+                self.logger.exception(
+                    f"Failed to open monitor client log file "
+                    f"{self.monitor_client_log_file_path}, monitor client output "
+                    f"will go to the gateway's stderr")
 
         self.logger.info(f"Starting {' '.join(cmd)}")
         try:

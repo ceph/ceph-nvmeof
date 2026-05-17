@@ -63,32 +63,35 @@ def connection_cache_with_timer(ttl_seconds=60):
         @wraps(method)
         def call(self, *args, **kwargs):
             st = time.time()
-            cache_age = st - self.connection_map_cache_time
+            # Use a dedicated lock so this doesn't re-enter self.lock, which
+            # is already held by the @ttl decorator on collect().
+            with self.connection_cache_lock:
+                cache_age = st - self.connection_map_cache_time
 
-            # Check if cache is still valid
-            if self.connection_map_cache is not None and cache_age < ttl_seconds:
-                # Cache hit
-                result = self.connection_map_cache
-                logger.debug(
-                    f'Connection cache hit (age: {cache_age:.1f}s of{ttl_seconds}s TTL)')
-            else:
-                # Cache miss - do the expensive work
-                logger.debug(f'Connection cache miss (age: {cache_age:.1f}s), refreshing...')
+                # Check if cache is still valid
+                if self.connection_map_cache is not None and cache_age < ttl_seconds:
+                    # Cache hit
+                    result = self.connection_map_cache
+                    logger.debug(
+                        f'Connection cache hit (age: {cache_age:.1f}s of{ttl_seconds}s TTL)')
+                else:
+                    # Cache miss - do the expensive work
+                    logger.debug(f'Connection cache miss (age: {cache_age:.1f}s), refreshing...')
 
-                result = method(*args, **kwargs)
+                    result = method(*args, **kwargs)
 
-                # Update cache
-                self.connection_map_cache = result
-                self.connection_map_cache_time = st
+                    # Update cache
+                    self.connection_map_cache = result
+                    self.connection_map_cache_time = st
 
-                logger.debug(f'Connection cache refreshed (valid for {ttl_seconds}s)')
+                    logger.debug(f'Connection cache refreshed (valid for {ttl_seconds}s)')
 
-            # Record timing
-            elapsed = time.time() - st
-            if hasattr(self, 'method_timings'):
-                self.method_timings[method.__name__] = elapsed
+                # Record timing
+                elapsed = time.time() - st
+                if hasattr(self, 'method_timings'):
+                    self.method_timings[method.__name__] = elapsed
 
-            return result
+                return result
         return call
     return decorator
 
@@ -156,6 +159,7 @@ class NVMeOFCollector:
             3)
 
         self.lock = threading.Lock()
+        self.connection_cache_lock = threading.Lock()
         self.hostname = os.getenv('NODE_NAME') or os.getenv('HOSTNAME')
 
         # gw metadata is static, so fetch the data only at startup
