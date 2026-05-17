@@ -2305,6 +2305,14 @@ class TestDelete:
              "-a", addr, "-s", "7777", "--force"])
         assert f"Failed to delete listener {addr}:7777 from {subsystem}: " \
                f"Listener not found" in caplog.text
+        gw, _ = gateway
+        caplog.clear()  # test listener-del update on other gateways
+        req = pb2.delete_listener_req(nqn=subsystem, host_name="JUNK",
+                                      traddr=addr, trsvcid=5555, adrfam="ipv4")
+        ret = gw.delete_listener(req)
+        assert ret.status == 0
+        assert f"Listener not deleted as it belongs to gateway JUNK, not this gateway" \
+               f" ({gw.host_name})" in caplog.text
         caplog.clear()
         cli(["listener", "del", "--subsystem", subsystem, "--host-name", "JUNK",
              "-a", addr, "-s", "5555", "-f", "ipv4", "--force"])
