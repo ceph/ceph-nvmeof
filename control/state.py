@@ -567,7 +567,7 @@ class OmapLock:
 
         if need_to_update:
             raise RuntimeError(f"Unable to execute function under OMAP file lock after reloading "
-                               f"{i} times, exiting")
+                               f"{i + 1} times, exiting")
         elif i > 2:
             self.logger.debug(f"Succeeded to execute {omap_locking_func.__name__} "
                               f"under OMAP file lock after {i} reloads of OMAP file")
@@ -852,7 +852,8 @@ class OmapReadGuard:
             self.actually_locked = False
             return self
         except Exception:
-            pass
+            self.omap_lock.logger.exception(
+                "Failed to acquire shared OMAP lock, falling back to unlocked read")
         return None
 
     def __exit__(self, typ, value, traceback):
