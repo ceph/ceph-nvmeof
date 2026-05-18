@@ -541,6 +541,7 @@ class OmapLock:
     # and in case the Omap is not current, will reload it and try again
     #
     def execute_omap_locking_function(self, grpc_func, omap_locking_func, request, context):
+        reload_count = 0
         for i in range(0, self.omap_file_update_reloads + 1):
             need_to_update = False
             try:
@@ -558,19 +559,20 @@ class OmapLock:
             if self.omap_file_update_reloads > 0:
                 for j in range(self.omap_file_update_attempts):
                     update_ok = self.gateway_state.update()
+                    reload_count += 1
                     if update_ok:
                         break
                     time.sleep(0.5)
                 if update_ok:
                     if j > 3:
-                        self.logger.debug(f"Succeeded to run update() after {j} attempts")
+                        self.logger.debug(f"Succeeded to run update() after {j + 1} attempt(s)")
 
         if need_to_update:
             raise RuntimeError(f"Unable to execute function under OMAP file lock after reloading "
-                               f"{i} times, exiting")
+                               f"{reload_count} times, exiting")
         elif i > 2:
             self.logger.debug(f"Succeeded to execute {omap_locking_func.__name__} "
-                              f"under OMAP file lock after {i} reloads of OMAP file")
+                              f"under OMAP file lock after {reload_count} reloads of OMAP file")
 
     def omap_lockers_count(self):
         lockers_info = None
