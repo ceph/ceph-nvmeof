@@ -63,31 +63,41 @@ build: export SPDK_CONFIGURE_DSA := $(SPDK_CONFIGURE_DSA)
 # Variables
 SHAMAN_FETCH_ATTEMPTS := 3
 
+# Only perform the Ceph Shaman repo lookup when the build path is an explicit
+# goal, so non-build targets (help, clean, verify, ...) don't hit the network
+# on every Makefile parse
+ifneq (,$(filter build check-ceph-repo-url,$(MAKECMDGOALS)))
 # Fetch and export CEPH_CLUSTER_CEPH_REPO_BASEURL with retries
-build: export CEPH_CLUSTER_CEPH_REPO_BASEURL != \
+CEPH_CLUSTER_CEPH_REPO_BASEURL := $(shell \
 	for i in $$(seq 1 $(SHAMAN_FETCH_ATTEMPTS)); do \
 		sha1="$(CEPH_SHA)"; \
 		if [ "$$sha1" = "latest" ]; then \
 			idx=$$((i - 1)); \
 			sha1=$$(curl -s \
-				"https://shaman.ceph.com/api/search/?status=ready&project=ceph&ref=$(CEPH_BRANCH)&flavor=default&distros=centos/9/$(ceph_repo_arch)" \
+				"https://shaman.ceph.com/api/search/?status=ready&project=ceph&ref=$(CEPH_BRANCH)&flavor=default&distros=rocky/10/$(ceph_repo_arch)" \
 				| jq -r "sort_by(.modified) | reverse | .[$$idx].sha1"); \
 			>&2 echo "Attempt ($$i): Using 'latest' SHA1 for arch=$(ceph_repo_arch), branch=$(CEPH_BRANCH): $$sha1"; \
 		fi; \
 		>&2 echo "Attempt ($$i): Fetching URL for arch=$(ceph_repo_arch), branch=$(CEPH_BRANCH), sha=$(CEPH_SHA)..."; \
-		url=$$(curl -s "https://shaman.ceph.com/api/repos/ceph/$(CEPH_BRANCH)/$$sha1/centos/9/" | jq -r '.[] | select(.status == "ready" and .archs[] == "$(ceph_repo_arch)") | .url'); \
-		if [ -n "$$url" ]; then \
+		url=$$(curl -s "https://shaman.ceph.com/api/repos/ceph/$(CEPH_BRANCH)/$$sha1/rocky/10/" | jq -r '.[] | select(.status == "ready" and .archs[] == "$(ceph_repo_arch)") | .url'); \
+		if [ -n "$$url" ] && [ "$$url" != "null" ]; then \
 			>&2 echo "Success: Retrieved URL for arch=$(ceph_repo_arch), branch=$(CEPH_BRANCH), sha=$(CEPH_SHA): $$url"; \
-			echo "$$url"; \
+			printf "%s" "$$url"; \
 			break; \
 		fi; \
 		>&2 echo "Retrying... Failed attempt ($$i) for arch=$(ceph_repo_arch), branch=$(CEPH_BRANCH), sha=$(CEPH_SHA)"; \
 		sleep 2; \
-	done; \
-	if [ -z "$$url" ]; then \
-		>&2 echo "Failure: Unable to retrieve a valid URL for arch=$(ceph_repo_arch), branch=$(CEPH_BRANCH), sha=$(CEPH_SHA) after $(SHAMAN_FETCH_ATTEMPTS) attempts"; \
-		exit 1; \
-	fi
+	done)
+endif
+
+build: export CEPH_CLUSTER_CEPH_REPO_BASEURL := $(CEPH_CLUSTER_CEPH_REPO_BASEURL)
+build: check-ceph-repo-url
+
+check-ceph-repo-url:
+	@test -n "$(CEPH_CLUSTER_CEPH_REPO_BASEURL)" && test "$(CEPH_CLUSTER_CEPH_REPO_BASEURL)" != "null" || \
+		(>&2 echo "Failure: No ready Ceph Shaman repo for arch=$(ceph_repo_arch), branch=$(CEPH_BRANCH), sha=$(CEPH_SHA) on rocky/10"; \
+		 >&2 echo "Shaman currently provides rocky/10 repos only for x86_64 in this branch/ref combination."; \
+		 exit 1)
 
 build: export TARGET_PLATFORM := $(TARGET_PLATFORM)
 build: export SPDK_TARGET_ARCH := $(SPDK_TARGET_ARCH)
@@ -106,6 +116,14 @@ update-lockfile: run ## Update dependencies in lockfile (pdm.lock)
 update-lockfile: SVC=nvmeof-builder-base
 update-lockfile: override OPTS+=--entrypoint=pdm
 update-lockfile: CMD=update --no-sync --no-isolation --no-self --no-editable
+
+# Re-resolve for CI/Docker: Rocky-style manylinux_2_39 x86_64 + aarch64, any Python 3.12.x.
+# Run after `make update-lockfile` so pins stay in sync with dual targets (see README).
+regenerate-lockfile: ## Re-resolve pdm.lock for manylinux x86_64 + aarch64 (Python 3.12.x)
+regenerate-lockfile: DOCKER_COMPOSE_ENV = DOCKER_BUILDKIT=1 COMPOSE_DOCKER_CLI_BUILD=1
+regenerate-lockfile:
+	$(DOCKER_COMPOSE_ENV) $(DOCKER_COMPOSE) run --rm --entrypoint pdm $(OPTS) nvmeof-builder-base lock -S cross_platform,inherit_metadata --no-isolation -v --platform manylinux_2_39_x86_64 --python ">=3.12,<3.13"
+	$(DOCKER_COMPOSE_ENV) $(DOCKER_COMPOSE) run --rm --entrypoint pdm $(OPTS) nvmeof-builder-base lock --no-isolation -v --platform manylinux_2_39_aarch64 --python ">=3.12,<3.13" --append
 
 protoc: run ## Generate gRPC protocol files
 protoc: SVC=nvmeof-builder
@@ -130,4 +148,4 @@ export-python: run ## Build Ceph NVMe-oF Gateway Python package and copy it to /
 help: AUTOHELP_SUMMARY = Makefile to build and deploy the Ceph NVMe-oF Gateway
 help: autohelp
 
-.PHONY: all setup clean help update-lockfile protoc export-rpms export-python
+.PHONY: all setup clean help update-lockfile regenerate-lockfile protoc export-rpms export-python check-ceph-repo-url

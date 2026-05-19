@@ -22,7 +22,8 @@ make verify  # Runs: flake8 control/*.py tests/*.py tests/kmip/*.py
 
 **Update Python dependencies lockfile:**
 ```bash
-make update-lockfile  # Uses PDM inside container
+make update-lockfile   # pdm update (pins from pyproject.toml)
+make regenerate-lockfile  # pdm lock: x86_64 + aarch64 manylinux_2_39, Python 3.12.x
 ```
 
 **Regenerate gRPC protobuf files:**
