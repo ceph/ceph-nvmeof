@@ -406,8 +406,22 @@ def main():
     print("=" * 70)
 
     # Check if certificates exist
-    if not os.path.exists(f"{base_dir}/certs/ca_cert.pem"):
+    cert_files = (
+        "ca_cert.pem",
+        "client_cert.pem",
+        "client_key.pem",
+        "server_cert.pem",
+        "server_key.pem",
+    )
+    missing_certs = [
+        cert_name for cert_name in cert_files
+        if not os.path.exists(f"{base_dir}/certs/{cert_name}")
+    ]
+    if missing_certs:
         print("\nCertificates not found!")
+        print(f"\nMissing files in {base_dir}/certs:")
+        for cert_name in missing_certs:
+            print(f"  - {cert_name}")
         print("\nPlease run the setup script first:")
         print(f"  ./setup_kmip_test.sh {base_dir}")
         sys.exit(1)

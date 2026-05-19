@@ -501,8 +501,11 @@ After modifying it, the dependency lockfile (`pdm.lock`) needs to be updated acc
 
 ```bash
 make update-lockfile
+make regenerate-lockfile   # manylinux_2_39 x86_64 + aarch64, Python 3.12.x (see Makefile)
 git add pdm.lock
 ```
+
+`make update-lockfile` refreshes pins from `pyproject.toml` via `pdm update`. `make regenerate-lockfile` then re-resolves locks for **both** `manylinux_2_39_x86_64` and `manylinux_2_39_aarch64` with **`requires_python` `>=3.12,<3.13`**, so local ARM/Apple builds and minor 3.12 patch bumps (e.g. UBI 3.12.13) match a lock target. Omit `regenerate-lockfile` only if you intentionally want a single-platform lock.
 
 ## Help
 
@@ -522,6 +525,7 @@ Targets:
       export-rpms     Build SPDK RPMs and copy them to $(EXPORT_DIR)/rpm
       setup           Configure huge-pages (requires sudo/root password)
       up              Services
+      regenerate-lockfile Re-resolve pdm.lock for manylinux x86_64 + aarch64 (Python 3.12.x)
       update-lockfile Update dependencies in lockfile (pdm.lock)
 
     Options:
