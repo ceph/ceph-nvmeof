@@ -829,6 +829,20 @@ class NICS:
         except Exception:
             return False
 
+    @staticmethod
+    def is_ip_in_network_masks(ip: str, network_masks: list) -> bool:
+        if not ip or not network_masks:
+            return False
+        try:
+            ip_addr = ipaddress.ip_address(ip)
+            for mask in network_masks:
+                subnet = ipaddress.ip_network(mask, strict=False)
+                if ip_addr in subnet:
+                    return True
+            return False
+        except (ValueError, TypeError):
+            return False
+
     def get_ips_in_subnet(self, subnet):
         if not subnet:
             return []
