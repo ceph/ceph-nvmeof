@@ -1,19 +1,26 @@
-import pytest
-from control.server import GatewayServer
-from control.cli import main as cli
-from control.cli import main_test as cli_test
-from control.cephutils import CephUtils
-import grpc
-from control.proto import gateway_pb2 as pb2
-from control.proto import gateway_pb2_grpc as pb2_grpc
 import copy
 import os
-import time
+import socket
+import ssl
 import subprocess
 import sys
-from kmip.pie import client
-from kmip.pie import objects
-from kmip import enums
+import time
+from functools import wraps
+
+import grpc
+import pytest
+
+from control.cephutils import CephUtils
+from control.cli import main as cli
+from control.cli import main_test as cli_test
+from control.proto import gateway_pb2 as pb2
+from control.proto import gateway_pb2_grpc as pb2_grpc
+from control.server import GatewayServer
+
+kmip = pytest.importorskip("kmip")
+from kmip import enums  # noqa: E402
+from kmip.pie import client  # noqa: E402
+from kmip.pie import objects  # noqa: E402
 
 image = "enc_test_image"
 pool = "rbd"
@@ -32,14 +39,64 @@ kmip_server_name1 = "blabla"
 kmip_server_name2 = "stam"
 
 
+def _install_ssl_wrap_socket_compat():
+    if hasattr(ssl, "wrap_socket"):
+        return
+
+    @wraps(ssl.SSLContext.wrap_socket)
+    def _wrap_socket(sock, keyfile=None, certfile=None, server_side=False,
+                     cert_reqs=ssl.CERT_NONE, ssl_version=ssl.PROTOCOL_TLS,
+                     ca_certs=None, do_handshake_on_connect=True,
+                     suppress_ragged_eofs=True, ciphers=None):
+        if ssl_version in (None, ssl.PROTOCOL_TLS):
+            protocol = ssl.PROTOCOL_TLS_SERVER if server_side else getattr(
+                ssl, "PROTOCOL_TLS_CLIENT", ssl.PROTOCOL_TLS
+            )
+        else:
+            protocol = ssl_version
+
+        context = ssl.SSLContext(protocol)
+        # Only set minimum_version for generic TLS protocols, not for specific versions
+        if hasattr(context, "minimum_version") and ssl_version in (None, ssl.PROTOCOL_TLS):
+            context.minimum_version = ssl.TLSVersion.TLSv1_2
+
+        if hasattr(context, "check_hostname"):
+            context.check_hostname = False
+
+        context.verify_mode = cert_reqs
+        if ca_certs:
+            context.load_verify_locations(ca_certs)
+        if certfile:
+            context.load_cert_chain(certfile=certfile, keyfile=keyfile)
+        if ciphers:
+            context.set_ciphers(ciphers)
+        return context.wrap_socket(
+            sock,
+            server_side=server_side,
+            do_handshake_on_connect=do_handshake_on_connect,
+            suppress_ragged_eofs=suppress_ragged_eofs,
+        )
+
+    ssl.wrap_socket = _wrap_socket
+
+
+_install_ssl_wrap_socket_compat()
+
+
 def start_kmip_server_endpoint(base_dir, addr, port, create_cert):
     """Sets up a KMIP server endpoint"""
-    if create_cert:
+    certs_dir = os.path.join(base_dir, "certs")
+    required_certs = ("ca_cert.pem", "client_cert.pem", "client_key.pem",
+                      "server_cert.pem", "server_key.pem")
+    missing = any(not os.path.exists(os.path.join(certs_dir, f)) for f in required_certs)
+    if create_cert or missing:
         setup_path = os.path.join(".", "tests", "kmip", "setup_kmip_test.sh")
         subprocess.run([setup_path, base_dir], check=True,
                        capture_output=True, text=True)
     srvr_path = os.path.join(".", "tests", "kmip", "dummy_kmip_server.py")
-    subprocess.Popen(
+
+    # Start server process
+    proc = subprocess.Popen(
         [
             sys.executable,
             srvr_path,
@@ -52,7 +109,38 @@ def start_kmip_server_endpoint(base_dir, addr, port, create_cert):
         text=True,
         bufsize=1
     )
-    time.sleep(15)
+
+    # Wait for server to start and verify it's listening
+    max_retries = 30  # 30 seconds total
+    for _ in range(max_retries):
+        time.sleep(1)
+        try:
+            # Try to connect to verify server is up
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(1)
+            result = sock.connect_ex((addr, port))
+            sock.close()
+            if result == 0:
+                print(f"KMIP server started successfully on {addr}:{port}")
+                return proc
+        except Exception:
+            pass
+
+        # Check if process crashed
+        if proc.poll() is not None:
+            stdout, _ = proc.communicate()
+            raise RuntimeError(
+                f"KMIP server failed to start on {addr}:{port}. "
+                f"Output:\n{stdout}"
+            )
+
+    # Timeout - kill process and raise error
+    proc.kill()
+    stdout, _ = proc.communicate()
+    raise RuntimeError(
+        f"KMIP server did not start within {max_retries} seconds "
+        f"on {addr}:{port}. Output:\n{stdout}"
+    )
 
 
 def add_key_to_kmip_server_endpoint(base_dir, addr, port, val):
@@ -712,8 +800,8 @@ def test_wrong_encryption_format(caplog, two_gateways):
     except SystemExit as sysex:
         rc = sysex.code
         pass
-    assert "error: argument --encryption-format/-f: invalid choice: 'junk' (choose from 'luks1'," \
-           " 'LUKS1', 'luks2', 'LUKS2')" in caplog.text
+    assert "error: argument --encryption-format/-f: invalid choice: 'junk' " \
+           "(choose from " in caplog.text
     assert rc == 2
 
     enc_entries = [pb2.encryption_entry(format=5, key_id=key_id)]

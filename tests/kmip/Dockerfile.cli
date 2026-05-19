@@ -9,8 +9,11 @@ FROM python:3.11-slim
 
 LABEL description="KMIP CLI Tool for managing passphrases"
 
-# Install PyKMIP
-RUN pip install --no-cache-dir pykmip
+# Install git for VCS-based PyKMIP install and then install pinned PyKMIP fork
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends git && \
+    rm -rf /var/lib/apt/lists/* && \
+    pip install --no-cache-dir git+https://github.com/baum/PyKMIP.git@5b6d6164a78e92d620270fdfa253fb1a188b59ff
 
 # Create empty PyKMIP config to suppress warnings
 RUN mkdir -p /root/.pykmip && touch /root/.pykmip/pykmip.conf
