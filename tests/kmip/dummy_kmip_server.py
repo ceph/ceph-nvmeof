@@ -28,9 +28,51 @@ Usage:
 """
 
 import argparse
-from kmip.services.server import KmipServer
 import os
+import ssl
 import sys
+
+if not hasattr(ssl, "wrap_socket"):
+    def _wrap_socket(sock, keyfile=None, certfile=None, server_side=False,
+                     cert_reqs=ssl.CERT_NONE, ssl_version=ssl.PROTOCOL_TLS,
+                     ca_certs=None, do_handshake_on_connect=True,
+                     suppress_ragged_eofs=True, ciphers=None):
+        if ssl_version in (None, ssl.PROTOCOL_TLS):
+            protocol = ssl.PROTOCOL_TLS_SERVER if server_side else getattr(
+                ssl, "PROTOCOL_TLS_CLIENT", ssl.PROTOCOL_TLS
+            )
+        else:
+            protocol = ssl_version
+
+        context = ssl.SSLContext(protocol)
+        # Only set minimum_version for generic TLS protocols, not for specific versions
+        if hasattr(context, "minimum_version") and ssl_version in (None, ssl.PROTOCOL_TLS):
+            context.minimum_version = ssl.TLSVersion.TLSv1_2
+
+        if hasattr(context, "check_hostname"):
+            context.check_hostname = False
+
+        context.verify_mode = cert_reqs
+
+        if ca_certs:
+            context.load_verify_locations(ca_certs)
+
+        if certfile:
+            context.load_cert_chain(certfile=certfile, keyfile=keyfile)
+
+        if ciphers:
+            context.set_ciphers(ciphers)
+
+        return context.wrap_socket(
+            sock,
+            server_side=server_side,
+            do_handshake_on_connect=do_handshake_on_connect,
+            suppress_ragged_eofs=suppress_ragged_eofs,
+        )
+
+    ssl.wrap_socket = _wrap_socket
+
+from kmip.services.server import KmipServer
 
 
 def print_separator():
