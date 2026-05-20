@@ -1623,10 +1623,6 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                             "creating a new image")
 
         if encryption_algorithm != pb2.EncryptionAlgorithm.no_algorithm:
-            if not create_image:
-                return BdevStatus(status=errno.EINVAL,
-                                  error_message="Encryption algorithm is only allowed when "
-                                                "creating a new image")
             enc_algo_str = GatewayEnumUtils.get_key_from_value(pb2.EncryptionAlgorithm,
                                                                encryption_algorithm)
             if enc_algo_str is None:
