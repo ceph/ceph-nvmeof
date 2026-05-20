@@ -71,6 +71,9 @@ service Gateway {
 	// Delete a subsystem network
 	rpc del_subsystem_network(del_subsystem_network_req) returns(req_status) {}
 
+	// Refresh auto-listeners for all network masks configured on the given subsystem on this gateway
+	rpc gw_refresh_network(gw_refresh_network_req) returns(gw_refresh_network_status) {}
+
 	// Add KMIP server endpoints
 	rpc add_kmip_server_endpoints(add_kmip_server_endpoints_req) returns(req_status) {}
 
@@ -327,6 +330,17 @@ message add_subsystem_network_req {
 message del_subsystem_network_req {
 	string subsystem_nqn = 1;
 	string network_mask = 2;
+}
+
+message gw_refresh_network_req {
+	string subsystem_nqn = 1;
+}
+
+message gw_refresh_network_status {
+	int32 status = 1;
+	string error_message = 2;
+	repeated string added = 3;
+	repeated string removed = 4;
 }
 
 message kmip_server_endpoint {
