@@ -786,6 +786,49 @@ class GatewayClient:
 
         return listeners_info.status
 
+    def gw_refresh_network(self, args):
+        """Re-evaluate subsystem network masks and update listeners for this gateway"""
+
+        out_func, err_func, wrn_func = self.get_output_functions(args)
+        req = pb2.gw_refresh_network_req(subsystem_nqn=args.subsystem)
+        try:
+            ret = self.stub.gw_refresh_network(req)
+        except Exception as ex:
+            ret = pb2.gw_refresh_network_status(
+                status=errno.EINVAL,
+                error_message=f"Failure refreshing network listeners:\n{ex}")
+
+        if args.format == "text" or args.format == "plain":
+            if ret.status == 0:
+                out_func(f"Refreshed configured network masks for subsystem {args.subsystem}"
+                         f" on this gateway: Successful")
+                if ret.added:
+                    out_func(f"Added: {', '.join(ret.added)}")
+                if ret.removed:
+                    out_func(f"Removed: {', '.join(ret.removed)}")
+                if ret.error_message:
+                    wrn_func(ret.error_message)
+            else:
+                err_func(f"{ret.error_message}")
+        elif args.format == "json" or args.format == "yaml":
+            ret_str = json_format.MessageToJson(ret, indent=4,
+                                                including_default_value_fields=True,
+                                                preserving_proto_field_name=True)
+            if args.format == "json":
+                out_func(ret_str)
+            elif args.format == "yaml":
+                obj = json.loads(ret_str)
+                out_func(yaml.dump(obj))
+        elif args.format == "python":
+            return ret
+        else:
+            assert False
+
+        return ret.status
+
+    gw_refresh_network_args = [
+        argument("--subsystem", "-n", help="Subsystem NQN", required=True),
+    ]
     gw_set_log_level_args = [
         argument("--level", "-l", help="Gateway log level", required=True,
                  type=str.lower, choices=get_enum_keys_list(pb2.GwLogLevel, False)),
@@ -827,6 +870,10 @@ class GatewayClient:
     gw_actions.append({"name": "set_io_stats_mode",
                        "args": gw_set_io_stats_mode_args,
                        "help": "Set gateway IO statistics on or off"})
+    gw_actions.append({"name": "refresh_network",
+                       "args": gw_refresh_network_args,
+                       "help": "Re-evaluate subsystem network masks and update listeners"
+                               " for this gateway"})
     gw_choices = get_actions(gw_actions)
 
     @cli.cmd(gw_actions, ["gw"])
@@ -849,6 +896,8 @@ class GatewayClient:
             return self.gw_get_thread_stats(args)
         elif args.action == "set_io_stats_mode":
             return self.gw_set_io_stats_mode(args)
+        elif args.action == "refresh_network":
+            return self.gw_refresh_network(args)
         if not args.action:
             self.cli.parser.error(f"missing action for gw command (choose from "
                                   f"{GatewayClient.gw_choices})")
