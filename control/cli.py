@@ -1233,7 +1233,7 @@ class GatewayClient:
     def subsystem_add_network_mask(self, args):
         """Add subsystem's network mask"""
 
-        out_func, err_func, _ = self.get_output_functions(args)
+        out_func, err_func, wrn_func = self.get_output_functions(args)
 
         req = pb2.add_subsystem_network_req(subsystem_nqn=args.subsystem,
                                             network_mask=args.network_mask)
@@ -1245,8 +1245,10 @@ class GatewayClient:
 
         if args.format == "text" or args.format == "plain":
             if ret.status == 0:
-                out_func(f"Network mask {args.network_mask} added to subsystem "
+                out_func(f"Adding network mask {args.network_mask} to subsystem "
                          f"{args.subsystem}: Successful")
+                if ret.error_message:
+                    wrn_func(ret.error_message)
             else:
                 err_func(f"{ret.error_message}")
         elif args.format == "json" or args.format == "yaml":
@@ -1268,7 +1270,7 @@ class GatewayClient:
     def subsystem_del_network_mask(self, args):
         """Delete subsystem's network mask"""
 
-        out_func, err_func, _ = self.get_output_functions(args)
+        out_func, err_func, wrn_func = self.get_output_functions(args)
 
         req = pb2.del_subsystem_network_req(subsystem_nqn=args.subsystem,
                                             network_mask=args.network_mask)
@@ -1280,8 +1282,10 @@ class GatewayClient:
 
         if args.format == "text" or args.format == "plain":
             if ret.status == 0:
-                out_func(f"Network mask {args.network_mask} deleted for subsystem "
+                out_func(f"Deleting network mask {args.network_mask} from subsystem "
                          f"{args.subsystem}: Successful")
+                if ret.error_message:
+                    wrn_func(ret.error_message)
             else:
                 err_func(f"{ret.error_message}")
         elif args.format == "json" or args.format == "yaml":
