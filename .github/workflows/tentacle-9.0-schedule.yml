@@ -3,7 +3,7 @@
 name: "9.0 Release Nightly Runs"
 on:  # yamllint disable rule:truthy
   schedule:
-    - cron: '0 17 * * *'
+    - cron: '0 3 * * *'
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true

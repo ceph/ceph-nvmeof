@@ -1,10 +1,9 @@
 ---
 # yamllint disable rule:line-length
-name: "8.1 Release Nightly Runs"
+name: "9.1 Release Nightly Runs"
 on:  # yamllint disable rule:truthy
   schedule:
-    - cron: '0 1 * * *'
-# Credit: https://stackoverflow.com/a/72408109
+    - cron: '0 5 * * *'
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
@@ -17,7 +16,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          ref: 'squid_8.1'  # Checkout the squid_8.1 branch
+          ref: 'tentacle_9.1'  # Checkout the tentacle_9.1 branch
           submodules: recursive
 
       - name: Install Flake8
@@ -74,7 +73,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          ref: 'squid_8.1'  # Checkout the squid_8.1 branch
+          ref: 'tentacle_9.1'  # Checkout the tentacle_9.1 branch
 
       - name: Build container images - ceph
         run: make build SVC=ceph
@@ -96,7 +95,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        test: ["cli", "cli_change_lb", "cli_change_keys", "cli_change_ns_visibility", "cli_trash_rbd", "state", "multi_gateway", "server", "grpc", "omap_lock", "log_files", "nsid", "psk", "dhchap", "subsys_grp_name_append", "max_subsystems"]
+        test: ["cli", "cli_change_lb", "cli_change_keys", "cli_change_ns_visibility", "cli_trash_rbd", "state", "multi_gateway", "server", "grpc", "omap_lock", "log_files", "nsid", "psk", "dhchap", "subsys_grp_name_append", "max_subsystems", "omap_no_read_lock", "omap_read_lock", "omap_read_lock_ignore_errors", "big_omap", "ns_limit", "cli_force_tls"]
     runs-on: ubuntu-latest
     env:
       HUGEPAGES: 512  # for multi gateway test, approx 256 per gateway instance
@@ -104,7 +103,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          ref: 'squid_8.1'  # Checkout the squid_8.1 branch
+          ref: 'tentacle_9.1'  # Checkout the tentacle_9.1 branch
 
       - name: Setup huge pages
         run: |
@@ -221,7 +220,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          ref: 'squid_8.1'  # Checkout the squid_8.1 branch
+          ref: 'tentacle_9.1'  # Checkout the tentacle_9.1 branch
 
       - name: Setup huge-pages
         run: make setup HUGEPAGES=$HUGEPAGES
@@ -327,7 +326,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          ref: 'squid_8.1'  # Checkout the squid_8.1 branch
+          ref: 'tentacle_9.1'  # Checkout the tentacle_9.1 branch
 
       - name: Setup huge-pages
         run: make setup HUGEPAGES=$HUGEPAGES
@@ -488,7 +487,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        test: ["sanity", "no_huge", "ns_lb_change", "no_subsystems", "auto_load_balance", "state_transitions", "state_transitions_both_gws", "state_transitions_loop", "state_transitions_rand_loop", "late_registration", "late_registration_loop", "connect_panic", "4gws", "4gws_loop", "4gws_create_delete", "4gws_create_delete_loop", "namespaces", "namespaces_loop", "mtls", "notify", "ceph_status", "blocklist", "main_exit", "cluster_pool", "flat_bdev_per_cluster", "set_qos", "set_qos_2ms", "gateway_removal"]
+        test: ["sanity", "no_huge", "ns_lb_change", "no_subsystems", "auto_load_balance", "state_transitions", "state_transitions_both_gws", "state_transitions_loop", "state_transitions_rand_loop", "late_registration", "late_registration_loop", "4gws", "4gws_loop", "4gws_create_delete", "4gws_create_delete_loop", "namespaces", "namespaces_loop", "mtls", "notify", "ceph_status", "blocklist", "main_exit", "listener_hostname", "cluster_pool", "flat_bdev_per_cluster", "set_qos", "set_qos_2ms", "rbd_qos", "auto_resize", "ns_read_only", "reuse_image", "image_shrink", "gateway_removal"]
     runs-on: ubuntu-latest
     env:
       HUGEPAGES: 1024  # 4 spdk instances
@@ -497,7 +496,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          ref: 'squid_8.1'  # Checkout the squid_8.1 branch
+          ref: 'tentacle_9.1'  # Checkout the tentacle_9.1 branch
 
       - name: Setup huge-pages
         run: make setup HUGEPAGES=$HUGEPAGES
@@ -591,7 +590,7 @@ jobs:
   #     - name: Checkout code
   #       uses: actions/checkout@v4
   #       with:
-  #         ref: 'squid_8.1'  # Checkout the squid_8.1 branch
+  #         ref: 'tentacle_9.1'  # Checkout the tentacle_9.1 branch
 
   #     - name: Container_images_nvmeof folder (tar files) download
   #       run: |

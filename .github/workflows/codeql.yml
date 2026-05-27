@@ -13,9 +13,9 @@ name: "CodeQL Advanced"
 
 on:
   push:
-    branches: [ "devel", "*", "reef_7.1", "squid_8.0", "squid_8.1", "tentacle_9.0" ]
+    branches: [ "devel", "*", "reef_7.1", "squid_8.0", "squid_8.1", "tentacle_9.0", "tentacle_9.1", "tentacle_9.2" ]
   pull_request:
-    branches: [ "devel", "*", "reef_7.1", "squid_8.0", "squid_8.1", "tentacle_9.0" ]
+    branches: [ "devel", "*", "reef_7.1", "squid_8.0", "squid_8.1", "tentacle_9.0", "tentacle_9.1", "tentacle_9.2" ]
   schedule:
     - cron: '38 0 * * 6'
 
