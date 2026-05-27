@@ -100,7 +100,7 @@ def test_mixing_locks(caplog, two_gateways):
     with pytest.raises(rados.ObjectNotFound):
         gwA.omap_lock.unlock_omap()
     assert "OMAP was unlocked" not in caplog.text
-    assert "No such lock, the exclusive lock might have expired" in caplog.text
+    assert "No such lock, the exclusive lock has expired" in caplog.text
     OmapLock.reset_lock_markers()
     time.sleep(25)
     caplog.clear()

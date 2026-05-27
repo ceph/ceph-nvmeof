@@ -57,4 +57,4 @@ def test_ignore_unlock_errors(caplog, gateway):
     time.sleep(25)     # A little more than omap_file_lock_duration
     caplog.clear()
     gw.omap_lock.unlock_omap()
-    assert "No such lock, the exclusive lock might have expired" in caplog.text
+    assert "No such lock, the exclusive lock has expired" in caplog.text
