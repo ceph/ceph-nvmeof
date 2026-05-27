@@ -430,10 +430,10 @@ class OmapLock:
     EXCLUSIVE_LOCK_NAME = "exclusive"
     SHARED_LOCK_NAME = "shared"
 
-    changes_lock = threading.Lock()
+    changes_lock = threading.RLock()
     no_read_lock_warning_displayed = False
     ignore_errors_warning_displayed = False
-    is_exclusively_locked = False
+    exclusive_lock_timestamp = 0
     locked_by = {}
     lock_cookie = []
 
@@ -504,6 +504,19 @@ class OmapLock:
             False)
         if self.omap_file_disable_unlock:
             self.logger.warning("Will not unlock OMAP file for testing purposes")
+            self.omap_file_disable_exclusive_unlock = True
+        else:
+            self.omap_file_disable_exclusive_unlock = \
+                self.omap_state.config.getboolean_with_default("gateway",
+                                                               "omap_file_disable_exclusive_unlock",
+                                                               False)
+            if self.omap_file_disable_exclusive_unlock:
+                self.logger.warning("Will not unlock OMAP file exclusive locks "
+                                    "for testing purposes")
+
+    @classmethod
+    def is_exclusively_locked(cls) -> bool:
+        return cls.exclusive_lock_timestamp > 0
 
     def build_omap_lock_cookie(self, exclusive_lock=True, cookie_suffix=None) -> str:
         if cookie_suffix:
@@ -542,10 +555,16 @@ class OmapLock:
     # and in case the Omap is not current, will reload it and try again
     #
     def execute_omap_locking_function(self, grpc_func, omap_locking_func, request, context):
+        reload_count = 0
         for i in range(0, self.omap_file_update_reloads + 1):
             need_to_update = False
             try:
-                return grpc_func(omap_locking_func, request, context)
+                rc = grpc_func(omap_locking_func, request, context)
+                if reload_count > 0:
+                    self.logger.debug(f"Succeeded to execute {omap_locking_func.__name__} "
+                                      f"under OMAP file lock after {reload_count} reload "
+                                      f"attempt(s) of OMAP file")
+                return rc
             except OSError as err:
                 if err.errno == errno.EAGAIN:
                     need_to_update = True
@@ -559,19 +578,17 @@ class OmapLock:
             if self.omap_file_update_reloads > 0:
                 for j in range(self.omap_file_update_attempts):
                     update_ok = self.gateway_state.update()
+                    reload_count += 1
                     if update_ok:
                         break
                     time.sleep(0.5)
                 if update_ok:
                     if j > 3:
-                        self.logger.debug(f"Succeeded to run update() after {j} attempts")
+                        self.logger.debug(f"Succeeded to run update() after {j + 1} attempts")
 
-        if need_to_update:
-            raise RuntimeError(f"Unable to execute function under OMAP file lock after reloading "
-                               f"{i} times, exiting")
-        elif i > 2:
-            self.logger.debug(f"Succeeded to execute {omap_locking_func.__name__} "
-                              f"under OMAP file lock after {i} reloads of OMAP file")
+        assert need_to_update
+        raise RuntimeError(f"Unable to execute function under OMAP file lock after reloading "
+                           f"{reload_count} times, exiting")
 
     def omap_lockers_count(self):
         lockers_info = None
@@ -630,6 +647,8 @@ class OmapLock:
 
         if lock_exclusive:
             lock_kind = OmapLock.EXCLUSIVE_LOCK_NAME
+            if self.did_the_exclusive_lock_expire():
+                raise RuntimeError("Can't lock OMAP, there is an expired exclusive lock")
         else:
             lock_kind = OmapLock.SHARED_LOCK_NAME
 
@@ -714,7 +733,7 @@ class OmapLock:
 
         with OmapLock.changes_lock:
             if lock_exclusive:
-                if OmapLock.is_exclusively_locked:
+                if OmapLock.is_exclusively_locked():
                     assert False, \
                         f"Got two exclusive locks, OMAP is locked by " \
                         f"{OmapLock.locked_by} with cookie: " \
@@ -736,7 +755,7 @@ class OmapLock:
             except KeyError:
                 OmapLock.locked_by[(threading.get_native_id(), lock_kind)] = 1
             if lock_exclusive:
-                OmapLock.is_exclusively_locked = True
+                OmapLock.exclusive_lock_timestamp = time.monotonic()
             OmapLock.lock_cookie.append(lock_cookie)
 
         if verify_versions:
@@ -766,10 +785,14 @@ class OmapLock:
                               f"{threading.get_native_id()}, "
                               f"id: {self.omap_state.id_text}, cookie: "
                               f"{lock_cookie}")
-            self.logger.error(f"No such lock, the {lock_kind} lock might have expired."
-                              f" Consider enlarging the OMAP lock duration field.")
-            if not self.omap_file_ignore_unlock_errors:
-                raise
+            if lock_kind == OmapLock.EXCLUSIVE_LOCK_NAME and self.did_the_exclusive_lock_expire():
+                self.logger.warning(f"No such lock, the {lock_kind} lock has expired."
+                                    f" Consider enlarging the OMAP lock duration field.")
+            else:
+                self.logger.error(f"No such lock, the {lock_kind} lock might have expired."
+                                  f" Consider enlarging the OMAP lock duration field.")
+                if not self.omap_file_ignore_unlock_errors:
+                    raise
         except Exception:
             self.logger.exception(f"Unable to {lock_kind} unlock OMAP file")
             if not self.omap_file_ignore_unlock_errors:
@@ -780,29 +803,55 @@ class OmapLock:
             self.logger.warning("OMAP file unlock was disabled, will not unlock file")
             return
 
+        if unlock_exclusive and self.omap_file_disable_exclusive_unlock:
+            self.logger.warning("OMAP file exclusive unlock was disabled, will not unlock file")
+            return
+
         if unlock_exclusive:
             lock_kind = OmapLock.EXCLUSIVE_LOCK_NAME
         else:
             lock_kind = OmapLock.SHARED_LOCK_NAME
 
+        raise_ex = None
         lock_cookie = self.build_omap_lock_cookie(unlock_exclusive, cookie_suffix)
         with OmapLock.changes_lock:
-            if self.omap_state.ioctx:
-                self.do_unlock_omap(lock_cookie, lock_kind)
-            else:
-                self.logger.warning("Trying to unlock OMAP when Rados connection is closed")
-                return
+            try:
+                if self.omap_state.ioctx:
+                    self.do_unlock_omap(lock_cookie, lock_kind)
+                else:
+                    self.logger.warning("Trying to unlock OMAP when Rados connection is closed")
+            except rados.ObjectNotFound as ex:
+                raise_ex = ex
 
             try:
                 OmapLock.locked_by[(threading.get_native_id(), lock_kind)] -= 1
-                if not OmapLock.locked_by[(threading.get_native_id(), lock_kind)]:
+                lock_cnt = OmapLock.locked_by[(threading.get_native_id(), lock_kind)]
+                if lock_cnt <= 0:
                     OmapLock.locked_by.pop((threading.get_native_id(), lock_kind), None)
+                    if lock_cnt < 0:
+                        errmsg = f"Mismatch in lock/unlock, got a negative " \
+                                 f"lock count for a {lock_kind} lock in thread " \
+                                 f"{threading.get_native_id()}"
+                        self.logger.error(errmsg)
+                        if raise_ex is None:
+                            raise_ex = RuntimeError(errmsg)
             except KeyError:
                 pass
 
-            OmapLock.lock_cookie.remove(lock_cookie)
+            if lock_cookie in OmapLock.lock_cookie:
+                OmapLock.lock_cookie.remove(lock_cookie)
+            else:
+                self.logger.warning(f"OMAP lock cookie {lock_cookie} is missing during "
+                                    f"unlock cleanup.")
+                self.logger.debug(f"OMAP lock cookie is missing during unlock cleanup, thread id: "
+                                  f"{threading.get_native_id()}, "
+                                  f"id: {self.omap_state.id_text}, cookie: "
+                                  f"{lock_cookie}")
             if unlock_exclusive:
-                OmapLock.is_exclusively_locked = False
+                OmapLock.exclusive_lock_timestamp = 0
+
+            if raise_ex is not None:
+                raise raise_ex
 
     def unlock_all_omap(self):
         with OmapLock.changes_lock:
@@ -820,17 +869,27 @@ class OmapLock:
         lock_cookie = self.build_omap_lock_cookie(True)
         thread_id = threading.get_native_id()
         with OmapLock.changes_lock:
-            if not OmapLock.is_exclusively_locked:
+            if not OmapLock.is_exclusively_locked():
                 return False
             if (thread_id, OmapLock.EXCLUSIVE_LOCK_NAME) not in OmapLock.locked_by:
                 return False
             return lock_cookie in OmapLock.lock_cookie
 
-    def reset_lock_markers():
+    def did_the_exclusive_lock_expire(self) -> bool:
+        if not self.omap_file_lock_duration:
+            return False
         with OmapLock.changes_lock:
-            OmapLock.is_exclusively_locked = False
-            OmapLock.locked_by = {}
-            OmapLock.lock_cookie = []
+            if not OmapLock.is_exclusively_locked():
+                return False
+            elapsed = time.monotonic() - OmapLock.exclusive_lock_timestamp
+            return elapsed >= self.omap_file_lock_duration
+
+    @classmethod
+    def reset_lock_markers(cls):
+        with cls.changes_lock:
+            cls.exclusive_lock_timestamp = 0
+            cls.locked_by = {}
+            cls.lock_cookie = []
 
 
 class OmapReadGuard:
