@@ -647,6 +647,8 @@ class OmapLock:
 
         if lock_exclusive:
             lock_kind = OmapLock.EXCLUSIVE_LOCK_NAME
+            if self.did_the_exclusive_lock_expire():
+                raise RuntimeError("Can't lock OMAP, there is an expired exclusive lock")
         else:
             lock_kind = OmapLock.SHARED_LOCK_NAME
 
@@ -789,8 +791,8 @@ class OmapLock:
             else:
                 self.logger.error(f"No such lock, the {lock_kind} lock might have expired."
                                   f" Consider enlarging the OMAP lock duration field.")
-            if not self.omap_file_ignore_unlock_errors:
-                raise
+                if not self.omap_file_ignore_unlock_errors:
+                    raise
         except Exception:
             self.logger.exception(f"Unable to {lock_kind} unlock OMAP file")
             if not self.omap_file_ignore_unlock_errors:
@@ -810,13 +812,16 @@ class OmapLock:
         else:
             lock_kind = OmapLock.SHARED_LOCK_NAME
 
+        raise_ex = None
         lock_cookie = self.build_omap_lock_cookie(unlock_exclusive, cookie_suffix)
         with OmapLock.changes_lock:
-            if self.omap_state.ioctx:
-                self.do_unlock_omap(lock_cookie, lock_kind)
-            else:
-                self.logger.warning("Trying to unlock OMAP when Rados connection is closed")
-                return
+            try:
+                if self.omap_state.ioctx:
+                    self.do_unlock_omap(lock_cookie, lock_kind)
+                else:
+                    self.logger.warning("Trying to unlock OMAP when Rados connection is closed")
+            except rados.ObjectNotFound as ex:
+                raise_ex = ex
 
             try:
                 OmapLock.locked_by[(threading.get_native_id(), lock_kind)] -= 1
@@ -824,9 +829,12 @@ class OmapLock:
                 if lock_cnt <= 0:
                     OmapLock.locked_by.pop((threading.get_native_id(), lock_kind), None)
                     if lock_cnt < 0:
-                        raise RuntimeError(f"Mismatch in lock/unlock, got a negative lock count "
-                                           f"for a {lock_kind} lock in thread "
-                                           f"{threading.get_native_id()}")
+                        errmsg = f"Mismatch in lock/unlock, got a negative " \
+                                 f"lock count for a {lock_kind} lock in thread " \
+                                 f"{threading.get_native_id()}"
+                        self.logger.error(errmsg)
+                        if raise_ex is None:
+                            raise_ex = RuntimeError(errmsg)
             except KeyError:
                 pass
 
@@ -841,6 +849,9 @@ class OmapLock:
                                   f"{lock_cookie}")
             if unlock_exclusive:
                 OmapLock.exclusive_lock_timestamp = 0
+
+            if raise_ex is not None:
+                raise raise_ex
 
     def unlock_all_omap(self):
         with OmapLock.changes_lock:
