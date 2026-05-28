@@ -97,11 +97,12 @@ def test_mixing_locks(caplog, two_gateways):
     assert "The OMAP file is locked, will try again in" in caplog.text
     assert "Succeeded to lock OMAP file (shared) after" in caplog.text
     caplog.clear()
-    with pytest.raises(rados.ObjectNotFound):
-        gwA.omap_lock.unlock_omap()
+    gwA.omap_lock.unlock_omap()
     assert "OMAP was unlocked" not in caplog.text
     assert "No such lock, the exclusive lock has expired" in caplog.text
-    OmapLock.reset_lock_markers()
+    assert OmapLock.exclusive_lock_timestamp == 0
+    assert not OmapLock.locked_by
+    assert not OmapLock.lock_cookie
     time.sleep(25)
     caplog.clear()
     gwA.omap_lock.lock_omap(False, False, 1)
@@ -121,7 +122,9 @@ def test_mixing_locks(caplog, two_gateways):
         gwA.omap_lock.unlock_omap(False, 1)
     assert "OMAP was unlocked" not in caplog.text
     assert "No such lock, the shared lock might have expired" in caplog.text
-    OmapLock.reset_lock_markers()
+    assert OmapLock.exclusive_lock_timestamp == 0
+    assert not OmapLock.locked_by
+    assert not OmapLock.lock_cookie
     time.sleep(25)
     caplog.clear()
     gwA.omap_lock.lock_omap()
@@ -140,7 +143,9 @@ def test_mixing_locks(caplog, two_gateways):
         gwA.omap_lock.unlock_omap()
     assert "OMAP was unlocked" not in caplog.text
     assert "No such lock, the exclusive lock might have expired" in caplog.text
-    OmapLock.reset_lock_markers()
+    assert OmapLock.exclusive_lock_timestamp == 0
+    assert not OmapLock.locked_by
+    assert not OmapLock.lock_cookie
     time.sleep(25)
     caplog.clear()
     gwA.omap_lock.lock_omap()
