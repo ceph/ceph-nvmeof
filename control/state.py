@@ -45,7 +45,6 @@ class GatewayState(ABC):
     NAMESPACE_TRASH_IMAGE_PREFIX = "ns-trash-image" + OMAP_KEY_DELIMITER
     UPDATE_TRIGGER_PREFIX = "update-trigger"
 
-
     def is_key_element_valid(s: str) -> bool:
         if not isinstance(s, str):
             return False
