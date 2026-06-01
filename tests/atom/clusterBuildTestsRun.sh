@@ -12,7 +12,7 @@ set -o pipefail
 VERSION=$1
 CEPH_BRANCH=$2
 if [ "$3" = "latest" ]; then
-    CEPH_SHA=$(curl -s https://shaman.ceph.com/api/repos/ceph/$CEPH_BRANCH/latest/centos/9/ | jq -r ".[] | select(.archs[] == \"$(uname -m)\" and .status == \"ready\") | .sha1")
+    CEPH_SHA=$(curl -s https://shaman.ceph.com/api/repos/ceph/$CEPH_BRANCH/latest/centos/9/ | jq -r "[.[] | select(.archs[] == \"$(uname -m)\" and .status == \"ready\") | .sha1] | unique | .[0] // empty")
 else
     CEPH_SHA=$3
 fi
