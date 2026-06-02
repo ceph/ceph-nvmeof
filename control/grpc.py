@@ -4700,9 +4700,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
     def list_namespaces_io_stats(self, request, context=None):
         """Get namespaces IO stats."""
         peer_msg = self.get_peer_message(context)
-        self.logger.info(f"Received request to list IO stats for namespaces with "
-                         f"nsid: {request.nsid}, subsystem: {request.subsystem_nqn}, "
-                         f"context: {context}{peer_msg}")
+        self.logger.debug(f"Received request to list IO stats for namespaces with "
+                          f"nsid: {request.nsid}, subsystem: {request.subsystem_nqn}, "
+                          f"context: {context}{peer_msg}")
         failure_prefix = "Failure listing IO stats for namespaces"
         if (request.nsid):
             failure_prefix += f" with ID {request.nsid}"
@@ -8280,7 +8280,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         assert self.rpc_lock.locked(), "RPC is unlocked when calling get_gateway_info_safe()"
         peer_msg = self.get_peer_message(context)
-        self.logger.info(f"Received request to get gateway's info{peer_msg}")
+        self.logger.debug(f"Received request to get gateway's info{peer_msg}")
         gw_version_string = os.getenv("NVMEOF_VERSION")
         if not self.spdk_version:
             try:
