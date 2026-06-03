@@ -1567,11 +1567,31 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                   error_message=f"RBD pool {rbd_pool_name} doesn't exist")
 
             pool_type = self.ceph_utils.get_pool_type(rbd_pool_name)
-            if pool_type != CephUtils.CephPoolType.REPLICATED:
+            if pool_type == CephUtils.CephPoolType.ERASURE:
+                if self.ceph_utils.supports_omap_is_set(rbd_pool_name):
+                    overwrites = self.ceph_utils.allow_ec_overwrites_is_set(rbd_pool_name)
+                    if not overwrites:
+                        self.logger.error(f"Erasure coded RBD pool {rbd_pool_name} doesn't have "
+                                          f"\"allow_ec_overwrites\" set")
+                        return BdevStatus(status=errno.EINVAL,
+                                          error_message=f"Erasure coded RBD pool {rbd_pool_name} "
+                                                        f"doesn't have \"allow_ec_overwrites\" "
+                                                        f"set\nIn order to set it, please run "
+                                                        f"'ceph osd pool set {rbd_pool_name}"
+                                                        f" allow_ec_overwrites true'")
+                else:
+                    self.logger.error(f"RBD pool {rbd_pool_name} is an erasure coded pool which "
+                                      f"does not support OMAP")
+                    return BdevStatus(status=errno.EINVAL,
+                                      error_message=f"RBD pool "
+                                                    f"{rbd_pool_name} is an erasure coded pool "
+                                                    f"which does not support OMAP")
+            elif pool_type != CephUtils.CephPoolType.REPLICATED:
                 self.logger.error(f"RBD pool {rbd_pool_name} has type {pool_type.name}")
                 return BdevStatus(status=errno.EINVAL,
                                   error_message=f"RBD pool "
-                                                f"{rbd_pool_name} is not a replicated pool")
+                                                f"{rbd_pool_name} has an invalid type "
+                                                f"{pool_type.name}")
 
             if rbd_data_pool_name:
                 rc = self.ceph_utils.pool_exists(rbd_data_pool_name)
@@ -1589,8 +1609,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                           error_message=f"RBD data pool {rbd_data_pool_name} "
                                                         f"doesn't have \"allow_ec_overwrites\" "
                                                         f"set\nIn order to set it please run "
-                                                        f"'cpeh osd pool set {rbd_data_pool_name}"
-                                                        f" ec_pool_overwrites true'")
+                                                        f"'ceph osd pool set {rbd_data_pool_name}"
+                                                        f" allow_ec_overwrites true'")
                 elif pool_type != CephUtils.CephPoolType.REPLICATED:
                     self.logger.error(f"RBD data pool {rbd_data_pool_name} has "
                                       f"type {pool_type.name}")
