@@ -70,22 +70,39 @@ ifneq (,$(filter build check-ceph-repo-url,$(MAKECMDGOALS)))
 # Fetch and export CEPH_CLUSTER_CEPH_REPO_BASEURL with retries
 CEPH_CLUSTER_CEPH_REPO_BASEURL := $(shell \
 	for i in $$(seq 1 $(SHAMAN_FETCH_ATTEMPTS)); do \
-		sha1="$(CEPH_SHA)"; \
-		if [ "$$sha1" = "latest" ]; then \
+		ceph_commit_sha="$(CEPH_SHA)"; \
+		if [ "$$ceph_commit_sha" = "latest" ]; then \
 			idx=$$((i - 1)); \
-			sha1=$$(curl -s \
+			ceph_commit_sha=$$(curl -s \
 				"https://shaman.ceph.com/api/search/?status=ready&project=ceph&ref=$(CEPH_BRANCH)&flavor=default&distros=rocky/10/$(ceph_repo_arch)" \
 				| jq -r "sort_by(.modified) | reverse | .[$$idx].sha1"); \
-			>&2 echo "Attempt ($$i): Using 'latest' SHA1 for arch=$(ceph_repo_arch), branch=$(CEPH_BRANCH): $$sha1"; \
+			>&2 echo "Attempt ($$i): Using 'latest' commit SHA for arch=$(ceph_repo_arch), branch=$(CEPH_BRANCH): $$ceph_commit_sha"; \
+		elif [ "$${ceph_commit_sha#v}" != "$$ceph_commit_sha" ]; then \
+			>&2 echo "Attempt ($$i): Resolving release tag '$$ceph_commit_sha' to git commit SHA..."; \
+			tag_response=$$(curl -s "https://api.github.com/repos/ceph/ceph/git/ref/tags/$$ceph_commit_sha"); \
+			tag_sha=$$(echo "$$tag_response" | jq -r '.object.sha'); \
+			tag_type=$$(echo "$$tag_response" | jq -r '.object.type'); \
+			if [ "$$tag_type" = "tag" ]; then \
+				>&2 echo "Attempt ($$i): Dereferencing annotated tag..."; \
+				resolved_sha=$$(curl -s "https://api.github.com/repos/ceph/ceph/git/tags/$$tag_sha" | jq -r '.object.sha'); \
+			elif [ "$$tag_type" = "commit" ]; then \
+				resolved_sha="$$tag_sha"; \
+			fi; \
+			if [ -n "$$resolved_sha" ] && [ "$$resolved_sha" != "null" ]; then \
+				>&2 echo "Attempt ($$i): Resolved tag '$$ceph_commit_sha' to commit SHA: $$resolved_sha"; \
+				ceph_commit_sha="$$resolved_sha"; \
+			else \
+				>&2 echo "Warning: Failed to resolve tag '$$ceph_commit_sha', will try using it directly"; \
+			fi; \
 		fi; \
-		>&2 echo "Attempt ($$i): Fetching URL for arch=$(ceph_repo_arch), branch=$(CEPH_BRANCH), sha=$(CEPH_SHA)..."; \
-		url=$$(curl -s "https://shaman.ceph.com/api/repos/ceph/$(CEPH_BRANCH)/$$sha1/rocky/10/" | jq -r '.[] | select(.status == "ready" and .archs[] == "$(ceph_repo_arch)") | .url'); \
+		>&2 echo "Attempt ($$i): Fetching URL for arch=$(ceph_repo_arch), branch=$(CEPH_BRANCH), sha=$$ceph_commit_sha..."; \
+		url=$$(curl -s "https://shaman.ceph.com/api/repos/ceph/$(CEPH_BRANCH)/$$ceph_commit_sha/rocky/10/" | jq -r '.[] | select(.status == "ready" and .archs[] == "$(ceph_repo_arch)") | .url'); \
 		if [ -n "$$url" ] && [ "$$url" != "null" ]; then \
-			>&2 echo "Success: Retrieved URL for arch=$(ceph_repo_arch), branch=$(CEPH_BRANCH), sha=$(CEPH_SHA): $$url"; \
+			>&2 echo "Success: Retrieved URL for arch=$(ceph_repo_arch), branch=$(CEPH_BRANCH), sha=$$ceph_commit_sha: $$url"; \
 			printf "%s" "$$url"; \
 			break; \
 		fi; \
-		>&2 echo "Retrying... Failed attempt ($$i) for arch=$(ceph_repo_arch), branch=$(CEPH_BRANCH), sha=$(CEPH_SHA)"; \
+		>&2 echo "Retrying... Failed attempt ($$i) for arch=$(ceph_repo_arch), branch=$(CEPH_BRANCH), sha=$$ceph_commit_sha"; \
 		sleep 2; \
 	done)
 endif
