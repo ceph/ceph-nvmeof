@@ -27,6 +27,9 @@ class CephUtils:
         RAID4 = 2
         ERASURE = 3
 
+    ALLOW_EC_OVERWRITES_ATTRIBUTE = "allow_ec_overwrites"
+    SUPPORTS_OMAP_ATTRIBUTE = "supports_omap"
+
     RBD_QOS_PREFIX = "rbd_qos_"
     RBD_QOS_SUFFIX = "_limit"
     # if these values are changed we need to update SPDK as well
@@ -273,28 +276,38 @@ class CephUtils:
 
         return CephUtils.CephPoolType.INVALID
 
-    def allow_ec_overwrites_is_set(self, pool) -> bool:
+    def _flag_is_set(self, flag, pool) -> bool:
         cmd = '{' + f'"prefix": "osd pool get", "pool": "{pool}", ' \
-                    f'"var": "allow_ec_overwrites", "format": "json"' + '}'
+                    f'"var": "{flag}", "format": "json"' + '}'
         rply = self.execute_ceph_monitor_command(cmd)
         assert len(rply) == 3, f"Invalid Ceph reply: {rply}"
         if rply[0] != 0:
             return False
         rply_str = rply[1].decode()
-        ec_overwrites = False
+        flag_set = None
         try:
-            ec_overwrites = json.loads(rply_str)
+            flag_set = json.loads(rply_str)
         except Exception:
             self.logger.exception(f"JSON loads {rply_str}")
             return False
 
+        if flag_set is None:
+            self.logger.error(f"Can't get \"{flag}\" attribute from pool {pool}, "
+                              f"assume it is not set")
+            return False
+
         try:
-            return ec_overwrites["allow_ec_overwrites"]
+            return flag_set[flag]
         except Exception:
-            self.logger.exception(f"Can't get \"allow_ec_overwrites\" attribute "
-                                  f"from pool {pool}: {ec_overwrites}")
+            self.logger.exception(f"Can't get \"{flag}\" attribute from pool {pool}: {flag_set}")
 
         return False
+
+    def allow_ec_overwrites_is_set(self, pool) -> bool:
+        return self._flag_is_set(CephUtils.ALLOW_EC_OVERWRITES_ATTRIBUTE, pool)
+
+    def supports_omap_is_set(self, pool) -> bool:
+        return self._flag_is_set(CephUtils.SUPPORTS_OMAP_ATTRIBUTE, pool)
 
     def rados_namespace_exists(self, pool, namespace) -> bool:
         """Check if RADOS namespace exists in pool."""
