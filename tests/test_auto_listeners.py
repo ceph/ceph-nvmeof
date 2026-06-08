@@ -496,7 +496,8 @@ class TestAutoListener:
         assert ret.status != 0
         assert len(ret.added) == 0
         assert len(ret.removed) == 0
-        assert "Failure refreshing network: subsystem nqn.invalid not found" in ret.error_message
+        assert "Failure refreshing network for subsystem nqn.invalid: subsystem nqn.invalid" \
+               " not found" in ret.error_message
 
     def test_refresh_network_netmasks_not_configured(self, caplog, gateway):
         _, stub = gateway
@@ -506,5 +507,5 @@ class TestAutoListener:
         assert ret.status != 0
         assert len(ret.added) == 0
         assert len(ret.removed) == 0
-        assert (f"Failure refreshing network: subsystem {subsystem5} has no network masks"
-                f" configured") in ret.error_message
+        assert (f"Failure refreshing network for subsystem {subsystem5}: subsystem {subsystem5}"
+                f" has no network masks configured") in ret.error_message

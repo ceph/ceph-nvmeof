@@ -2264,15 +2264,15 @@ class GatewayService(pb2_grpc.GatewayServicer):
             self.logger.error(errmsg)
             return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
 
+        failure_prefix = f"Failure adding network mask for subsystem {request.subsystem_nqn}"
+
         if not request.network_mask:
-            errmsg = f"Failure adding network mask for subsystem " \
-                     f"{request.subsystem_nqn}: Missing network mask"
+            errmsg = f"{failure_prefix}: Missing network mask"
             self.logger.error(errmsg)
             return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
 
         if not NICS.is_valid_subnet(request.network_mask):
-            errmsg = f"Failure adding network mask for subsystem " \
-                     f"{request.subsystem_nqn}: Invalid subnet \"{request.network_mask}\""
+            errmsg = f"{failure_prefix}: Invalid subnet \"{request.network_mask}\""
             self.logger.error(errmsg)
             return pb2.req_status(status=errno.EADDRNOTAVAIL, error_message=errmsg)
 
@@ -2287,10 +2287,12 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 subsys_entry = json_format.Parse(state_subsys, pb2.create_subsystem_req(),
                                                  ignore_unknown_fields=True)
             except Exception:
-                errmsg = f"Can't find entry for subsystem {request.subsystem_nqn}"
+                errmsg = f"{failure_prefix}: Can't find entry for subsystem " \
+                         f"{request.subsystem_nqn}"
                 self.logger.error(errmsg)
                 return pb2.req_status(status=errno.ENOENT, error_message=errmsg)
-            assert subsys_entry, f"Can't find entry for subsystem {request.subsystem_nqn}"
+            assert subsys_entry, f"{failure_prefix}: Can't find entry for subsystem " \
+                                 f"{request.subsystem_nqn}"
             try:
                 network_to_add = request.network_mask
                 existing_network_masks = set(subsys_entry.network_mask)
@@ -2316,7 +2318,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 self.logger.info(f"Added network {request.network_mask} for subsystem "
                                  f"{request.subsystem_nqn}")
             except Exception as ex:
-                errmsg = f"Failure occurred:\n{ex}"
+                errmsg = f"{failure_prefix}: Failure occurred:\n{ex}"
                 self.logger.error(errmsg)
                 return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
         return pb2.req_status(status=0, error_message=err_msg)
@@ -2342,15 +2344,15 @@ class GatewayService(pb2_grpc.GatewayServicer):
             self.logger.error(errmsg)
             return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
 
+        failure_prefix = f"Failure deleting network mask for subsystem {request.subsystem_nqn}"
+
         if not request.network_mask:
-            errmsg = f"Failure deleting network mask for subsystem " \
-                     f"{request.subsystem_nqn}: Missing network mask"
+            errmsg = f"{failure_prefix}: Missing network mask"
             self.logger.error(errmsg)
             return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
 
         if not NICS.is_valid_subnet(request.network_mask):
-            errmsg = f"Failure deleting network mask for subsystem " \
-                     f"{request.subsystem_nqn}: Invalid subnet \"{request.network_mask}\""
+            errmsg = f"{failure_prefix}: Invalid subnet \"{request.network_mask}\""
             self.logger.error(errmsg)
             return pb2.req_status(status=errno.EADDRNOTAVAIL, error_message=errmsg)
 
@@ -2365,10 +2367,12 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 subsys_entry = json_format.Parse(state_subsys, pb2.create_subsystem_req(),
                                                  ignore_unknown_fields=True)
             except Exception:
-                errmsg = f"Can't find entry for subsystem {request.subsystem_nqn}"
+                errmsg = f"{failure_prefix}: Can't find entry for subsystem " \
+                         f"{request.subsystem_nqn}"
                 self.logger.error(errmsg)
                 return pb2.req_status(status=errno.ENOENT, error_message=errmsg)
-            assert subsys_entry, f"Can't find entry for subsystem {request.subsystem_nqn}"
+            assert subsys_entry, f"{failure_prefix}: Can't find entry for subsystem " \
+                                 f"{request.subsystem_nqn}"
             try:
                 network_to_delete = request.network_mask
                 if not subsys_entry.network_mask:
@@ -2415,7 +2419,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 self.logger.info(f"Deleted network {network_to_delete} for subsystem "
                                  f"{request.subsystem_nqn}")
             except Exception as ex:
-                errmsg = f"Failure occurred:\n{ex}"
+                errmsg = f"{failure_prefix}: Failure occurred:\n{ex}"
                 self.logger.error(errmsg)
                 return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
         return pb2.req_status(status=0, error_message=err_msg)
@@ -2440,8 +2444,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
             self.logger.error(errmsg)
             return pb2.gw_refresh_network_status(status=errno.EINVAL, error_message=errmsg)
 
+        failure_prefix = f"Failure refreshing network for subsystem {request.subsystem_nqn}"
+
         if request.subsystem_nqn not in self.subsys_serial:
-            errmsg = f"Failure refreshing network: subsystem {request.subsystem_nqn} not found"
+            errmsg = f"{failure_prefix}: subsystem {request.subsystem_nqn} not found"
             self.logger.error(errmsg)
             return pb2.gw_refresh_network_status(status=errno.ENOENT, error_message=errmsg)
 
@@ -2458,13 +2464,15 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 subsys_entry = json_format.Parse(state_subsys, pb2.create_subsystem_req(),
                                                  ignore_unknown_fields=True)
             except Exception:
-                errmsg = f"Can't find entry for subsystem {request.subsystem_nqn}"
+                errmsg = f"{failure_prefix}: Can't find entry for subsystem " \
+                         f"{request.subsystem_nqn}"
                 self.logger.error(errmsg)
                 return pb2.gw_refresh_network_status(status=errno.ENOENT, error_message=errmsg)
-            assert subsys_entry, f"Can't find entry for subsystem {request.subsystem_nqn}"
+            assert subsys_entry, f"{failure_prefix}: Can't find entry for subsystem " \
+                                 f"{request.subsystem_nqn}"
 
             if not subsys_entry.network_mask:
-                errmsg = (f"Failure refreshing network: subsystem {request.subsystem_nqn} "
+                errmsg = (f"{failure_prefix}: subsystem {request.subsystem_nqn} "
                           f"has no network masks configured")
                 self.logger.error(errmsg)
                 return pb2.gw_refresh_network_status(status=errno.ENOENT, error_message=errmsg)
@@ -2499,7 +2507,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                             final_err_msg += "\n"
                         final_err_msg += err_msg
             except Exception as ex:
-                errmsg = f"Failure occurred:\n{ex}"
+                errmsg = f"{failure_prefix}: Failure occurred:\n{ex}"
                 self.logger.error(errmsg)
                 return pb2.gw_refresh_network_status(status=errno.EINVAL, error_message=errmsg)
 
