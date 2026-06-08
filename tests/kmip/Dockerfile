@@ -14,7 +14,7 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Install pinned PyKMIP fork with Python 3.12 TLS compatibility fix
-RUN pip install --no-cache-dir git+https://github.com/baum/PyKMIP.git@5b6d6164a78e92d620270fdfa253fb1a188b59ff
+RUN pip install --no-cache-dir git+https://github.com/ceph/PyKMIP.git@5b6d6164a78e92d620270fdfa253fb1a188b59ff
 
 # Create working directory
 WORKDIR /kmip
