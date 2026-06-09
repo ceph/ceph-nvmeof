@@ -577,6 +577,7 @@ message namespace {
 	optional string nonce = 7;
 	optional bool auto_visible = 8;
 	repeated string hosts = 9;
+	optional string rados_namespace_name = 10;
 }
 
 message subsystems_info_cli {
