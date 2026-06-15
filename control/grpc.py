@@ -7841,6 +7841,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                             s["nqn"], n["nsid"])
                         n["auto_visible"] = find_ret.auto_visible
                         n["hosts"] = find_ret.host_list
+                        n["rados_namespace_name"] = find_ret.rados_namespace_name or ""
                 else:
                     s["namespace_count"] = 0
                     s["enable_ha"] = False

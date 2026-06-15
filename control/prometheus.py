@@ -475,7 +475,7 @@ class NVMeOFCollector:
         subsystem_namespace_metadata = GaugeMetricFamily(
             f"{self.metric_prefix}_subsystem_namespace_metadata",
             "Namespace information for the subsystem",
-            labels=["nqn", "nsid", "bdev_name", "anagrpid"])
+            labels=["nqn", "nsid", "bdev_name", "anagrpid", "rados_namespace_name"])
         host_connection_state = GaugeMetricFamily(
             f"{self.metric_prefix}_host_connection_state",
             "Host connection state 0=disconnected, 1=connected",
@@ -511,7 +511,8 @@ class NVMeOFCollector:
                     nqn,
                     str(ns.nsid),
                     ns.bdev_name,
-                    str(ns.anagrpid)
+                    str(ns.anagrpid),
+                    ns.rados_namespace_name,
                 ], 1)
 
             conn_list = []
