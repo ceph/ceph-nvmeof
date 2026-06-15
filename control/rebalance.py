@@ -49,6 +49,9 @@ class Rebalance:
 
             for i in range(self.rebalance_max_ns_to_change_lb_grp):
                 try:
+                    if not self.gw_srv.up_and_running:
+                        self.logger.warning("SPDK is not up and running!")
+                        return
                     rc = self.gw_srv.execute_grpc_function(self.rebalance_logic, None, "context")
                     if rc == 1:
                         self.logger.debug(f"Nothing found for rebalance, break at {i} iteration")
