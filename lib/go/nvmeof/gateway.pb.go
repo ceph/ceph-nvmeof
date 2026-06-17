@@ -3919,18 +3919,19 @@ func (x *ListenAddress) GetSecure() bool {
 }
 
 type Namespace struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Nsid          uint32                 `protobuf:"varint,1,opt,name=nsid,proto3" json:"nsid,omitempty"`
-	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
-	BdevName      *string                `protobuf:"bytes,3,opt,name=bdev_name,json=bdevName,proto3,oneof" json:"bdev_name,omitempty"`
-	Nguid         *string                `protobuf:"bytes,4,opt,name=nguid,proto3,oneof" json:"nguid,omitempty"`
-	Uuid          *string                `protobuf:"bytes,5,opt,name=uuid,proto3,oneof" json:"uuid,omitempty"`
-	Anagrpid      *uint32                `protobuf:"varint,6,opt,name=anagrpid,proto3,oneof" json:"anagrpid,omitempty"`
-	Nonce         *string                `protobuf:"bytes,7,opt,name=nonce,proto3,oneof" json:"nonce,omitempty"`
-	AutoVisible   *bool                  `protobuf:"varint,8,opt,name=auto_visible,json=autoVisible,proto3,oneof" json:"auto_visible,omitempty"`
-	Hosts         []string               `protobuf:"bytes,9,rep,name=hosts,proto3" json:"hosts,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	Nsid               uint32                 `protobuf:"varint,1,opt,name=nsid,proto3" json:"nsid,omitempty"`
+	Name               string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	BdevName           *string                `protobuf:"bytes,3,opt,name=bdev_name,json=bdevName,proto3,oneof" json:"bdev_name,omitempty"`
+	Nguid              *string                `protobuf:"bytes,4,opt,name=nguid,proto3,oneof" json:"nguid,omitempty"`
+	Uuid               *string                `protobuf:"bytes,5,opt,name=uuid,proto3,oneof" json:"uuid,omitempty"`
+	Anagrpid           *uint32                `protobuf:"varint,6,opt,name=anagrpid,proto3,oneof" json:"anagrpid,omitempty"`
+	Nonce              *string                `protobuf:"bytes,7,opt,name=nonce,proto3,oneof" json:"nonce,omitempty"`
+	AutoVisible        *bool                  `protobuf:"varint,8,opt,name=auto_visible,json=autoVisible,proto3,oneof" json:"auto_visible,omitempty"`
+	Hosts              []string               `protobuf:"bytes,9,rep,name=hosts,proto3" json:"hosts,omitempty"`
+	RadosNamespaceName *string                `protobuf:"bytes,10,opt,name=rados_namespace_name,json=radosNamespaceName,proto3,oneof" json:"rados_namespace_name,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *Namespace) Reset() {
@@ -4024,6 +4025,13 @@ func (x *Namespace) GetHosts() []string {
 		return x.Hosts
 	}
 	return nil
+}
+
+func (x *Namespace) GetRadosNamespaceName() string {
+	if x != nil && x.RadosNamespaceName != nil {
+		return *x.RadosNamespaceName
+	}
+	return ""
 }
 
 type SubsystemsInfoCli struct {
@@ -5830,6 +5838,7 @@ type NamespaceCli struct {
 	RadosNamespaceName           *string                `protobuf:"bytes,24,opt,name=rados_namespace_name,json=radosNamespaceName,proto3,oneof" json:"rados_namespace_name,omitempty"`
 	EncryptionAlgorithm          *EncryptionAlgorithm   `protobuf:"varint,25,opt,name=encryption_algorithm,json=encryptionAlgorithm,proto3,enum=EncryptionAlgorithm,oneof" json:"encryption_algorithm,omitempty"`
 	EncryptionEntries            []*EncryptionEntry     `protobuf:"bytes,26,rep,name=encryption_entries,json=encryptionEntries,proto3" json:"encryption_entries,omitempty"`
+	Degraded                     *bool                  `protobuf:"varint,27,opt,name=degraded,proto3,oneof" json:"degraded,omitempty"`
 	unknownFields                protoimpl.UnknownFields
 	sizeCache                    protoimpl.SizeCache
 }
@@ -6044,6 +6053,13 @@ func (x *NamespaceCli) GetEncryptionEntries() []*EncryptionEntry {
 		return x.EncryptionEntries
 	}
 	return nil
+}
+
+func (x *NamespaceCli) GetDegraded() bool {
+	if x != nil && x.Degraded != nil {
+		return *x.Degraded
+	}
+	return false
 }
 
 type NamespacesInfo struct {
@@ -7309,7 +7325,7 @@ const file_gateway_proto_rawDesc = "" +
 	"\x06secure\x18\x06 \x01(\bH\x01R\x06secure\x88\x01\x01B\f\n" +
 	"\n" +
 	"_transportB\t\n" +
-	"\a_secure\"\xcc\x02\n" +
+	"\a_secure\"\x9c\x03\n" +
 	"\tnamespace\x12\x12\n" +
 	"\x04nsid\x18\x01 \x01(\rR\x04nsid\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12 \n" +
@@ -7319,14 +7335,17 @@ const file_gateway_proto_rawDesc = "" +
 	"\banagrpid\x18\x06 \x01(\rH\x03R\banagrpid\x88\x01\x01\x12\x19\n" +
 	"\x05nonce\x18\a \x01(\tH\x04R\x05nonce\x88\x01\x01\x12&\n" +
 	"\fauto_visible\x18\b \x01(\bH\x05R\vautoVisible\x88\x01\x01\x12\x14\n" +
-	"\x05hosts\x18\t \x03(\tR\x05hostsB\f\n" +
+	"\x05hosts\x18\t \x03(\tR\x05hosts\x125\n" +
+	"\x14rados_namespace_name\x18\n" +
+	" \x01(\tH\x06R\x12radosNamespaceName\x88\x01\x01B\f\n" +
 	"\n" +
 	"_bdev_nameB\b\n" +
 	"\x06_nguidB\a\n" +
 	"\x05_uuidB\v\n" +
 	"\t_anagrpidB\b\n" +
 	"\x06_nonceB\x0f\n" +
-	"\r_auto_visible\"\x82\x01\n" +
+	"\r_auto_visibleB\x17\n" +
+	"\x15_rados_namespace_name\"\x82\x01\n" +
 	"\x13subsystems_info_cli\x12\x16\n" +
 	"\x06status\x18\x01 \x01(\x05R\x06status\x12#\n" +
 	"\rerror_message\x18\x02 \x01(\tR\ferrorMessage\x12.\n" +
@@ -7518,8 +7537,7 @@ const file_gateway_proto_rawDesc = "" +
 	"\x06status\x18\x01 \x01(\x05R\x06status\x12#\n" +
 	"\rerror_message\x18\x02 \x01(\tR\ferrorMessage\x12#\n" +
 	"\rsubsystem_nqn\x18\x03 \x01(\tR\fsubsystemNqn\x12-\n" +
-	"\vconnections\x18\x04 \x03(\v2\v.connectionR\vconnections\"\xdc\n" +
-	"\n" +
+	"\vconnections\x18\x04 \x03(\v2\v.connectionR\vconnections\"\x8a\v\n" +
 	"\rnamespace_cli\x12\x12\n" +
 	"\x04nsid\x18\x01 \x01(\rR\x04nsid\x12\x1b\n" +
 	"\tbdev_name\x18\x02 \x01(\tR\bbdevName\x12$\n" +
@@ -7550,7 +7568,8 @@ const file_gateway_proto_rawDesc = "" +
 	"\x14rados_namespace_name\x18\x18 \x01(\tH\tR\x12radosNamespaceName\x88\x01\x01\x12L\n" +
 	"\x14encryption_algorithm\x18\x19 \x01(\x0e2\x14.EncryptionAlgorithmH\n" +
 	"R\x13encryptionAlgorithm\x88\x01\x01\x12@\n" +
-	"\x12encryption_entries\x18\x1a \x03(\v2\x11.encryption_entryR\x11encryptionEntriesB\x13\n" +
+	"\x12encryption_entries\x18\x1a \x03(\v2\x11.encryption_entryR\x11encryptionEntries\x12\x1f\n" +
+	"\bdegraded\x18\x1b \x01(\bH\vR\bdegraded\x88\x01\x01B\x13\n" +
 	"\x11_ns_subsystem_nqnB\x0e\n" +
 	"\f_trash_imageB\x16\n" +
 	"\x14_disable_auto_resizeB\f\n" +
@@ -7562,7 +7581,8 @@ const file_gateway_proto_rawDesc = "" +
 	"\x13_rbd_data_pool_nameB\v\n" +
 	"\t_locationB\x17\n" +
 	"\x15_rados_namespace_nameB\x17\n" +
-	"\x15_encryption_algorithm\"\xa3\x01\n" +
+	"\x15_encryption_algorithmB\v\n" +
+	"\t_degraded\"\xa3\x01\n" +
 	"\x0fnamespaces_info\x12\x16\n" +
 	"\x06status\x18\x01 \x01(\x05R\x06status\x12#\n" +
 	"\rerror_message\x18\x02 \x01(\tR\ferrorMessage\x12#\n" +

@@ -795,6 +795,7 @@ message namespace_cli {
 	optional string rados_namespace_name = 24;
 	optional EncryptionAlgorithm encryption_algorithm = 25;
 	repeated encryption_entry encryption_entries = 26;
+	optional bool degraded = 27;
 }
 
 message namespaces_info {

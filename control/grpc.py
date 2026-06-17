@@ -81,7 +81,8 @@ class SubsystemsCache:
 
 class BdevStatus:
     def __init__(self, status, error_message, bdev_name="",
-                 rbd_pool=None, rbd_image_name=None, rados_namespace_name=None, trash_image=False):
+                 rbd_pool=None, rbd_image_name=None, rados_namespace_name=None, trash_image=False,
+                 degraded=False):
         self.status = status
         self.error_message = error_message
         self.bdev_name = bdev_name
@@ -89,6 +90,7 @@ class BdevStatus:
         self.rbd_image_name = rbd_image_name
         self.rados_namespace_name = rados_namespace_name
         self.trash_image = trash_image
+        self.degraded = degraded
 
 
 class MonitorGroupService(monitor_pb2_grpc.MonitorGroupServicer):
@@ -317,7 +319,7 @@ class SubsystemHostAuth:
 class NamespaceInfo:
     def __init__(self, subsys, nsid, bdev, uuid, anagrpid, auto_visible, pool, data_pool, image,
                  rados_namespace_name, trash_image, read_only, location, auto_resize,
-                 encryption_entries, encryption_algorithm):
+                 encryption_entries, encryption_algorithm, degraded):
         self.subsys = subsys
         self.nsid = nsid
         self.bdev = bdev
@@ -336,6 +338,7 @@ class NamespaceInfo:
         self.image_was_shrunk = False
         self.encryption_entries = encryption_entries
         self.encryption_algorithm = encryption_algorithm
+        self.degraded = degraded
 
     def __str__(self):
         return f"subsys: {self.subsys}, nsid: {self.nsid}, " \
@@ -349,6 +352,7 @@ class NamespaceInfo:
                f"auto_resize: {self.auto_resize}, " \
                f"encryption_entries: {self.encryption_entries}, " \
                f"encryption_algorithm: {self.encryption_algorithm}, " \
+               f"degraded: {self.degraded}, " \
                f"hosts: {self.host_list}"
 
     def empty(self) -> bool:
@@ -392,6 +396,9 @@ class NamespaceInfo:
     def was_image_shrunk(self):
         return self.image_was_shrunk
 
+    def is_degraded(self) -> bool:
+        return self.degraded
+
     @staticmethod
     def are_uuids_equal(uuid1: str, uuid2: str) -> bool:
         assert uuid1 and uuid2, "UUID can't be empty"
@@ -405,7 +412,7 @@ class NamespaceInfo:
 
 class NamespacesLocalList:
     EMPTY_NAMESPACE = NamespaceInfo(None, None, None, None, 0, False, None, None,
-                                    None, None, False, False, None, False, None, None)
+                                    None, None, False, False, None, False, None, None, False)
 
     def __init__(self):
         self.namespace_list = defaultdict(dict)
@@ -439,7 +446,8 @@ class NamespacesLocalList:
             location,
             auto_resize,
             encryption_entries,
-            encryption_algorithm):
+            encryption_algorithm,
+            degraded):
         if not bdev:
             bdev = GatewayService.find_unique_bdev_name(uuid)
         with self.namespace_list_lock:
@@ -449,7 +457,8 @@ class NamespacesLocalList:
                                                            trash_image, read_only,
                                                            location, auto_resize,
                                                            encryption_entries,
-                                                           encryption_algorithm)
+                                                           encryption_algorithm,
+                                                           degraded)
 
     def find_namespace(self, nqn, nsid, uuid=None, bdev=None) -> NamespaceInfo:
         with self.namespace_list_lock:
@@ -1002,6 +1011,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
         self.spdk_qos_timeslice = self.config.getint_with_default("spdk",
                                                                   "qos_timeslice_in_usecs", None)
         self.force_tls = self.config.getboolean_with_default("gateway", "force_tls", False)
+        self.degrade_namespace_on_kmip_error = self.config.getboolean_with_default(
+            "gateway", "degrade_namespace_on_kmip_error", True)
         self.io_stats_enabled = self.config.getboolean_with_default("gateway",
                                                                     "io_stats_enabled", True)
         if self.io_stats_enabled:
@@ -1471,13 +1482,51 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 self.logger.exception(f"Error setting image identification {img_id_value} for "
                                       f"{image_path}")
 
-    def create_bdev(self, anagrp: int, name, uuid, rbd_pool_name, rbd_data_pool_name,
-                    rbd_image_name,
-                    block_size, create_image, trash_image, rbd_image_size, disable_auto_resize,
-                    read_only, rados_namespace_name,
-                    encryption_entries, encryption_algorithm,
-                    context, peer_msg=""):
+    def create_degraded_bdev(self, name, uuid, block_size):
+        """Create a degraded null bdev with no IO allowed"""
+
+        assert self.rpc_lock.locked(), "RPC is unlocked when calling create_degraded_bdev()"
+        self.logger.info(f"Received request to create a degraded bdev {name}")
+
+        try:
+            bdev_name = self.spdk_rpc_client.bdev_null_create(
+                name=name,
+                num_blocks=2,
+                block_size=block_size,
+                uuid=uuid,
+                fail_io=True)
+            self.logger.debug(f"bdev_null_create: {bdev_name}")
+        except Exception as ex:
+            errmsg = f"bdev_null_create {name} failed"
+            self.logger.exception(errmsg)
+            errmsg = f"{errmsg} with:\n{ex}"
+            resp = self.parse_json_exeption(ex)
+            status = errno.ENODEV
+            if resp:
+                status = resp["code"]
+                errmsg = resp['message']
+            return BdevStatus(status=status, error_message=errmsg)
+
+        # Just in case SPDK failed with no exception
+        if not bdev_name:
+            errmsg = f"Can't create bdev {name}"
+            self.logger.error(errmsg)
+            return BdevStatus(status=errno.ENODEV, error_message=errmsg)
+
+        assert name == bdev_name, f"Created bdev name {bdev_name} differs " \
+                                  f"from requested name {name}"
+
+        return BdevStatus(status=0, error_message="", bdev_name=bdev_name, degraded=True)
+
+    def create_rbd_bdev(self, anagrp: int, name, uuid, rbd_pool_name, rbd_data_pool_name,
+                        rbd_image_name,
+                        block_size, create_image, trash_image, rbd_image_size, disable_auto_resize,
+                        read_only, rados_namespace_name,
+                        encryption_entries, encryption_algorithm,
+                        context, peer_msg=""):
         """Creates a bdev from an RBD image."""
+
+        assert self.rpc_lock.locked(), "RPC is unlocked when calling create_rbd_bdev()"
 
         if create_image:
             cr_img_msg = "will create image if doesn't exist"
@@ -1740,11 +1789,12 @@ class GatewayService(pb2_grpc.GatewayServicer):
                           rbd_image_name=rbd_image_name,
                           rados_namespace_name=rados_namespace_name, trash_image=trash_image)
 
-    def resize_bdev(self, bdev_name, new_size, peer_msg=""):
-        """Resizes a bdev."""
+    def resize_rbd_bdev(self, bdev_name, new_size, peer_msg=""):
+        """Resizes an RBD bdev."""
 
-        self.logger.info(f"Received request to resize bdev {bdev_name} to {new_size} MiB{peer_msg}")
-        assert self.rpc_lock.locked(), "RPC is unlocked when calling resize_bdev()"
+        self.logger.info(f"Received request to resize RBD bdev {bdev_name} to "
+                         f"{new_size} MiB{peer_msg}")
+        assert self.rpc_lock.locked(), "RPC is unlocked when calling resize_rbd_bdev()"
         rbd_pool_name = None
         rbd_image_name = None
         rados_namespace_name = None
@@ -1787,7 +1837,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 name=bdev_name,
                 new_size=new_size,
             )
-            self.logger.debug(f"resize_bdev {bdev_name}: {ret}")
+            self.logger.debug(f"resize_rbd_bdev {bdev_name}: {ret}")
         except Exception as ex:
             errmsg = f"Failure resizing bdev {bdev_name}"
             self.logger.exception(errmsg)
@@ -1806,35 +1856,63 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         return pb2.req_status(status=0, error_message="")
 
-    def delete_bdev(self, bdev_name, recycling_mode=False, peer_msg=""):
-        """Deletes a bdev."""
+    def delete_degraded_bdev(self, bdev_name, peer_msg=""):
+        """Deletes a degraded bdev."""
 
-        assert self.rpc_lock.locked(), "RPC is unlocked when calling delete_bdev()"
+        assert self.rpc_lock.locked(), "RPC is unlocked when calling delete_degraded_bdev()"
 
-        self.logger.info(f"Received request to delete bdev {bdev_name}{peer_msg}")
+        self.logger.info(f"Received request to delete degraded bdev {bdev_name}{peer_msg}")
         try:
-            ret = self.spdk_rpc_client.bdev_rbd_delete(name=bdev_name)
-            if not recycling_mode:
-                del self.bdev_params[bdev_name]
-            with self.shared_state_lock:
-                cluster = self.bdev_cluster[bdev_name]
-            self.logger.debug(f"to delete_bdev {bdev_name} cluster {cluster} ")
-            self.cluster_allocator.put_cluster(cluster)
-            self.logger.debug(f"delete_bdev {bdev_name}: {ret}")
+            ret = self.spdk_rpc_client.bdev_null_delete(name=bdev_name)
+            self.logger.debug(f"bdev_null_delete {bdev_name}: {ret}")
         except Exception as ex:
-            errmsg = f"Failure deleting bdev {bdev_name}"
+            errmsg = f"Failure deleting degraded bdev {bdev_name}"
             self.logger.exception(errmsg)
             errmsg = f"{errmsg}:\n{ex}"
             resp = self.parse_json_exeption(ex)
             status = errno.EINVAL
             if resp:
                 status = resp["code"]
-                errmsg = f"Failure deleting bdev {bdev_name}: {resp['message']}"
+                errmsg = f"Failure deleting degraded bdev {bdev_name}: {resp['message']}"
             return pb2.req_status(status=status, error_message=errmsg)
 
         # Just in case SPDK failed with no exception
         if not ret:
-            errmsg = f"Failure deleting bdev {bdev_name}"
+            errmsg = f"Failure deleting degraded bdev {bdev_name}"
+            self.logger.error(errmsg)
+            return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
+
+        return pb2.req_status(status=0, error_message="")
+
+    def delete_rbd_bdev(self, bdev_name, recycling_mode=False, peer_msg=""):
+        """Deletes an RBD bdev."""
+
+        assert self.rpc_lock.locked(), "RPC is unlocked when calling delete_rbd_bdev()"
+
+        self.logger.info(f"Received request to delete RBD bdev {bdev_name}{peer_msg}")
+        try:
+            ret = self.spdk_rpc_client.bdev_rbd_delete(name=bdev_name)
+            if not recycling_mode:
+                del self.bdev_params[bdev_name]
+            with self.shared_state_lock:
+                cluster = self.bdev_cluster[bdev_name]
+            self.logger.debug(f"to delete_rbd_bdev {bdev_name} cluster {cluster} ")
+            self.cluster_allocator.put_cluster(cluster)
+            self.logger.debug(f"bdev_rbd_delete {bdev_name}: {ret}")
+        except Exception as ex:
+            errmsg = f"Failure deleting RBD bdev {bdev_name}"
+            self.logger.exception(errmsg)
+            errmsg = f"{errmsg}:\n{ex}"
+            resp = self.parse_json_exeption(ex)
+            status = errno.EINVAL
+            if resp:
+                status = resp["code"]
+                errmsg = f"Failure deleting RBD bdev {bdev_name}: {resp['message']}"
+            return pb2.req_status(status=status, error_message=errmsg)
+
+        # Just in case SPDK failed with no exception
+        if not ret:
+            errmsg = f"Failure deleting RBD bdev {bdev_name}"
             self.logger.error(errmsg)
             return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
 
@@ -2947,7 +3025,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
     def create_namespace(self, subsystem_nqn, bdev_name, nsid, anagrpid, uuid,
                          auto_visible, rbd_pool, rbd_data_pool, rbd_image_name,
                          rados_namespace_name, trash_image, read_only, location,
-                         auto_resize, encryption_entries, encryption_algorithm, context):
+                         auto_resize, encryption_entries, encryption_algorithm,
+                         degraded, context):
         """Adds a namespace to a subsystem."""
 
         assert self.rpc_lock.locked(), "RPC is unlocked when calling create_namespace()"
@@ -2974,6 +3053,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         add_namespace_error_prefix = f"Failure adding namespace{nsid_msg} to {subsystem_nqn}"
 
         peer_msg = self.get_peer_message(context)
+        degraded_msg = " degraded, " if degraded else ""
         rbd_msg = ""
         if rbd_pool and rbd_image_name:
             rbd_msg = f"RBD image {rbd_pool}/{rbd_image_name}, " if not rados_namespace_name \
@@ -2981,7 +3061,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         self.logger.info(f"Received request to add {bdev_name} to {subsystem_nqn} with load "
                          f"balancing group id {anagrpid}{nsid_msg}, auto_visible: {auto_visible}, "
                          f"auto_resize: {auto_resize}, "
-                         f"{rbd_msg}context: {context}{peer_msg}")
+                         f"{rbd_msg}{degraded_msg}context: {context}{peer_msg}")
 
         if subsystem_nqn not in self.subsys_serial:
             errmsg = f"{add_namespace_error_prefix}: No such subsystem"
@@ -3054,7 +3134,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                                             trash_image, read_only,
                                                             location, auto_resize,
                                                             encryption_entries,
-                                                            encryption_algorithm)
+                                                            encryption_algorithm,
+                                                            degraded)
             self.logger.debug(f"subsystem_add_ns: {nsid}")
             self.ana_grp_ns_load[anagrpid] += 1
             if anagrpid in self.ana_grp_subs_load:
@@ -3134,6 +3215,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
                             ns = self.subsystem_nsid_bdev_and_uuid.get_namespace_infos_for_anagrpid(
                                 nqn, grp_id)
                             for ns_info in ns:
+                                if ns_info.is_degraded():
+                                    # TODO: Leonid, do something here
+                                    continue
                                 # get the cluster name for this namespace
                                 with self.shared_state_lock:
                                     cluster = self.bdev_cluster[ns_info.bdev]
@@ -3261,6 +3345,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         current_server_endpoints = []
         server_name = None
         kmip_client = None
+        create_degraded = False
         for ent in decrypted_enc_entries:
             if ent.format == pb2.EncryptionFormat.none:
                 has_a_none_format = True
@@ -3320,19 +3405,27 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     self.logger.exception(f"Can't fetch passphrase for id {ent.key_id}, "
                                           f"endpoints: {current_server_endpoints}")
                 if not key_content:
-                    errmsg = f"Failure adding namespace {nsid_msg}to {request.subsystem_nqn}: " \
-                             f"Can't fetch passphrase for id {ent.key_id}"
-                    self.logger.error(errmsg)
-                    return pb2.nsid_status(status=errno.ENOKEY, error_message=errmsg)
-
-                try:
-                    ent.key_id = key_content.decode()
-                except Exception:
-                    self.logger.exception("Error decoding key to string")
-                    errmsg = f"Failure adding namespace {nsid_msg}to {request.subsystem_nqn}: " \
-                             f"Can't decode passphrase to string"
-                    self.logger.error(errmsg)
-                    return pb2.nsid_status(status=errno.ENOKEY, error_message=errmsg)
+                    if not context and self.degrade_namespace_on_kmip_error:
+                        self.logger.warning(f"Can't fetch passphrase for id {ent.key_id}, "
+                                            f"will create a degraded namespace")
+                        create_degraded = True
+                        break
+                    else:
+                        errmsg = f"Failure adding namespace {nsid_msg}to " \
+                                 f"{request.subsystem_nqn}: " \
+                                 f"Can't fetch passphrase for id {ent.key_id}"
+                        self.logger.error(errmsg)
+                        return pb2.nsid_status(status=errno.ENOKEY, error_message=errmsg)
+                else:
+                    try:
+                        ent.key_id = key_content.decode()
+                    except Exception:
+                        self.logger.exception("Error decoding key to string")
+                        errmsg = f"Failure adding namespace {nsid_msg}to " \
+                                 f"{request.subsystem_nqn}: " \
+                                 f"Can't decode passphrase to string"
+                        self.logger.error(errmsg)
+                        return pb2.nsid_status(status=errno.ENOKEY, error_message=errmsg)
 
         if has_a_none_format and has_non_none_format:
             errmsg = f"Failure adding namespace {nsid_msg}to {request.subsystem_nqn}: " \
@@ -3400,7 +3493,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         bdev_name = GatewayService.find_unique_bdev_name(request.uuid)
         omap_lock = self.omap_lock.get_omap_lock_to_use(context)
         with omap_lock:
-            if context:
+            if context and not create_degraded:
                 errmsg, ns_nqn = self.check_if_image_used(request.rbd_pool_name,
                                                           request.rbd_image_name,
                                                           request.rados_namespace_name,
@@ -3420,14 +3513,18 @@ class GatewayService(pb2_grpc.GatewayServicer):
             if not context:
                 create_image = False
 
-            ret_bdev = self.create_bdev(anagrp, bdev_name, request.uuid, request.rbd_pool_name,
-                                        request.rbd_data_pool_name,
-                                        request.rbd_image_name, request.block_size, create_image,
-                                        request.trash_image, request.size,
-                                        request.disable_auto_resize, request.read_only,
-                                        request.rados_namespace_name,
-                                        decrypted_enc_entries, request.encryption_algorithm,
-                                        context, peer_msg)
+            if create_degraded:
+                ret_bdev = self.create_degraded_bdev(bdev_name, request.uuid, request.block_size)
+            else:
+                ret_bdev = self.create_rbd_bdev(anagrp, bdev_name, request.uuid,
+                                                request.rbd_pool_name,
+                                                request.rbd_data_pool_name, request.rbd_image_name,
+                                                request.block_size, create_image,
+                                                request.trash_image, request.size,
+                                                request.disable_auto_resize, request.read_only,
+                                                request.rados_namespace_name,
+                                                decrypted_enc_entries, request.encryption_algorithm,
+                                                context, peer_msg)
             if ret_bdev.status != 0:
                 errmsg = f"Failure adding namespace {nsid_msg}to {request.subsystem_nqn}: " \
                          f"{ret_bdev.error_message}"
@@ -3437,8 +3534,13 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     ns_bdev = self.get_bdev_info(bdev_name)
                     if ns_bdev is not None:
                         try:
-                            ret_del = self.delete_bdev(bdev_name, peer_msg=peer_msg)
-                            self.logger.debug(f"delete_bdev({bdev_name}): {ret_del.status}")
+                            if create_degraded:
+                                ret_del = self.delete_degraded_bdev(bdev_name, peer_msg=peer_msg)
+                                self.logger.debug(f"delete_degraded_bdev({bdev_name}): "
+                                                  f"{ret_del.status}")
+                            else:
+                                ret_del = self.delete_rbd_bdev(bdev_name, peer_msg=peer_msg)
+                                self.logger.debug(f"delete_rbd_bdev({bdev_name}): {ret_del.status}")
                         except AssertionError:
                             self.logger.exception(
                                 f"Got an assert while trying to delete bdev {bdev_name}")
@@ -3450,16 +3552,33 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
             # If we got here we asserted that ret_bdev.bdev_name == bdev_name
 
+            # degraded bdevs are null ones and not RBD ones, so reset RBD related info
+            if create_degraded:
+                pool_to_use = ""
+                data_pool_to_use = ""
+                image_name_to_use = ""
+                rados_namespace_to_use = ""
+                enc_entries_to_use = []
+                enc_algorithm_to_use = pb2.EncryptionAlgorithm.no_algorithm
+            else:
+                pool_to_use = ret_bdev.rbd_pool
+                data_pool_to_use = request.rbd_data_pool_name
+                image_name_to_use = ret_bdev.rbd_image_name
+                rados_namespace_to_use = ret_bdev.rados_namespace_name
+                enc_entries_to_use = request.encryption_entries
+                enc_algorithm_to_use = request.encryption_algorithm
+
             ret_ns = self.create_namespace(request.subsystem_nqn, bdev_name,
                                            request.nsid, anagrp, request.uuid,
                                            not request.no_auto_visible,
-                                           ret_bdev.rbd_pool, request.rbd_data_pool_name,
-                                           ret_bdev.rbd_image_name,
-                                           ret_bdev.rados_namespace_name,
+                                           pool_to_use, data_pool_to_use,
+                                           image_name_to_use,
+                                           rados_namespace_to_use,
                                            ret_bdev.trash_image, request.read_only,
                                            request.location, not request.disable_auto_resize,
-                                           request.encryption_entries,
-                                           request.encryption_algorithm,
+                                           enc_entries_to_use,
+                                           enc_algorithm_to_use,
+                                           create_degraded,
                                            context)
             if ret_ns.status == 0 and request.nsid and ret_ns.nsid != request.nsid:
                 errmsg = f"Returned ID {ret_ns.nsid} differs from requested one {request.nsid}"
@@ -3469,7 +3588,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
             if ret_ns.status != 0:
                 try:
-                    ret_del = self.delete_bdev(bdev_name, peer_msg=peer_msg)
+                    if create_degraded:
+                        ret_del = self.delete_degraded_bdev(bdev_name, peer_msg=peer_msg)
+                    else:
+                        ret_del = self.delete_rbd_bdev(bdev_name, peer_msg=peer_msg)
                     if ret_del.status != 0:
                         self.logger.warning(f"Failure {ret_del.status} deleting bdev "
                                             f"{bdev_name}: {ret_del.error_message}")
@@ -3499,7 +3621,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     self.logger.exception(errmsg)
                     errmsg = f"{errmsg}:\n{ex}"
                     try:
-                        ret_del = self.delete_bdev(bdev_name, peer_msg=peer_msg)
+                        if create_degraded:
+                            ret_del = self.delete_degraded_bdev(bdev_name, peer_msg=peer_msg)
+                        else:
+                            ret_del = self.delete_rbd_bdev(bdev_name, peer_msg=peer_msg)
                     except Exception:
                         pass
                     if ret_bdev.trash_image:
@@ -3507,16 +3632,21 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                               ret_bdev.rados_namespace_name)
                     return pb2.nsid_status(status=errno.EINVAL, error_message=errmsg)
 
-            img_id = ImageIdentification(self.gateway_group,
-                                         request.subsystem_nqn,
-                                         request.uuid,
-                                         self.fsid)
-            self.set_image_identification(request.rbd_pool_name,
-                                          request.rbd_image_name,
-                                          request.rados_namespace_name,
-                                          img_id)
+            if pool_to_use or image_name_to_use or rados_namespace_to_use:
+                img_id = ImageIdentification(self.gateway_group,
+                                             request.subsystem_nqn,
+                                             request.uuid,
+                                             self.fsid)
+                self.set_image_identification(pool_to_use,
+                                              image_name_to_use,
+                                              rados_namespace_to_use,
+                                              img_id)
 
-        return pb2.nsid_status(status=0, error_message="", nsid=ret_ns.nsid)
+        errmsg = ""
+        if create_degraded:
+            errmsg = "Couldn't fetch passphrase for decrypting, a degraded namespace was created"
+
+        return pb2.nsid_status(status=0, error_message=errmsg, nsid=ret_ns.nsid)
 
     def namespace_add(self, request, context=None):
         """Adds a namespace to a subsystem."""
@@ -4381,8 +4511,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     find_ret = self.subsystem_nsid_bdev_and_uuid.find_namespace(subsys_nqn,
                                                                                 nsid)
                     lb_group_configured = 0
-                    cluster_name = None
                     was_image_shrunk = False
+                    cluster_name = None
                     if find_ret.empty():
                         self.logger.warning(f"Can't find info of namesapce {nsid} in "
                                             f"{subsys_nqn}. Some fields value "
@@ -4390,10 +4520,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     else:
                         was_image_shrunk = find_ret.was_image_shrunk()
                         lb_group_configured = find_ret.anagrpid
-                        try:
-                            cluster_name = self.bdev_cluster[find_ret.bdev]
-                        except KeyError:
-                            cluster_name = None
+                        cluster_name = self.bdev_cluster.get(find_ret.bdev, None)
 
                     enc_alg = find_ret.encryption_algorithm
                     if enc_alg is None:
@@ -4421,52 +4548,56 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                                rbd_data_pool_name=find_ret.data_pool,
                                                location=find_ret.location,
                                                encryption_entries=enc_entries,
-                                               encryption_algorithm=enc_alg)
+                                               encryption_algorithm=enc_alg,
+                                               degraded=find_ret.is_degraded())
                     with self.rpc_lock:
                         ns_bdev = self.get_bdev_info(bdev_name)
                     if ns_bdev is None:
                         self.logger.warning(f"Can't find namespace's bdev {bdev_name}, "
                                             f"will not list bdev's information")
                     else:
-                        image_size = None
-                        try:
-                            drv_specific_info = ns_bdev["driver_specific"]
-                            rbd_info = drv_specific_info["rbd"]
-                            one_ns.rbd_image_name = rbd_info["rbd_name"]
-                            one_ns.rbd_pool_name = rbd_info["pool_name"]
-                            one_ns.rados_namespace_name = rbd_info["namespace_name"]
-                            one_ns.block_size = ns_bdev["block_size"]
-                            image_size = ns_bdev["block_size"] * ns_bdev["num_blocks"]
-                            assigned_limits = ns_bdev["assigned_rate_limits"]
-                            one_ns.rw_ios_per_second = assigned_limits["rw_ios_per_sec"]
-                            one_ns.rw_mbytes_per_second = assigned_limits["rw_mbytes_per_sec"]
-                            one_ns.r_mbytes_per_second = assigned_limits["r_mbytes_per_sec"]
-                            one_ns.w_mbytes_per_second = assigned_limits["w_mbytes_per_sec"]
-                        except KeyError as err:
-                            self.logger.warning(f"Key {err} is not found, will not list "
-                                                f"bdev's information")
-                            pass
-                        except Exception:
-                            self.logger.exception(f"{ns_bdev=} parse error")
-                            pass
-                        if was_image_shrunk and one_ns.rbd_pool_name and one_ns.rbd_image_name:
-                            shrunk_image_size = None
+                        one_ns.block_size = ns_bdev.get("block_size", 0)
+                        if not find_ret.is_degraded():
+                            one_ns.rbd_image_size = one_ns.block_size * ns_bdev.get("num_blocks", 0)
+
+                        assigned_limits = ns_bdev.get("assigned_rate_limits", None)
+                        if assigned_limits is not None:
+                            one_ns.rw_ios_per_second = assigned_limits.get("rw_ios_per_sec", 0)
+                            one_ns.rw_mbytes_per_second = assigned_limits.get(
+                                "rw_mbytes_per_sec", 0
+                            )
+                            one_ns.r_mbytes_per_second = assigned_limits.get("r_mbytes_per_sec", 0)
+                            one_ns.w_mbytes_per_second = assigned_limits.get("w_mbytes_per_sec", 0)
+
+                        if not find_ret.is_degraded():
                             try:
-                                shrunk_image_size = self.ceph_utils.get_image_size(
-                                    one_ns.rbd_pool_name, one_ns.rbd_image_name,
-                                    one_ns.rados_namespace_name)
+                                drv_specific_info = ns_bdev["driver_specific"]
+                                rbd_info = drv_specific_info["rbd"]
+                                one_ns.rbd_image_name = rbd_info["rbd_name"]
+                                one_ns.rbd_pool_name = rbd_info["pool_name"]
+                                one_ns.rados_namespace_name = rbd_info["namespace_name"]
+                            except KeyError as err:
+                                self.logger.warning(f"Key {err} is not found, will not list "
+                                                    f"bdev's information")
                             except Exception:
-                                self.logger.exception(f"error getting size of "
-                                                      f"{one_ns.rbd_pool_name}/"
-                                                      f"{one_ns.rbd_image_name}")
-                                pass
-                            if shrunk_image_size is not None:
-                                image_size = shrunk_image_size
-                        if image_size is not None:
-                            one_ns.rbd_image_size = image_size
-                        one_ns.disable_auto_resize = self._is_auto_resize_disabled_for_image(
-                            one_ns.rbd_pool_name, one_ns.rbd_image_name,
-                            one_ns.rados_namespace_name)
+                                self.logger.exception(f"{ns_bdev=} parse error")
+
+                            if was_image_shrunk and one_ns.rbd_pool_name and one_ns.rbd_image_name:
+                                shrunk_image_size = None
+                                try:
+                                    shrunk_image_size = self.ceph_utils.get_image_size(
+                                        one_ns.rbd_pool_name, one_ns.rbd_image_name,
+                                        one_ns.rados_namespace_name)
+                                except Exception:
+                                    self.logger.exception(f"error getting size of "
+                                                          f"{one_ns.rbd_pool_name}/"
+                                                          f"{one_ns.rbd_image_name}")
+                                    pass
+                                if shrunk_image_size is not None:
+                                    one_ns.rbd_image_size = shrunk_image_size
+                            one_ns.disable_auto_resize = self._is_auto_resize_disabled_for_image(
+                                one_ns.rbd_pool_name, one_ns.rbd_image_name,
+                                one_ns.rados_namespace_name)
                     namespaces.append(one_ns)
                 if request.subsystem != GatewayUtils.ALL_SUBSYSTEMS:
                     break
@@ -4931,7 +5062,13 @@ class GatewayService(pb2_grpc.GatewayServicer):
             self.logger.error(errmsg)
             return pb2.req_status(status=errno.ENODEV, error_message=errmsg)
 
-        ret = self.resize_bdev(bdev_name, request.new_size, peer_msg)
+        if find_ret.is_degraded():
+            errmsg = f"Namespace {request.nsid} on {request.subsystem_nqn} is degraded," \
+                     f" no resize was done"
+            self.logger.warning(errmsg)
+            return pb2.req_status(status=0, error_message=errmsg)
+
+        ret = self.resize_rbd_bdev(bdev_name, request.new_size, peer_msg)
 
         if ret.status != 0:
             errmsg = f"Failure resizing namespace {request.nsid} on " \
@@ -5030,7 +5167,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
             self.logger.warning("Can't find namespace's bdev name, will try to "
                                 "delete namespace anyway")
 
-        if find_ret.trash_image:
+        if find_ret.trash_image and not find_ret.is_degraded():
             rbd_pool = find_ret.pool
             rbd_image_name = find_ret.image
             rados_namespace_name = find_ret.rados_namespace_name
@@ -5053,15 +5190,19 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
             self.remove_namespace_from_state(request.subsystem_nqn, request.nsid, context)
 
-        self.delete_image_identification(find_ret.pool, find_ret.image,
-                                         find_ret.rados_namespace_name,
-                                         ImageIdentification(self.gateway_group,
-                                                             request.subsystem_nqn,
-                                                             find_ret.uuid,
-                                                             self.fsid))
+        if not find_ret.is_degraded():
+            self.delete_image_identification(find_ret.pool, find_ret.image,
+                                             find_ret.rados_namespace_name,
+                                             ImageIdentification(self.gateway_group,
+                                                                 request.subsystem_nqn,
+                                                                 find_ret.uuid,
+                                                                 self.fsid))
         self.subsystem_nsid_bdev_and_uuid.remove_namespace(request.subsystem_nqn, request.nsid)
         if bdev_name:
-            ret_del = self.delete_bdev(bdev_name, peer_msg=peer_msg)
+            if find_ret.is_degraded():
+                ret_del = self.delete_degraded_bdev(bdev_name, peer_msg=peer_msg)
+            else:
+                ret_del = self.delete_rbd_bdev(bdev_name, peer_msg=peer_msg)
             if ret_del.status != 0:
                 errmsg = f"Failure deleting namespace {request.nsid} from " \
                          f"{request.subsystem_nqn}: {ret_del.error_message}"
@@ -5070,7 +5211,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     self.delete_rbd_image(rbd_pool, rbd_image_name, rados_namespace_name)
                 return pb2.nsid_status(status=ret_del.status, error_message=errmsg)
 
-        if find_ret.trash_image:
+        if find_ret.trash_image and not find_ret.is_degraded():
             self.delete_rbd_image(rbd_pool, rbd_image_name, rados_namespace_name)
 
         return pb2.req_status(status=0, error_message="")
@@ -7717,9 +7858,13 @@ class GatewayService(pb2_grpc.GatewayServicer):
                         self.host_info.was_subsystem_created_without_key(s["nqn"])
                     for n in s["namespaces"]:
                         bdev = n["bdev_name"]
+                        nonce = None
                         with self.shared_state_lock:
-                            nonce = self.cluster_nonce[self.bdev_cluster[bdev]]
-                        n["nonce"] = nonce
+                            if bdev in self.bdev_cluster:
+                                if self.bdev_cluster[bdev] in self.cluster_nonce:
+                                    nonce = self.cluster_nonce[self.bdev_cluster[bdev]]
+                        if nonce is not None:
+                            n["nonce"] = nonce
                         find_ret = self.subsystem_nsid_bdev_and_uuid.find_namespace(
                             s["nqn"], n["nsid"])
                         n["auto_visible"] = find_ret.auto_visible

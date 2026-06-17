@@ -1051,7 +1051,7 @@ class TestCreate:
              "--rbd-image", image9, "--nsid", "3000", "--size", "16MB", "--rbd-create-image"])
         assert f"Failure adding namespace using ID 3000 to {subsystem}: " \
                f"Requested ID 3000 is bigger than the maximal one (2039)" in caplog.text
-        assert "Received request to delete bdev" in caplog.text
+        assert "Received request to delete RBD bdev" in caplog.text
         caplog.clear()
         cli(["subsystem", "add", "--subsystem", subsystem5, "--no-group-append",
              "--max-namespaces", "1"])
@@ -1065,7 +1065,7 @@ class TestCreate:
              "--rbd-image", image10, "--size", "16MB", "--rbd-create-image"])
         assert f"Failure adding namespace to {subsystem5}: Subsystem's maximal number of " \
                f"namespaces (1) has already been reached" in caplog.text
-        assert "Received request to delete bdev" in caplog.text
+        assert "Received request to delete RBD bdev" in caplog.text
         caplog.clear()
         cli(["subsystem", "del", "--subsystem", subsystem5, "--force"])
         assert f"Deleting subsystem {subsystem5}: Successful" in caplog.text
