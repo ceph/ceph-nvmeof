@@ -382,7 +382,7 @@ class GatewayClient:
     def gw_info(self, args):
         """Get gateway's information"""
 
-        out_func, err_func, _ = self.get_output_functions(args)
+        out_func, err_func, wrn_func = self.get_output_functions(args)
         try:
             gw_info = self.gw_get_info()
         except Exception as ex:
@@ -427,6 +427,8 @@ class GatewayClient:
                     out_func(f"SPDK version: {gw_info.spdk_version}")
                 if not gw_info.bool_status:
                     err_func("Getting gateway's information returned status mismatch")
+                if gw_info.error_message:
+                    wrn_func(gw_info.error_message)
             else:
                 err_func(gw_info.error_message)
                 if gw_info.bool_status:
@@ -450,7 +452,7 @@ class GatewayClient:
     def gw_version(self, args):
         """Get gateway's version"""
 
-        out_func, err_func, _ = self.get_output_functions(args)
+        out_func, err_func, wrn_func = self.get_output_functions(args)
         try:
             gw_info = self.gw_get_info()
         except Exception as ex:
@@ -460,8 +462,10 @@ class GatewayClient:
         if args.format == "text" or args.format == "plain":
             if gw_info.status == 0:
                 out_func(f"Gateway's version: {gw_info.version}")
+                if gw_info.error_message:
+                    wrn_func(gw_info.error_message)
             else:
-                err_func(f"{gw_info.error_message}")
+                err_func(gw_info.error_message)
         elif args.format == "json" or args.format == "yaml":
             gw_ver = pb2.gw_version(status=gw_info.status,
                                     error_message=gw_info.error_message,
@@ -487,7 +491,7 @@ class GatewayClient:
     def gw_get_log_level(self, args):
         """Get gateway's log level"""
 
-        out_func, err_func, _ = self.get_output_functions(args)
+        out_func, err_func, wrn_func = self.get_output_functions(args)
         req = pb2.get_gateway_log_level_req()
         try:
             ret = self.stub.get_gateway_log_level(req)
@@ -499,8 +503,10 @@ class GatewayClient:
             if ret.status == 0:
                 level = GatewayEnumUtils.get_key_from_value(pb2.GwLogLevel, ret.log_level)
                 out_func(f"Gateway log level is \"{level}\"")
+                if ret.error_message:
+                    wrn_func(ret.error_message)
             else:
-                err_func(f"{ret.error_message}")
+                err_func(ret.error_message)
         elif args.format == "json" or args.format == "yaml":
             out_log_level = json_format.MessageToJson(ret, indent=4,
                                                       including_default_value_fields=True,
@@ -520,7 +526,7 @@ class GatewayClient:
     def gw_set_log_level(self, args):
         """Set gateway's log level"""
 
-        out_func, err_func, _ = self.get_output_functions(args)
+        out_func, err_func, wrn_func = self.get_output_functions(args)
         log_level = None
 
         if args.level:
@@ -540,8 +546,10 @@ class GatewayClient:
         if args.format == "text" or args.format == "plain":
             if ret.status == 0:
                 out_func(f"Set gateway log level to \"{log_level}\": Successful")
+                if ret.error_message:
+                    wrn_func(ret.error_message)
             else:
-                err_func(f"{ret.error_message}")
+                err_func(ret.error_message)
         elif args.format == "json" or args.format == "yaml":
             ret_str = json_format.MessageToJson(ret, indent=4,
                                                 including_default_value_fields=True,
@@ -561,7 +569,7 @@ class GatewayClient:
     def gw_get_thread_stats(self, args):
         """Show NVMf thread statistics for the gateway"""
 
-        out_func, err_func, _ = self.get_output_functions(args)
+        out_func, err_func, wrn_func = self.get_output_functions(args)
         thread_stats = None
         try:
             get_thread_stats_req = pb2.get_thread_stats_req()
@@ -582,8 +590,10 @@ class GatewayClient:
                                      tablefmt=table_format)
                 out_func(f"NVMf thread statistics for gateway (tick: "
                          f"{tick_rate}):\n{stats_out}")
+                if thread_stats.error_message:
+                    wrn_func(thread_stats.error_message)
             else:
-                err_func(f"{thread_stats.error_message}")
+                err_func(thread_stats.error_message)
         elif args.format == "json" or args.format == "yaml":
             ret_str = json_format.MessageToJson(thread_stats, indent=4,
                                                 including_default_value_fields=True,
@@ -603,7 +613,7 @@ class GatewayClient:
     def gw_set_io_stats_mode(self, args):
         """Set gateway IO statistics on or off"""
 
-        out_func, err_func, _ = self.get_output_functions(args)
+        out_func, err_func, wrn_func = self.get_output_functions(args)
         ret = None
         if args.enable and args.disable:
             self.cli.parser.error("\"--enable\" and \"--disable\" are mutually exclusive")
@@ -623,8 +633,10 @@ class GatewayClient:
             if ret.status == 0:
                 mode_str = "enabled" if enabled else "disabled"
                 out_func(f"Set gateway IO statistics mode to \"{mode_str}\": Successful")
+                if ret.error_message:
+                    wrn_func(ret.error_message)
             else:
-                err_func(f"{ret.error_message}")
+                err_func(ret.error_message)
         elif args.format == "json" or args.format == "yaml":
             ret_str = json_format.MessageToJson(ret, indent=4,
                                                 including_default_value_fields=True,
@@ -644,7 +656,7 @@ class GatewayClient:
     def gw_get_stats(self, args):
         """Show NVMf statistics for the gateway"""
 
-        out_func, err_func, _ = self.get_output_functions(args)
+        out_func, err_func, wrn_func = self.get_output_functions(args)
         gw_stats = None
         try:
             get_stats_req = pb2.get_gateway_stats_req()
@@ -679,8 +691,10 @@ class GatewayClient:
                                               "Transports"],
                                      tablefmt=table_format)
                 out_func(f"NVMf statistics for gateway:\n{stats_out}")
+                if gw_stats.error_message:
+                    wrn_func(gw_stats.error_message)
             else:
-                err_func(f"{gw_stats.error_message}")
+                err_func(gw_stats.error_message)
         elif args.format == "json" or args.format == "yaml":
             ret_str = json_format.MessageToJson(gw_stats, indent=4,
                                                 including_default_value_fields=True,
@@ -700,7 +714,7 @@ class GatewayClient:
     def gw_listener_info(self, args):
         """Show gateway's listeners info"""
 
-        out_func, err_func, _ = self.get_output_functions(args)
+        out_func, err_func, wrn_func = self.get_output_functions(args)
         listeners_info = None
         try:
             list_req = pb2.show_gateway_listeners_info_req(subsystem_nqn=args.subsystem)
@@ -752,8 +766,10 @@ class GatewayClient:
                     out_func(f"Gateway listeners for {args.subsystem}:\n{listeners_out}")
                 else:
                     out_func(f"No gateway listeners for {args.subsystem}")
+                if listeners_info.error_message:
+                    wrn_func(listeners_info.error_message)
             else:
-                err_func(f"{listeners_info.error_message}")
+                err_func(listeners_info.error_message)
         elif args.format == "json" or args.format == "yaml":
             ret_str = json_format.MessageToJson(listeners_info, indent=4,
                                                 including_default_value_fields=True,
@@ -793,7 +809,7 @@ class GatewayClient:
                 if ret.error_message:
                     wrn_func(ret.error_message)
             else:
-                err_func(f"{ret.error_message}")
+                err_func(ret.error_message)
         elif args.format == "json" or args.format == "yaml":
             ret_str = json_format.MessageToJson(ret, indent=4,
                                                 including_default_value_fields=True,
@@ -889,7 +905,7 @@ class GatewayClient:
     def spdk_log_level_disable(self, args):
         """Disable SPDK log flags"""
 
-        out_func, err_func, _ = self.get_output_functions(args)
+        out_func, err_func, wrn_func = self.get_output_functions(args)
 
         req = pb2.disable_spdk_nvmf_logs_req(extra_log_flags=args.extra_log_flags)
         try:
@@ -901,8 +917,10 @@ class GatewayClient:
         if args.format == "text" or args.format == "plain":
             if ret.status == 0:
                 out_func("Disable SPDK log flags: Successful")
+                if ret.error_message:
+                    wrn_func(ret.error_message)
             else:
-                err_func(f"{ret.error_message}")
+                err_func(ret.error_message)
         elif args.format == "json" or args.format == "yaml":
             ret_str = json_format.MessageToJson(ret, indent=4,
                                                 including_default_value_fields=True,
@@ -922,7 +940,7 @@ class GatewayClient:
     def spdk_log_level_get(self, args):
         """Get SPDK log levels and nvmf log flags"""
 
-        out_func, err_func, _ = self.get_output_functions(args)
+        out_func, err_func, wrn_func = self.get_output_functions(args)
 
         req = pb2.get_spdk_nvmf_log_flags_and_level_req(all_log_flags=args.all_log_flags)
         try:
@@ -941,8 +959,10 @@ class GatewayClient:
                 out_func(f"SPDK log level is {level}")
                 level = GatewayEnumUtils.get_key_from_value(pb2.LogLevel, ret.log_print_level)
                 out_func(f"SPDK log print level is {level}")
+                if ret.error_message:
+                    wrn_func(ret.error_message)
             else:
-                err_func(f"{ret.error_message}")
+                err_func(ret.error_message)
         elif args.format == "json" or args.format == "yaml":
             out_log_level = json_format.MessageToJson(ret, indent=4,
                                                       including_default_value_fields=True,
@@ -962,7 +982,7 @@ class GatewayClient:
     def spdk_log_level_set(self, args):
         """Set SPDK log levels and nvmf log flags"""
 
-        out_func, err_func, _ = self.get_output_functions(args)
+        out_func, err_func, wrn_func = self.get_output_functions(args)
         log_level = None
         print_level = None
 
@@ -989,8 +1009,10 @@ class GatewayClient:
         if args.format == "text" or args.format == "plain":
             if ret.status == 0:
                 out_func("Set SPDK log levels and nvmf log flags: Successful")
+                if ret.error_message:
+                    wrn_func(ret.error_message)
             else:
-                err_func(f"{ret.error_message}")
+                err_func(ret.error_message)
         elif args.format == "json" or args.format == "yaml":
             ret_str = json_format.MessageToJson(ret, indent=4,
                                                 including_default_value_fields=True,
@@ -1122,7 +1144,7 @@ class GatewayClient:
     def subsystem_del(self, args):
         """Delete a subsystem"""
 
-        out_func, err_func, _ = self.get_output_functions(args)
+        out_func, err_func, wrn_func = self.get_output_functions(args)
         if args.subsystem == GatewayUtils.DISCOVERY_NQN:
             self.cli.parser.error("Can't delete a discovery subsystem")
 
@@ -1139,8 +1161,10 @@ class GatewayClient:
         if args.format == "text" or args.format == "plain":
             if ret.status == 0:
                 out_func(f"Deleting subsystem {args.subsystem}: Successful")
+                if ret.error_message:
+                    wrn_func(ret.error_message)
             else:
-                err_func(f"{ret.error_message}")
+                err_func(ret.error_message)
         elif args.format == "json" or args.format == "yaml":
             ret_str = json_format.MessageToJson(ret, indent=4,
                                                 including_default_value_fields=True,
@@ -1160,7 +1184,7 @@ class GatewayClient:
     def subsystem_list(self, args):
         """List subsystems"""
 
-        out_func, err_func, _ = self.get_output_functions(args)
+        out_func, err_func, wrn_func = self.get_output_functions(args)
 
         subsystems = None
         try:
@@ -1229,8 +1253,10 @@ class GatewayClient:
                         out_func(f"No subsystem with serial number {args.serial_number}")
                     else:
                         out_func("No subsystems")
+                if subsystems.error_message:
+                    wrn_func(subsystems.error_message)
             else:
-                err_func(f"{subsystems.error_message}")
+                err_func(subsystems.error_message)
         elif args.format == "json" or args.format == "yaml":
             ret_str = json_format.MessageToJson(subsystems, indent=4,
                                                 including_default_value_fields=True,
@@ -1256,7 +1282,7 @@ class GatewayClient:
     def subsystem_change_key(self, args):
         """Change subsystem's inband authentication key."""
 
-        out_func, err_func, _ = self.get_output_functions(args)
+        out_func, err_func, wrn_func = self.get_output_functions(args)
 
         cmd = "deleting" if args.dhchap_key is None else "changing"
         cmd2 = "Deleting" if args.dhchap_key is None else "Changing"
@@ -1274,8 +1300,10 @@ class GatewayClient:
         if args.format == "text" or args.format == "plain":
             if ret.status == 0:
                 out_func(f"{cmd2} DH-HMAC-CHAP key for subsystem {args.subsystem}: Successful")
+                if ret.error_message:
+                    wrn_func(ret.error_message)
             else:
-                err_func(f"{ret.error_message}")
+                err_func(ret.error_message)
         elif args.format == "json" or args.format == "yaml":
             ret_str = json_format.MessageToJson(ret, indent=4,
                                                 including_default_value_fields=True,
@@ -1312,7 +1340,7 @@ class GatewayClient:
                 if ret.error_message:
                     wrn_func(ret.error_message)
             else:
-                err_func(f"{ret.error_message}")
+                err_func(ret.error_message)
         elif args.format == "json" or args.format == "yaml":
             ret_str = json_format.MessageToJson(ret, indent=4,
                                                 including_default_value_fields=True,
@@ -1349,7 +1377,7 @@ class GatewayClient:
                 if ret.error_message:
                     wrn_func(ret.error_message)
             else:
-                err_func(f"{ret.error_message}")
+                err_func(ret.error_message)
         elif args.format == "json" or args.format == "yaml":
             ret_str = json_format.MessageToJson(ret, indent=4,
                                                 including_default_value_fields=True,
@@ -1471,7 +1499,7 @@ class GatewayClient:
     def subsystem_list_kmip_server_endpoints(self, args):
         """List the KMIP server endpoints of a subsystem"""
 
-        out_func, err_func, _ = self.get_output_functions(args)
+        out_func, err_func, wrn_func = self.get_output_functions(args)
 
         if not args.subsystem:
             args.subsystem = GatewayUtils.ALL_SUBSYSTEMS
@@ -1513,8 +1541,10 @@ class GatewayClient:
                                      f"subsystem {args.subsystem}")
                         else:
                             out_func(f"No KMIP server endpoints on subsystem {args.subsystem}")
+                if endpoints.error_message:
+                    wrn_func(endpoints.error_message)
             else:
-                err_func(f"{endpoints.error_message}")
+                err_func(endpoints.error_message)
         elif args.format == "json" or args.format == "yaml":
             ret_str = json_format.MessageToJson(endpoints, indent=4,
                                                 including_default_value_fields=True,
@@ -1802,7 +1832,7 @@ class GatewayClient:
     def listener_del(self, args):
         """Delete a listener"""
 
-        out_func, err_func, _ = self.get_output_functions(args)
+        out_func, err_func, wrn_func = self.get_output_functions(args)
 
         if args.trsvcid is not None:
             if args.trsvcid <= 0:
@@ -1844,8 +1874,10 @@ class GatewayClient:
                     host_msg = "for all hosts"
                 out_func(f"Deleting listener {traddr}:{args.trsvcid} from {args.subsystem} "
                          f"{host_msg}: Successful")
+                if ret.error_message:
+                    wrn_func(ret.error_message)
             else:
-                err_func(f"{ret.error_message}")
+                err_func(ret.error_message)
         elif args.format == "json" or args.format == "yaml":
             ret_str = json_format.MessageToJson(ret, indent=4,
                                                 including_default_value_fields=True,
@@ -1865,7 +1897,7 @@ class GatewayClient:
     def listener_list(self, args):
         """List listeners"""
 
-        out_func, err_func, _ = self.get_output_functions(args)
+        out_func, err_func, wrn_func = self.get_output_functions(args)
         listeners_info = None
         try:
             list_req = pb2.list_listeners_req(subsystem=args.subsystem)
@@ -1907,8 +1939,10 @@ class GatewayClient:
                     out_func(f"Listeners for {args.subsystem}:\n{listeners_out}")
                 else:
                     out_func(f"No listeners for {args.subsystem}")
+                if listeners_info.error_message:
+                    wrn_func(listeners_info.error_message)
             else:
-                err_func(f"{listeners_info.error_message}")
+                err_func(listeners_info.error_message)
         elif args.format == "json" or args.format == "yaml":
             ret_str = json_format.MessageToJson(listeners_info, indent=4,
                                                 including_default_value_fields=True,
@@ -2167,7 +2201,7 @@ class GatewayClient:
     def host_change_key(self, args):
         """Change host's inband authentication key."""
 
-        out_func, err_func, _ = self.get_output_functions(args)
+        out_func, err_func, wrn_func = self.get_output_functions(args)
 
         cmd = "delete" if args.dhchap_key is None else "change"
         cmd2 = "deleting" if args.dhchap_key is None else "changing"
@@ -2193,6 +2227,8 @@ class GatewayClient:
             if ret.status == 0:
                 out_func(f"{cmd3} DH-HMAC-CHAP key for host {args.host_nqn} on subsystem "
                          f"{args.subsystem}: Successful")
+                if ret.error_message:
+                    wrn_func(ret.error_message)
             else:
                 err_func(ret.error_message)
         elif args.format == "json" or args.format == "yaml":
@@ -2220,7 +2256,7 @@ class GatewayClient:
     def controller_change_key(self, args):
         """Change controller's inband authentication key."""
 
-        out_func, err_func, _ = self.get_output_functions(args)
+        out_func, err_func, wrn_func = self.get_output_functions(args)
 
         cmd = "delete" if args.dhchap_controller_key is None else "change"
         cmd2 = "deleting" if args.dhchap_controller_key is None else "changing"
@@ -2246,6 +2282,8 @@ class GatewayClient:
             if ret.status == 0:
                 out_func(f"{cmd3} DH-HMAC-CHAP key for controller of host {args.host_nqn} "
                          f"on subsystem {args.subsystem}: Successful")
+                if ret.error_message:
+                    wrn_func(ret.error_message)
             else:
                 err_func(ret.error_message)
         elif args.format == "json" or args.format == "yaml":
@@ -2267,7 +2305,7 @@ class GatewayClient:
     def host_list(self, args):
         """List a host for a subsystem."""
 
-        out_func, err_func, _ = self.get_output_functions(args)
+        out_func, err_func, wrn_func = self.get_output_functions(args)
 
         hosts_info = None
         try:
@@ -2308,8 +2346,10 @@ class GatewayClient:
                     out_func(f"Hosts allowed to access {args.subsystem}:\n{hosts_out}")
                 else:
                     out_func(f"No hosts are allowed to access {args.subsystem}")
+                if hosts_info.error_message:
+                    wrn_func(hosts_info.error_message)
             else:
-                err_func(f"{hosts_info.error_message}")
+                err_func(hosts_info.error_message)
         elif args.format == "json" or args.format == "yaml":
             ret_str = json_format.MessageToJson(hosts_info, indent=4,
                                                 including_default_value_fields=True,
@@ -2449,7 +2489,7 @@ class GatewayClient:
     def connection_list(self, args):
         """List connections for a subsystem."""
 
-        out_func, err_func, _ = self.get_output_functions(args)
+        out_func, err_func, wrn_func = self.get_output_functions(args)
         connections_info = None
         if not args.subsystem:
             args.subsystem = GatewayUtils.ALL_SUBSYSTEMS
@@ -2527,8 +2567,10 @@ class GatewayClient:
                     if connections_info.subsystem_nqn == GatewayUtils.ALL_SUBSYSTEMS:
                         subsys_text = "any subsystem"
                     out_func(f"No connections for {subsys_text}")
+                if connections_info.error_message:
+                    wrn_func(connections_info.error_message)
             else:
-                err_func(f"{connections_info.error_message}")
+                err_func(connections_info.error_message)
         elif args.format == "json" or args.format == "yaml":
             ret_str = json_format.MessageToJson(connections_info, indent=4,
                                                 including_default_value_fields=True,
@@ -2566,7 +2608,7 @@ class GatewayClient:
         def _get_latency_stats_line(ls) -> str:
             return f"{ls.min}, {ls.max}, {ls.mean}"
 
-        out_func, err_func, _ = self.get_output_functions(args)
+        out_func, err_func, wrn_func = self.get_output_functions(args)
 
         if args.host_nqn == "*":
             self.cli.parser.error("Must specify a specific host NQN")
@@ -2616,6 +2658,8 @@ class GatewayClient:
                                tablefmt=table_format)
                 out_func(f"{tbl}\n\n"
                          f"Total IOs count: {ret.total_num_ios}")
+                if ret.error_message:
+                    wrn_func(ret.error_message)
             else:
                 err_func(ret.error_message)
         elif args.format == "json" or args.format == "yaml":
@@ -2637,7 +2681,7 @@ class GatewayClient:
     def connection_reset_io_statistics(self, args):
         """Reset connection's IO statistics."""
 
-        out_func, err_func, _ = self.get_output_functions(args)
+        out_func, err_func, wrn_func = self.get_output_functions(args)
 
         if args.host_nqn == "*":
             self.cli.parser.error("Must specify a specific host NQN")
@@ -2657,6 +2701,8 @@ class GatewayClient:
             if ret.status == 0:
                 out_func(f"Resetting host's {args.host_nqn} in {args.subsystem} "
                          f"IO statistics: Successful")
+                if ret.error_message:
+                    wrn_func(ret.error_message)
             else:
                 err_func(ret.error_message)
         elif args.format == "json" or args.format == "yaml":
@@ -2730,7 +2776,7 @@ class GatewayClient:
         """Adds a namespace to a subsystem."""
 
         img_size = None
-        out_func, err_func, _ = self.get_output_functions(args)
+        out_func, err_func, wrn_func = self.get_output_functions(args)
         if args.block_size is None:
             args.block_size = 512
         if args.block_size <= 0:
@@ -2826,6 +2872,8 @@ class GatewayClient:
         if args.format == "text" or args.format == "plain":
             if ret.status == 0:
                 out_func(f"Adding namespace {ret.nsid} to {args.subsystem}: Successful")
+                if ret.error_message:
+                    wrn_func(ret.error_message)
             else:
                 err_func(ret.error_message)
         elif args.format == "json" or args.format == "yaml":
@@ -2847,7 +2895,7 @@ class GatewayClient:
     def ns_del(self, args):
         """Deletes a namespace from a subsystem."""
 
-        out_func, err_func, _ = self.get_output_functions(args)
+        out_func, err_func, wrn_func = self.get_output_functions(args)
         if args.nsid <= 0:
             self.cli.parser.error("nsid value must be positive")
 
@@ -2861,8 +2909,10 @@ class GatewayClient:
         if args.format == "text" or args.format == "plain":
             if ret.status == 0:
                 out_func(f"Deleting namespace {args.nsid} from {args.subsystem}: Successful")
+                if ret.error_message:
+                    wrn_func(ret.error_message)
             else:
-                err_func(f"{ret.error_message}")
+                err_func(ret.error_message)
         elif args.format == "json" or args.format == "yaml":
             ret_str = json_format.MessageToJson(ret, indent=4,
                                                 including_default_value_fields=True,
@@ -2883,7 +2933,7 @@ class GatewayClient:
         """Resizes a namespace."""
 
         ns_size = 0
-        out_func, err_func, _ = self.get_output_functions(args)
+        out_func, err_func, wrn_func = self.get_output_functions(args)
         if args.nsid <= 0:
             self.cli.parser.error("nsid value must be positive")
         ns_size = self.get_size_in_bytes(args.size)
@@ -2906,8 +2956,10 @@ class GatewayClient:
                 sz_str = self.format_size(ns_size * mib)
                 out_func(f"Resizing namespace {args.nsid} in {args.subsystem} to "
                          f"{sz_str}: Successful")
+                if ret.error_message:
+                    wrn_func(ret.error_message)
             else:
-                err_func(f"{ret.error_message}")
+                err_func(ret.error_message)
         elif args.format == "json" or args.format == "yaml":
             ret_str = json_format.MessageToJson(ret, indent=4,
                                                 including_default_value_fields=True,
@@ -3032,7 +3084,7 @@ class GatewayClient:
     def ns_list(self, args, show_hosts=False, show_ns_locations=False):
         """Lists namespaces on a subsystem."""
 
-        out_func, err_func, _ = self.get_output_functions(args)
+        out_func, err_func, wrn_func = self.get_output_functions(args)
         if args.nsid is not None and args.nsid <= 0:
             self.cli.parser.error("nsid value must be positive")
 
@@ -3224,8 +3276,10 @@ class GatewayClient:
                             out_func("No namespaces in any subsystem")
                         else:
                             out_func(f"No namespaces in subsystem {args.subsystem}")
+                if namespaces_info.error_message:
+                    wrn_func(namespaces_info.error_message)
             else:
-                err_func(f"{namespaces_info.error_message}")
+                err_func(namespaces_info.error_message)
         elif args.format == "json" or args.format == "yaml":
             ret_str = json_format.MessageToJson(namespaces_info, indent=4,
                                                 including_default_value_fields=True,
@@ -3245,7 +3299,7 @@ class GatewayClient:
     def ns_get_io_stats(self, args):
         """Get namespaces IO statistics."""
 
-        out_func, err_func, _ = self.get_output_functions(args)
+        out_func, err_func, wrn_func = self.get_output_functions(args)
         if args.nsid and args.nsid <= 0:
             self.cli.parser.error("nsid value must be positive")
 
@@ -3321,8 +3375,10 @@ class GatewayClient:
                     out_func(f"{ns_str}; tick rate={tick_rate} and ticks={ticks}:\n{ns_iostat_out}")
                 else:
                     out_func("No namespaces found")
+                if ns_io_stats.error_message:
+                    wrn_func(ns_io_stats.error_message)
             else:
-                err_func(f"{ns_io_stats.error_message}")
+                err_func(ns_io_stats.error_message)
         elif args.format == "json" or args.format == "yaml":
             ret_str = json_format.MessageToJson(ns_io_stats, indent=4,
                                                 including_default_value_fields=True,
@@ -3342,7 +3398,7 @@ class GatewayClient:
     def ns_change_load_balancing_group(self, args):
         """Change namespace load balancing group."""
 
-        out_func, err_func, _ = self.get_output_functions(args)
+        out_func, err_func, wrn_func = self.get_output_functions(args)
         if args.nsid <= 0:
             self.cli.parser.error("nsid value must be positive")
         if args.load_balancing_group <= 0:
@@ -3363,8 +3419,10 @@ class GatewayClient:
             if ret.status == 0:
                 out_func(f"Changing load balancing group of namespace {args.nsid} in "
                          f"{args.subsystem} to {args.load_balancing_group}: Successful")
+                if ret.error_message:
+                    wrn_func(ret.error_message)
             else:
-                err_func(f"{ret.error_message}")
+                err_func(ret.error_message)
         elif args.format == "json" or args.format == "yaml":
             ret_str = json_format.MessageToJson(ret, indent=4,
                                                 including_default_value_fields=True,
@@ -3445,8 +3503,10 @@ class GatewayClient:
             if ret.status == 0:
                 out_func(f"Setting QOS limits of namespace {args.nsid} in "
                          f"{args.subsystem}: Successful")
+                if ret.error_message:
+                    wrn_func(ret.error_message)
             else:
-                err_func(f"{ret.error_message}")
+                err_func(ret.error_message)
         elif args.format == "json" or args.format == "yaml":
             ret_str = json_format.MessageToJson(ret, indent=4,
                                                 including_default_value_fields=True,
@@ -3468,7 +3528,7 @@ class GatewayClient:
 
         rc = 0
         ret_list = []
-        out_func, err_func, _ = self.get_output_functions(args)
+        out_func, err_func, wrn_func = self.get_output_functions(args)
 
         if args.nsid <= 0:
             self.cli.parser.error("nsid value must be positive")
@@ -3491,8 +3551,10 @@ class GatewayClient:
                 if ret.status == 0:
                     out_func(f"Adding host {one_host_nqn} to namespace {args.nsid} on "
                              f"{args.subsystem}: Successful")
+                    if ret.error_message:
+                        wrn_func(ret.error_message)
                 else:
-                    err_func(f"{ret.error_message}")
+                    err_func(ret.error_message)
             elif args.format == "json" or args.format == "yaml":
                 ret_str = json_format.MessageToJson(ret, indent=4,
                                                     including_default_value_fields=True,
@@ -3517,7 +3579,7 @@ class GatewayClient:
 
         rc = 0
         ret_list = []
-        out_func, err_func, _ = self.get_output_functions(args)
+        out_func, err_func, wrn_func = self.get_output_functions(args)
 
         if args.nsid <= 0:
             self.cli.parser.error("nsid value must be positive")
@@ -3539,8 +3601,10 @@ class GatewayClient:
                 if ret.status == 0:
                     out_func(f"Deleting host {one_host_nqn} from namespace {args.nsid} "
                              f"on {args.subsystem}: Successful")
+                    if ret.error_message:
+                        wrn_func(ret.error_message)
                 else:
-                    err_func(f"{ret.error_message}")
+                    err_func(ret.error_message)
             elif args.format == "json" or args.format == "yaml":
                 ret_str = json_format.MessageToJson(ret, indent=4,
                                                     including_default_value_fields=True,
@@ -3563,7 +3627,7 @@ class GatewayClient:
     def ns_change_visibility(self, args):
         """Change namespace visibility."""
 
-        out_func, err_func, _ = self.get_output_functions(args)
+        out_func, err_func, wrn_func = self.get_output_functions(args)
         if args.nsid <= 0:
             self.cli.parser.error("nsid value must be positive")
 
@@ -3587,8 +3651,10 @@ class GatewayClient:
             if ret.status == 0:
                 out_func(f"Changing visibility of namespace {args.nsid} in {args.subsystem} "
                          f"to {vis_text}: Successful")
+                if ret.error_message:
+                    wrn_func(ret.error_message)
             else:
-                err_func(f"{ret.error_message}")
+                err_func(ret.error_message)
         elif args.format == "json" or args.format == "yaml":
             ret_str = json_format.MessageToJson(ret, indent=4,
                                                 including_default_value_fields=True,
@@ -3608,7 +3674,7 @@ class GatewayClient:
     def ns_change_location(self, args):
         """Change namespace location."""
 
-        out_func, err_func, _ = self.get_output_functions(args)
+        out_func, err_func, wrn_func = self.get_output_functions(args)
         if args.nsid <= 0:
             self.cli.parser.error("nsid value must be positive")
 
@@ -3629,8 +3695,10 @@ class GatewayClient:
                     args.location = ""
                 out_func(f"Setting location for namespace {args.nsid} in {args.subsystem} "
                          f"to \"{args.location}\": Successful")
+                if ret.error_message:
+                    wrn_func(ret.error_message)
             else:
-                err_func(f"{ret.error_message}")
+                err_func(ret.error_message)
         elif args.format == "json" or args.format == "yaml":
             ret_str = json_format.MessageToJson(ret, indent=4,
                                                 including_default_value_fields=True,
@@ -3650,7 +3718,7 @@ class GatewayClient:
     def ns_set_rbd_trash_image(self, args):
         """Change RBD trash image flag for a namespace."""
 
-        out_func, err_func, _ = self.get_output_functions(args)
+        out_func, err_func, wrn_func = self.get_output_functions(args)
         if args.nsid <= 0:
             self.cli.parser.error("nsid value must be positive")
 
@@ -3673,8 +3741,10 @@ class GatewayClient:
             if ret.status == 0:
                 out_func(f"Setting RBD trash image flag for namespace {args.nsid} in "
                          f"{args.subsystem} to {trash_text}: Successful")
+                if ret.error_message:
+                    wrn_func(ret.error_message)
             else:
-                err_func(f"{ret.error_message}")
+                err_func(ret.error_message)
         elif args.format == "json" or args.format == "yaml":
             ret_str = json_format.MessageToJson(ret, indent=4,
                                                 including_default_value_fields=True,
@@ -3694,7 +3764,7 @@ class GatewayClient:
     def ns_set_auto_resize(self, args):
         """Enable or disable namespace auto resize flag."""
 
-        out_func, err_func, _ = self.get_output_functions(args)
+        out_func, err_func, wrn_func = self.get_output_functions(args)
         if args.nsid <= 0:
             self.cli.parser.error("nsid value must be positive")
 
@@ -3717,8 +3787,10 @@ class GatewayClient:
             if ret.status == 0:
                 out_func(f"Setting auto resize flag for namespace {args.nsid} in "
                          f"{args.subsystem} to {auto_resize_text}: Successful")
+                if ret.error_message:
+                    wrn_func(ret.error_message)
             else:
-                err_func(f"{ret.error_message}")
+                err_func(ret.error_message)
         elif args.format == "json" or args.format == "yaml":
             ret_str = json_format.MessageToJson(ret, indent=4,
                                                 including_default_value_fields=True,
@@ -3738,7 +3810,7 @@ class GatewayClient:
     def ns_refresh_size(self, args):
         """Refresh namespace size to current RBD image size."""
 
-        out_func, err_func, _ = self.get_output_functions(args)
+        out_func, err_func, wrn_func = self.get_output_functions(args)
         if args.nsid <= 0:
             self.cli.parser.error("nsid value must be positive")
 
@@ -3753,8 +3825,10 @@ class GatewayClient:
             if ret.status == 0:
                 out_func(f"Refreshing size for namespace {args.nsid} in {args.subsystem} :"
                          f" Successful")
+                if ret.error_message:
+                    wrn_func(ret.error_message)
             else:
-                err_func(f"{ret.error_message}")
+                err_func(ret.error_message)
         elif args.format == "json" or args.format == "yaml":
             ret_str = json_format.MessageToJson(ret, indent=4,
                                                 including_default_value_fields=True,
