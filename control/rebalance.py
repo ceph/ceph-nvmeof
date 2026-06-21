@@ -347,6 +347,9 @@ class Rebalance:
         for nsid, subsys in ns:
             ns_info = self.gw_srv.subsystem_nsid_bdev_and_uuid.find_namespace(subsys, nsid)
             self.logger.debug(f"nsid {nsid} nqn {subsys} location {ns_info.location} to rebalance:")
+            if ns_info.is_degraded():
+                # TODO: Leonid, do something here
+                pass
             if not force_rebalance and ns_info.location != location:
                 self.logger.warning(f"namespace with wrong location: {ns_info.location} in LB "
                                     f"group {ana_id} nsid {nsid} nqn {subsys} ")
