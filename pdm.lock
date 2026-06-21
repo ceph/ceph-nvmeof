@@ -5,7 +5,7 @@
 groups = ["default", "test"]
 strategy = ["inherit_metadata"]
 lock_version = "4.5.0"
-content_hash = "sha256:ff10561546acb24d6373d641a41b3f5f0149a2fb166114b43a7e4693be20bc16"
+content_hash = "sha256:0521d363a79dfe90f1a85d9e6de1185e9a1fc5bd37065ef1ea0959afcaa40fc3"
 
 [[metadata.targets]]
 requires_python = ">3.9.1"
@@ -604,8 +604,7 @@ name = "pykmip"
 version = "0.11.0.dev1"
 requires_python = ">= 3.8"
 git = "https://github.com/ceph/PyKMIP.git"
-ref = "5b6d6164a78e92d620270fdfa253fb1a188b59ff"
-revision = "5b6d6164a78e92d620270fdfa253fb1a188b59ff"
+revision = "e70b82d5bcfe8f03d3f514b3f37d3933a42eb9ad"
 summary = "KMIP library"
 groups = ["default"]
 dependencies = [

@@ -9,14 +9,11 @@ FROM python:3.11-slim
 
 LABEL description="KMIP CLI Tool for managing passphrases"
 
-# Install git for VCS-based PyKMIP install and then install pinned PyKMIP fork
+# Install git for VCS-based PyKMIP install and then install ceph PyKMIP (master)
 RUN apt-get update && \
     apt-get install -y --no-install-recommends git && \
     rm -rf /var/lib/apt/lists/* && \
-    pip install --no-cache-dir git+https://github.com/ceph/PyKMIP.git@5b6d6164a78e92d620270fdfa253fb1a188b59ff
-
-# Create empty PyKMIP config to suppress warnings
-RUN mkdir -p /root/.pykmip && touch /root/.pykmip/pykmip.conf
+    pip install --no-cache-dir git+https://github.com/ceph/PyKMIP.git
 
 # Copy certificates from server image
 COPY --from=cert-source /kmip/certs /kmip/certs
