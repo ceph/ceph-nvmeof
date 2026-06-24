@@ -2590,18 +2590,25 @@ class GatewayClient:
     def connection_get_io_statistics(self, args):
         """Get connection's IO statistics."""
 
+        def _are_latency_stats_empty(lat_stats) -> bool:
+            if lat_stats is None:
+                return True
+            if lat_stats.min or lat_stats.max or lat_stats.mean:
+                return False
+            return True
+
         def _is_latency_group_empty(grp) -> bool:
             if not grp:
                 return True
             if grp.io_count:
                 return False
-            if grp.total.min or grp.total.max or grp.total.mean:
+            if not _are_latency_stats_empty(grp.total):
                 return False
-            if grp.bdev.min or grp.bdev.max or grp.bdev.mean:
+            if not _are_latency_stats_empty(grp.bdev):
                 return False
-            if grp.net.min or grp.net.max or grp.net.mean:
+            if not _are_latency_stats_empty(grp.net):
                 return False
-            if grp.qos.min or grp.qos.max or grp.qos.mean:
+            if not _are_latency_stats_empty(grp.qos):
                 return False
             return True
 
@@ -2647,14 +2654,16 @@ class GatewayClient:
                                                lg[1].io_count,
                                                _get_latency_stats_line(lg[1].bdev),
                                                _get_latency_stats_line(lg[1].net),
-                                               _get_latency_stats_line(lg[1].qos)])
+                                               _get_latency_stats_line(lg[1].qos),
+                                               _get_latency_stats_line(lg[1].total)])
                 tbl = tabulate(stats_list,
                                headers=["Bucket\nSize",
                                         "Bucket\nType",
                                         "IOs Count",
                                         "BDEV µSec\n(Min,Max,Mean)",
                                         "Net µSec\n(Min,Max,Mean)",
-                                        "QOS µSec\n(Min,Max,Mean)"],
+                                        "QOS µSec\n(Min,Max,Mean)",
+                                        "Total µSec\n(Min,Max,Mean)"],
                                tablefmt=table_format)
                 out_func(f"{tbl}\n\n"
                          f"Total IOs count: {ret.total_num_ios}")
