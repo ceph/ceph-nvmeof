@@ -518,7 +518,7 @@ class NamespacesLocalList:
         with self.namespace_list_lock:
             if nqn in self.namespace_list:
                 for ns_info in self.namespace_list[nqn].values():
-                    if ns_info.anagrpid == anagrpid:
+                    if abs(ns_info.anagrpid) == abs(anagrpid):
                         yield ns_info
 
     def get_all_namespaces_by_ana_group_id(self, anagrpid):
@@ -530,7 +530,7 @@ class NamespacesLocalList:
                     ns = self.namespace_list[nqn][nsid]
                     if ns.empty():
                         continue
-                    if ns.anagrpid == anagrpid:
+                    if abs(ns.anagrpid) == abs(anagrpid):
                         ns_list.append((nsid, nqn))           # list of tupples
         return ns_list
 
@@ -543,7 +543,18 @@ class NamespacesLocalList:
             ns = self.namespace_list[nqn][nsid]
             if ns.empty():
                 return 0
-            return ns.anagrpid
+            return abs(ns.anagrpid)
+
+    def is_nsid_in_persistent_ana(self, nqn, nsid):
+        with self.namespace_list_lock:
+            if nqn not in self.namespace_list:
+                return False
+            if nsid not in self.namespace_list[nqn]:
+                return False
+            ns = self.namespace_list[nqn][nsid]
+            if ns.empty():
+                return False
+            return ns.anagrpid < 0
 
     def get_subsys_namespaces_by_ana_group_id(self, nqn, anagrpid):
         ns_list = []
@@ -555,7 +566,7 @@ class NamespacesLocalList:
                 ns = self.namespace_list[nqn][nsid]
                 if ns.empty():
                     continue
-                if ns.anagrpid == anagrpid:
+                if abs(ns.anagrpid) == abs(anagrpid):
                     ns_list.append(ns)
 
         return ns_list
@@ -883,6 +894,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
     MAX_VALUE_FOR_MAX_NAMESPACES_PER_SUBSYSTEM = 2048
     MAX_HOSTS_PER_SUBSYS_DEFAULT = 128
     MAX_HOSTS_DEFAULT = 2048
+    MAINTENANCE_ANA_GROUP = 255
     # notification name should be the same as in spdk/lib/nvmf/ctrlr.c
     SPDK_HOST_KEEPALIVE_TIMEOUT_NOTIFICATION = "host_keepalive_timeout"
     # notification name should be the same as in spdk/lib/bdev/bdev.c
@@ -993,6 +1005,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         for i in range(self.max_ana_grps + 1):
             self.ana_grp_ns_load[i] = 0
             self.ana_grp_state[i] = pb2.ana_state.INACCESSIBLE
+        self.ana_grp_ns_load[GatewayService.MAINTENANCE_ANA_GROUP] = 0
         self.cluster_nonce = {}
         self.bdev_cluster = {}
         self.bdev_params = {}
@@ -3770,7 +3783,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
         err_prefix = f"Failure adding namespace to {request.subsystem_nqn}: "
         return self.execute_grpc_function(self.namespace_add_safe, request, context, err_prefix)
 
-    def namespace_change_load_balancing_group_safe(self, request, context):
+    def namespace_change_load_balancing_group_safe(self, request, context,
+                                                   persistent=False, maintenance=False):
         """Changes a namespace load balancing group."""
 
         assert self.rpc_lock.locked(), \
@@ -3802,19 +3816,25 @@ class GatewayService(pb2_grpc.GatewayServicer):
             errmsg = f"{change_lb_group_failure_prefix}: Namespace not found"
             self.logger.error(errmsg)
             return pb2.req_status(status=errno.ENODEV, error_message=errmsg)
-        anagrpid = find_ret.anagrpid
+        anagrpid = abs(find_ret.anagrpid)
 
         # below checks are legal only if command is initiated by local cli or is sent from
         # the local rebalance logic.
         if context:
-            grps_list = self.ceph_utils.get_number_created_gateways(
-                self.gateway_pool, self.gateway_group, False)
-            if request.anagrpid not in grps_list:
-                self.logger.debug(f"Load balancing groups: {grps_list}")
-                errmsg = f"{change_lb_group_failure_prefix}: Load balancing group " \
-                         f"{request.anagrpid} doesn't exist"
+            if not maintenance:
+                grps_list = self.ceph_utils.get_number_created_gateways(
+                    self.gateway_pool, self.gateway_group, False)
+                if request.anagrpid not in grps_list:
+                    self.logger.debug(f"Load balancing groups: {grps_list}")
+                    errmsg = f"{change_lb_group_failure_prefix}: Load balancing group " \
+                             f"{request.anagrpid} doesn't exist"
+                    self.logger.error(errmsg)
+                    return pb2.req_status(status=errno.ENODEV, error_message=errmsg)
+            elif request.anagrpid != GatewayService.MAINTENANCE_ANA_GROUP:
+                errmsg = f"{change_lb_group_failure_prefix}: Wrong Load balancing group " \
+                         f"{request.anagrp} in Maintenance mode"
                 self.logger.error(errmsg)
-                return pb2.req_status(status=errno.ENODEV, error_message=errmsg)
+                return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
 
         omap_lock = self.omap_lock.get_omap_lock_to_use(context)
         with omap_lock:
@@ -3836,7 +3856,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     return pb2.req_status(status=errno.ENOENT, error_message=errmsg)
                 assert ns_entry, "Namespace entry is empty"
                 if not request.auto_lb_logic:
-                    anagrp = ns_entry.anagrpid
+                    anagrp = abs(ns_entry.anagrpid)
                     gw_id = self.ceph_utils.get_gw_id_owner_ana_group(
                         self.gateway_pool, self.gateway_group, anagrp)
                     self.logger.debug(f"Load balancing group of ns#{request.nsid} - {anagrp} is "
@@ -3871,7 +3891,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                                             "balancing group id"
                 anagrpid = ns_entry.anagrpid
                 self.logger.debug(f"Read a load balancing group of {anagrpid} from the OMAP file")
-
+            request.anagrpid = abs(request.anagrpid)  # if context = none
             try:
                 ret = self.spdk_rpc_client.nvmf_subsystem_set_ns_ana_group(
                     nqn=request.subsystem_nqn,
@@ -3923,6 +3943,12 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 # Update gateway state
                 try:
                     ns_entry.anagrpid = request.anagrpid
+                    if persistent:
+                        ns_entry.anagrpid = -request.anagrpid
+                        find_ret.anagrpid = ns_entry.anagrpid
+                        self.logger.info(f"persistent anagrp {ns_entry.anagrpid} for namespace "
+                                         f"{request.nsid} subsystem {request.subsystem_nqn}")
+
                     json_req = json_format.MessageToJson(
                         ns_entry, preserving_proto_field_name=True,
                         including_default_value_fields=True)
@@ -4636,7 +4662,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                             f"will be inaccurate")
                     else:
                         was_image_shrunk = find_ret.was_image_shrunk()
-                        lb_group_configured = find_ret.anagrpid
+                        lb_group_configured = abs(find_ret.anagrpid)
                         cluster_name = self.bdev_cluster.get(find_ret.bdev, None)
 
                     enc_alg = find_ret.encryption_algorithm
