@@ -28,6 +28,7 @@ class Rebalance:
             "gateway",
             "rebalance_period_sec",
             7)
+        self.degraded_group = gateway_service.MAINTENANCE_ANA_GROUP
         self.rebalance_max_ns_to_change_lb_grp = gateway_service.config.getint_with_default(
             "gateway",
             "max_ns_to_change_lb_grp",
@@ -226,6 +227,9 @@ class Rebalance:
                         rc = self.periodic_scan_ns_location(context, ana_grp, location)
                         if not rc:
                             return rc
+                        rc = self.periodic_scan_degraded_ns(context, ana_grp)
+                        if not rc:
+                            return rc
                         # need to search  all nqns not only inside the current load
                         for nqn in self.gw_srv.ana_grp_subs_load[ana_grp]:
                             num_ns_in_nqn = len(
@@ -307,6 +311,36 @@ class Rebalance:
             return 0
         return 1
 
+    def periodic_scan_degraded_ns(self, context, ana_id) -> int:
+        # 1. check ns in ana maintenance group
+        ns = self.gw_srv.subsystem_nsid_bdev_and_uuid.get_all_namespaces_by_ana_group_id(
+            self.degraded_group
+        )
+        self.logger.debug(f"Doing loop on namespaces in anagrp {self.degraded_group} ")
+        for nsid, subsys in ns:
+            ns_info = self.gw_srv.subsystem_nsid_bdev_and_uuid.find_namespace(subsys, nsid)
+            self.logger.info(f"Found nsid {nsid} nqn {subsys} in degraded anagrp"
+                             f" {self.degraded_group}")
+            if not ns_info.is_degraded():
+                # rebalance from degraded ana_grp to ana_id grp with persistent flag
+                self.logger.info(f"Do rebalance of nsid {nsid} nqn {subsys}"
+                                 f" to anagrp {ana_id} + timeout afterwards")
+                self.do_rebalance(self.degraded_group, ana_id, subsys, nsid, context, True, False)
+                time.sleep(4)
+                # timeout to state update otherwise persistent indication not stored
+                return 0
+        # 2. look for degraded ns in ana_id if found - put to degraded_ana_grp
+        ns = self.gw_srv.subsystem_nsid_bdev_and_uuid.get_all_namespaces_by_ana_group_id(ana_id)
+        self.logger.debug(f"Doing loop on namespaces in anagrp {ana_id} ")
+        for nsid, subsys in ns:
+            ns_info = self.gw_srv.subsystem_nsid_bdev_and_uuid.find_namespace(subsys, nsid)
+            if ns_info.is_degraded():
+                self.logger.info(f"Found degraded nsid {nsid} nqn {subsys} "
+                                 f"in anagrp {ana_id} - rebalance to anagrp {self.degraded_group}")
+                self.do_rebalance(ana_id, self.degraded_group, subsys, nsid, context, False, True)
+                return 0
+        return 1
+
     def periodic_scan_ns_location(self, context, ana_id, ana_location) -> int:
         ns = self.gw_srv.subsystem_nsid_bdev_and_uuid.get_all_namespaces_by_ana_group_id(ana_id)
         for nsid, subsys in ns:
@@ -332,6 +366,20 @@ class Rebalance:
                                         f" nqn {subsys} location {ns_info.location}")
         return 1
 
+    def do_rebalance(self, ana_id, dest_ana_id, nqn, nsid, context, persistent, maintenance):
+        self.logger.info(f"nsid for change_load_balancing: {nsid}, "
+                         f"{nqn}, LB group: {ana_id}")
+        change_lb_group_req = pb2.namespace_change_load_balancing_group_req(
+            subsystem_nqn=nqn, nsid=nsid, anagrpid=dest_ana_id, auto_lb_logic=True)
+        if not self.gw_srv.up_and_running:
+            self.logger.warning("SPDK is not up and running!")
+            return 0
+        ret = self.gw_srv.namespace_change_load_balancing_group_safe(
+            change_lb_group_req, context, persistent, maintenance
+        )
+        self.logger.debug(f"result code of namespace_change_load_balancing_group  {ret}")
+        return 0
+
     def ns_rebalance(self, context, ana_id, dest_ana_id, num, subs_nqn, location,
                      force_rebalance=False) -> int:
         now = time.time()
@@ -344,9 +392,10 @@ class Rebalance:
         for nsid, subsys in ns:
             ns_info = self.gw_srv.subsystem_nsid_bdev_and_uuid.find_namespace(subsys, nsid)
             self.logger.debug(f"nsid {nsid} nqn {subsys} location {ns_info.location} to rebalance:")
-            if ns_info.is_degraded():
-                # TODO: Leonid, do something here
-                pass
+            if self.gw_srv.subsystem_nsid_bdev_and_uuid.is_nsid_in_persistent_ana(subsys, nsid):
+                self.logger.info(f"Cannot rebalance nsid {nsid} nqn {subsys} "
+                                 f"from the persistent anagrp {ana_id}")
+                continue
             if not force_rebalance and ns_info.location != location:
                 self.logger.warning(f"namespace with wrong location: {ns_info.location} in LB "
                                     f"group {ana_id} nsid {nsid} nqn {subsys} ")
@@ -354,15 +403,7 @@ class Rebalance:
             if subsys == subs_nqn or subs_nqn == "0":
                 self.logger.info(f"nsid for change_load_balancing: {nsid}, "
                                  f"{subsys}, LB group: {ana_id}")
-                change_lb_group_req = pb2.namespace_change_load_balancing_group_req(
-                    subsystem_nqn=subsys, nsid=nsid, anagrpid=dest_ana_id, auto_lb_logic=True)
-                if not self.gw_srv.up_and_running:
-                    self.logger.warning("SPDK is not up and running!")
-                    return 0
-
-                ret = self.gw_srv.namespace_change_load_balancing_group_safe(change_lb_group_req,
-                                                                             context)
-                self.logger.debug(f"ret namespace_change_load_balancing_group  {ret}")
+                self.do_rebalance(ana_id, dest_ana_id, subsys, nsid, context, False, False)
                 num_rebalanced += 1
                 if num_rebalanced >= num:
                     self.logger.info(f"== Completed rebalance in {time.time() - now} sec for "
