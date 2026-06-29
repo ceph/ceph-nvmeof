@@ -35,6 +35,10 @@ from kmip.pie import client
 from kmip.pie import objects
 from kmip.pie import exceptions as kmip_exceptions
 from kmip import enums
+from kmip.core.objects import Attribute
+from kmip.core.factories import attributes as attr_factory
+
+ACCESS_SEPARATOR = '|access:'
 
 
 class KMIPCli:
@@ -104,12 +108,13 @@ class KMIPCli:
     def create_passphrase(self, name: str, value: str) -> None:
         """Create and activate a passphrase/secret in one step"""
         try:
+            tagged_name = f"{name}{ACCESS_SEPARATOR}enabled"
             # Create passphrase
             secret_data = objects.SecretData(
                 value.encode(),
                 enums.SecretDataType.PASSWORD,
                 masks=[enums.CryptographicUsageMask.DERIVE_KEY],
-                name=name
+                name=tagged_name
             )
 
             secret_uuid = self.client.register(secret_data)
@@ -119,7 +124,13 @@ class KMIPCli:
 
             self._output(
                 f"Created and activated passphrase '{name}'",
-                {"uuid": secret_uuid, "name": name, "type": "passphrase", "state": "active"}
+                {
+                    "uuid": secret_uuid,
+                    "name": name,
+                    "type": "passphrase",
+                    "state": "active",
+                    "access": "enabled"
+                }
             )
 
         except Exception as e:
@@ -129,6 +140,22 @@ class KMIPCli:
     def get_passphrase(self, passphrase_uuid: str) -> None:
         """Retrieve and display a passphrase"""
         try:
+            # Check access state before retrieving
+            _, attrs = self.client.get_attributes(
+                uid=passphrase_uuid,
+                attribute_names=["Name"]
+            )
+            for attr in attrs:
+                v = getattr(attr, 'attribute_value', None)
+                if v and hasattr(v, 'name_value'):
+                    val = v.name_value.value
+                    if ACCESS_SEPARATOR in val and val.split(ACCESS_SEPARATOR)[1] == 'disabled':
+                        self._output(
+                            f"Passphrase {passphrase_uuid} is disabled",
+                            {"uuid": passphrase_uuid, "value": "INVALID"}
+                        )
+                        return
+
             passphrase_data = self.client.get(passphrase_uuid)
             passphrase_bytes = passphrase_data.value
 
@@ -181,6 +208,57 @@ class KMIPCli:
             self._error(f"Failed to destroy passphrase {passphrase_uuid}: {e}")
             sys.exit(1)
 
+    def _set_access(self, passphrase_uuid: str, enabled: bool) -> None:
+        _, attrs = self.client.get_attributes(
+            uid=passphrase_uuid,
+            attribute_names=["Name"]
+        )
+        current_name = None
+        for attr in attrs:
+            v = getattr(attr, 'attribute_value', None)
+            if v and hasattr(v, 'name_value'):
+                val = v.name_value.value
+                if ACCESS_SEPARATOR in val:
+                    current_name = val
+                    break
+
+        if current_name is None:
+            raise ValueError(f"No access tag found on passphrase {passphrase_uuid}")
+
+        base_name = current_name.split(ACCESS_SEPARATOR)[0]
+        new_name = f"{base_name}{ACCESS_SEPARATOR}{'enabled' if enabled else 'disabled'}"
+
+        factory = attr_factory.AttributeFactory()
+        name_attr = factory.create_attribute(enums.AttributeType.NAME, new_name)
+        name_attr.attribute_index = Attribute.AttributeIndex(0)
+
+        self.client.modify_attribute(
+            unique_identifier=passphrase_uuid,
+            attribute=name_attr
+        )
+
+    def disable_passphrase(self, passphrase_uuid: str) -> None:
+        try:
+            self._set_access(passphrase_uuid, False)
+            self._output(
+                f"Disabled passphrase {passphrase_uuid}",
+                {"uuid": passphrase_uuid, "access": "disabled"}
+            )
+        except Exception as e:
+            self._error(f"Failed to disable passphrase {passphrase_uuid}: {e}")
+            sys.exit(1)
+
+    def enable_passphrase(self, passphrase_uuid: str) -> None:
+        try:
+            self._set_access(passphrase_uuid, True)
+            self._output(
+                f"Enabled passphrase {passphrase_uuid}",
+                {"uuid": passphrase_uuid, "access": "enabled"}
+            )
+        except Exception as e:
+            self._error(f"Failed to enable passphrase {passphrase_uuid}: {e}")
+            sys.exit(1)
+
     def get_passphrase_info(self, passphrase_uuid: str) -> None:
         """Get passphrase metadata"""
         try:
@@ -213,24 +291,42 @@ class KMIPCli:
             sys.exit(1)
 
     def list_passphrases(self) -> None:
-        """List all passphrase UUIDs"""
+        """List all passphrase UUIDs and their names/access status"""
         try:
-            # Locate all secret data objects
             uuids = self.client.locate()
-
             if not uuids:
                 self._output("No passphrases found")
+                return
+
+            entries = []
+            for uuid in uuids:
+                _, attrs = self.client.get_attributes(
+                    uid=uuid,
+                    attribute_names=["Name"]
+                )
+                name = "unknown"
+                access = "unknown"
+                for attr in attrs:
+                    v = getattr(attr, 'attribute_value', None)
+                    if v and hasattr(v, 'name_value'):
+                        val = v.name_value.value
+                        if '|access:' in val:
+                            parts = val.split('|access:')
+                            name = parts[0]
+                            access = parts[1]
+                        else:
+                            name = val
+                entries.append({"uuid": uuid, "name": name, "access": access})
+
+            if self.json_output:
+                self._output(
+                    f"Found {len(entries)} passphrase(s)",
+                    {"count": len(entries), "passphrases": entries}
+                )
             else:
-                if self.json_output:
-                    self._output(
-                        f"Found {len(uuids)} passphrase(s)",
-                        {"count": len(uuids), "uuids": uuids}
-                    )
-                else:
-                    # For text, print header then manually loop for custom format
-                    print(f"Found {len(uuids)} passphrase(s):")
-                    for uuid in uuids:
-                        print(f" uuid: {uuid}")
+                print(f"Found {len(entries)} passphrase(s):")
+                for e in entries:
+                    print(f"  uuid: {e['uuid']}  name: {e['name']}  access: {e['access']}")
 
         except Exception as e:
             self._error(f"Failed to list passphrases: {e}")
@@ -323,6 +419,22 @@ def main():
         '-o', '--output', choices=['text', 'json'],
         default='text', help='Output format')
 
+    # disable
+    disable_parser = subparsers.add_parser(
+        'disable', help='Disable a passphrase (set access to disabled)')
+    disable_parser.add_argument('--uuid', required=True, help='Passphrase UUID')
+    disable_parser.add_argument(
+        '-o', '--output', choices=['text', 'json'],
+        default='text', help='Output format')
+
+    # enable
+    enable_parser = subparsers.add_parser(
+        'enable', help='Enable a passphrase (set access to enabled)')
+    enable_parser.add_argument('--uuid', required=True, help='Passphrase UUID')
+    enable_parser.add_argument(
+        '-o', '--output', choices=['text', 'json'],
+        default='text', help='Output format')
+
     args = parser.parse_args()
 
     if not args.command:
@@ -357,6 +469,12 @@ def main():
 
         elif args.command == 'list':
             cli.list_passphrases()
+
+        elif args.command == 'disable':
+            cli.disable_passphrase(args.uuid)
+
+        elif args.command == 'enable':
+            cli.enable_passphrase(args.uuid)
 
     finally:
         cli.disconnect()
