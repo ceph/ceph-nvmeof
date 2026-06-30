@@ -692,6 +692,9 @@ class GatewayServer:
             # Notice that some SPDK calls can't be made after framework init
             self._init_framework()
 
+            # Configure the default cnc behavior
+            self.configure_cnc()
+
             self.spdk_rpc_subsystems_client = rpc_client.JSONRPCClient(
                 self.spdk_rpc_socket_path,
                 None,
@@ -934,6 +937,25 @@ class GatewayServer:
             self.spdk_rpc_client.framework_start_init()
         except Exception:
             self.logger.exception("Failed to initialize framework")
+            raise
+
+    def configure_cnc(self):
+        cnc_support = self.config.getboolean_with_default("spdk",
+                                                          "cnc_enable",
+                                                          True)
+        cnc_rate_limiter_bytes = self.config.getint_with_default("spdk", "cnc_rate_limiter_bytes",
+                                                                 100000000)
+        cnc_chunk_blocks = self.config.getint_with_default("spdk", "cnc_chunk_blocks", 512)
+
+        cnc_parallel_chunks = self.config.getint_with_default("spdk", "cnc_parallel_chunks", 8)
+
+        try:
+            self.spdk_rpc_client.nvmf_cnc_set_config(host_behav_support_cnc=cnc_support,
+                                                     rate_limit_bytes=cnc_rate_limiter_bytes,
+                                                     max_inflight=cnc_parallel_chunks,
+                                                     chunk_nlb=cnc_chunk_blocks)
+        except Exception:
+            self.logger.exception("Failure setting cnc config")
             raise
 
     def _create_transport(self, trtype):
