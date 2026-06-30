@@ -7,6 +7,7 @@ import sys
 import time
 from functools import wraps
 
+import signal
 import grpc
 import pytest
 
@@ -39,6 +40,7 @@ kmip_port3 = 5800
 kmip_key_ids = {}
 kmip_server_name1 = "blabla"
 kmip_server_name2 = "stam"
+kmip_procs = {}
 
 
 def _install_ssl_wrap_socket_compat():
@@ -235,9 +237,12 @@ def two_gateways(config):
 
     kmip_dir1 = os.path.join(kmip_dir_prefix, kmip_server_name1)
     kmip_dir2 = os.path.join(kmip_dir_prefix, kmip_server_name2)
-    start_kmip_server_endpoint(kmip_dir1, kmip_addr, kmip_port, True)
-    start_kmip_server_endpoint(kmip_dir1, kmip_addr, kmip_port2, False)
-    start_kmip_server_endpoint(kmip_dir2, kmip_addr, kmip_port3, True)
+    kmip_procs[(kmip_addr, kmip_port)] = start_kmip_server_endpoint(
+        kmip_dir1, kmip_addr, kmip_port, True)
+    kmip_procs[(kmip_addr, kmip_port2)] = start_kmip_server_endpoint(
+        kmip_dir1, kmip_addr, kmip_port2, False)
+    kmip_procs[(kmip_addr, kmip_port3)] = start_kmip_server_endpoint(
+        kmip_dir2, kmip_addr, kmip_port3, True)
     kmip_dir1 = os.path.join(kmip_dir1, "certs")
     kmip_dir2 = os.path.join(kmip_dir2, "certs")
     ceph_utils = CephUtils(config)
@@ -1275,8 +1280,19 @@ def test_degraded_namespace(caplog, two_gateways):
     time.sleep(20)
     assert f'encryption_entries: [(format: luks1, key id: {key_id})], encryption_algorithm: ' \
            f'no_algorithm, context: None' in caplog.text
-    print("Delete key from KMIP server")
-    delete_key_from_kmip_server(kmip_dir1, kmip_addr, kmip_port, key_id)
+
+    print("Stop KMIP server to simulate key unavailability")
+    proc = kmip_procs[(kmip_addr, kmip_port)]
+
+    # Temporarily disable the gateway's SIGCHLD handler so killing
+    # the KMIP server doesn't trigger a false gateway-death SystemExit
+    old_handler = signal.signal(signal.SIGCHLD, signal.SIG_DFL)
+    try:
+        proc.kill()
+        proc.wait(timeout=10)
+    finally:
+        signal.signal(signal.SIGCHLD, old_handler)
+
     caplog.clear()
     configA = gwA.gateway_rpc.config
     configB = gwB.gateway_rpc.config
