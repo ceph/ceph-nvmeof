@@ -4801,7 +4801,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                                              error_message=errmsg)
 
             try:
-                ret = self.spdk_rpc_client.bdev_get_iostat(name=target_bdev_name)
+                if target_bdev_name:
+                    ret = self.spdk_rpc_client.bdev_get_iostat(names=[target_bdev_name])
+                else:
+                    ret = self.spdk_rpc_client.bdev_get_iostat()
                 self.logger.debug(f"get_bdev_iostat: {ret}")
             except Exception as ex:
                 self.logger.exception(failure_prefix)
