@@ -649,6 +649,24 @@ function demo_bdevperf_psk()
     sed -i 's#encryption_key = /var/log/ceph/ex_encryption.key#encryption_key = /etc/ceph/encryption.key#' ceph-nvmeof.conf
     docker exec ${NVMEOF_CONTAINER_NAME} rm -f /var/log/ceph/ex_encryption.key /tmp/create_enckey.sh
 
+    echo "ℹ️  use a modified encryption key"
+    docker exec ${NVMEOF_CONTAINER_NAME} rm -f /var/log/ceph/mod_encryption.key /tmp/create_enckey.sh
+    rm -f /tmp/create_enckey.sh
+    echo "#!/bin/bash" > /tmp/create_enckey.sh
+    echo 'echo -n "-----BEGIN MODIFIED KEY----- MIIBVAIBADANBgkqhkiG9w0BAQEFAASCAT4wggE6AgEAAkEAqg+wrkvj9D47BRVi A4tMOv4aBL6RLBbLEwYuhJSLTG6FagZFNknjRj0y9s5C+J0fktl3XMu9UmyUR1LR 3ojPlwIDAQABAkA2F9ONPVp+4CSJ02lf0zkmMpk4FR28NmvV20uEpHNClggqmjmW zFjGV+KHJ//r17gQD3yh+NvJzX9FlncseluBAiEA3MjrizLw6wjsk80IaGL8oQNd cUlD2wYTW6Gk7JLlFmECIQDFL6Chljk3rBoPl0jASBFHq1FT/Zqgg/z060OWBns4 9wIhAKkd3g7J/nCKbWzpaL9M02YiRbk4/ZkPllRiBQqRmpkBAiAgCx9VYu4lZ+hM RE9kP9HfDa4HshygnRJMUrcG+EKp/QIgR5uDteq1fToI5ZbYOf+KJsVoJOpPrN3b vPKX3JuIds8= -----END MODIFIED KEY-----" > /var/log/ceph/mod_encryption.key' >> /tmp/create_enckey.sh
+    chmod 755 /tmp/create_enckey.sh
+    docker cp /tmp/create_enckey.sh ${NVMEOF_CONTAINER_NAME}:/tmp/
+    docker exec ${NVMEOF_CONTAINER_NAME} /tmp/create_enckey.sh
+    rm -f /tmp/create_enckey.sh
+    sed -i 's#encryption_key = /etc/ceph/encryption.key#encryption_key = /var/log/ceph/mod_encryption.key#' ceph-nvmeof.conf
+    docker restart ${NVMEOF_CONTAINER_NAME}
+    sleep 20
+    cephnvmf_func subsystem add --subsystem ${NQN}9 --no-group-append
+    cephnvmf_func host add --subsystem ${NQN}9 --host-nqn ${NQN}host23 --psk "${PSK_KEY1}"
+    make -s exec SVC=ceph OPTS=-T CMD="rados --pool rbd listomapvals nvmeof.state" | grep "host23"
+    sed -i 's#encryption_key = /var/log/ceph/mod_encryption.key#encryption_key = /etc/ceph/encryption.key#' ceph-nvmeof.conf
+    docker exec ${NVMEOF_CONTAINER_NAME} rm -f /var/log/ceph/mod_encryption.key /tmp/create_enckey.sh
+
     echo "ℹ️  use invalid encryption key"
     docker exec ${NVMEOF_CONTAINER_NAME} rm -f /var/log/ceph/bad_encryption.key /tmp/create_enckey.sh
     rm -f /tmp/create_enckey.sh
@@ -668,10 +686,70 @@ function demo_bdevperf_psk()
             echo "Add host with PSK key should fail without valid encryption key"
             exit 1
         fi
+        make -s exec SVC=ceph OPTS=-T CMD="rados --pool rbd listomapvals nvmeof.state" | grep -q "host22"
+        if [[ $? -eq 0 ]]; then
+            echo "Add host with PSK key should fail without valid encryption key"
+            exit 1
+        fi
     set -e
-    make -s exec SVC=ceph OPTS=-T CMD="rados --pool rbd listomapvals nvmeof.state" | grep -q -v "host22"
     sed -i 's#encryption_key = /var/log/ceph/bad_encryption.key#encryption_key = /etc/ceph/encryption.key#' ceph-nvmeof.conf
-    docker exec ${NVMEOF_CONTAINER_NAME} rm -f /var/log/ceph/baad_encryption.key /tmp/create_enckey.sh
+    docker exec ${NVMEOF_CONTAINER_NAME} rm -f /var/log/ceph/bad_encryption.key /tmp/create_enckey.sh
+
+    echo "ℹ️  use invalid encryption key, different start and end labels"
+    docker exec ${NVMEOF_CONTAINER_NAME} rm -f /var/log/ceph/bad_labels_encryption.key /tmp/create_enckey.sh
+    rm -f /tmp/create_enckey.sh
+    echo "#!/bin/bash" > /tmp/create_enckey.sh
+    echo 'echo -n "-----BEGIN JUNK KEY----- MIIBVAIBADANBgkqhkiG9w0BAQEFAASCAT4wggE6AgEAAkEAqg+wrkvj9D47BRVi A4tMOv4aBL6RLBbLEwYuhJSLTG6FagZFNknjRj0y9s5C+J0fktl3XMu9UmyUR1LR 3ojPlwIDAQABAkA2F9ONPVp+4CSJ02lf0zkmMpk4FR28NmvV20uEpHNClggqmjmW zFjGV+KHJ//r17gQD3yh+NvJzX9FlncseluBAiEA3MjrizLw6wjsk80IaGL8oQNd cUlD2wYTW6Gk7JLlFmECIQDFL6Chljk3rBoPl0jASBFHq1FT/Zqgg/z060OWBns4 9wIhAKkd3g7J/nCKbWzpaL9M02YiRbk4/ZkPllRiBQqRmpkBAiAgCx9VYu4lZ+hM RE9kP9HfDa4HshygnRJMUrcG+EKp/QIgR5uDteq1fToI5ZbYOf+KJsVoJOpPrN3b vPKX3JuIds8= -----END PRIVATE KEY-----" > /var/log/ceph/bad_labels_encryption.key' >> /tmp/create_enckey.sh
+    chmod 755 /tmp/create_enckey.sh
+    docker cp /tmp/create_enckey.sh ${NVMEOF_CONTAINER_NAME}:/tmp/
+    docker exec ${NVMEOF_CONTAINER_NAME} /tmp/create_enckey.sh
+    rm -f /tmp/create_enckey.sh
+    sed -i 's#encryption_key = /etc/ceph/encryption.key#encryption_key = /var/log/ceph/bad_labels_encryption.key#' ceph-nvmeof.conf
+    docker restart ${NVMEOF_CONTAINER_NAME}
+    sleep 20
+    cephnvmf_func subsystem add --subsystem ${NQN}10 --no-group-append
+    set +e
+        cephnvmf_func host add --subsystem ${NQN}10 --host-nqn ${NQN}host24 --psk "${PSK_KEY1}"
+        if [[ $? -eq 0 ]]; then
+            echo "Add host with PSK key should fail without valid encryption key"
+            exit 1
+        fi
+        make -s exec SVC=ceph OPTS=-T CMD="rados --pool rbd listomapvals nvmeof.state" | grep -q "host24"
+        if [[ $? -eq 0 ]]; then
+            echo "Add host with PSK key should fail without valid encryption key"
+            exit 1
+        fi
+    set -e
+    sed -i 's#encryption_key = /var/log/ceph/bad_labels_encryption.key#encryption_key = /etc/ceph/encryption.key#' ceph-nvmeof.conf
+    docker exec ${NVMEOF_CONTAINER_NAME} rm -f /var/log/ceph/bad_labels_encryption.key /tmp/create_enckey.sh
+
+    echo "ℹ️  use invalid encryption key, empty start and end labels"
+    docker exec ${NVMEOF_CONTAINER_NAME} rm -f /var/log/ceph/empty_labels_encryption.key /tmp/create_enckey.sh
+    rm -f /tmp/create_enckey.sh
+    echo "#!/bin/bash" > /tmp/create_enckey.sh
+    echo 'echo -n "-----BEGIN----- MIIBVAIBADANBgkqhkiG9w0BAQEFAASCAT4wggE6AgEAAkEAqg+wrkvj9D47BRVi A4tMOv4aBL6RLBbLEwYuhJSLTG6FagZFNknjRj0y9s5C+J0fktl3XMu9UmyUR1LR 3ojPlwIDAQABAkA2F9ONPVp+4CSJ02lf0zkmMpk4FR28NmvV20uEpHNClggqmjmW zFjGV+KHJ//r17gQD3yh+NvJzX9FlncseluBAiEA3MjrizLw6wjsk80IaGL8oQNd cUlD2wYTW6Gk7JLlFmECIQDFL6Chljk3rBoPl0jASBFHq1FT/Zqgg/z060OWBns4 9wIhAKkd3g7J/nCKbWzpaL9M02YiRbk4/ZkPllRiBQqRmpkBAiAgCx9VYu4lZ+hM RE9kP9HfDa4HshygnRJMUrcG+EKp/QIgR5uDteq1fToI5ZbYOf+KJsVoJOpPrN3b vPKX3JuIds8= -----END-----" > /var/log/ceph/empty_labels_encryption.key' >> /tmp/create_enckey.sh
+    chmod 755 /tmp/create_enckey.sh
+    docker cp /tmp/create_enckey.sh ${NVMEOF_CONTAINER_NAME}:/tmp/
+    docker exec ${NVMEOF_CONTAINER_NAME} /tmp/create_enckey.sh
+    rm -f /tmp/create_enckey.sh
+    sed -i 's#encryption_key = /etc/ceph/encryption.key#encryption_key = /var/log/ceph/empty_labels_encryption.key#' ceph-nvmeof.conf
+    docker restart ${NVMEOF_CONTAINER_NAME}
+    sleep 20
+    cephnvmf_func subsystem add --subsystem ${NQN}11 --no-group-append
+    set +e
+        cephnvmf_func host add --subsystem ${NQN}11 --host-nqn ${NQN}host25 --psk "${PSK_KEY1}"
+        if [[ $? -eq 0 ]]; then
+            echo "Add host with PSK key should fail without valid encryption key"
+            exit 1
+        fi
+        make -s exec SVC=ceph OPTS=-T CMD="rados --pool rbd listomapvals nvmeof.state" | grep -q "host25"
+        if [[ $? -eq 0 ]]; then
+            echo "Add host with PSK key should fail without valid encryption key"
+            exit 1
+        fi
+    set -e
+    sed -i 's#encryption_key = /var/log/ceph/empty_labels_encryption.key#encryption_key = /etc/ceph/encryption.key#' ceph-nvmeof.conf
+    docker exec ${NVMEOF_CONTAINER_NAME} rm -f /var/log/ceph/empty_labels_encryption.key /tmp/create_enckey.sh
 
     echo "ℹ️  use missing encryption key"
     sed -i 's#encryption_key = /etc/ceph/encryption.key#encryption_key = /etc/ceph/XXXencryption.key#' ceph-nvmeof.conf
@@ -687,6 +765,11 @@ function demo_bdevperf_psk()
         make -s exec SVC=ceph OPTS=-T CMD="rados --pool rbd listomapvals nvmeof.state" | grep "NVMeTLSkey"
         if [[ $? -eq 0 ]]; then
             echo "Shouldn't have unencrypted PSK keys in OMAP"
+            exit 1
+        fi
+        make -s exec SVC=ceph OPTS=-T CMD="rados --pool rbd listomapvals nvmeof.state" | grep -q "host20"
+        if [[ $? -eq 0 ]]; then
+            echo "Add host with PSK key should fail without valid encryption key"
             exit 1
         fi
     set -e

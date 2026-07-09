@@ -288,8 +288,9 @@ class GatewayUtilsCrypto:
     KEY_SIZE = 32
     INVALID_KEY_VALUE = "<invalid>"
     EXISTING_DHCHAP_KEY = "-"
-    KEY_START = "-----BEGIN PRIVATE KEY-----"
-    KEY_END = "-----END PRIVATE KEY-----"
+    START_MARKER_PREFIX = "-----BEGIN"
+    MARKER_SUFFIX = "-----"
+    END_MARKER_PREFIX = "-----END"
 
     def __init__(self, encryption_key: bytes):
         if encryption_key:
@@ -310,14 +311,34 @@ class GatewayUtilsCrypto:
         except FileNotFoundError:
             return None
 
+        keyval = keyval.strip()
         if not keyval:
             raise RuntimeError("Invalid encryption key, key is empty")
 
-        if not keyval.startswith(cls.KEY_START):
-            raise RuntimeError("Invalid encryption key, doesn't start with start marker")
-        if not keyval.endswith(cls.KEY_END):
-            raise RuntimeError("Invalid encryption key, doesn't end with end marker")
-        keyval = keyval.removeprefix(cls.KEY_START).removesuffix(cls.KEY_END).replace(" ", "")
+        if not keyval.startswith(cls.START_MARKER_PREFIX):
+            raise RuntimeError("Invalid encryption key, doesn't start with a start marker")
+        keyval = keyval.removeprefix(cls.START_MARKER_PREFIX)
+        pos = keyval.find(cls.MARKER_SUFFIX)
+        if pos < 0:
+            raise RuntimeError("Invalid encryption key, start marker is malformed "
+                               "(missing closing dashes)")
+        start_label = keyval[:pos].strip()
+        keyval = keyval[pos + len(cls.MARKER_SUFFIX):]
+        pos = keyval.find(cls.END_MARKER_PREFIX)
+        if pos < 0:
+            raise RuntimeError("Invalid encryption key, doesn't end with an end marker")
+        end_label = keyval[pos:].removeprefix(cls.END_MARKER_PREFIX)
+        keyval = keyval[:pos].replace(" ", "")
+        if not end_label.endswith(cls.MARKER_SUFFIX):
+            raise RuntimeError("Invalid encryption key, end marker is malformed "
+                               "(missing closing dashes)")
+        end_label = end_label.removesuffix(cls.MARKER_SUFFIX).strip()
+
+        if not start_label:
+            raise RuntimeError("Invalid encryption key, start marker label is empty")
+
+        if start_label != end_label:
+            raise RuntimeError("Invalid encryption key, different labels on start and end markers")
 
         keybytes = base64.b64decode(keyval, validate=True)
         if len(keybytes) < cls.KEY_SIZE:
