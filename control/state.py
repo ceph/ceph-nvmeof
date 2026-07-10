@@ -1229,9 +1229,12 @@ class OmapGatewayState(GatewayState):
             raise RuntimeError("Can't delete state when Rados is closed")
 
         try:
+            # Clear the object and re-add the version key in a single atomic
+            # write operation. Committing the clear on its own would leave the
+            # object momentarily empty, and a peer gateway's update thread
+            # reading it in that window would see no version key.
             with rados.WriteOpCtx() as write_op:
                 self.ioctx.clear_omap(write_op)
-                self.ioctx.operate_write_op(write_op, self.omap_name)
                 self.ioctx.set_omap(write_op, (self.OMAP_VERSION_KEY,),
                                     (str(1),))
                 self.ioctx.operate_write_op(write_op, self.omap_name)
