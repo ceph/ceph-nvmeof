@@ -1039,6 +1039,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         else:
             self.logger.info("Gateway's IO statistics is disabled")
 
+
         self.fsid = None
         spdk_notifications_interval = self.config.getint_with_default("spdk",
                                                                       "notifications_interval",

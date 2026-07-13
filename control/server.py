@@ -946,14 +946,15 @@ class GatewayServer:
         cnc_rate_limiter_bytes = self.config.getint_with_default("spdk", "cnc_rate_limiter_bytes",
                                                                  100000000)
         cnc_chunk_blocks = self.config.getint_with_default("spdk", "cnc_chunk_blocks", 512)
-
         cnc_parallel_chunks = self.config.getint_with_default("spdk", "cnc_parallel_chunks", 8)
+        cnc_fmt2_enable = self.config.getboolean_with_default("spdk", "cnc_fmt2_enable", True)
 
         try:
             self.spdk_rpc_client.nvmf_cnc_set_config(host_behav_support_cnc=cnc_support,
                                                      rate_limit_bytes=cnc_rate_limiter_bytes,
                                                      max_inflight=cnc_parallel_chunks,
-                                                     chunk_nlb=cnc_chunk_blocks)
+                                                     chunk_nlb=cnc_chunk_blocks,
+                                                     fmt2_enabled=cnc_fmt2_enable)
         except Exception:
             self.logger.exception("Failure setting cnc config")
             raise
