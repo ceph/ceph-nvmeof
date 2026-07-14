@@ -7977,9 +7977,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 if request.subsystem in nvmemon_listeners:
                     subsystem_listeners = nvmemon_listeners[request.subsystem]
                     secure = subsystem.get('secure_listeners', False)
+                    gw_hostnames = self.ceph_utils.get_gw_hostnames()
                     for _listener in subsystem_listeners:
                         listener = {
-                            "host_name": _listener["gw_id"],
+                            "host_name": _listener["address"],
                             "adrfam": (_listener["address_family"] or '').lower(),
                             "trsvcid": int(_listener["svcid"] or 0),
                             "nqn": request.subsystem,
@@ -7989,7 +7990,11 @@ class GatewayService(pb2_grpc.GatewayServicer):
                         listener_key = (listener["traddr"], listener["trsvcid"])
                         if listener_key in omap_listeners:
                             continue
-                        hostname = GatewayUtils.get_hostname(listener["traddr"], self.logger)
+                        gw_id = _listener["gw_id"].removeprefix("client.nvmeof.")
+                        hostname = gw_hostnames.get(gw_id)
+                        if not hostname:
+                            self.logger.debug(f"No hostname in service dump for {gw_id=}")
+                            hostname = GatewayUtils.get_hostname(listener["traddr"], self.logger)
                         if hostname:
                             listener["host_name"] = hostname
                         listener_json = json.dumps(listener)
