@@ -4,7 +4,9 @@ from control.cli import main as cli
 from control.cephutils import CephUtils
 from control.state import GatewayState
 import grpc
+from control.proto import gateway_pb2 as pb2
 from control.proto import gateway_pb2_grpc as pb2_grpc
+from google.protobuf import json_format
 import copy
 import time
 import os
@@ -17,8 +19,18 @@ hostnqn2 = "nqn.2016-06.io.spdk:host2"
 hostnqn3 = "nqn.2016-06.io.spdk:host3"
 hostnqn4 = "nqn.2016-06.io.spdk:host4"
 hostnqn5 = "nqn.2016-06.io.spdk:host5"
+hostnqn6 = "nqn.2016-06.io.spdk:host6"
 config = "ceph-nvmeof.conf"
 group_name = "GROUPNAME"
+
+
+def wait_for_string(caplog, str_to_wait_for, timeout):
+    for _ in range(timeout):
+        if str_to_wait_for in caplog.text:
+            return
+        time.sleep(1)
+
+    raise AssertionError(f"Couldn't find string \"{str_to_wait_for}\" in {timeout} seconds")
 
 
 @pytest.fixture(scope="module")
@@ -100,9 +112,9 @@ def test_add_host_no_access(caplog, two_gateways):
          "--host-nqn", hostnqn1, "--force"])
     assert f"Adding host {hostnqn1} to namespace 1 on {subsystem1}: Successful" in caplog.text
     assert f"Received request to add host {hostnqn1} to namespace 1 on {subsystem1}, " \
-           f"force: False, context: <grpc._server" not in caplog.text
+           f"force: False, context: <" not in caplog.text
     assert f"Received request to add host {hostnqn1} to namespace 1 on {subsystem1}, " \
-           f"force: True, context: <grpc._server" in caplog.text
+           f"force: True, context: <" in caplog.text
     time.sleep(20)
     assert f"Received request to add host {hostnqn1} to namespace 1 on {subsystem1}, " \
            f"force: False, context: None" not in caplog.text
@@ -145,9 +157,9 @@ def test_add_host_success(caplog, two_gateways):
          "--host-nqn", hostnqn2])
     assert f"Adding host {hostnqn2} to namespace 1 on {subsystem1}: Successful" in caplog.text
     assert f"Received request to add host {hostnqn2} to namespace 1 on {subsystem1}, " \
-           f"force: False, context: <grpc._server" in caplog.text
+           f"force: False, context: <" in caplog.text
     assert f"Received request to add host {hostnqn2} to namespace 1 on {subsystem1}, " \
-           f"force: True, context: <grpc._server" not in caplog.text
+           f"force: True, context: <" not in caplog.text
     time.sleep(20)
     assert f"Received request to add host {hostnqn2} to namespace 1 on {subsystem1}, " \
            f"force: False, context: None" not in caplog.text
@@ -200,9 +212,9 @@ def test_add_host_open_access_success(caplog, two_gateways):
          "--host-nqn", hostnqn3])
     assert f"Adding host {hostnqn3} to namespace 1 on {subsystem1}: Successful" in caplog.text
     assert f"Received request to add host {hostnqn3} to namespace 1 on {subsystem1}, " \
-           f"force: False, context: <grpc._server" in caplog.text
+           f"force: False, context: <" in caplog.text
     assert f"Received request to add host {hostnqn3} to namespace 1 on {subsystem1}, " \
-           f"force: True, context: <grpc._server" not in caplog.text
+           f"force: True, context: <" not in caplog.text
     time.sleep(20)
     assert f"Received request to add host {hostnqn3} to namespace 1 on {subsystem1}, " \
            f"force: False, context: None" not in caplog.text
@@ -315,3 +327,36 @@ def test_change_visibility_with_hosts_force(caplog, two_gateways):
     state = gwA.gateway_rpc.gateway_state.omap.get_state()
     for key, val in state.items():
         assert not key.startswith(GatewayState.NAMESPACE_HOST_PREFIX)
+
+
+def test_backward_compatibility(caplog, two_gateways):
+    gwA, _ = two_gateways
+    caplog.clear()
+    cli(["namespace", "change_visibility", "--subsystem", subsystem1, "--nsid", "1",
+         "--auto-visible", "no"])
+    assert f'Changing visibility of namespace 1 in {subsystem1} to "visible to selected hosts": ' \
+           f'Successful' in caplog.text
+    caplog.clear()
+    cli(["namespace", "add_host", "--subsystem", subsystem1, "--nsid", "1",
+         "--host-nqn", hostnqn6, "--force"])
+    assert f"Adding host {hostnqn6} to namespace 1 on {subsystem1}: Successful" in caplog.text
+    look_for = f"Received request to add host {hostnqn6} to namespace 1 " \
+               f"on {subsystem1}, force: True, context: <"
+    wait_for_string(caplog, look_for, 40)
+    look_for = f"Received request to add host {hostnqn6} to namespace 1 " \
+               f"on {subsystem1}, force: True, context: None"
+    wait_for_string(caplog, look_for, 40)
+    caplog.clear()
+    ns_add_host_req = pb2.namespace_add_host_req(subsystem_nqn=subsystem1,
+                                                 nsid=1,
+                                                 host_nqn=hostnqn6,
+                                                 force=False)
+    json_req = json_format.MessageToJson(ns_add_host_req, preserving_proto_field_name=True,
+                                         including_default_value_fields=True)
+    gwA.gateway_rpc.gateway_state.add_namespace_host(subsystem1, 1, hostnqn6, json_req)
+    look_for = f"Received request to add host {hostnqn6} to namespace 1 " \
+               f"on {subsystem1}, force: False, context: None"
+    wait_for_string(caplog, look_for, 40)
+    assert f"\"force\" parameter wasn't set on an update when adding host {hostnqn6} to " \
+           f"namespace 1 on {subsystem1}, this is probably " \
+           "due to an old OMAP being used, will set to True" in caplog.text
