@@ -123,13 +123,14 @@ class GatewayUtils:
 
         return True
 
+    @staticmethod
     def get_hostname(ip_addr: str, logger) -> str:
         try:
             ret = socket.gethostbyaddr(ip_addr)
             if ret:
                 return ret[0]
         except Exception as e:
-            logger.error(f'error in get_hostname: {e}')
+            logger.error(f'Failed to resolve hostname for IP {ip_addr}: {e}')
         return ''
 
     @staticmethod

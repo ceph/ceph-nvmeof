@@ -59,6 +59,41 @@ class CephUtils:
                                 f"{rply[2]}\nCommand was \"{cmd}\"")
         return rply
 
+    def execute_ceph_mgr_command(self, cmd):
+        self.logger.debug(f"Execute mgr command: {cmd}")
+        with rados.Rados(conffile=self.ceph_conf, rados_id=self.rados_id) as cluster:
+            rply = cluster.mgr_command(cmd, b'')
+        self.logger.debug(f"Mgr reply: {rply}")
+        if not rply or len(rply) != 3:
+            self.logger.error(f"Invalid Ceph reply: {rply} for command \"{cmd}\"")
+            return (-errno.EINVAL, b'', '')
+        if rply[0] != 0:
+            self.logger.warning(f"Got error {-rply[0]} ({os.strerror(-rply[0])}) from Ceph mgr: "
+                                f"{rply[2]}\nCommand was \"{cmd}\"")
+        return rply
+
+    def get_gw_hostnames(self) -> dict:
+        try:
+            cmd = '{"prefix":"service dump", "format": "json"}'
+            self.logger.debug(f"service dump string: {cmd}")
+            rply = self.execute_ceph_mgr_command(cmd)
+            self.logger.debug(f"reply \"{rply}\"")
+            if rply and rply[0] != 0:
+                return {}
+            data = json.loads(rply[1].decode())
+            daemons = data.get("services", {}).get("nvmeof", {}).get("daemons", {})
+            hostnames = {}
+            for daemon_id, daemon_info in daemons.items():
+                if not isinstance(daemon_info, dict):
+                    continue
+                hostname = daemon_info.get("metadata", {}).get("hostname")
+                if hostname:
+                    hostnames[daemon_id] = hostname
+            return hostnames
+        except Exception as e:
+            self.logger.debug(f"Gateway failed to get mgr command \"service dump\": {e}")
+            return {}
+
     def get_gw_listeners(self, pool, group) -> list:
         try:
             str = '{' + f'"prefix":"nvme-gw listeners", "pool":"{pool}", "group":"{group}"' + '}'
