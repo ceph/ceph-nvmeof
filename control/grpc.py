@@ -5376,7 +5376,13 @@ class GatewayService(pb2_grpc.GatewayServicer):
                          f"{request.nsid} on {request.subsystem_nqn}, force: {request.force}, "
                          f"context: {context}{peer_msg}")
 
-        assert context or request.force, "Force must be set on update"
+        if context is None and not request.force:
+            request.force = True
+            self.logger.warning(f"\"force\" parameter wasn't set on an update when adding host "
+                                f"{request.host_nqn} to namespace {request.nsid} on "
+                                f"{request.subsystem_nqn}, this is probably "
+                                f"due to an old OMAP being used, will set to True")
+
         if not request.nsid:
             errmsg = f"Failure adding host {request.host_nqn} to namespace on " \
                      f"{request.subsystem_nqn}: Missing ID"
