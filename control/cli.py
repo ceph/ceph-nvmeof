@@ -3854,6 +3854,45 @@ class GatewayClient:
 
         return ret.status
 
+    def ns_unpin(self, args):
+        """Unpin namespace load balancing group."""
+
+        out_func, err_func, wrn_func = self.get_output_functions(args)
+        if args.nsid <= 0:
+            self.cli.parser.error("nsid value must be positive")
+
+        try:
+            ret = self.stub.namespace_unpin(pb2.namespace_unpin_req(
+                subsystem_nqn=args.subsystem, nsid=args.nsid))
+        except Exception as ex:
+            ret = pb2.req_status(status=errno.EINVAL,
+                                 error_message=f"Failure unpinning namespace load balancing "
+                                               f"group:\n{ex}")
+
+        if args.format == "text" or args.format == "plain":
+            if ret.status == 0:
+                out_func(f"Unpinning load balancing group for namespace {args.nsid} "
+                         f"in {args.subsystem}: Successful")
+                if ret.error_message:
+                    wrn_func(ret.error_message)
+            else:
+                err_func(ret.error_message)
+        elif args.format == "json" or args.format == "yaml":
+            ret_str = json_format.MessageToJson(ret, indent=4,
+                                                including_default_value_fields=True,
+                                                preserving_proto_field_name=True)
+            if args.format == "json":
+                out_func(ret_str)
+            elif args.format == "yaml":
+                obj = json.loads(ret_str)
+                out_func(yaml.dump(obj))
+        elif args.format == "python":
+            return ret
+        else:
+            assert False
+
+        return ret.status
+
     ns_common_args = [
         argument("--subsystem",
                  "-n",
@@ -4091,6 +4130,9 @@ class GatewayClient:
                  choices=["yes", "no", "true", "false", "1", "0"],
                  required=True),
     ]
+    ns_unpin_args_list = ns_common_args + [
+        argument("--nsid", help="Namespace ID", type=int, required=True),
+    ]
     ns_actions = []
     ns_actions.append({"name": "add",
                        "args": ns_add_args_list,
@@ -4140,6 +4182,9 @@ class GatewayClient:
     ns_actions.append({"name": "refresh_size",
                        "args": ns_refresh_size_args_list,
                        "help": "Refresh namespace size to the current RBD image size"})
+    ns_actions.append({"name": "unpin",
+                       "args": ns_unpin_args_list,
+                       "help": "Unpin namespace load balancing group"})
     ns_choices = get_actions(ns_actions)
 
     @cli.cmd(ns_actions, ["ns"])
@@ -4177,6 +4222,8 @@ class GatewayClient:
             return self.ns_set_auto_resize(args)
         elif args.action == "refresh_size":
             return self.ns_refresh_size(args)
+        elif args.action == "unpin":
+            return self.ns_unpin(args)
         if not args.action:
             self.cli.parser.error(f"missing action for namespace command "
                                   f"(choose from {GatewayClient.ns_choices})")
