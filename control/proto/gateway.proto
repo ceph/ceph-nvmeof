@@ -122,6 +122,9 @@ service Gateway {
 	// Deletes a host from a namespace
 	rpc namespace_delete_host(namespace_delete_host_req) returns (req_status) {}
 
+	// Unpins a namespace load balancing group
+	rpc namespace_unpin(namespace_unpin_req) returns (req_status) {}
+
 	// Adds a host to a subsystem
 	rpc add_host(add_host_req) returns (req_status) {}
 
@@ -296,6 +299,11 @@ message namespace_delete_host_req {
 	string subsystem_nqn = 1;
 	uint32 nsid = 2;
 	string host_nqn = 3;
+}
+
+message namespace_unpin_req {
+	string subsystem_nqn = 1;
+	uint32 nsid = 2;
 }
 
 message create_subsystem_req {

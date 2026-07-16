@@ -1699,6 +1699,41 @@ class TestCreate:
         assert hasattr(ret, 'ticks')
         assert hasattr(ret, 'num_write_ops')
 
+    def test_namespace_unpin_wrong_nsid(self, caplog):
+        caplog.clear()
+        cli(["namespace", "unpin", "--subsystem", subsystem, "--nsid", "999"])
+        assert f"Failure unpinning load balancing group for namespace 999 on {subsystem}: " \
+               f"Can't find namespace 999 in {subsystem}" in caplog.text
+
+    def test_namespace_unpin_wrong_nqn(self, caplog):
+        caplog.clear()
+        cli(["namespace", "unpin", "--subsystem", "junk", "--nsid", "1"])
+        assert "Failure unpinning load balancing group for namespace 1 on junk: " \
+               "Can't find subsystem" in caplog.text
+
+    def test_namespace_unpin_for_unpinned_ns(self, caplog):
+        caplog.clear()
+        cli(["namespace", "unpin", "--subsystem", subsystem, "--nsid", "1"])
+        assert f"Failure unpinning load balancing group for namespace 1 on {subsystem}: " \
+               f"Namespace load balancing group is not pinned" in caplog.text
+
+    def test_namespace_unpin_missing_nsid(self, caplog, gateway):
+        gw, stub = gateway
+        ns_unpin_req = pb2.namespace_unpin_req(subsystem_nqn=subsystem)
+        caplog.clear()
+        ret = stub.namespace_unpin(ns_unpin_req)
+        assert ret.status != 0
+        assert "Failure unpinning load balancing group for namespace, missing ID" in caplog.text
+
+    def test_namespace_unpin_missing_nqn(self, caplog, gateway):
+        gw, stub = gateway
+        ns_unpin_req = pb2.namespace_unpin_req(nsid=1)
+        caplog.clear()
+        ret = stub.namespace_unpin(ns_unpin_req)
+        assert ret.status != 0
+        assert "Failure unpinning load balancing group for namespace 1, " \
+               "missing subsystem NQN" in caplog.text
+
     def test_host_missing_nqn(self, caplog):
         caplog.clear()
         rc = 0
