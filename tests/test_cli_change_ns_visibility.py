@@ -127,17 +127,18 @@ def test_change_namespace_visibility(caplog, two_gateways):
     assert f'Setting RBD trash image flag for namespace 1 in {subsystem} to ' \
            f'"trash on namespace deletion": Successful' in caplog.text
     assert f'Received request to change the visibility of namespace 1 in {subsystem} ' \
-           f'to "visible to selected hosts", force: False, context: <grpc._server' in caplog.text
+           f'to "visible to selected hosts", force: False, context: <' in caplog.text
     assert f"Received manual request to change load balancing group for namespace with ID " \
-           f"1 in {subsystem} to 2, context: <grpc._server" in caplog.text
+           f"1 in {subsystem} to 2, persistent: False, maintenance: False, " \
+           f"context: <" in caplog.text
     assert f'Received request to set the RBD trash image flag of namespace 1 in ' \
-           f'{subsystem} to "trash on namespace deletion", context: ' \
-           f'<grpc._server' in caplog.text
+           f'{subsystem} to "trash on namespace deletion", context: <' in caplog.text
     time.sleep(90)
     assert f'Received request to change the visibility of namespace 1 in {subsystem} ' \
            f'to "visible to selected hosts", force: True, context: None' in caplog.text
     assert f"Received manual request to change load balancing group for namespace with ID " \
-           f"1 in {subsystem} to 2, context: None" in caplog.text
+           f"1 in {subsystem} to 2, persistent: False, maintenance: False, " \
+           f"context: None" in caplog.text
     assert f'Received request to set the RBD trash image flag of namespace 1 in ' \
            f'{subsystem} to "trash on namespace deletion", context: ' \
            f'None' in caplog.text
@@ -165,7 +166,7 @@ def test_change_namespace_visibility(caplog, two_gateways):
     assert f'Changing visibility of namespace 1 in {subsystem} to "visible to all hosts": ' \
            f'Successful' in caplog.text
     assert f'Received request to change the visibility of namespace 1 in {subsystem} to ' \
-           f'"visible to all hosts", force: False, context: <grpc._server' in caplog.text
+           f'"visible to all hosts", force: False, context: <' in caplog.text
     time.sleep(90)
     assert f'Received request to change the visibility of namespace 1 in {subsystem} to ' \
            f'"visible to all hosts", force: True, context: None' in caplog.text

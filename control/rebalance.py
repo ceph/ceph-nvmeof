@@ -319,6 +319,8 @@ class Rebalance:
         self.logger.debug(f"Doing loop on namespaces in anagrp {self.degraded_group} ")
         for nsid, subsys in ns:
             ns_info = self.gw_srv.subsystem_nsid_bdev_and_uuid.find_namespace(subsys, nsid)
+            if ns_info.empty():
+                continue
             self.logger.info(f"Found nsid {nsid} nqn {subsys} in degraded anagrp"
                              f" {self.degraded_group}")
             if not ns_info.is_degraded():
@@ -334,6 +336,8 @@ class Rebalance:
         self.logger.debug(f"Doing loop on namespaces in anagrp {ana_id} ")
         for nsid, subsys in ns:
             ns_info = self.gw_srv.subsystem_nsid_bdev_and_uuid.find_namespace(subsys, nsid)
+            if ns_info.empty():
+                continue
             if ns_info.is_degraded():
                 self.logger.info(f"Found degraded nsid {nsid} nqn {subsys} "
                                  f"in anagrp {ana_id} - rebalance to anagrp {self.degraded_group}")

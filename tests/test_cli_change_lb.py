@@ -140,9 +140,11 @@ def try_change_one_namespace_lb_group_no_listeners(caplog, subsys, nsid_to_chang
            f"to {new_group}: Successful" in caplog.text
     assert "try running the command from there" not in caplog.text
     assert f"Received manual request to change load balancing group for namespace with ID " \
-           f"{nsid_to_change} in {subsys} to {new_group}, context: <grpc._server" in caplog.text
+           f"{nsid_to_change} in {subsys} to {new_group}, persistent: False, maintenance: " \
+           f"False, context: <" in caplog.text
     assert f"Received manual request to change load balancing group for namespace with ID " \
-           f"{nsid_to_change} in {subsys} to {new_group}, context: None" in caplog.text
+           f"{nsid_to_change} in {subsys} to {new_group}, persistent: False, maintenance: " \
+           f"False, context: None" in caplog.text
 
 
 def change_one_namespace_lb_group(caplog, subsys, nsid_to_change, new_group):
@@ -159,12 +161,14 @@ def change_one_namespace_lb_group(caplog, subsys, nsid_to_change, new_group):
     assert f"Changing load balancing group of namespace {nsid_to_change} in {subsys} " \
            f"to {new_group}: Successful" in caplog.text
     assert f"Received manual request to change load balancing group for namespace with ID " \
-           f"{nsid_to_change} in {subsys} to {new_group}, context: <grpc._server" in caplog.text
+           f"{nsid_to_change} in {subsys} to {new_group}, persistent: False, maintenance: " \
+           f"False, context: <" in caplog.text
     assert "Received request to delete namespace" not in caplog.text
     assert "Received request to remove namespace" not in caplog.text
     assert "Received request to add a namespace" not in caplog.text
     assert f"Received manual request to change load balancing group for namespace with ID " \
-           f"{nsid_to_change} in {subsys} to {new_group}, context: None" in caplog.text
+           f"{nsid_to_change} in {subsys} to {new_group}, persistent: False, maintenance: " \
+           f"False, context: None" in caplog.text
 
 
 def switch_namespaces_lb_group(caplog, ns_count, subsys):
@@ -191,7 +195,7 @@ def test_change_namespace_lb_group(caplog, two_gateways):
            f"no_auto_visible: False, disable_auto_resize: False, " \
            f"read_only: False, location: \"\", " \
            f"encryption_entries: [], encryption_algorithm: no_algorithm, " \
-           f"context: <grpc._server" in caplog.text
+           f"context: <" in caplog.text
     assert f"Received request to add namespace 1 to {subsystem}, ana group {anagrpid}, " \
            f"no_auto_visible: False, disable_auto_resize: False, " \
            f"read_only: False, location: \"\", " \
@@ -289,7 +293,7 @@ def test_change_namespace_lb_group(caplog, two_gateways):
            f"no_auto_visible: False, disable_auto_resize: False, " \
            f"read_only: False, location: \"\", " \
            f"encryption_entries: [], encryption_algorithm: no_algorithm, " \
-           f"context: <grpc._server" in caplog.text
+           f"context: <" in caplog.text
     assert f"Received request to add namespace 2 to {subsystem}, ana group {anagrpid2}, " \
            f"no_auto_visible: False, disable_auto_resize: False, " \
            f"read_only: False, location: \"\", " \
