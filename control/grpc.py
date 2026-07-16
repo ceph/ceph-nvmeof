@@ -3182,8 +3182,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
         if subsystem_nqn in self.subsys_max_ns:
             subsys_max_ns = self.subsys_max_ns[subsystem_nqn]
 
-        if anagrpid > subsys_max_ns:
-            errmsg = f"{add_namespace_error_prefix}: Group ID {anagrpid} is bigger than " \
+        if abs(anagrpid) > subsys_max_ns:
+            errmsg = f"{add_namespace_error_prefix}: Group ID {abs(anagrpid)} is bigger than " \
                      f"configured maximum {subsys_max_ns}"
             self.logger.error(errmsg)
             return pb2.nsid_status(status=errno.EINVAL, error_message=errmsg)
@@ -3229,7 +3229,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 namespace={
                     "bdev_name": bdev_name,
                     "nsid": nsid,
-                    "anagrpid": anagrpid,
+                    "anagrpid": abs(anagrpid),
                     "uuid": uuid,
                     "no_auto_visible": not auto_visible,
                     "ptpl_file": "PTPL"
@@ -3246,6 +3246,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                                             encryption_entries,
                                                             encryption_algorithm,
                                                             degraded)
+            anagrpid = abs(anagrpid)
             self.logger.debug(f"subsystem_add_ns: {nsid}")
             self.ana_grp_ns_load[anagrpid] += 1
             if anagrpid in self.ana_grp_subs_load:
@@ -3626,7 +3627,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
             if create_degraded:
                 ret_bdev = self.create_degraded_bdev(bdev_name, request.uuid, request.block_size)
             else:
-                ret_bdev = self.create_rbd_bdev(anagrp, bdev_name, request.uuid,
+                ret_bdev = self.create_rbd_bdev(abs(anagrp), bdev_name, request.uuid,
                                                 request.rbd_pool_name,
                                                 request.rbd_data_pool_name, request.rbd_image_name,
                                                 request.block_size, create_image,
