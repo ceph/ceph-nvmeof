@@ -419,12 +419,17 @@ def test_degraded_namespace(caplog, two_gateways):
                f"in {subsystem1} to 1, " \
                f"persistent: True, maintenance: False, context: context"
     wait_for_string(caplog, look_for, 300)
+    assert f"Received auto request to change load balancing group for namespace with ID 1 " \
+           f"in {subsystem1} to 1, " \
+           f"persistent: True, maintenance: False, context: None" not in caplog.text
     look_for_key = GatewayState.build_namespace_key(subsystem1, "1")
     state = gwB.gateway_state.omap.get_state()
     assert look_for_key in state.keys()
     val = state[look_for_key]
     req = json_format.Parse(val, pb2.namespace_add_req(), ignore_unknown_fields=True)
     assert req.anagrpid == -1
+    assert f"Received auto request to change load balancing group for namespace with ID 1 " \
+           f"in {subsystem1} to -1" not in caplog.text
     print("Run the KMIP server again")
     kmip_dir1 = os.path.join(kmip_dir_prefix, kmip_server_name1)
     kmip_procs[(kmip_addr, kmip_port)] = start_kmip_server_endpoint(
@@ -483,6 +488,10 @@ def test_unpin(caplog, two_gateways):
     val = state[look_for_key]
     req = json_format.Parse(val, pb2.namespace_add_req(), ignore_unknown_fields=True)
     assert req.anagrpid == 1
+    assert f"Received auto request to change load balancing group for namespace with ID 1 " \
+           f"in {subsystem1} to 1" not in caplog.text
+    assert f"Received request to delete namespace 1 from {subsystem1}" not in caplog.text
+    assert f"Received request to add namespace 1 to {subsystem1}" not in caplog.text
     ns = cli_test(["namespace", "list", "--subsystem", subsystem1, "--nsid", "1"])
     assert ns.status == 0
     assert len(ns.namespaces) == 1
