@@ -1500,7 +1500,7 @@ class GatewayStateHandler:
         req.read_only = GatewayStateHandler._normalize_json_boolean(req.read_only)
         req.nsid = GatewayStateHandler._normalize_json_int(req.nsid)
         req.block_size = GatewayStateHandler._normalize_json_int(req.block_size)
-        req.anagrpid = GatewayStateHandler._normalize_json_int(req.anagrpid)
+        req.anagrpid = abs(GatewayStateHandler._normalize_json_int(req.anagrpid))
         req.size = GatewayStateHandler._normalize_json_int(req.size)
 
         return req
@@ -1883,13 +1883,19 @@ class GatewayStateHandler:
                 only_subsystem_key_changed = []
                 only_subsystem_network_changed = []
                 auto_listener_add = []
-                for key in changed.keys():
+                for key in list(changed.keys()):
                     if key.startswith(GatewayState.NAMESPACE_PREFIX):
                         old_req = self._parse_namespace_req(local_state_dict[key])
                         if old_req is None:
                             continue
                         new_req = self._parse_namespace_req(omap_state_dict[key])
                         if new_req is None:
+                            continue
+                        if old_req == new_req:
+                            changed.pop(key, None)
+                            if GatewayState.NAMESPACE_PREFIX in grouped_changed:
+                                if key in grouped_changed[GatewayState.NAMESPACE_PREFIX]:
+                                    grouped_changed[GatewayState.NAMESPACE_PREFIX].pop(key, None)
                             continue
                         if self.namespace_need_to_be_re_added(old_req, new_req):
                             # a namespace field we don't know to handle has changed
