@@ -3436,91 +3436,103 @@ class GatewayService(pb2_grpc.GatewayServicer):
         self.logger.info(f"Received request to set ana states {ana_info.states}, {peer_msg}")
 
         assert self.rpc_lock.locked(), "RPC is unlocked when calling set_ana_state_safe()"
+
         inaccessible_ana_groups = {}
         awaited_cluster_contexts = set()
-        # Iterate over nqn_ana_states in ana_info
-        for nas in ana_info.states:
-
-            # fill the static gateway dictionary per nqn and grp_id
-            nqn = nas.nqn
-            for gs in nas.states:
-                self.ana_map[nqn][gs.grp_id] = gs.state
-                self.ana_grp_state[gs.grp_id] = gs.state
-
-            # If this is not set the subsystem was not created yet
-            if nqn not in self.subsys_serial:
-                continue
-
-            self.logger.debug(f"Iterate over {nqn=} {self.subsystem_listeners[nqn]=}")
-            for listener in self.subsystem_listeners[nqn]:
-                self.logger.debug(f"{listener=}")
-
-                # Iterate over ana_group_state in nqn_ana_states
+        try:
+            # =====================================================================
+            # PHASE 1: Update local tracking state dictionaries
+            # =====================================================================
+            for nas in ana_info.states:
+                nqn = nas.nqn
                 for gs in nas.states:
-                    # Access grp_id and state
-                    grp_id = gs.grp_id
-                    # The gateway's interface gRPC ana_state into SPDK JSON RPC values,
-                    # see nvmf_subsystem_listener_set_ana_state
-                    # method https://spdk.io/doc/jsonrpc.html
+                    self.ana_map[nqn][gs.grp_id] = gs.state
+                    self.ana_grp_state[gs.grp_id] = gs.state
+            # =====================================================================
+            # PHASE 2: Wait for latest OSD map across ALL required cluster contexts
+            # =====================================================================
+            for nas in ana_info.states:
+                nqn = nas.nqn
+                if nqn not in self.subsys_serial:
+                    continue
+
+                for gs in nas.states:
+                    # Wait for OSD map for any group moving to accessible/optimized states
+                    if gs.state in (pb2.ana_state.NON_OPTIMIZED, pb2.ana_state.OPTIMIZED):
+                        ns_list = self.subsystem_nsid_bdev_and_uuid.\
+                            get_namespace_infos_for_anagrpid(nqn, gs.grp_id)
+                        for ns_info in ns_list:
+                            if ns_info.is_degraded():
+                                # TODO: Leonid, do something here
+                                continue
+
+                            with self.shared_state_lock:
+                                cluster = self.bdev_cluster.get(ns_info.bdev)
+
+                            if not cluster:
+                                raise Exception(f"can not find cluster context name"
+                                                f" for bdev {ns_info.bdev}")
+                            if cluster in awaited_cluster_contexts:
+                                continue
+
+                            self.logger.debug(f"bdev_rbd_wait_for_latest_osdmap for {cluster=}")
+                            if not self.spdk_rpc_client.bdev_rbd_wait_for_latest_osdmap(
+                                    name=cluster):
+                                raise Exception(f"bdev_rbd_wait_for_latest_osdmap({cluster=}) ")
+
+                            awaited_cluster_contexts.add(cluster)
+
+            # =====================================================================
+            # PHASE 4: Update ANA states on all SPDK subsystem listeners
+            # =====================================================================
+            grp_to_state = {}
+
+            for nas in ana_info.states:
+                nqn = nas.nqn
+                if nqn not in self.subsys_serial:
+                    continue
+
+                for gs in nas.states:
+                    grp_id = str(gs.grp_id)
                     if gs.state == pb2.ana_state.OPTIMIZED:
                         ana_state = "optimized"
+                    elif gs.state == pb2.ana_state.NON_OPTIMIZED:
+                        ana_state = "non_optimized"
                     else:
                         ana_state = "inaccessible"
-                    try:
-                        # Need to wait for the latest OSD map, for each RADOS
-                        # cluster context before becoming optimized,
-                        # part of blocklist logic
-                        if gs.state == pb2.ana_state.OPTIMIZED:
-                            # Go over the namespaces belonging to the ana group
-                            ns = self.subsystem_nsid_bdev_and_uuid.get_namespace_infos_for_anagrpid(
-                                nqn, grp_id)
-                            for ns_info in ns:
-                                if ns_info.is_degraded():
-                                    continue
-                                # get the cluster name for this namespace
-                                with self.shared_state_lock:
-                                    cluster = self.bdev_cluster[ns_info.bdev]
-                                if not cluster:
-                                    raise Exception(f"can not find cluster context name for "
-                                                    f"bdev {ns_info.bdev}")
 
-                                if cluster in awaited_cluster_contexts:
-                                    # this cluster context was already awaited
-                                    continue
-                                if not self.spdk_rpc_client.bdev_rbd_wait_for_latest_osdmap(
-                                        name=cluster):
-                                    raise Exception(f"bdev_rbd_wait_for_latest_osdmap({cluster=})"
-                                                    f" error")
-                                self.logger.debug(f"set_ana_state "
-                                                  f"bdev_rbd_wait_for_latest_osdmap {cluster=}")
-                                awaited_cluster_contexts.add(cluster)
+                    grp_to_state[grp_id] = ana_state
 
-                        self.logger.debug(f"set_ana_state nvmf_subsystem_listener_set_ana_state "
-                                          f"{nqn=} {listener=} {ana_state=} {grp_id=}")
-                        (adrfam, traddr, trsvcid, secure, active) = listener
-                        if not active:
-                            continue
-                        ret = self.spdk_rpc_client.nvmf_subsystem_listener_set_ana_state(
-                            nqn=nqn,
-                            listen_address={"trtype": "TCP",
-                                            "traddr": traddr,
-                                            "trsvcid": str(trsvcid),
-                                            "adrfam": adrfam},
-                            ana_state=ana_state,
-                            anagrpid=grp_id)
-                        if ana_state == "inaccessible":
-                            inaccessible_ana_groups[grp_id] = True
-                        self.logger.debug(f"set_ana_state nvmf_subsystem_listener_set_ana_state "
-                                          f"response {ret=}")
-                        if not ret:
-                            raise Exception(f"nvmf_subsystem_listener_set_ana_state({nqn=}, "
-                                            f"{listener=}, {ana_state=}, {grp_id=}) error")
-                    except Exception as ex:
-                        self.logger.exception("nvmf_subsystem_listener_set_ana_state()")
-                        if context:
-                            context.set_code(grpc.StatusCode.INTERNAL)
-                            context.set_details(f"{ex}")
-                        return pb2.req_status()
+                    if ana_state == "inaccessible":
+                        inaccessible_ana_groups[gs.grp_id] = True
+
+            if grp_to_state:
+                ana_grpids = list(grp_to_state.keys())
+                ana_states = list(grp_to_state.values())
+                tgt_name = getattr(self, "tgt_name", "nvmf_tgt")
+                # Adjust variable name to match target name attribute
+
+                self.logger.info(f"nvmf_subsystem_set_ana_states_all {tgt_name=} {ana_grpids=}"
+                                 f" {ana_states=}")
+
+                ret = self.spdk_rpc_client.nvmf_subsystem_set_ana_states_all(
+                    tgt_name=tgt_name,
+                    chunk_subs=1,
+                    ana_grpids=ana_grpids,
+                    ana_states=ana_states
+                )
+                self.logger.info(f"nvmf_subsystem_set_ana_states_all response {ret=}")
+                if not ret:
+                    raise Exception(f"nvmf_subsystem_set_ana_states_all({tgt_name=},"
+                                    f" {ana_grpids=}, {ana_states=}) error")
+
+        except Exception as ex:
+            self.logger.exception("Error during set_ana_state_safe execution")
+            if context:
+                context.set_code(grpc.StatusCode.INTERNAL)
+                context.set_details(f"{ex}")
+            return pb2.req_status()
+
         return pb2.req_status(status=True)
 
     def namespace_add_safe(self, request, context):
