@@ -51,6 +51,7 @@ const (
 	Gateway_NamespaceDelete_FullMethodName                   = "/Gateway/namespace_delete"
 	Gateway_NamespaceAddHost_FullMethodName                  = "/Gateway/namespace_add_host"
 	Gateway_NamespaceDeleteHost_FullMethodName               = "/Gateway/namespace_delete_host"
+	Gateway_NamespaceUnpin_FullMethodName                    = "/Gateway/namespace_unpin"
 	Gateway_AddHost_FullMethodName                           = "/Gateway/add_host"
 	Gateway_RemoveHost_FullMethodName                        = "/Gateway/remove_host"
 	Gateway_SetKeepHostConnected_FullMethodName              = "/Gateway/set_keep_host_connected"
@@ -126,6 +127,8 @@ type GatewayClient interface {
 	NamespaceAddHost(ctx context.Context, in *NamespaceAddHostReq, opts ...grpc.CallOption) (*ReqStatus, error)
 	// Deletes a host from a namespace
 	NamespaceDeleteHost(ctx context.Context, in *NamespaceDeleteHostReq, opts ...grpc.CallOption) (*ReqStatus, error)
+	// Unpins a namespace load balancing group
+	NamespaceUnpin(ctx context.Context, in *NamespaceUnpinReq, opts ...grpc.CallOption) (*ReqStatus, error)
 	// Adds a host to a subsystem
 	AddHost(ctx context.Context, in *AddHostReq, opts ...grpc.CallOption) (*ReqStatus, error)
 	// Removes a host from a subsystem
@@ -412,6 +415,16 @@ func (c *gatewayClient) NamespaceDeleteHost(ctx context.Context, in *NamespaceDe
 	return out, nil
 }
 
+func (c *gatewayClient) NamespaceUnpin(ctx context.Context, in *NamespaceUnpinReq, opts ...grpc.CallOption) (*ReqStatus, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ReqStatus)
+	err := c.cc.Invoke(ctx, Gateway_NamespaceUnpin_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *gatewayClient) AddHost(ctx context.Context, in *AddHostReq, opts ...grpc.CallOption) (*ReqStatus, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ReqStatus)
@@ -692,6 +705,8 @@ type GatewayServer interface {
 	NamespaceAddHost(context.Context, *NamespaceAddHostReq) (*ReqStatus, error)
 	// Deletes a host from a namespace
 	NamespaceDeleteHost(context.Context, *NamespaceDeleteHostReq) (*ReqStatus, error)
+	// Unpins a namespace load balancing group
+	NamespaceUnpin(context.Context, *NamespaceUnpinReq) (*ReqStatus, error)
 	// Adds a host to a subsystem
 	AddHost(context.Context, *AddHostReq) (*ReqStatus, error)
 	// Removes a host from a subsystem
@@ -816,6 +831,9 @@ func (UnimplementedGatewayServer) NamespaceAddHost(context.Context, *NamespaceAd
 }
 func (UnimplementedGatewayServer) NamespaceDeleteHost(context.Context, *NamespaceDeleteHostReq) (*ReqStatus, error) {
 	return nil, status.Error(codes.Unimplemented, "method NamespaceDeleteHost not implemented")
+}
+func (UnimplementedGatewayServer) NamespaceUnpin(context.Context, *NamespaceUnpinReq) (*ReqStatus, error) {
+	return nil, status.Error(codes.Unimplemented, "method NamespaceUnpin not implemented")
 }
 func (UnimplementedGatewayServer) AddHost(context.Context, *AddHostReq) (*ReqStatus, error) {
 	return nil, status.Error(codes.Unimplemented, "method AddHost not implemented")
@@ -1317,6 +1335,24 @@ func _Gateway_NamespaceDeleteHost_Handler(srv interface{}, ctx context.Context, 
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(GatewayServer).NamespaceDeleteHost(ctx, req.(*NamespaceDeleteHostReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Gateway_NamespaceUnpin_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(NamespaceUnpinReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GatewayServer).NamespaceUnpin(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Gateway_NamespaceUnpin_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GatewayServer).NamespaceUnpin(ctx, req.(*NamespaceUnpinReq))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1833,6 +1869,10 @@ var Gateway_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "namespace_delete_host",
 			Handler:    _Gateway_NamespaceDeleteHost_Handler,
+		},
+		{
+			MethodName: "namespace_unpin",
+			Handler:    _Gateway_NamespaceUnpin_Handler,
 		},
 		{
 			MethodName: "add_host",
