@@ -193,6 +193,18 @@ def wait_for_string(caplog, needle, timeout):
     raise AssertionError(f"Couldn't find string \"{needle}\" in {timeout} seconds")
 
 
+def look_for_string_from_file(lines, filename, lookfor):
+    assert lookfor in lines
+    broken_lines = lines.split("\n")
+    for line in broken_lines:
+        if lookfor not in line:
+            continue
+        if f":{filename}:" not in line:
+            continue
+        return
+    raise AssertionError(f"Didn't find \"{lookfor}\" from file {filename} in {broken_lines}")
+
+
 @pytest.fixture(scope="module")
 def two_gateways(config):
     """Sets up two Gateways"""
@@ -402,6 +414,8 @@ def test_degraded_namespace(caplog, two_gateways):
            f"namespaces in the subsystem. Either delete these namespaces or use the \"force\" " \
            f"parameter." in caplog.text
     cli(["namespace", "del", "--subsystem", subsystem1, "--nsid", "3"])
+    eps = cli_test(["--server-port", portB, "subsystem", "list_kmip_server_endpoints"])
+    assert len(eps.endpoints) == 1
     assert f"Deleting namespace 3 from {subsystem1}: Successful" in caplog.text
     time.sleep(30)
     with gwB.gateway_rpc.rpc_lock:
@@ -610,7 +624,13 @@ def test_delete_resources(caplog, two_gateways):
          "--port", str(kmip_port)])
     assert f"Deleting endpoint, with address {kmip_addr}:{kmip_port}, from KMIP server " \
            f"{kmip_server_name1} on subsystem {subsystem1}: Successful" in caplog.text
-    assert f"Last server endpoint for subsystem {subsystem1} was deleted" in caplog.text
+    look_for_string_from_file(caplog.text, "grpc.py",
+                              f"Last endpoint of server \"{kmip_server_name1}\" on "
+                              f"subsystem {subsystem1} was deleted.")
+    look_for_string_from_file(caplog.text, "cli.py",
+                              f"Last endpoint of server \"{kmip_server_name1}\" on "
+                              f"subsystem {subsystem1} was deleted.")
+    clear_kmip_server_endpoint_keys_cache(kmip_dir1, kmip_addr, kmip_port)
     caplog.clear()
     cli(["subsystem", "del", "--subsystem", subsystem1])
     assert f"Deleting subsystem {subsystem1}: Successful" in caplog.text
