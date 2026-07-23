@@ -769,10 +769,6 @@ class NamespacesLocalList:
                     ns = self.namespace_list[subsys][nsid]
                     if ns.empty():
                         continue
-                    # Degraded namespaces have empty encryption fields, but this is internal for
-                    # this gateway only. On other gateways the same namespace would be encrypted.
-                    if ns.is_degraded():
-                        return True
                     for ent in ns.encryption_entries:
                         if ent.format == pb2.EncryptionFormat.none:
                             continue
@@ -2852,7 +2848,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     warning_msg = f"Deleting endpoints of server " \
                                   f"\"{request.server_name}\" on " \
                                   f"{request.subsystem_nqn} " \
-                                  f"while there are still encrypted (or degraded) " \
+                                  f"while there are still encrypted " \
                                   f"namespaces in the subsystem. Will continue as " \
                                   f"the \"force\" parameter was used."
                     self.logger.warning(warning_msg)
@@ -2860,7 +2856,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     errmsg = f"Failure deleting endpoints from KMIP server " \
                              f"\"{request.server_name}\" on " \
                              f"subsystem {request.subsystem_nqn}: There are encrypted " \
-                             f"(or degraded) namespaces in the subsystem. Either delete these " \
+                             f"namespaces in the subsystem. Either delete these " \
                              f"namespaces or use the \"force\" parameter."
                     self.logger.error(errmsg)
                     return pb2.req_status(status=errno.EBUSY, error_message=errmsg)

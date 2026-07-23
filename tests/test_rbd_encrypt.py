@@ -935,7 +935,7 @@ def test_delete_the_last_server_endpoint(caplog, two_gateways):
          "--server-name", kmip_server_name1,
          "--port", str(kmip_port)])
     assert f"Failure deleting endpoints from KMIP server \"{kmip_server_name1}\" on subsystem " \
-           f"{subsystem1}: There are encrypted (or degraded) " \
+           f"{subsystem1}: There are encrypted " \
            f"namespaces in the subsystem. Either delete these namespaces or use the \"force\" " \
            f"parameter." in caplog.text
     endpoints = cli_test(["subsystem", "list_kmip_server_endpoints", "--subsystem", subsystem1])
@@ -947,7 +947,7 @@ def test_delete_the_last_server_endpoint(caplog, two_gateways):
          "--server-name", kmip_server_name1,
          "--port", str(kmip_port), "--force"])
     assert f"Deleting endpoints of server \"{kmip_server_name1}\" on {subsystem1} " \
-           f"while there are still encrypted (or degraded) namespaces in the subsystem. " \
+           f"while there are still encrypted namespaces in the subsystem. " \
            f"Will continue as the \"force\" parameter was used." in caplog.text
     endpoints = cli_test(["subsystem", "list_kmip_server_endpoints", "--subsystem", subsystem1])
     assert endpoints.status == 0
@@ -1246,7 +1246,7 @@ def test_delete_non_last_server_endpoint(caplog, two_gateways):
          "--server-name", kmip_server_name1,
          "--port", str(kmip_port6)])
     assert f"Failure deleting endpoints from KMIP server \"{kmip_server_name1}\" on subsystem " \
-           f"{subsystem5}: There are encrypted (or degraded) " \
+           f"{subsystem5}: There are encrypted " \
            f"namespaces in the subsystem. Either delete these namespaces or use the \"force\" " \
            f"parameter." in caplog.text
     endpoints = cli_test(["subsystem", "list_kmip_server_endpoints", "--subsystem", subsystem5])
@@ -1269,7 +1269,7 @@ def test_delete_non_last_server_endpoint(caplog, two_gateways):
          "--server-name", kmip_server_name1,
          "--port", str(kmip_port5)])
     assert f"Failure deleting endpoints from KMIP server \"{kmip_server_name1}\" on subsystem " \
-           f"{subsystem5}: There are encrypted (or degraded) " \
+           f"{subsystem5}: There are encrypted " \
            f"namespaces in the subsystem. Either delete these namespaces or use the \"force\" " \
            f"parameter." in caplog.text
     endpoints = cli_test(["subsystem", "list_kmip_server_endpoints", "--subsystem", subsystem5])
@@ -1280,7 +1280,7 @@ def test_delete_non_last_server_endpoint(caplog, two_gateways):
          "--server-name", kmip_server_name1,
          "--port", str(kmip_port5), "--force"])
     assert f"Deleting endpoints of server \"{kmip_server_name1}\" on {subsystem5} " \
-           f"while there are still encrypted (or degraded) namespaces in the subsystem. " \
+           f"while there are still encrypted namespaces in the subsystem. " \
            f"Will continue as the \"force\" parameter was used." in caplog.text
     look_for_string_from_file(caplog.text, "grpc.py",
                               f"Last endpoint of server \"{kmip_server_name1}\" on "

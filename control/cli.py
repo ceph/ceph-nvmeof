@@ -1593,7 +1593,7 @@ class GatewayClient:
                  required=False),
         argument("--force",
                  help="Allow deleting the KMIP server's endpoint even if encrypted "
-                      "(or degraded) namespaces still use it",
+                      "namespaces still use it",
                  action='store_true', required=False),
     ]
     subsys_add_kmip_server_endpoint_args = [
@@ -3092,8 +3092,6 @@ class GatewayClient:
                             all_none = False
                     if not encryption or all_none:
                         encryption = "None"
-                    if ns.degraded:
-                        encryption += " (Degraded)"
                     ro_msg = "Read-Only" if ns.read_only else "Read-Write"
                     trash_msg = "\nTrash on delete" if ns.trash_image else ""
                     auto_resize_msg = "\nDisable auto resize" if ns.disable_auto_resize else ""
