@@ -615,6 +615,32 @@ class NamespacesLocalList:
                         ns_list.append((nsid, nqn))
         return ns_list
 
+    def has_encrypted_namespaces(self, nqn=None) -> bool:
+        with self.namespace_list_lock:
+            if nqn and nqn not in self.namespace_list:
+                return False
+
+            if nqn:
+                subsystems = [nqn]
+            else:
+                subsystems = self.namespace_list.keys()
+
+            for subsys in subsystems:
+                for nsid in self.namespace_list[subsys]:
+                    ns = self.namespace_list[subsys][nsid]
+                    if ns.empty():
+                        continue
+                    # Degraded namespaces have empty encryption fields, but this is internal for
+                    # this gateway only. On other gateways the same namespace would be encrypted.
+                    if ns.is_degraded():
+                        return True
+                    for ent in ns.encryption_entries:
+                        if ent.format == pb2.EncryptionFormat.none:
+                            continue
+                        if ent.key_id:
+                            return True
+        return False
+
 
 class ImageIdentification:
     FIELD_DELIMITER = GatewayState.OMAP_KEY_DELIMITER
@@ -721,14 +747,17 @@ class ImageIdentification:
 
 
 class KMIPServerEndpoint:
+    KMIP_DEFAULT_PORT = 5696
+
     def __init__(self, address, port):
         self.address = address
         self.port = port
 
+    def __str__(self):
+        return f"{self.address}:{self.port}"
+
 
 class KMIPServerEndpointList():
-    KMIP_DEFAULT_PORT = 5696
-
     def __init__(self):
         self.kmip_server_endpoints_lock = threading.Lock()
         # the server endpoint list consists of elements of a server name
@@ -2596,13 +2625,17 @@ class GatewayService(pb2_grpc.GatewayServicer):
         return self.execute_grpc_function(self.gw_refresh_network_safe, request,
                                           context, err_prefix)
 
+    def _normalize_kmip_server_endpoint_port(self, server: str,
+                                             endpoint: pb2.kmip_server_endpoint) -> None:
+        if not endpoint.HasField("port") or endpoint.port is None:
+            endpoint.port = KMIPServerEndpoint.KMIP_DEFAULT_PORT
+            self.logger.info(f"KMIP server {server} endpoint's port wasn't specified, will use "
+                             f"default port {KMIPServerEndpoint.KMIP_DEFAULT_PORT}")
+
     def _add_one_kmip_server_endpoint(self, subsys, server, endpoint, context):
         """Add a KMIP server endpoint to the subsystem"""
 
-        if not endpoint.HasField("port") or endpoint.port is None:
-            endpoint.port = KMIPServerEndpointList.KMIP_DEFAULT_PORT
-            self.logger.info(f"KMIP server {server} endpoint's port wasn't specified, will use "
-                             f"default port {KMIPServerEndpointList.KMIP_DEFAULT_PORT}")
+        self._normalize_kmip_server_endpoint_port(server, endpoint)
 
         error_prefix = f"Failure adding an endpoint, with address " \
                        f"{endpoint.address}:{endpoint.port}, to " \
@@ -2762,10 +2795,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
     def _del_one_kmip_server_endpoint(self, subsys, server, endpoint, context):
         """Delete a KMIP server endpoint from the subsystem"""
 
-        if not endpoint.HasField("port") or endpoint.port is None:
-            endpoint.port = KMIPServerEndpointList.KMIP_DEFAULT_PORT
-            self.logger.info(f"KMIP server {server} endpoint's port wasn't specified, will use "
-                             f"default port {KMIPServerEndpointList.KMIP_DEFAULT_PORT}")
+        self._normalize_kmip_server_endpoint_port(server, endpoint)
 
         error_prefix = f"Failure deleting endpoint, with address " \
                        f"{endpoint.address}:{endpoint.port}, from " \
@@ -2866,6 +2896,26 @@ class GatewayService(pb2_grpc.GatewayServicer):
         had_eps = self.kmip_server_endpoints.subsystem_has_server_endpoints(request.subsystem_nqn)
         final_ret_status = 0
         final_err_msg = ""
+        warning_msg = ""
+        if context:
+            if self.subsystem_nsid_bdev_and_uuid.has_encrypted_namespaces(request.subsystem_nqn):
+                if request.force:
+                    warning_msg = f"Deleting endpoints of server " \
+                                  f"\"{request.server_name}\" on " \
+                                  f"{request.subsystem_nqn} " \
+                                  f"while there are still encrypted (or degraded) " \
+                                  f"namespaces in the subsystem. Will continue as " \
+                                  f"the \"force\" parameter was used."
+                    self.logger.warning(warning_msg)
+                else:
+                    errmsg = f"Failure deleting endpoints from KMIP server " \
+                             f"\"{request.server_name}\" on " \
+                             f"subsystem {request.subsystem_nqn}: There are encrypted " \
+                             f"(or degraded) namespaces in the subsystem. Either delete these " \
+                             f"namespaces or use the \"force\" parameter."
+                    self.logger.error(errmsg)
+                    return pb2.req_status(status=errno.EBUSY, error_message=errmsg)
+
         for endpoint in request.endpoints:
             ret = self._del_one_kmip_server_endpoint(request.subsystem_nqn,
                                                      request.server_name,
@@ -2882,9 +2932,17 @@ class GatewayService(pb2_grpc.GatewayServicer):
             has_eps = self.kmip_server_endpoints.subsystem_has_server_endpoints(
                 request.subsystem_nqn)
             if not has_eps:
-                self.logger.info(f"Last server endpoint for subsystem "
-                                 f"{request.subsystem_nqn} was deleted")
+                msg = f"Last endpoint of server \"{request.server_name}\" on subsystem " \
+                      f"{request.subsystem_nqn} was deleted."
+                self.logger.warning(msg)
                 self.kmip_clients.remove_client(request.subsystem_nqn)
+                if warning_msg:
+                    warning_msg = msg + "\n" + warning_msg
+                else:
+                    warning_msg = msg
+
+        if final_ret_status == 0 and not final_err_msg:
+            final_err_msg = warning_msg
 
         return pb2.req_status(status=final_ret_status, error_message=final_err_msg)
 

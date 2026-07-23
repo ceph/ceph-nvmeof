@@ -193,6 +193,18 @@ def wait_for_string(caplog, needle, timeout):
     raise AssertionError(f"Couldn't find string \"{needle}\" in {timeout} seconds")
 
 
+def look_for_string_from_file(lines, filename, lookfor):
+    assert lookfor in lines
+    broken_lines = lines.split("\n")
+    for line in broken_lines:
+        if lookfor not in line:
+            continue
+        if f":{filename}:" not in line:
+            continue
+        return
+    raise AssertionError(f"Didn't find \"{lookfor}\" from file {filename} in {broken_lines}")
+
+
 @pytest.fixture(scope="module")
 def two_gateways(config):
     """Sets up two Gateways"""
@@ -386,11 +398,33 @@ def test_degraded_namespace(caplog, two_gateways):
          "--nsid", "3", "--size", "20MB"])
     assert f"Namespace 3 on {subsystem1} is degraded, no resize was done" in caplog.text
     caplog.clear()
+    cli(["--server-port", portB, "namespace", "list", "--subsystem", subsystem1, "--nsid", "3"])
+    assert "None (Degraded)" in caplog.text, "Should see degraded namespace on gateway B"
+    caplog.clear()
+    cli(["--server-port", portA, "namespace", "list", "--subsystem", subsystem1, "--nsid", "3"])
+    assert "None (Degraded)" not in caplog.text, "Shouldn't see degraded namespace on gateway A"
+    caplog.clear()
     ns_info = cli_test(["namespace", "list", "--subsystem", subsystem1, "--nsid", "3"])
     assert len(ns_info.namespaces) == 1
     assert ns_info.namespaces[0].nsid == 3
     bdev_name = ns_info.namespaces[0].bdev_name
+    ns_info = cli_test(["--server-port", portB, "namespace", "list", "--subsystem", subsystem1])
+    assert ns_info.status == 0
+    assert len(ns_info.namespaces) == 3
+    for n in ns_info.namespaces:
+        assert not n.encryption_entries, "Shouldn't have a namespace with encryption"
+    eps = cli_test(["--server-port", portB, "subsystem", "list_kmip_server_endpoints"])
+    assert len(eps.endpoints) == 1
+    caplog.clear()
+    cli(["--server-port", portB, "subsystem", "del_kmip_server_endpoint", "--subsystem", subsystem1,
+         "--address", kmip_addr, "--server-name", kmip_server_name1, "--port", str(kmip_port)])
+    assert f"Failure deleting endpoints from KMIP server \"{kmip_server_name1}\" on subsystem " \
+           f"{subsystem1}: There are encrypted (or degraded) " \
+           f"namespaces in the subsystem. Either delete these namespaces or use the \"force\" " \
+           f"parameter." in caplog.text
     cli(["namespace", "del", "--subsystem", subsystem1, "--nsid", "3"])
+    eps = cli_test(["--server-port", portB, "subsystem", "list_kmip_server_endpoints"])
+    assert len(eps.endpoints) == 1
     assert f"Deleting namespace 3 from {subsystem1}: Successful" in caplog.text
     time.sleep(30)
     with gwB.gateway_rpc.rpc_lock:
@@ -526,7 +560,13 @@ def test_delete_resources(caplog, two_gateways):
          "--port", str(kmip_port)])
     assert f"Deleting endpoint, with address {kmip_addr}:{kmip_port}, from KMIP server " \
            f"{kmip_server_name1} on subsystem {subsystem1}: Successful" in caplog.text
-    assert f"Last server endpoint for subsystem {subsystem1} was deleted" in caplog.text
+    look_for_string_from_file(caplog.text, "grpc.py",
+                              f"Last endpoint of server \"{kmip_server_name1}\" on "
+                              f"subsystem {subsystem1} was deleted.")
+    look_for_string_from_file(caplog.text, "cli.py",
+                              f"Last endpoint of server \"{kmip_server_name1}\" on "
+                              f"subsystem {subsystem1} was deleted.")
+    clear_kmip_server_endpoint_keys_cache(kmip_dir1, kmip_addr, kmip_port)
     caplog.clear()
     cli(["subsystem", "del", "--subsystem", subsystem1])
     assert f"Deleting subsystem {subsystem1}: Successful" in caplog.text
