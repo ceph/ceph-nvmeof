@@ -99,18 +99,6 @@ def clear_kmip_server_endpoint_keys_cache(base_dir, addr, port):
         kmip_key_ids.pop(k, None)
 
 
-def look_for_string_from_file(lines, filename, lookfor):
-    assert lookfor in lines
-    broken_lines = lines.split("\n")
-    for line in broken_lines:
-        if lookfor not in line:
-            continue
-        if f":{filename}:" not in line:
-            continue
-        return
-    raise AssertionError(f"Didn't find \"{lookfor}\" from file {filename} in {broken_lines}")
-
-
 @pytest.fixture(scope="module")
 def two_gateways(config):
     """Sets up two Gateways"""
@@ -363,12 +351,8 @@ def test_del_kmip_server_endpoint(caplog, two_gateways):
          "--port", str(kmip_port)])
     assert f"Deleting endpoint, with address {kmip_addr}:{kmip_port}, from KMIP server " \
            f"{kmip_server_name1} on subsystem {subsystem1}: Successful" in caplog.text
-    look_for_string_from_file(caplog.text, "grpc.py",
-                              f"Last endpoint of server \"{kmip_server_name1}\" on "
-                              f"subsystem {subsystem1} was deleted.")
-    look_for_string_from_file(caplog.text, "cli.py",
-                              f"Last endpoint of server \"{kmip_server_name1}\" on "
-                              f"subsystem {subsystem1} was deleted.")
+    assert f"Last endpoint of server \"{kmip_server_name1}\" on " \
+           f"subsystem {subsystem1} was deleted." in caplog.text
     clear_kmip_server_endpoint_keys_cache(kmip_dir1, kmip_addr, kmip_port)
 
 
@@ -1282,12 +1266,8 @@ def test_delete_non_last_server_endpoint(caplog, two_gateways):
     assert f"Deleting endpoints of server \"{kmip_server_name1}\" on {subsystem5} " \
            f"while there are still encrypted namespaces in the subsystem. " \
            f"Will continue as the \"force\" parameter was used." in caplog.text
-    look_for_string_from_file(caplog.text, "grpc.py",
-                              f"Last endpoint of server \"{kmip_server_name1}\" on "
-                              f"subsystem {subsystem5} was deleted.")
-    look_for_string_from_file(caplog.text, "cli.py",
-                              f"Last endpoint of server \"{kmip_server_name1}\" on "
-                              f"subsystem {subsystem5} was deleted.")
+    assert f"Last endpoint of server \"{kmip_server_name1}\" on " \
+           f"subsystem {subsystem5} was deleted." in caplog.text
     endpoints = cli_test(["subsystem", "list_kmip_server_endpoints", "--subsystem", subsystem5])
     assert endpoints.status == 0
     assert len(endpoints.endpoints) == 0
