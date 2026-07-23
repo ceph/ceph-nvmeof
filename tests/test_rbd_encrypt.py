@@ -24,10 +24,14 @@ from kmip.pie import objects  # noqa: E402
 
 image = "enc_test_image"
 image2 = "enc_test_image2"
+image3 = "enc_test_image3"
+image4 = "enc_test_image4"
 pool = "rbd"
 subsystem1 = "nqn.2016-06.io.spdk:cnode1"
 subsystem2 = "nqn.2016-06.io.spdk:cnode2"
 subsystem3 = "nqn.2016-06.io.spdk:cnode3"
+subsystem4 = "nqn.2016-06.io.spdk:cnode4"
+subsystem5 = "nqn.2016-06.io.spdk:cnode5"
 group_name = "GROUPNAME"
 kmip_dir_prefix = "/tmp/kmip/"
 kmip_dir1 = ""
@@ -36,10 +40,12 @@ kmip_addr = "127.0.0.1"
 kmip_port = 5700
 kmip_port2 = 5750
 kmip_port3 = 5800
+kmip_port4 = 5900
+kmip_port5 = 5950
+kmip_port6 = 5960
 kmip_key_ids = {}
 kmip_server_name1 = "blabla"
 kmip_server_name2 = "stam"
-kmip_procs = {}
 
 
 def _install_ssl_wrap_socket_compat():
@@ -181,6 +187,18 @@ def clear_kmip_server_endpoint_keys_cache(base_dir, addr, port):
         kmip_key_ids.pop(k, None)
 
 
+def look_for_string_from_file(lines, filename, lookfor):
+    assert lookfor in lines
+    broken_lines = lines.split("\n")
+    for line in broken_lines:
+        if lookfor not in line:
+            continue
+        if f":{filename}:" not in line:
+            continue
+        return
+    raise AssertionError(f"Didn't find \"{lookfor}\" from file {filename} in {broken_lines}")
+
+
 @pytest.fixture(scope="module")
 def two_gateways(config):
     """Sets up two Gateways"""
@@ -218,12 +236,12 @@ def two_gateways(config):
 
     kmip_dir1 = os.path.join(kmip_dir_prefix, kmip_server_name1)
     kmip_dir2 = os.path.join(kmip_dir_prefix, kmip_server_name2)
-    kmip_procs[(kmip_addr, kmip_port)] = start_kmip_server_endpoint(
-        kmip_dir1, kmip_addr, kmip_port, True)
-    kmip_procs[(kmip_addr, kmip_port2)] = start_kmip_server_endpoint(
-        kmip_dir1, kmip_addr, kmip_port2, False)
-    kmip_procs[(kmip_addr, kmip_port3)] = start_kmip_server_endpoint(
-        kmip_dir2, kmip_addr, kmip_port3, True)
+    start_kmip_server_endpoint(kmip_dir1, kmip_addr, kmip_port, True)
+    start_kmip_server_endpoint(kmip_dir1, kmip_addr, kmip_port2, False)
+    start_kmip_server_endpoint(kmip_dir2, kmip_addr, kmip_port3, True)
+    start_kmip_server_endpoint(kmip_dir1, kmip_addr, kmip_port4, False)
+    start_kmip_server_endpoint(kmip_dir1, kmip_addr, kmip_port5, False)
+    start_kmip_server_endpoint(kmip_dir1, kmip_addr, kmip_port6, False)
     kmip_dir1 = os.path.join(kmip_dir1, "certs")
     kmip_dir2 = os.path.join(kmip_dir2, "certs")
     ceph_utils = CephUtils(config)
@@ -434,7 +452,12 @@ def test_del_kmip_server_endpoint(caplog, two_gateways):
          "--port", str(kmip_port)])
     assert f"Deleting endpoint, with address {kmip_addr}:{kmip_port}, from KMIP server " \
            f"{kmip_server_name1} on subsystem {subsystem1}: Successful" in caplog.text
-    assert f"Last server endpoint for subsystem {subsystem1} was deleted" in caplog.text
+    look_for_string_from_file(caplog.text, "grpc.py",
+                              f"Last endpoint of server \"{kmip_server_name1}\" on "
+                              f"subsystem {subsystem1} was deleted.")
+    look_for_string_from_file(caplog.text, "cli.py",
+                              f"Last endpoint of server \"{kmip_server_name1}\" on "
+                              f"subsystem {subsystem1} was deleted.")
     clear_kmip_server_endpoint_keys_cache(kmip_dir1, kmip_addr, kmip_port)
     time.sleep(20)
 
@@ -1024,10 +1047,67 @@ def test_create_with_encryption(caplog, two_gateways):
     cli(["--format", "json", "namespace", "list", "--subsystem", subsystem1, "--nsid", "1"])
     assert '"encryption_algorithm": "no_algorithm"' not in caplog.text
     assert '"encryption_algorithm": "aes256"' in caplog.text
+
+
+def test_delete_the_last_server_endpoint(caplog, two_gateways):
+    endpoints = cli_test(["subsystem", "list_kmip_server_endpoints", "--subsystem", subsystem1])
+    assert endpoints.status == 0
+    assert len(endpoints.endpoints) == 1
+    caplog.clear()
+    cli(["subsystem", "del_kmip_server_endpoint", "--subsystem", subsystem1,
+         "--address", kmip_addr,
+         "--server-name", kmip_server_name1,
+         "--port", str(kmip_port)])
+    assert f"Failure deleting endpoints from KMIP server \"{kmip_server_name1}\" on subsystem " \
+           f"{subsystem1}: There are encrypted (or degraded) " \
+           f"namespaces in the subsystem. Either delete these namespaces or use the \"force\" " \
+           f"parameter." in caplog.text
+    endpoints = cli_test(["subsystem", "list_kmip_server_endpoints", "--subsystem", subsystem1])
+    assert endpoints.status == 0
+    assert len(endpoints.endpoints) == 1
+    caplog.clear()
+    cli(["subsystem", "del_kmip_server_endpoint", "--subsystem", subsystem1,
+         "--address", kmip_addr,
+         "--server-name", kmip_server_name1,
+         "--port", str(kmip_port), "--force"])
+    assert f"Deleting endpoints of server \"{kmip_server_name1}\" on {subsystem1} " \
+           f"while there are still encrypted (or degraded) namespaces in the subsystem. " \
+           f"Will continue as the \"force\" parameter was used." in caplog.text
+    endpoints = cli_test(["subsystem", "list_kmip_server_endpoints", "--subsystem", subsystem1])
+    assert endpoints.status == 0
+    assert len(endpoints.endpoints) == 0
+    caplog.clear()
+    cli(["subsystem", "add_kmip_server_endpoint", "--subsystem", subsystem1,
+         "--address", kmip_addr, "--server-name", kmip_server_name1,
+         "--port", str(kmip_port)])
+    assert f"Adding an endpoint, with address {kmip_addr}:{kmip_port}, to KMIP server " \
+           f"{kmip_server_name1} on subsystem {subsystem1}: Successful" in caplog.text
+    endpoints = cli_test(["subsystem", "list_kmip_server_endpoints", "--subsystem", subsystem1])
+    assert endpoints.status == 0
+    assert len(endpoints.endpoints) == 1
     caplog.clear()
     cli(["namespace", "del", "--subsystem", subsystem1, "--nsid", "1"])
     assert f"Deleting namespace 1 from {subsystem1}: Successful" in caplog.text
     time.sleep(20)
+    caplog.clear()
+    cli(["subsystem", "del_kmip_server_endpoint", "--subsystem", subsystem1,
+         "--address", kmip_addr, "--server-name", kmip_server_name1,
+         "--port", str(kmip_port)])
+    assert f"Deleting endpoint, with address {kmip_addr}:{kmip_port}, from KMIP server " \
+           f"{kmip_server_name1} on subsystem {subsystem1}: Successful" in caplog.text
+    assert '"force"' not in caplog.text
+    endpoints = cli_test(["subsystem", "list_kmip_server_endpoints", "--subsystem", subsystem1])
+    assert endpoints.status == 0
+    assert len(endpoints.endpoints) == 0
+    caplog.clear()
+    cli(["subsystem", "add_kmip_server_endpoint", "--subsystem", subsystem1,
+         "--address", kmip_addr, "--server-name", kmip_server_name1,
+         "--port", str(kmip_port)])
+    assert f"Adding an endpoint, with address {kmip_addr}:{kmip_port}, to KMIP server " \
+           f"{kmip_server_name1} on subsystem {subsystem1}: Successful" in caplog.text
+    endpoints = cli_test(["subsystem", "list_kmip_server_endpoints", "--subsystem", subsystem1])
+    assert endpoints.status == 0
+    assert len(endpoints.endpoints) == 1
 
 
 def test_encryption_algorithm_without_create(caplog, two_gateways):
@@ -1218,7 +1298,133 @@ def test_open_with_encryption_second_server(caplog, two_gateways):
     time.sleep(20)
 
 
-def test_delete_subsystem(caplog, two_gateways):
+def test_delete_last_server_endpoint_no_encrypted_namespaces(caplog, two_gateways):
+    caplog.clear()
+    cli(["subsystem", "add", "--subsystem", subsystem4, "--no-group-append"])
+    assert f"Adding subsystem {subsystem4}: Successful" in caplog.text
+    caplog.clear()
+    cli(["subsystem", "add_kmip_server_endpoint", "--subsystem", subsystem4,
+         "--address", kmip_addr,
+         "--server-name", kmip_server_name1,
+         "--port", str(kmip_port4)])
+    assert f"Adding an endpoint, with address {kmip_addr}:{kmip_port4}, to KMIP server " \
+           f"{kmip_server_name1} on subsystem {subsystem4}: Successful" in caplog.text
+    caplog.clear()
+    cli(["namespace", "add", "--subsystem", subsystem4, "--rbd-pool", pool,
+         "--rbd-data-pool", pool, "--rbd-image", image3, "--size", "16MB",
+         "--rbd-create-image"])
+    assert f"Adding namespace 1 to {subsystem4}: Successful" in caplog.text
+    endpoints = cli_test(["subsystem", "list_kmip_server_endpoints", "--subsystem", subsystem4])
+    assert endpoints.status == 0
+    assert len(endpoints.endpoints) == 1
+    caplog.clear()
+    cli(["subsystem", "del_kmip_server_endpoint", "--subsystem", subsystem4, "--address", kmip_addr,
+         "--server-name", kmip_server_name1,
+         "--port", str(kmip_port4)])
+    assert f"Deleting endpoint, with address {kmip_addr}:{kmip_port4}, from KMIP server " \
+           f"{kmip_server_name1} on subsystem {subsystem4}: Successful" in caplog.text
+    clear_kmip_server_endpoint_keys_cache(kmip_dir1, kmip_addr, kmip_port4)
+    endpoints = cli_test(["subsystem", "list_kmip_server_endpoints", "--subsystem", subsystem4])
+    assert endpoints.status == 0
+    assert len(endpoints.endpoints) == 0
+    caplog.clear()
+    cli(["namespace", "del", "--subsystem", subsystem4, "--nsid", "1"])
+    assert f"Deleting namespace 1 from {subsystem4}: Successful" in caplog.text
+    caplog.clear()
+    cli(["subsystem", "del", "--subsystem", subsystem4])
+    assert f"Deleting subsystem {subsystem4}: Successful" in caplog.text
+
+
+def test_delete_non_last_server_endpoint(caplog, two_gateways):
+    caplog.clear()
+    cli(["subsystem", "add", "--subsystem", subsystem5, "--no-group-append"])
+    assert f"Adding subsystem {subsystem5}: Successful" in caplog.text
+    caplog.clear()
+    cli(["subsystem", "add_kmip_server_endpoint", "--subsystem", subsystem5,
+         "--address", kmip_addr,
+         "--server-name", kmip_server_name1,
+         "--port", str(kmip_port5)])
+    assert f"Adding an endpoint, with address {kmip_addr}:{kmip_port5}, to KMIP server " \
+           f"{kmip_server_name1} on subsystem {subsystem5}: Successful" in caplog.text
+    caplog.clear()
+    cli(["subsystem", "add_kmip_server_endpoint", "--subsystem", subsystem5,
+         "--address", kmip_addr,
+         "--server-name", kmip_server_name1,
+         "--port", str(kmip_port6)])
+    assert f"Adding an endpoint, with address {kmip_addr}:{kmip_port6}, to KMIP server " \
+           f"{kmip_server_name1} on subsystem {subsystem5}: Successful" in caplog.text
+    endpoints = cli_test(["subsystem", "list_kmip_server_endpoints", "--subsystem", subsystem5])
+    assert endpoints.status == 0
+    assert len(endpoints.endpoints) == 2
+    key_id = add_key_to_kmip_server_endpoint(kmip_dir1, kmip_addr, kmip_port5, "blablabla")
+    caplog.clear()
+    cli(["namespace", "add", "--subsystem", subsystem5, "--rbd-pool", pool,
+         "--rbd-data-pool", pool, "--rbd-image", image4,
+         "--rbd-create-image", "--size", "16MB",
+         "--encryption-format", "luks1", "--key-id", key_id])
+    assert f"Adding namespace 1 to {subsystem5}: Successful" in caplog.text
+    assert f'encryption_entries: [(format: luks1, key id: {key_id})], encryption_algorithm: ' \
+           f'no_algorithm, context: <' in caplog.text
+    caplog.clear()
+    cli(["subsystem", "del_kmip_server_endpoint", "--subsystem", subsystem5, "--address", kmip_addr,
+         "--server-name", kmip_server_name1,
+         "--port", str(kmip_port6)])
+    assert f"Failure deleting endpoints from KMIP server \"{kmip_server_name1}\" on subsystem " \
+           f"{subsystem5}: There are encrypted (or degraded) " \
+           f"namespaces in the subsystem. Either delete these namespaces or use the \"force\" " \
+           f"parameter." in caplog.text
+    endpoints = cli_test(["subsystem", "list_kmip_server_endpoints", "--subsystem", subsystem5])
+    assert endpoints.status == 0
+    assert len(endpoints.endpoints) == 2
+    caplog.clear()
+    cli(["subsystem", "del_kmip_server_endpoint", "--subsystem", subsystem5, "--address", kmip_addr,
+         "--server-name", kmip_server_name1,
+         "--port", str(kmip_port6), "--force"])
+    assert f"Deleting endpoint, with address {kmip_addr}:{kmip_port6}, from KMIP server " \
+           f"{kmip_server_name1} on subsystem {subsystem5}: Successful" in caplog.text
+    assert f"Last endpoint of server \"{kmip_server_name1}\" on subsystem {subsystem5} " \
+           f"was deleted." not in caplog.text
+    clear_kmip_server_endpoint_keys_cache(kmip_dir1, kmip_addr, kmip_port6)
+    endpoints = cli_test(["subsystem", "list_kmip_server_endpoints", "--subsystem", subsystem5])
+    assert endpoints.status == 0
+    assert len(endpoints.endpoints) == 1
+    caplog.clear()
+    cli(["subsystem", "del_kmip_server_endpoint", "--subsystem", subsystem5, "--address", kmip_addr,
+         "--server-name", kmip_server_name1,
+         "--port", str(kmip_port5)])
+    assert f"Failure deleting endpoints from KMIP server \"{kmip_server_name1}\" on subsystem " \
+           f"{subsystem5}: There are encrypted (or degraded) " \
+           f"namespaces in the subsystem. Either delete these namespaces or use the \"force\" " \
+           f"parameter." in caplog.text
+    endpoints = cli_test(["subsystem", "list_kmip_server_endpoints", "--subsystem", subsystem5])
+    assert endpoints.status == 0
+    assert len(endpoints.endpoints) == 1
+    caplog.clear()
+    cli(["subsystem", "del_kmip_server_endpoint", "--subsystem", subsystem5, "--address", kmip_addr,
+         "--server-name", kmip_server_name1,
+         "--port", str(kmip_port5), "--force"])
+    assert f"Deleting endpoints of server \"{kmip_server_name1}\" on {subsystem5} " \
+           f"while there are still encrypted (or degraded) namespaces in the subsystem. " \
+           f"Will continue as the \"force\" parameter was used." in caplog.text
+    look_for_string_from_file(caplog.text, "grpc.py",
+                              f"Last endpoint of server \"{kmip_server_name1}\" on "
+                              f"subsystem {subsystem5} was deleted.")
+    look_for_string_from_file(caplog.text, "cli.py",
+                              f"Last endpoint of server \"{kmip_server_name1}\" on "
+                              f"subsystem {subsystem5} was deleted.")
+    endpoints = cli_test(["subsystem", "list_kmip_server_endpoints", "--subsystem", subsystem5])
+    assert endpoints.status == 0
+    assert len(endpoints.endpoints) == 0
+    clear_kmip_server_endpoint_keys_cache(kmip_dir1, kmip_addr, kmip_port5)
+    caplog.clear()
+    cli(["namespace", "del", "--subsystem", subsystem5, "--nsid", "1"])
+    assert f"Deleting namespace 1 from {subsystem5}: Successful" in caplog.text
+    caplog.clear()
+    cli(["subsystem", "del", "--subsystem", subsystem5])
+    assert f"Deleting subsystem {subsystem5}: Successful" in caplog.text
+
+
+def test_delete_subsystems(caplog, two_gateways):
     gw, _, _, _ = two_gateways
     found = False
     state = gw.gateway_state.omap.get_state()
@@ -1230,9 +1436,9 @@ def test_delete_subsystem(caplog, two_gateways):
     caplog.clear()
     cli(["subsystem", "del", "--subsystem", subsystem1, "--force"])
     assert f"Deleting subsystem {subsystem1}: Successful" in caplog.text
+    caplog.clear()
     cli(["subsystem", "del", "--subsystem", subsystem2, "--force"])
     assert f"Deleting subsystem {subsystem2}: Successful" in caplog.text
     state = gw.gateway_state.omap.get_state()
     for key, val in state.items():
         assert not key.startswith(gw.gateway_state.local.KMIP_SERVER_ENDPOINT_PREFIX)
-    time.sleep(30)
