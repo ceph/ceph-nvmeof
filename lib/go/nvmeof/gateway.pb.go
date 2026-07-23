@@ -2067,6 +2067,7 @@ type DelKmipServerEndpointsReq struct {
 	SubsystemNqn  string                 `protobuf:"bytes,1,opt,name=subsystem_nqn,json=subsystemNqn,proto3" json:"subsystem_nqn,omitempty"`
 	ServerName    string                 `protobuf:"bytes,2,opt,name=server_name,json=serverName,proto3" json:"server_name,omitempty"`
 	Endpoints     []*KmipServerEndpoint  `protobuf:"bytes,3,rep,name=endpoints,proto3" json:"endpoints,omitempty"`
+	Force         *bool                  `protobuf:"varint,4,opt,name=force,proto3,oneof" json:"force,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2120,6 +2121,13 @@ func (x *DelKmipServerEndpointsReq) GetEndpoints() []*KmipServerEndpoint {
 		return x.Endpoints
 	}
 	return nil
+}
+
+func (x *DelKmipServerEndpointsReq) GetForce() bool {
+	if x != nil && x.Force != nil {
+		return *x.Force
+	}
+	return false
 }
 
 type ListKmipServerEndpointsReq struct {
@@ -7317,12 +7325,14 @@ const file_gateway_proto_rawDesc = "" +
 	"\rsubsystem_nqn\x18\x01 \x01(\tR\fsubsystemNqn\x12\x1f\n" +
 	"\vserver_name\x18\x02 \x01(\tR\n" +
 	"serverName\x123\n" +
-	"\tendpoints\x18\x03 \x03(\v2\x15.kmip_server_endpointR\tendpoints\"\x9a\x01\n" +
+	"\tendpoints\x18\x03 \x03(\v2\x15.kmip_server_endpointR\tendpoints\"\xbf\x01\n" +
 	"\x1ddel_kmip_server_endpoints_req\x12#\n" +
 	"\rsubsystem_nqn\x18\x01 \x01(\tR\fsubsystemNqn\x12\x1f\n" +
 	"\vserver_name\x18\x02 \x01(\tR\n" +
 	"serverName\x123\n" +
-	"\tendpoints\x18\x03 \x03(\v2\x15.kmip_server_endpointR\tendpoints\"\x92\x01\n" +
+	"\tendpoints\x18\x03 \x03(\v2\x15.kmip_server_endpointR\tendpoints\x12\x19\n" +
+	"\x05force\x18\x04 \x01(\bH\x00R\x05force\x88\x01\x01B\b\n" +
+	"\x06_force\"\x92\x01\n" +
 	"\x1elist_kmip_server_endpoints_req\x12(\n" +
 	"\rsubsystem_nqn\x18\x01 \x01(\tH\x00R\fsubsystemNqn\x88\x01\x01\x12$\n" +
 	"\vserver_name\x18\x02 \x01(\tH\x01R\n" +
@@ -8235,6 +8245,7 @@ func file_gateway_proto_init() {
 	file_gateway_proto_msgTypes[15].OneofWrappers = []any{}
 	file_gateway_proto_msgTypes[16].OneofWrappers = []any{}
 	file_gateway_proto_msgTypes[21].OneofWrappers = []any{}
+	file_gateway_proto_msgTypes[24].OneofWrappers = []any{}
 	file_gateway_proto_msgTypes[25].OneofWrappers = []any{}
 	file_gateway_proto_msgTypes[27].OneofWrappers = []any{}
 	file_gateway_proto_msgTypes[28].OneofWrappers = []any{}

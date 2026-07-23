@@ -373,6 +373,7 @@ message del_kmip_server_endpoints_req {
 	string subsystem_nqn = 1;
 	string server_name = 2;
 	repeated kmip_server_endpoint endpoints = 3;
+	optional bool force = 4;
 }
 
 message list_kmip_server_endpoints_req {
