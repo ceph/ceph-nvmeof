@@ -1903,6 +1903,7 @@ type DelKmipServerEndpointsReq struct {
 	SubsystemNqn  string                 `protobuf:"bytes,1,opt,name=subsystem_nqn,json=subsystemNqn,proto3" json:"subsystem_nqn,omitempty"`
 	ServerName    string                 `protobuf:"bytes,2,opt,name=server_name,json=serverName,proto3" json:"server_name,omitempty"`
 	Endpoints     []*KmipServerEndpoint  `protobuf:"bytes,3,rep,name=endpoints,proto3" json:"endpoints,omitempty"`
+	Force         *bool                  `protobuf:"varint,4,opt,name=force,proto3,oneof" json:"force,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1956,6 +1957,13 @@ func (x *DelKmipServerEndpointsReq) GetEndpoints() []*KmipServerEndpoint {
 		return x.Endpoints
 	}
 	return nil
+}
+
+func (x *DelKmipServerEndpointsReq) GetForce() bool {
+	if x != nil && x.Force != nil {
+		return *x.Force
+	}
+	return false
 }
 
 type ListKmipServerEndpointsReq struct {
@@ -5594,6 +5602,7 @@ type Connection struct {
 	Subsystem                         *string                    `protobuf:"bytes,12,opt,name=subsystem,proto3,oneof" json:"subsystem,omitempty"`
 	DisconnectedDueToKeepaliveTimeout *bool                      `protobuf:"varint,13,opt,name=disconnected_due_to_keepalive_timeout,json=disconnectedDueToKeepaliveTimeout,proto3,oneof" json:"disconnected_due_to_keepalive_timeout,omitempty"`
 	DhchapControllerOrigin            *DHCHAPControllerKeyOrigin `protobuf:"varint,14,opt,name=dhchap_controller_origin,json=dhchapControllerOrigin,proto3,enum=DHCHAPControllerKeyOrigin,oneof" json:"dhchap_controller_origin,omitempty"`
+	HostDeleted                       *bool                      `protobuf:"varint,15,opt,name=host_deleted,json=hostDeleted,proto3,oneof" json:"host_deleted,omitempty"`
 	unknownFields                     protoimpl.UnknownFields
 	sizeCache                         protoimpl.SizeCache
 }
@@ -5724,6 +5733,13 @@ func (x *Connection) GetDhchapControllerOrigin() DHCHAPControllerKeyOrigin {
 		return *x.DhchapControllerOrigin
 	}
 	return DHCHAPControllerKeyOrigin_no_key
+}
+
+func (x *Connection) GetHostDeleted() bool {
+	if x != nil && x.HostDeleted != nil {
+		return *x.HostDeleted
+	}
+	return false
 }
 
 type ConnectionsInfo struct {
@@ -7111,12 +7127,14 @@ const file_gateway_proto_rawDesc = "" +
 	"\rsubsystem_nqn\x18\x01 \x01(\tR\fsubsystemNqn\x12\x1f\n" +
 	"\vserver_name\x18\x02 \x01(\tR\n" +
 	"serverName\x123\n" +
-	"\tendpoints\x18\x03 \x03(\v2\x15.kmip_server_endpointR\tendpoints\"\x9a\x01\n" +
+	"\tendpoints\x18\x03 \x03(\v2\x15.kmip_server_endpointR\tendpoints\"\xbf\x01\n" +
 	"\x1ddel_kmip_server_endpoints_req\x12#\n" +
 	"\rsubsystem_nqn\x18\x01 \x01(\tR\fsubsystemNqn\x12\x1f\n" +
 	"\vserver_name\x18\x02 \x01(\tR\n" +
 	"serverName\x123\n" +
-	"\tendpoints\x18\x03 \x03(\v2\x15.kmip_server_endpointR\tendpoints\"\x92\x01\n" +
+	"\tendpoints\x18\x03 \x03(\v2\x15.kmip_server_endpointR\tendpoints\x12\x19\n" +
+	"\x05force\x18\x04 \x01(\bH\x00R\x05force\x88\x01\x01B\b\n" +
+	"\x06_force\"\x92\x01\n" +
 	"\x1elist_kmip_server_endpoints_req\x12(\n" +
 	"\rsubsystem_nqn\x18\x01 \x01(\tH\x00R\fsubsystemNqn\x88\x01\x01\x12$\n" +
 	"\vserver_name\x18\x02 \x01(\tH\x01R\n" +
@@ -7477,7 +7495,7 @@ const file_gateway_proto_rawDesc = "" +
 	"\rerror_message\x18\x02 \x01(\tR\ferrorMessage\x12$\n" +
 	"\x0eallow_any_host\x18\x03 \x01(\bR\fallowAnyHost\x12#\n" +
 	"\rsubsystem_nqn\x18\x04 \x01(\tR\fsubsystemNqn\x12\x1b\n" +
-	"\x05hosts\x18\x05 \x03(\v2\x05.hostR\x05hosts\"\xa5\x05\n" +
+	"\x05hosts\x18\x05 \x03(\v2\x05.hostR\x05hosts\"\xde\x05\n" +
 	"\n" +
 	"connection\x12\x10\n" +
 	"\x03nqn\x18\x01 \x01(\tR\x03nqn\x12\x16\n" +
@@ -7495,7 +7513,8 @@ const file_gateway_proto_rawDesc = "" +
 	"use_dhchap\x18\v \x01(\bH\x02R\tuseDhchap\x88\x01\x01\x12!\n" +
 	"\tsubsystem\x18\f \x01(\tH\x03R\tsubsystem\x88\x01\x01\x12U\n" +
 	"%disconnected_due_to_keepalive_timeout\x18\r \x01(\bH\x04R!disconnectedDueToKeepaliveTimeout\x88\x01\x01\x12Y\n" +
-	"\x18dhchap_controller_origin\x18\x0e \x01(\x0e2\x1a.DHCHAPControllerKeyOriginH\x05R\x16dhchapControllerOrigin\x88\x01\x01B\t\n" +
+	"\x18dhchap_controller_origin\x18\x0e \x01(\x0e2\x1a.DHCHAPControllerKeyOriginH\x05R\x16dhchapControllerOrigin\x88\x01\x01\x12&\n" +
+	"\fhost_deleted\x18\x0f \x01(\bH\x06R\vhostDeleted\x88\x01\x01B\t\n" +
 	"\a_secureB\n" +
 	"\n" +
 	"\b_use_pskB\r\n" +
@@ -7503,7 +7522,8 @@ const file_gateway_proto_rawDesc = "" +
 	"\n" +
 	"_subsystemB(\n" +
 	"&_disconnected_due_to_keepalive_timeoutB\x1b\n" +
-	"\x19_dhchap_controller_origin\"\xa3\x01\n" +
+	"\x19_dhchap_controller_originB\x0f\n" +
+	"\r_host_deleted\"\xa3\x01\n" +
 	"\x10connections_info\x12\x16\n" +
 	"\x06status\x18\x01 \x01(\x05R\x06status\x12#\n" +
 	"\rerror_message\x18\x02 \x01(\tR\ferrorMessage\x12#\n" +
@@ -8012,6 +8032,7 @@ func file_gateway_proto_init() {
 	file_gateway_proto_msgTypes[14].OneofWrappers = []any{}
 	file_gateway_proto_msgTypes[15].OneofWrappers = []any{}
 	file_gateway_proto_msgTypes[18].OneofWrappers = []any{}
+	file_gateway_proto_msgTypes[21].OneofWrappers = []any{}
 	file_gateway_proto_msgTypes[22].OneofWrappers = []any{}
 	file_gateway_proto_msgTypes[24].OneofWrappers = []any{}
 	file_gateway_proto_msgTypes[25].OneofWrappers = []any{}
