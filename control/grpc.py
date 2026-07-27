@@ -1012,10 +1012,16 @@ class GatewayService(pb2_grpc.GatewayServicer):
         self.ana_grp_subs_load = defaultdict(dict)
         self.max_ana_grps = self.config.getint_with_default("gateway", "max_gws_in_grp", 16)
         if self.max_ana_grps > self.max_namespaces:
-            self.logger.warning(f"Maximal number of load balancing groups can't be greather "
+            self.logger.warning(f"Maximal number of load balancing groups can't be greater "
                                 f"than the maximal number of namespaces, will truncate "
                                 f"to {self.max_namespaces}")
             self.max_ana_grps = self.max_namespaces
+
+        if self.max_ana_grps >= GatewayService.MAINTENANCE_ANA_GROUP:
+            self.logger.warning(f"Maximal number of load balancing groups can't be greater "
+                                f"than or equal to {GatewayService.MAINTENANCE_ANA_GROUP}, will "
+                                f"truncate to {GatewayService.MAINTENANCE_ANA_GROUP - 1}")
+            self.max_ana_grps = GatewayService.MAINTENANCE_ANA_GROUP - 1
 
         if self.max_namespaces_per_subsystem > self.max_namespaces:
             self.logger.warning(f"Maximal number of namespace per subsystem can't be greater "
@@ -3959,21 +3965,25 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 anagrpid = ns_entry.anagrpid
                 self.logger.debug(f"Read a load balancing group of {anagrpid} from the OMAP file")
             request.anagrpid = abs(request.anagrpid)  # if context = none
-            try:
-                ret = self.spdk_rpc_client.nvmf_subsystem_set_ns_ana_group(
-                    nqn=request.subsystem_nqn,
-                    nsid=request.nsid,
-                    anagrpid=request.anagrpid,
-                )
-                self.logger.debug(f"nvmf_subsystem_set_ns_ana_group: {ret}")
-            except Exception as ex:
-                errmsg = f"{change_lb_group_failure_prefix}:\n{ex}"
-                resp = self.parse_json_exeption(ex)
-                status = errno.EINVAL
-                if resp:
-                    status = resp["code"]
-                    errmsg = f"{change_lb_group_failure_prefix}: {resp['message']}"
-                return pb2.req_status(status=status, error_message=errmsg)
+            if request.anagrpid == GatewayService.MAINTENANCE_ANA_GROUP:
+                self.logger.debug("Maintenance ANA group, will not call SPDK")
+                ret = True
+            else:
+                try:
+                    ret = self.spdk_rpc_client.nvmf_subsystem_set_ns_ana_group(
+                        nqn=request.subsystem_nqn,
+                        nsid=request.nsid,
+                        anagrpid=request.anagrpid,
+                    )
+                    self.logger.debug(f"nvmf_subsystem_set_ns_ana_group: {ret}")
+                except Exception as ex:
+                    errmsg = f"{change_lb_group_failure_prefix}:\n{ex}"
+                    resp = self.parse_json_exeption(ex)
+                    status = errno.EINVAL
+                    if resp:
+                        status = resp["code"]
+                        errmsg = f"{change_lb_group_failure_prefix}: {resp['message']}"
+                    return pb2.req_status(status=status, error_message=errmsg)
 
             # Just in case SPDK failed with no exception
             if not ret:
