@@ -19,6 +19,7 @@ image = "enc_test_image"
 image2 = "enc_test_image2"
 image3 = "enc_test_image3"
 image4 = "enc_test_image4"
+image5 = "enc_test_image5"
 pool = "rbd"
 subsystem1 = "nqn.2016-06.io.spdk:cnode1"
 subsystem2 = "nqn.2016-06.io.spdk:cnode2"
@@ -997,9 +998,46 @@ def test_encryption_algorithm_without_create(caplog, two_gateways):
                                        encryption_algorithm="aes128")
     caplog.clear()
     ret = stub.namespace_add(ns_add_req)
-    assert ret.status == 0
+    assert ret.status != 0
     assert f'encryption_entries: [(format: luks1, key id: {key_id})], encryption_algorithm: ' \
            f'aes128, context: <grpc._server' in caplog.text
+    assert f"Failure adding namespace to {subsystem1}: Encryption algorithm is only allowed " \
+           f"when creating a new image" in caplog.text
+
+
+def test_encryption_algorithm_update(caplog, two_gateways):
+    gwA, _, gwB, _ = two_gateways
+    key_id = add_key_to_kmip_server_endpoint(kmip_dir1, kmip_addr, kmip_port, "bla")
+    configA = gwA.gateway_rpc.config
+    configB = gwB.gateway_rpc.config
+    portA = configA.config["gateway"]["port"]
+    portB = configB.config["gateway"]["port"]
+    caplog.clear()
+    cli(["namespace", "add", "--subsystem", subsystem1, "--rbd-pool", pool,
+         "--rbd-data-pool", pool, "--rbd-image", image5,
+         "--rbd-create-image", "--size", "16MB",
+         "--encryption-format", "luks1", "--key-id", key_id,
+         "--encryption-algorithm", "aes128"])
+    assert f"Adding namespace 1 to {subsystem1}: Successful" in caplog.text
+    assert f'encryption_entries: [(format: luks1, key id: {key_id})], ' \
+           f'encryption_algorithm: aes128, context: <grpc._server' in caplog.text
+    time.sleep(30)
+    assert f'encryption_entries: [(format: luks1, key id: {key_id})], ' \
+           f'encryption_algorithm: aes128, context: None' in caplog.text
+    caplog.clear()
+    cli(["--format", "json", "--server-port", portA, "namespace", "list",
+         "--subsystem", subsystem1, "--nsid", "1"])
+    assert '"nsid": 1' in caplog.text
+    assert '"format": "luks1"' in caplog.text
+    assert f'"key_id": "{key_id}"' in caplog.text
+    assert '"encryption_algorithm": "aes128"' in caplog.text
+    caplog.clear()
+    cli(["--format", "json", "--server-port", portB, "namespace", "list",
+         "--subsystem", subsystem1, "--nsid", "1"])
+    assert '"nsid": 1' in caplog.text
+    assert '"format": "luks1"' in caplog.text
+    assert f'"key_id": "{key_id}"' in caplog.text
+    assert '"encryption_algorithm": "aes128"' in caplog.text
     cli(["namespace", "del", "--subsystem", subsystem1, "--nsid", "1"])
     assert f"Deleting namespace 1 from {subsystem1}: Successful" in caplog.text
 
