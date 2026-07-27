@@ -280,7 +280,8 @@ def test_degraded_namespace(caplog, two_gateways):
     portA = configA.config["gateway"]["port"]
     portB = configB.config["gateway"]["port"]
     caplog.clear()
-    cli(["subsystem", "add", "--subsystem", subsystem1, "--no-group-append"])
+    cli(["subsystem", "add", "--subsystem", subsystem1, "--no-group-append",
+         "--max-namespaces", "10"])
     assert f"Adding subsystem {subsystem1}: Successful" in caplog.text
     time.sleep(20)
     caplog.clear()
@@ -461,7 +462,18 @@ def test_degraded_namespace(caplog, two_gateways):
     assert look_for_key in state.keys()
     val = state[look_for_key]
     req = json_format.Parse(val, pb2.namespace_add_req(), ignore_unknown_fields=True)
-    assert req.anagrpid == -1
+    assert req.anagrpid == -1 or req.anagrpid == gwB.gateway_rpc.MAINTENANCE_ANA_GROUP
+    if req.anagrpid == gwB.gateway_rpc.MAINTENANCE_ANA_GROUP:
+        print("Namespace has a maintenance load balancing group ID, will wait for persistent one")
+        for _ in range(120):
+            state = gwB.gateway_state.omap.get_state()
+            assert look_for_key in state.keys()
+            val = state[look_for_key]
+            req = json_format.Parse(val, pb2.namespace_add_req(), ignore_unknown_fields=True)
+            if req.anagrpid == -1:
+                break
+            time.sleep(1)
+        assert req.anagrpid == -1
     assert f"Received auto request to change load balancing group for namespace with ID 1 " \
            f"in {subsystem1} to -1" not in caplog.text
     print("Run the KMIP server again")
