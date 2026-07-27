@@ -1701,7 +1701,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         assert self.rpc_lock.locked(), "RPC is unlocked when calling create_rbd_bdev()"
 
-        if create_image:
+        if context and create_image:
             cr_img_msg = "will create image if doesn't exist"
         else:
             cr_img_msg = "will not create image if doesn't exist"
@@ -1741,12 +1741,16 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         enc_formats_str = enc_formats_str.removesuffix(", ")
 
-        if create_image and len(encryption_entries) > 1:
+        if context and create_image and len(encryption_entries) > 1:
             return BdevStatus(status=errno.EINVAL,
                               error_message="At most one encryption format can be specified when "
                                             "creating a new image")
 
         if encryption_algorithm != pb2.EncryptionAlgorithm.no_algorithm:
+            if context and not create_image:
+                return BdevStatus(status=errno.EINVAL,
+                                  error_message="Encryption algorithm is only allowed when "
+                                                "creating a new image")
             enc_algo_str = GatewayEnumUtils.get_key_from_value(pb2.EncryptionAlgorithm,
                                                                encryption_algorithm)
             if enc_algo_str is None:
@@ -1773,7 +1777,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         created_rbd_pool = None
         created_rbd_image_name = None
-        if create_image:
+        created_rados_namespace_name = None
+        if context and create_image:
             if not rbd_pool_name:
                 return BdevStatus(status=errno.ENODEV,
                                   error_message="Empty RBD pool name")
