@@ -567,6 +567,27 @@ class TestCreate:
         cli(["namespace", "del", "--subsystem", subsystem, "--nsid", "1"])
         assert f"Deleting namespace 1 from {subsystem}: Successful" in caplog.text
 
+    def test_add_namespace_invalid_uuid(self, caplog, gateway):
+        invalid_uuids = [
+            "not-a-uuid",
+            "948878ee-c3b2-4d58-a29b",  # too short
+            "948878ee-c3b2-4d58-a29b-2cff713fc02dXXXX",  # too long
+            "948878ee-ZZZZ-4d58-a29b-2cff713fc02d",  # non-hex chars
+            "948878eec3b24d58a29b2cff713fc02d",  # no dashes
+        ]
+        for bad_uuid in invalid_uuids:
+            caplog.clear()
+            rc = 0
+            try:
+                cli(["namespace", "add", "--subsystem", subsystem,
+                     "--rbd-pool", pool, "--rbd-image", image2,
+                     "--uuid", bad_uuid, "--size", "16MB", "--rbd-create-image"])
+            except SystemExit as sysex:
+                rc = sysex.code
+            assert rc == 2, f"Expected exit code 2 for uuid={bad_uuid!r}, got {rc}"
+            assert "is not a valid UUID" in caplog.text, (
+                f"Expected validation error for uuid={bad_uuid!r}, got: {caplog.text}")
+
     def test_add_namespace_double_uuid(self, caplog, gateway):
         caplog.clear()
         cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool,
