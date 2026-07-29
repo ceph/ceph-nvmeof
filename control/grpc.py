@@ -6493,10 +6493,17 @@ class GatewayService(pb2_grpc.GatewayServicer):
             if rc.status == 0:
                 if removed_host_is_connected:
                     wrn_msg = \
-                        f"Host {request.host_nqn} is still connected to " \
-                        f"{request.subsystem_nqn}\n" \
-                        f"Reconnecting the host would fail unless " \
-                        f"it is re-added to the subsystem."
+                        f"There is an active connection from host {request.host_nqn} to " \
+                        f"subsystem {request.subsystem_nqn}\n"
+                    if request.keep_connections:
+                        wrn_msg += \
+                            "The connection will be kept open after host access removal " \
+                            "but, in case of disconnection, a reconnect would fail unless "\
+                            "the host is re-added to the subsystem."
+                    else:
+                        wrn_msg += \
+                            "Reconnecting the host would fail unless " \
+                            "it is re-added to the subsystem."
                     self.logger.warning(wrn_msg)
                     if host_remove_warning:
                         host_remove_warning += "\n"
