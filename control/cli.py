@@ -2791,6 +2791,9 @@ class GatewayClient:
             self.cli.parser.error("load-balancing-group value must be positive")
         if args.nsid is not None and args.nsid <= 0:
             self.cli.parser.error("nsid value must be positive")
+        if args.uuid is not None and not GatewayUtils.is_valid_uuid(args.uuid):
+            self.cli.parser.error(f"--uuid value '{args.uuid}' is not a valid UUID "
+                                  f"(expected format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)")
         if args.rbd_create_image:
             if args.size is None:
                 self.cli.parser.error("--size argument is mandatory for add command when "

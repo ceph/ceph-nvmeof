@@ -3499,6 +3499,12 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         if not request.uuid:
             request.uuid = str(uuid.uuid4())
+        elif not GatewayUtils.is_valid_uuid(request.uuid):
+            errmsg = (f"Failure adding namespace {nsid_msg}to {request.subsystem_nqn}: "
+                      f"Invalid UUID '{request.uuid}' "
+                      f"(expected format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)")
+            self.logger.error(errmsg)
+            return pb2.nsid_status(status=errno.EINVAL, error_message=errmsg)
 
         if request.trash_image and not request.create_image:
             self.logger.warning("Can't trash the RBD image on delete if it "
