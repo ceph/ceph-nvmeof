@@ -1061,8 +1061,10 @@ class DiscoveryService:
         if not should_send_async_event:
             return
 
-        for key in list(self.conn_vals.keys()):
-            if self.conn_vals[key].recv_async is True:
+        with self.lock:
+            for self_conn in self.conn_vals.values():
+                if not self_conn.recv_async:
+                    continue
                 pdu_reply = Pdu()
                 pdu_reply.type = NVME_TCP_PDU.RSP
                 pdu_reply.header_length = 24
@@ -1071,20 +1073,23 @@ class DiscoveryService:
                 async_reply = CqeNVMe()
                 # async_event_type:0x2 async_event_info:0xf0 log_page_identifier:0x70
                 async_reply.dword0 = int.from_bytes(b'\x02\xf0\x70\x00', byteorder='little')
-                async_reply.sq_head_ptr = self.conn_vals[key].sq_head_ptr
-                async_reply.cmd_id = self.conn_vals[key].async_cmd_id
+                async_reply.sq_head_ptr = self_conn.sq_head_ptr
+                async_reply.cmd_id = self_conn.async_cmd_id
 
                 try:
-                    self.conn_vals[key].connection.sendall(pdu_reply + async_reply)
+                    self_conn.connection.sendall(pdu_reply + async_reply)
                 except BrokenPipeError:
-                    self.logger.error("client disconnected unexpectedly.")
-                    return
+                    # let handle_timeout() reap the dead connection, keep
+                    # notifying the other hosts
+                    self.logger.error(f"client {self_conn.connection} "
+                                      f"disconnected unexpectedly.")
+                    continue
                 except OSError as ex:
-                    self.logger.exception(f"got OS error {ex.errno}: {ex.strerror}")
-                    return
+                    self.logger.exception(f"got OS error {ex.errno}: {ex.strerror} "
+                                          f"notifying {self_conn.connection}")
+                    continue
                 self.logger.debug("notify and reply async request.")
-                self.conn_vals[key].recv_async = False
-                return
+                self_conn.recv_async = False
 
     def handle_timeout(self):
         """Handle connection timeout."""
