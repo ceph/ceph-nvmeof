@@ -8180,21 +8180,6 @@ class GatewayService(pb2_grpc.GatewayServicer):
     def disable_spdk_nvmf_logs(self, request, context=None):
         return self.execute_grpc_function(self.disable_spdk_nvmf_logs_safe, request, context)
 
-    def parse_version(self, version):
-        if not version:
-            return None
-        try:
-            vlist = version.split(".")
-            if len(vlist) != 3:
-                raise Exception
-            v1 = int(vlist[0])
-            v2 = int(vlist[1])
-            v3 = int(vlist[2])
-        except Exception:
-            self.logger.exception(f"Can't parse version \"{version}\"")
-            return None
-        return (v1, v2, v3)
-
     def get_gateway_info_safe(self, request, context):
         """Get gateway's info"""
 
@@ -8237,26 +8222,12 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                io_stats_enabled=self.io_stats_enabled,
                                status=0,
                                error_message="")
-        cli_ver = self.parse_version(cli_version_string)
-        gw_ver = self.parse_version(gw_version_string)
-        if cli_ver is not None and gw_ver is not None and cli_ver < gw_ver:
-            ret.bool_status = False
-            ret.status = errno.EINVAL
-            ret.error_message = f"CLI version {cli_version_string} is older " \
-                                f"than gateway's version {gw_version_string}"
-        elif not gw_version_string:
+        if not gw_version_string:
             ret.bool_status = False
             ret.status = errno.EINVAL
             ret.error_message = "Gateway's version not found"
-        elif not gw_ver:
-            ret.bool_status = False
-            ret.status = errno.EINVAL
-            ret.error_message = f"Invalid gateway's version {gw_version_string}"
         if not cli_version_string:
             self.logger.warning("No CLI version specified, can't check version compatibility")
-        elif not cli_ver:
-            self.logger.warning(f"Invalid CLI version {cli_version_string}, "
-                                f"can't check version compatibility")
         if ret.status == 0:
             log_func = self.logger.debug
         else:
