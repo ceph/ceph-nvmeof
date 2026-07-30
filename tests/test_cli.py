@@ -164,28 +164,6 @@ class TestGet:
     def test_get_gateway_info(self, caplog, gateway):
         gw, stub = gateway
         caplog.clear()
-        gw_info_req = pb2.get_gateway_info_req(cli_version="0.0.1")
-        ret = stub.get_gateway_info(gw_info_req)
-        assert ret.status != 0
-        assert "is older than gateway" in caplog.text
-        caplog.clear()
-        gw_info_req = pb2.get_gateway_info_req()
-        ret = stub.get_gateway_info(gw_info_req)
-        assert "No CLI version specified" in caplog.text
-        assert ret.status == 0
-        caplog.clear()
-        gw_info_req = pb2.get_gateway_info_req(cli_version="0.0.1.4")
-        ret = stub.get_gateway_info(gw_info_req)
-        assert "Can't parse version" in caplog.text
-        assert "Invalid CLI version" in caplog.text
-        assert ret.status == 0
-        caplog.clear()
-        gw_info_req = pb2.get_gateway_info_req(cli_version="0.X.4")
-        ret = stub.get_gateway_info(gw_info_req)
-        assert "Can't parse version" in caplog.text
-        assert "Invalid CLI version" in caplog.text
-        assert ret.status == 0
-        caplog.clear()
         cli_ver = os.getenv("NVMEOF_VERSION")
         save_port = gw.config.config["gateway"]["port"]
         save_addr = gw.config.config["gateway"]["addr"]

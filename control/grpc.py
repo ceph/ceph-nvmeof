@@ -8199,7 +8199,6 @@ class GatewayService(pb2_grpc.GatewayServicer):
             spdk_version_string = self.spdk_version
         else:
             spdk_version_string = os.getenv("NVMEOF_SPDK_VERSION")
-        cli_version_string = request.cli_version
         addr = self.config.get_with_default("gateway", "addr", "")
         port = self.config.get_with_default("gateway", "port", "")
         initialization_over = self.gateway_state.is_initialization_over()
@@ -8226,8 +8225,6 @@ class GatewayService(pb2_grpc.GatewayServicer):
             ret.bool_status = False
             ret.status = errno.EINVAL
             ret.error_message = "Gateway's version not found"
-        if not cli_version_string:
-            self.logger.warning("No CLI version specified, can't check version compatibility")
         if ret.status == 0:
             log_func = self.logger.debug
         else:
