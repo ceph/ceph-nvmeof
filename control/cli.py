@@ -358,12 +358,6 @@ class GatewayClient:
         ver = os.getenv("NVMEOF_VERSION")
         req = pb2.get_gateway_info_req(cli_version=ver)
         gw_info = self.stub.get_gateway_info(req)
-        if gw_info.status == 0:
-            gw_ver = self.parse_version_string(gw_info.version)
-            if gw_ver is None:
-                gw_info.status = errno.EINVAL
-                gw_info.bool_status = False
-                gw_info.error_message = f"Can't parse gateway version \"{gw_info.version}\"."
         return gw_info
 
     def gw_info(self, args):
