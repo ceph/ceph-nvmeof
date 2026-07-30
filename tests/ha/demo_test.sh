@@ -388,10 +388,27 @@ function demo_bdevperf_unsecured()
     echo "ℹ️  add hosts for deletion test"
     cephnvmf_func host add --subsystem ${NQN} --host-nqn ${NQN}host31
     cephnvmf_func host add --subsystem ${NQN} --host-nqn ${NQN}host32
+    cephnvmf_func host add --subsystem ${NQN} --host-nqn ${NQN}host34
 
     echo "ℹ️  bdevperf tcp connect ip: $NVMEOF_IP_ADDRESS port: $NVMEOF_IO_PORT nqn: ${NQN}host31"
-    devs=`make exec -s SVC=bdevperf OPTS=-T CMD="$rpc -v -s $BDEVPERF_SOCKET bdev_nvme_attach_controller -b Nvme0 -t tcp -a $NVMEOF_IP_ADDRESS -s $NVMEOF_IO_PORT -f ipv4 -n $NQN -q ${NQN}host31 -l -1 -o 10"`
-    [[ "$devs" == "Nvme0n1" ]]
+    make exec -s SVC=bdevperf OPTS=-T CMD="$rpc -v -s $BDEVPERF_SOCKET bdev_nvme_attach_controller -b Nvme0 -t tcp -a $NVMEOF_IP_ADDRESS -s $NVMEOF_IO_PORT -f ipv4 -n $NQN -q ${NQN}host31 -l -1 -o 10"
+
+    echo "ℹ️  bdevperf tcp connect ip: $NVMEOF_IP_ADDRESS port: $NVMEOF_IO_PORT nqn: ${NQN}host34"
+    make exec -s SVC=bdevperf OPTS=-T CMD="$rpc -v -s $BDEVPERF_SOCKET bdev_nvme_attach_controller -b Nvme3 -t tcp -a $NVMEOF_IP_ADDRESS -s ${port2} -f ipv4 -n $NQN -q ${NQN}host34 -l -1 -o 10"
+
+    echo "ℹ️  verify controllers list"
+    controllers=`make -s exec SVC=bdevperf OPTS=-T CMD="$rpc -v -s $BDEVPERF_SOCKET bdev_nvme_get_controllers"`
+    [[ `echo $controllers | jq -r '.[0].name'` == "Nvme0" ]]
+    [[ `echo $controllers | jq -r '.[0].ctrlrs[0].state'` == "enabled" ]]
+    [[ `echo $controllers | jq -r '.[0].ctrlrs[0].trid.traddr'` == "${NVMEOF_IP_ADDRESS}" ]]
+    [[ `echo $controllers | jq -r '.[0].ctrlrs[0].trid.trsvcid'` == "${NVMEOF_IO_PORT}" ]]
+    [[ `echo $controllers | jq -r '.[0].ctrlrs[0].host.nqn'` == "${NQN}host31" ]]
+    [[ `echo $controllers | jq -r '.[1].name'` == "Nvme3" ]]
+    [[ `echo $controllers | jq -r '.[1].ctrlrs[0].state'` == "enabled" ]]
+    [[ `echo $controllers | jq -r '.[1].ctrlrs[0].trid.traddr'` == "${NVMEOF_IP_ADDRESS}" ]]
+    [[ `echo $controllers | jq -r '.[1].ctrlrs[0].trid.trsvcid'` == "${port2}" ]]
+    [[ `echo $controllers | jq -r '.[1].ctrlrs[0].host.nqn'` == "${NQN}host34" ]]
+    [[ `echo $controllers | jq -r '.[2]'` == "null" ]]
 
     echo "ℹ️  verify connection list for deletion test"
     conns=$(cephnvmf_func --output stdio --format json connection list --subsystem $NQN)
@@ -409,28 +426,76 @@ function demo_bdevperf_unsecured()
     [[ `echo $conns | jq -r '.connections[0].use_dhchap'` == "false" ]]
     [[ `echo $conns | jq -r '.connections[0].dhchap_controller_origin'` == "no_key" ]]
     [[ `echo $conns | jq -r '.connections[0].subsystem'` == "${NQN}" ]]
-    [[ `echo $conns | jq -r '.connections[1].nqn'` == "${NQN}host32" ]]
-    [[ `echo $conns | jq -r '.connections[1].trsvcid'` == 0 ]]
-    [[ `echo $conns | jq -r '.connections[1].traddr'` == "<n/a>" ]]
+    [[ `echo $conns | jq -r '.connections[1].nqn'` == "${NQN}host34" ]]
+    [[ `echo $conns | jq -r '.connections[1].trsvcid'` == "${port2}" ]]
+    [[ `echo $conns | jq -r '.connections[1].traddr'` == "${NVMEOF_IP_ADDRESS}" ]]
     [[ `echo $conns | jq -r '.connections[1].adrfam'` == "ipv4" ]]
-    [[ `echo $conns | jq -r '.connections[1].trtype'` == "" ]]
-    [[ `echo $conns | jq -r '.connections[1].qpairs_count'` == -1 ]]
-    [[ `echo $conns | jq -r '.connections[1].controller_id'` == -1 ]]
-    [[ `echo $conns | jq -r '.connections[1].connected'` == "false" ]]
+    [[ `echo $conns | jq -r '.connections[1].trtype'` == "TCP" ]]
+    [[ `echo $conns | jq -r '.connections[1].connected'` == "true" ]]
+    [[ `echo $conns | jq -r '.connections[1].qpairs_count'` == "1" ]]
+    [[ `echo $conns | jq -r '.connections[1].secure'` == "false" ]]
     [[ `echo $conns | jq -r '.connections[1].use_psk'` == "false" ]]
     [[ `echo $conns | jq -r '.connections[1].use_dhchap'` == "false" ]]
     [[ `echo $conns | jq -r '.connections[1].dhchap_controller_origin'` == "no_key" ]]
-    [[ `echo $conns | jq -r '.connections[1].subsystem'` == "${NQN}" ]]
-    [[ `echo $conns | jq -r '.connections[2]'` == "null" ]]
+    [[ `echo $conns | jq -r '.connections[2].nqn'` == "${NQN}host32" ]]
+    [[ `echo $conns | jq -r '.connections[2].trsvcid'` == 0 ]]
+    [[ `echo $conns | jq -r '.connections[2].traddr'` == "<n/a>" ]]
+    [[ `echo $conns | jq -r '.connections[2].adrfam'` == "ipv4" ]]
+    [[ `echo $conns | jq -r '.connections[2].trtype'` == "" ]]
+    [[ `echo $conns | jq -r '.connections[2].qpairs_count'` == -1 ]]
+    [[ `echo $conns | jq -r '.connections[2].controller_id'` == -1 ]]
+    [[ `echo $conns | jq -r '.connections[2].connected'` == "false" ]]
+    [[ `echo $conns | jq -r '.connections[2].use_psk'` == "false" ]]
+    [[ `echo $conns | jq -r '.connections[2].use_dhchap'` == "false" ]]
+    [[ `echo $conns | jq -r '.connections[2].dhchap_controller_origin'` == "no_key" ]]
+    [[ `echo $conns | jq -r '.connections[2].subsystem'` == "${NQN}" ]]
+    [[ `echo $conns | jq -r '.connections[3]'` == "null" ]]
 
     echo "ℹ️  test deleting connected host"
     rm -f /tmp/hostdel.err
     cephnvmf_func --output stdio host del --subsystem ${NQN} --host-nqn ${NQN}host31 ${NQN}host32 > /dev/null 2> /tmp/hostdel.err
     cat /tmp/hostdel.err
-    grep -q "Host ${NQN}host31 is still connected to ${NQN}" /tmp/hostdel.err
+    grep -q "There is an active connection from host ${NQN}host31 to subsystem ${NQN}" /tmp/hostdel.err
     grep -q "Reconnecting the host would fail unless it is re-added to the subsystem" /tmp/hostdel.err
-    grep "is still connected" /tmp/hostdel.err | grep -q -v "Host ${NQN}host32"
+    set +e
+    grep "There is an active connection from host ${NQN}host32 to subsystem ${NQN}" /tmp/hostdel.err
+    if [[ $? -eq 0 ]]; then
+        echo "Shouldn't see the message about host connected for ${NQN}host32"
+        exit 1
+    fi
+    grep -q "The connection will be kept open after host access removal" /tmp/hostdel.err
+    if [[ $? -eq 0 ]]; then
+        echo "Shouldn't see the message about connection being kept"
+        exit 1
+    fi
+    set -e
     rm -f /tmp/hostdel.err
+
+    echo "ℹ️  test deleting connected host keeping connections"
+    rm -f /tmp/hostdel.err
+    cephnvmf_func --output stdio host del --subsystem ${NQN} --host-nqn ${NQN}host34 --keep-connections > /dev/null 2> /tmp/hostdel.err
+    cat /tmp/hostdel.err
+    grep -q "There is an active connection from host ${NQN}host34 to subsystem ${NQN}" /tmp/hostdel.err
+    grep -q "The connection will be kept open after host access removal but, in case of disconnection, a reconnect would fail unless the host is re-added to the subsystem." /tmp/hostdel.err
+    set +e
+    grep -q "There is an active connection from host ${NQN}host32 to subsystem ${NQN}" /tmp/hostdel.err
+    if [[ $? -eq 0 ]]; then
+        echo "Shouldn't see the message about host connected for ${NQN}host32"
+        exit 1
+    fi
+    set -e
+    rm -f /tmp/hostdel.err
+
+    make exec SVC=bdevperf OPTS=-T CMD="$rpc -v -s $BDEVPERF_SOCKET bdev_nvme_detach_controller Nvme3"
+
+    echo "ℹ️  verify controllers list after detach"
+    controllers=`make -s exec SVC=bdevperf OPTS=-T CMD="$rpc -v -s $BDEVPERF_SOCKET bdev_nvme_get_controllers"`
+    [[ `echo $controllers | jq -r '.[0].name'` == "Nvme0" ]]
+    [[ `echo $controllers | jq -r '.[0].ctrlrs[0].state'` == "enabled" ]]
+    [[ `echo $controllers | jq -r '.[0].ctrlrs[0].trid.traddr'` == "${NVMEOF_IP_ADDRESS}" ]]
+    [[ `echo $controllers | jq -r '.[0].ctrlrs[0].trid.trsvcid'` == "${NVMEOF_IO_PORT}" ]]
+    [[ `echo $controllers | jq -r '.[0].ctrlrs[0].host.nqn'` == "${NQN}host31" ]]
+    [[ `echo $controllers | jq -r '.[1]'` == "null" ]]
 
     echo "ℹ️  test deleting connected namespace host"
     cephnvmf_func host add --subsystem ${NQN} --host-nqn ${NQN}host33
@@ -468,7 +533,7 @@ function demo_bdevperf_unsecured()
     rm -f /tmp/hostdel.err
     cephnvmf_func --output stdio host del --subsystem ${NQN} --host-nqn ${NQN}host33 --force > /dev/null 2> /tmp/hostdel.err
     cat /tmp/hostdel.err
-    grep -q "Host ${NQN}host33 is still connected to ${NQN}" /tmp/hostdel.err
+    grep -q "There is an active connection from host ${NQN}host33 to subsystem ${NQN}" /tmp/hostdel.err
     grep -q "Reconnecting the host would fail unless it is re-added to the subsystem" /tmp/hostdel.err
     grep -zoPq "Host ${NQN}host33 is included in the netmask of namespace 2 in subsystem ${NQN}.\nWill continue as the" /tmp/hostdel.err
     rm -f /tmp/hostdel.err
