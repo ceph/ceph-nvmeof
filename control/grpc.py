@@ -1779,13 +1779,12 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     self.logger.error(errmsg)
                     return BdevStatus(status=errno.EINVAL, error_message=errmsg)
             except rbd.ImageNotFound:
-                self.logger.error(f"RBD image {image_path} "
-                                  f"does not exist and '--rbd-create-image' "
-                                  f"was not specified")
+                errmsg = f"RBD image {image_path} " \
+                         f"does not exist and the create image parameter " \
+                         f"was not specified"
+                self.logger.error(errmsg)
                 return BdevStatus(status=errno.ENOENT,
-                                  error_message=f"RBD image {image_path} "
-                                                f"does not exist and '--rbd-create-image' "
-                                                f"was not specified")
+                                  error_message=errmsg)
             except Exception:
                 self.logger.exception(f"Error getting {image_path} size")
                 self.logger.error(f"Error verifying RBD image {image_path} "
