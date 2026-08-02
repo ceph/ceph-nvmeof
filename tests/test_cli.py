@@ -2726,7 +2726,7 @@ class TestDeleteRBDImage:
         cli(["namespace", "add", "--subsystem", subsystem10, "--rbd-pool", pool,
              "--rbd-image", image19])
         assert f"Failure adding namespace to {subsystem10}: RBD image {pool}/{image19} " \
-               f"does not exist and '--rbd-create-image' was not specified" in caplog.text
+               f"does not exist and the create image parameter was not specified" in caplog.text
         caplog.clear()
         cli(["namespace", "add", "--subsystem", subsystem10, "--rbd-pool", pool,
              "--rbd-image", image19, "--rbd-create-image", "--size", "32MB"])
