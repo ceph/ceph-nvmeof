@@ -2185,7 +2185,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 if subsys_already_exists or subsys_using_serial:
                     errmsg = f"{create_subsystem_error_prefix}: {errmsg}"
                     self.logger.error(errmsg)
-                    return pb2.subsys_status(status=errno.EEXIST,
+                    status = errno.EEXIST if (context or subsys_using_serial) else 0
+                    return pb2.subsys_status(status=status,
                                              error_message=errmsg,
                                              nqn=request.subsystem_nqn)
                 ret = self.spdk_rpc_client.nvmf_create_subsystem(
@@ -2611,7 +2612,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 errmsg = (f"{failure_prefix}: subsystem {request.subsystem_nqn} "
                           f"has no network masks configured")
                 self.logger.error(errmsg)
-                return pb2.gw_refresh_network_status(status=errno.ENOENT, error_message=errmsg)
+                status = errno.ENOENT if context else 0
+                return pb2.gw_refresh_network_status(status=status, error_message=errmsg)
 
             try:
                 nics = NICS(self.logger, True)
@@ -2741,7 +2743,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                      f"was not added to KMIP server {server} on subsystem {subsys} " \
                      f"as it's already there"
             self.logger.warning(errmsg)
-            return pb2.req_status(status=errno.EEXIST, error_message=errmsg)
+            status = errno.EEXIST if context else 0
+            return pb2.req_status(status=status, error_message=errmsg)
 
         subsys_server_name = self.kmip_server_endpoints.get_subsystem_server_name(subsys)
         if subsys_server_name and subsys_server_name != server:
@@ -3119,7 +3122,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
         if request.subsystem_nqn not in self.subsys_serial:
             errmsg = f"{delete_subsystem_error_prefix}: No such subsystem"
             self.logger.error(errmsg)
-            return pb2.req_status(status=errno.ENOENT, error_message=errmsg)
+            status = errno.ENOENT if context else 0
+            return pb2.req_status(status=status, error_message=errmsg)
 
         if self.verify_nqns:
             rc = GatewayUtils.is_valid_nqn(request.subsystem_nqn)
@@ -3519,6 +3523,12 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         if not request.uuid:
             request.uuid = str(uuid.uuid4())
+        elif not GatewayUtils.is_valid_uuid(request.uuid):
+            errmsg = (f"Failure adding namespace {nsid_msg}to {request.subsystem_nqn}: "
+                      f"Invalid UUID '{request.uuid}' "
+                      f"(expected format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)")
+            self.logger.error(errmsg)
+            return pb2.nsid_status(status=errno.EINVAL, error_message=errmsg)
 
         if request.trash_image and not request.create_image:
             self.logger.warning("Can't trash the RBD image on delete if it "
@@ -5114,7 +5124,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                              f"{find_ret.pool}/{find_ret.image}, use the \"--force\" parameter " \
                              f"to set limits anyway"
                     self.logger.error(errmsg)
-                    return pb2.req_status(status=errno.EEXIST, error_message=errmsg)
+                    status = errno.EEXIST if context else 0
+                    return pb2.req_status(status=status, error_message=errmsg)
         except Exception:
             self.logger.warning(f"Error trying to get the config attributes of image "
                                 f"{find_ret.pool}/{find_ret.image}, can't check "
@@ -5766,7 +5777,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
         if not find_ret.is_host_in_namespace(request.host_nqn):
             errmsg = f"{failure_prefix}: Host is not in namespace's host list"
             self.logger.error(errmsg)
-            return pb2.req_status(status=errno.ENODEV, error_message=errmsg)
+            status = errno.ENODEV if context else 0
+            return pb2.req_status(status=status, error_message=errmsg)
 
         omap_lock = self.omap_lock.get_omap_lock_to_use(context)
         with omap_lock:
@@ -6077,14 +6089,13 @@ class GatewayService(pb2_grpc.GatewayServicer):
         host_already_exist = self.matching_host_exists(context,
                                                        request.subsystem_nqn, request.host_nqn)
         if host_already_exist:
+            status = errno.EEXIST if context else 0
             if request.host_nqn == "*":
                 errmsg = f"{all_host_failure_prefix}: Open host access is already allowed"
-                self.logger.error(errmsg)
-                return pb2.req_status(status=errno.EEXIST, error_message=errmsg)
             else:
                 errmsg = f"{host_failure_prefix}: Host is already added"
-                self.logger.error(errmsg)
-                return pb2.req_status(status=errno.EEXIST, error_message=errmsg)
+            self.logger.error(errmsg)
+            return pb2.req_status(status=status, error_message=errmsg)
 
         if request.host_nqn != "*":
             if self.host_info.get_host_count(request.subsystem_nqn) >= self.max_hosts_per_subsystem:
@@ -6424,7 +6435,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                                           request.host_nqn):
                         errmsg = f"{host_failure_prefix}: No such host"
                         self.logger.error(errmsg)
-                        return pb2.req_status(status=errno.ENOENT, error_message=errmsg)
+                        status = errno.ENOENT if context else 0
+                        return pb2.req_status(status=status, error_message=errmsg)
                     keep_conn = request.keep_connections if removed_host_is_connected else False
                     ret = self.spdk_rpc_client.nvmf_subsystem_remove_host(
                         nqn=request.subsystem_nqn,
@@ -6493,10 +6505,17 @@ class GatewayService(pb2_grpc.GatewayServicer):
             if rc.status == 0:
                 if removed_host_is_connected:
                     wrn_msg = \
-                        f"Host {request.host_nqn} is still connected to " \
-                        f"{request.subsystem_nqn}\n" \
-                        f"Reconnecting the host would fail unless " \
-                        f"it is re-added to the subsystem."
+                        f"There is an active connection from host {request.host_nqn} to " \
+                        f"subsystem {request.subsystem_nqn}\n"
+                    if request.keep_connections:
+                        wrn_msg += \
+                            "The connection will be kept open after host access removal " \
+                            "but, in case of disconnection, a reconnect would fail unless "\
+                            "the host is re-added to the subsystem."
+                    else:
+                        wrn_msg += \
+                            "Reconnecting the host would fail unless " \
+                            "it is re-added to the subsystem."
                     self.logger.warning(wrn_msg)
                     if host_remove_warning:
                         host_remove_warning += "\n"
@@ -7534,7 +7553,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                 errmsg = f"{create_listener_error_prefix}: Subsystem already " \
                                          f"listens on address {request.traddr}:{request.trsvcid}"
                                 self.logger.error(errmsg)
-                                return pb2.req_status(status=errno.EEXIST, error_message=errmsg)
+                                status = errno.EEXIST if context else 0
+                                return pb2.req_status(status=status, error_message=errmsg)
 
                     if self.verify_listener_ip:
                         nics = NICS(self.logger, True)
