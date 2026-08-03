@@ -23,6 +23,11 @@ ARG SPDK_CEPH_VERSION \
     SPDK_MAKEFLAGS \
     ACCEL_CONFIG_SRC
 
+ENV PIP_CONSTRAINT=/tmp/pip-constraints.txt
+COPY <<EOF /tmp/pip-constraints.txt
+pip<26
+EOF
+
 RUN <<EOF
     echo Log variables
     echo ======================================================================
@@ -77,9 +82,24 @@ RUN \
     && dnf install $DNF_OPTS -y \
         rpm-build \
         git-core \
-	epel-release \
-    && scripts/pkgdep.sh $SPDK_PKGDEP_ARGS \
-    && dnf $DNF_OPTS update -y
+	epel-release
+
+COPY <<EOF /etc/yum.repos.d/epel.repo
+[epel]
+name=Extra Packages for Enterprise Linux 10 - \$basearch
+baseurl=https://dl.fedoraproject.org/pub/epel/10/Everything/\$basearch
+enabled=1
+gpgcheck=1
+gpgkey=https://dl.fedoraproject.org/pub/epel/RPM-GPG-KEY-EPEL-10
+EOF
+
+RUN \
+    --mount=type=cache,target=/var/cache/dnf \
+    --mount=type=cache,target=/var/lib/dnf \
+    --mount=type=cache,target=/root/.cache/pip \
+    for i in 1 2 3 4 5; do \
+      scripts/pkgdep.sh $SPDK_PKGDEP_ARGS && dnf $DNF_OPTS update -y && break || { echo "retry $i/5"; sleep 15; }; \
+    done
 
 COPY --from=ghcr.io/astral-sh/uv:0.11.7 /uv /uvx /bin/
 # If this doesn't work, add the following to the RUN below, instead:
@@ -93,6 +113,7 @@ RUN \
     && dnf install -y autoconf automake libtool pkgconf rpm-build rpmdevtools \
     && dnf install -y which asciidoc xmlto libuuid-devel json-c-devel zlib-devel openssl-devel \
     && mkdir -p $ACCEL_CONFIG_SRC \
+    && python3 -m pip install "jinja2==3.1.6" "tabulate==0.10.0" \
     && git clone https://github.com/intel/idxd-config.git $ACCEL_CONFIG_SRC \
     && pushd $ACCEL_CONFIG_SRC \
     && ./autogen.sh \
@@ -179,16 +200,29 @@ COPY --from=build /etc/yum.conf /etc/yum.conf
 COPY --from=build /etc/yum.repos.d/ceph.repo /etc/yum.repos.d/ceph.repo
 
 RUN \
+    --mount=type=cache,target=/var/cache/dnf \
+    --mount=type=cache,target=/var/lib/dnf \
+    dnf $DNF_OPTS install -y dnf-plugins-core \
+    && rpm -ivh https://dl.fedoraproject.org/pub/epel/epel-release-latest-10.noarch.rpm
+
+COPY <<EOF /etc/yum.repos.d/epel.repo
+[epel]
+name=Extra Packages for Enterprise Linux 10 - \$basearch
+baseurl=https://dl.fedoraproject.org/pub/epel/10/Everything/\$basearch
+enabled=1
+gpgcheck=1
+gpgkey=https://dl.fedoraproject.org/pub/epel/RPM-GPG-KEY-EPEL-10
+EOF
+
+RUN \
     --mount=type=bind,from=build,source=/root/rpmbuild/rpm,target=/rpm \
     --mount=type=bind,from=build,source=/root/rpmbuild/RPMS,target=/accel-rpms \
     --mount=type=cache,target=/var/cache/dnf \
     --mount=type=cache,target=/var/lib/dnf \
-    dnf $DNF_OPTS install -y dnf-plugins-core \
-    && rpm -ivh https://dl.fedoraproject.org/pub/epel/epel-release-latest-10.noarch.rpm \
-    && dnf config-manager --set-enabled crb \
+    dnf config-manager --set-enabled crb \
     && rpm -ivh /accel-rpms/$(uname -m)/accel-config-libs-[0-9]*.rpm /accel-rpms/$(uname -m)/accel-config-[0-9]*.rpm \
     && dnf $DNF_OPTS install -y /rpm/$(uname -m)/*.rpm \
-    && dnf $DNF_OPTS update -y
+    && for i in 1 2 3 4 5; do dnf $DNF_OPTS update -y && break || { echo "retry $i/5"; sleep 15; }; done
 
 ENTRYPOINT [ "/usr/local/bin/nvmf_tgt" ]
 CMD [ "-u", "-r", "/var/tmp/spdk.sock" ]
