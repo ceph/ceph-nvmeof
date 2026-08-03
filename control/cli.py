@@ -938,7 +938,7 @@ class GatewayClient:
         return ret.status
 
     def spdk_log_level_get(self, args):
-        """Get SPDK log levels and nvmf log flags"""
+        """Get SPDK log levels and nvmf log flags."""
 
         out_func, err_func, wrn_func = self.get_output_functions(args)
 
