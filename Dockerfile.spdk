@@ -93,6 +93,7 @@ RUN \
     && dnf install -y autoconf automake libtool pkgconf rpm-build rpmdevtools \
     && dnf install -y which asciidoc xmlto libuuid-devel json-c-devel zlib-devel openssl-devel \
     && mkdir -p $ACCEL_CONFIG_SRC \
+    && python3 -m pip install "jinja2==3.1.6" "tabulate==0.10.0" \
     && git clone https://github.com/intel/idxd-config.git $ACCEL_CONFIG_SRC \
     && pushd $ACCEL_CONFIG_SRC \
     && ./autogen.sh \
