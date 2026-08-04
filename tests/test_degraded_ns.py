@@ -280,8 +280,7 @@ def test_degraded_namespace(caplog, two_gateways):
     portA = configA.config["gateway"]["port"]
     portB = configB.config["gateway"]["port"]
     caplog.clear()
-    cli(["subsystem", "add", "--subsystem", subsystem1, "--no-group-append",
-         "--max-namespaces", "10"])
+    cli(["subsystem", "add", "--subsystem", subsystem1, "--no-group-append"])
     assert f"Adding subsystem {subsystem1}: Successful" in caplog.text
     time.sleep(20)
     caplog.clear()

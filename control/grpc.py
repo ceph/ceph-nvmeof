@@ -923,7 +923,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
     MAX_VALUE_FOR_MAX_NAMESPACES_PER_SUBSYSTEM = 2048
     MAX_HOSTS_PER_SUBSYS_DEFAULT = 128
     MAX_HOSTS_DEFAULT = 2048
-    MAINTENANCE_ANA_GROUP = 255
+    MAINTENANCE_ANA_GROUP = 64
+    MIN_VALUE_FOR_MAX_NAMESPACES_PER_SUBSYSTEM = MAINTENANCE_ANA_GROUP
     # notification name should be the same as in spdk/lib/nvmf/ctrlr.c
     SPDK_HOST_KEEPALIVE_TIMEOUT_NOTIFICATION = "host_keepalive_timeout"
     # notification name should be the same as in spdk/lib/bdev/bdev.c
@@ -983,6 +984,11 @@ class GatewayService(pb2_grpc.GatewayServicer):
             "gateway",
             "max_namespaces",
             GatewayService.MAX_NAMESPACES_DEFAULT)
+        if self.max_namespaces < GatewayService.MIN_VALUE_FOR_MAX_NAMESPACES_PER_SUBSYSTEM:
+            self.max_namespaces = GatewayService.MIN_VALUE_FOR_MAX_NAMESPACES_PER_SUBSYSTEM
+            self.logger.error(f"Max namespaces can't be less than "
+                              f"{GatewayService.MIN_VALUE_FOR_MAX_NAMESPACES_PER_SUBSYSTEM}, "
+                              f"will use this value instead")
         self.max_namespaces_per_subsystem = self.config.getint_with_default(
             "gateway",
             "max_namespaces_per_subsystem",
@@ -993,6 +999,12 @@ class GatewayService(pb2_grpc.GatewayServicer):
                               f"{biggest_max_ns_per_subsys}, will use "
                               f"this value instead")
             self.max_namespaces_per_subsystem = biggest_max_ns_per_subsys
+        smallest_max_ns_per_subsys = GatewayService.MIN_VALUE_FOR_MAX_NAMESPACES_PER_SUBSYSTEM
+        if self.max_namespaces_per_subsystem < smallest_max_ns_per_subsys:
+            self.logger.error(f"Max namespaces per subsystem can't be less than "
+                              f"{smallest_max_ns_per_subsys}, will use "
+                              f"this value instead")
+            self.max_namespaces_per_subsystem = smallest_max_ns_per_subsys
         self.max_hosts_per_subsystem = self.config.getint_with_default(
             "gateway",
             "max_hosts_per_subsystem",
@@ -2026,6 +2038,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         assert self.rpc_lock.locked(), "RPC is unlocked when calling create_subsystem_safe()"
         create_subsystem_error_prefix = f"Failure creating subsystem {request.subsystem_nqn}"
         peer_msg = self.get_peer_message(context)
+        max_ns_warning = ""
 
         self.logger.info(
             f"Received request to create subsystem {request.subsystem_nqn}, enable_ha: "
@@ -2056,6 +2069,12 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 return pb2.subsys_status(status=errno.EINVAL,
                                          error_message=errmsg,
                                          nqn=request.subsystem_nqn)
+            if request.max_namespaces < GatewayService.MIN_VALUE_FOR_MAX_NAMESPACES_PER_SUBSYSTEM:
+                max_ns_warning = f"Max namespaces can't be less than " \
+                                 f"{GatewayService.MIN_VALUE_FOR_MAX_NAMESPACES_PER_SUBSYSTEM}" \
+                                 f", will increase it"
+                self.logger.warning(max_ns_warning)
+                request.max_namespaces = GatewayService.MIN_VALUE_FOR_MAX_NAMESPACES_PER_SUBSYSTEM
             if request.max_namespaces > self.max_namespaces:
                 self.logger.warning(f"The requested max number of namespaces for subsystem "
                                     f"{request.subsystem_nqn} ({request.max_namespaces}) is "
@@ -2270,8 +2289,12 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                 f"An error occurred when adding network mask. Try " \
                                 f"adding the listeners manually."
                 self.logger.exception(error_message)
-        return pb2.subsys_status(status=0, error_message=error_message,
-                                 nqn=request.subsystem_nqn)
+        if max_ns_warning:
+            if error_message:
+                error_message += f"\n{max_ns_warning}"
+            else:
+                error_message = max_ns_warning
+        return pb2.subsys_status(status=0, error_message=error_message, nqn=request.subsystem_nqn)
 
     def create_subsystem(self, request, context=None):
         err_prefix = f"Failure creating subsystem {request.subsystem_nqn}: "
@@ -3554,6 +3577,15 @@ class GatewayService(pb2_grpc.GatewayServicer):
             self.logger.error(errmsg)
             return pb2.nsid_status(status=errno.EINVAL, error_message=errmsg)
 
+        if context:
+            if request.HasField("anagrpid"):
+                if request.anagrpid == GatewayService.MAINTENANCE_ANA_GROUP:
+                    errmsg = f"Failure adding namespace {nsid_msg}to {request.subsystem_nqn}: " \
+                             f"Load balancing group {GatewayService.MAINTENANCE_ANA_GROUP} " \
+                             f"is reserved"
+                    self.logger.error(errmsg)
+                    return pb2.nsid_status(status=errno.EINVAL, error_message=errmsg)
+
         has_a_none_format = False
         has_non_none_format = False
         decrypted_enc_entries = deepcopy(request.encryption_entries)
@@ -3905,6 +3937,11 @@ class GatewayService(pb2_grpc.GatewayServicer):
         # the local rebalance logic.
         if context:
             if not maintenance:
+                if request.anagrpid == GatewayService.MAINTENANCE_ANA_GROUP:
+                    errmsg = f"{change_lb_group_failure_prefix}: Load balancing group " \
+                             f"{GatewayService.MAINTENANCE_ANA_GROUP} is reserved"
+                    self.logger.error(errmsg)
+                    return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
                 grps_list = self.ceph_utils.get_number_created_gateways(
                     self.gateway_pool, self.gateway_group, False)
                 if request.anagrpid not in grps_list:
@@ -3915,7 +3952,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     return pb2.req_status(status=errno.ENODEV, error_message=errmsg)
             elif request.anagrpid != GatewayService.MAINTENANCE_ANA_GROUP:
                 errmsg = f"{change_lb_group_failure_prefix}: Wrong Load balancing group " \
-                         f"{request.anagrp} in Maintenance mode"
+                         f"{request.anagrpid} in Maintenance mode"
                 self.logger.error(errmsg)
                 return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
 
@@ -3975,25 +4012,21 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 anagrpid = ns_entry.anagrpid
                 self.logger.debug(f"Read a load balancing group of {anagrpid} from the OMAP file")
             request.anagrpid = abs(request.anagrpid)  # if context = none
-            if request.anagrpid == GatewayService.MAINTENANCE_ANA_GROUP:
-                self.logger.debug("Maintenance ANA group, will not call SPDK")
-                ret = True
-            else:
-                try:
-                    ret = self.spdk_rpc_client.nvmf_subsystem_set_ns_ana_group(
-                        nqn=request.subsystem_nqn,
-                        nsid=request.nsid,
-                        anagrpid=request.anagrpid,
-                    )
-                    self.logger.debug(f"nvmf_subsystem_set_ns_ana_group: {ret}")
-                except Exception as ex:
-                    errmsg = f"{change_lb_group_failure_prefix}:\n{ex}"
-                    resp = self.parse_json_exeption(ex)
-                    status = errno.EINVAL
-                    if resp:
-                        status = resp["code"]
-                        errmsg = f"{change_lb_group_failure_prefix}: {resp['message']}"
-                    return pb2.req_status(status=status, error_message=errmsg)
+            try:
+                ret = self.spdk_rpc_client.nvmf_subsystem_set_ns_ana_group(
+                    nqn=request.subsystem_nqn,
+                    nsid=request.nsid,
+                    anagrpid=request.anagrpid,
+                )
+                self.logger.debug(f"nvmf_subsystem_set_ns_ana_group: {ret}")
+            except Exception as ex:
+                errmsg = f"{change_lb_group_failure_prefix}:\n{ex}"
+                resp = self.parse_json_exeption(ex)
+                status = errno.EINVAL
+                if resp:
+                    status = resp["code"]
+                    errmsg = f"{change_lb_group_failure_prefix}: {resp['message']}"
+                return pb2.req_status(status=status, error_message=errmsg)
 
             # Just in case SPDK failed with no exception
             if not ret:
