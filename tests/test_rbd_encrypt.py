@@ -27,6 +27,7 @@ image2 = "enc_test_image2"
 image3 = "enc_test_image3"
 image4 = "enc_test_image4"
 image5 = "enc_test_image5"
+image6 = "enc_test_image6"
 pool = "rbd"
 subsystem1 = "nqn.2016-06.io.spdk:cnode1"
 subsystem2 = "nqn.2016-06.io.spdk:cnode2"
@@ -1211,7 +1212,26 @@ def test_open_with_encryption_wrong_key_id(caplog, two_gateways):
     cli(["namespace", "add", "--subsystem", subsystem1, "--rbd-pool", pool,
          "--rbd-data-pool", pool, "--rbd-image", image,
          "--encryption-format", "luks1", "--key-id", key_id])
-    assert f"Failure adding namespace to {subsystem1}: Operation not permitted" in caplog.text
+    assert f"Failure adding namespace to {subsystem1}: Wrong passphrase for RBD " \
+           f"image {pool}/{image}" in caplog.text
+
+
+def test_open_with_encryption_plain_image(caplog, two_gateways):
+    key_id = add_key_to_kmip_server_endpoint(kmip_dir1, kmip_addr, kmip_port, "bla")
+    caplog.clear()
+    cli(["namespace", "add", "--subsystem", subsystem1, "--rbd-pool", pool,
+         "--rbd-data-pool", pool, "--rbd-image", image6,
+         "--rbd-create-image", "--size", "16MB"])
+    wait_for_string(caplog, f"Adding namespace 1 to {subsystem1}: Successful", 5)
+    caplog.clear()
+    cli(["namespace", "del", "--subsystem", subsystem1, "--nsid", "1"])
+    assert f"Deleting namespace 1 from {subsystem1}: Successful" in caplog.text
+    caplog.clear()
+    cli(["namespace", "add", "--subsystem", subsystem1, "--rbd-pool", pool,
+         "--rbd-data-pool", pool, "--rbd-image", image6,
+         "--encryption-format", "luks1", "--key-id", key_id])
+    assert f"Failure adding namespace to {subsystem1}: RBD " \
+           f"image {pool}/{image6} is not formatted for encryption" in caplog.text
 
 
 def test_list_namespaces(caplog, two_gateways):
@@ -1329,7 +1349,8 @@ def test_open_with_encryption_second_server(caplog, two_gateways):
     cli(["namespace", "add", "--subsystem", subsystem2, "--rbd-pool", pool,
          "--rbd-data-pool", pool, "--rbd-image", image,
          "--encryption-format", "luks1", "--key-id", key_id])
-    assert f"Failure adding namespace to {subsystem2}: Operation not permitted" in caplog.text
+    assert f"Failure adding namespace to {subsystem2}: Wrong passphrase for RBD " \
+           f"image {pool}/{image}" in caplog.text
     caplog.clear()
     cli(["namespace", "add", "--subsystem", subsystem2, "--rbd-pool", pool,
          "--rbd-data-pool", pool, "--rbd-image", image,
