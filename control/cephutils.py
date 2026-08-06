@@ -376,6 +376,47 @@ class CephUtils:
             return rbd.RBD_ENCRYPTION_ALGORITHM_AES256
         return -1
 
+    def verify_image_encryption_settings(self, pool_name, rados_namespace_name,
+                                         image_name, image_path,
+                                         encryption_entries) -> str:
+
+        if not encryption_entries:
+            return ""
+
+        specs = []
+        for enc in encryption_entries:
+            if not enc.format:
+                return "Missing encryption format"
+            if not enc.key_id:
+                return "Empty passphrase"
+            rbd_enc_format = CephUtils.gateway_encryption_format_to_rbd(enc.format)
+            if rbd_enc_format is None:
+                return "Missing encryption format"
+            elif rbd_enc_format < 0:
+                return f"Invalid encryption format {enc.format}"
+            specs.append((rbd_enc_format, enc.key_id))
+
+        with rados.Rados(conffile=self.ceph_conf, rados_id=self.rados_id) as cluster:
+            with cluster.open_ioctx(pool_name) as ioctx:
+                if rados_namespace_name:
+                    ioctx.set_namespace(rados_namespace_name)
+                try:
+                    with rbd.Image(ioctx, image_name) as img:
+                        img.encryption_load2(specs)
+                except rbd.InvalidArgument:
+                    errmsg = f"RBD image {image_path} is not formatted for encryption"
+                    self.logger.exception(errmsg)
+                    return errmsg
+                except rbd.PermissionError:
+                    errmsg = f"Wrong passphrase for RBD image {image_path}"
+                    self.logger.exception(errmsg)
+                    return errmsg
+                except Exception:
+                    errmsg = f"Can't verify encryption state for RBD image {image_path}"
+                    self.logger.exception(errmsg)
+                    return errmsg
+        return ""
+
     def create_image(self, pool_name, data_pool_name, rados_namespace_name, image_name,
                      size, encryption_format=None, encryption_algorithm=None,
                      passphrase=None) -> bool:
@@ -398,25 +439,32 @@ class CephUtils:
             image_size = self.get_image_size(pool_name, image_name, rados_namespace_name)
             image_exists = True
         except rbd.ImageNotFound:
-            self.logger.debug(f"Image {image_path} doesn't exist, will "
+            self.logger.debug(f"RBD Image {image_path} doesn't exist, will "
                               f"create it using size {size}")
             pass
 
+        rbd_encryption_format = CephUtils.gateway_encryption_format_to_rbd(
+            encryption_format)
+        if rbd_encryption_format is not None and rbd_encryption_format < 0:
+            raise ValueError("Invalid encryption format")
+        rbd_encryption_algorithm = CephUtils.gateway_encryption_algorithm_to_rbd(
+            encryption_algorithm)
+        if rbd_encryption_algorithm is not None and rbd_encryption_algorithm < 0:
+            raise ValueError("Invalid encryption algorithm")
+
         if image_exists:
             if image_size != size:
-                raise rbd.ImageExists(f"Image {image_path} already exists with "
+                raise rbd.ImageExists(f"RBD Image {image_path} already exists with "
                                       f"a size of {image_size} bytes which differs from the "
                                       f"requested size of {size} bytes",
                                       errno=errno.EEXIST)
+            if rbd_encryption_format is not None and passphrase is not None:
+                enc = pb2.encryption_entry(format=encryption_format, key_id=passphrase)
+                enc_msg = self.verify_image_encryption_settings(
+                    pool_name, rados_namespace_name, image_name, image_path, [enc])
+                if enc_msg:
+                    raise rbd.PermissionError(enc_msg, errno=errno.EPERM)
             return False    # Image exists with an identical size, there is nothing to do here
-
-        encryption_format = CephUtils.gateway_encryption_format_to_rbd(encryption_format)
-        if encryption_format is not None and encryption_format < 0:
-            raise ValueError("Invalid encryption format")
-
-        encryption_algorithm = CephUtils.gateway_encryption_algorithm_to_rbd(encryption_algorithm)
-        if encryption_algorithm is not None and encryption_algorithm < 0:
-            raise ValueError("Invalid encryption algorithm")
 
         with rados.Rados(conffile=self.ceph_conf, rados_id=self.rados_id) as cluster:
             with cluster.open_ioctx(pool_name) as ioctx:
@@ -434,17 +482,17 @@ class CephUtils:
                     self.logger.exception(f"Can't create image {image_path}")
                     raise
 
-                if encryption_format is not None and passphrase is not None:
+                if rbd_encryption_format is not None and passphrase is not None:
                     try:
                         with rbd.Image(ioctx, image_name) as img:
-                            if encryption_algorithm is not None:
-                                img.encryption_format(encryption_format,
+                            if rbd_encryption_algorithm is not None:
+                                img.encryption_format(rbd_encryption_format,
                                                       passphrase,
-                                                      encryption_algorithm)
+                                                      rbd_encryption_algorithm)
                             else:
-                                img.encryption_format(encryption_format, passphrase)
+                                img.encryption_format(rbd_encryption_format, passphrase)
                     except Exception:
-                        self.logger.exception(f"Can't encrypt image {image_path}")
+                        self.logger.exception(f"Can't encrypt format RBD image {image_path}")
                         try:
                             self.logger.info(f"Will delete the created image {image_path}")
                             self.delete_image(pool_name, image_name, rados_namespace_name)

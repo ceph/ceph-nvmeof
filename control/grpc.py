@@ -1774,11 +1774,12 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 if len(encryption_entries) > 0:
                     enc_format = encryption_entries[0].format
                     passphrase = encryption_entries[0].key_id
-                rc = self.ceph_utils.create_image(rbd_pool_name, rbd_data_pool_name,
-                                                  rados_namespace_name,
-                                                  rbd_image_name, rbd_image_size,
-                                                  enc_format, encryption_algorithm,
-                                                  passphrase)
+                rc = self.ceph_utils.create_image(
+                    rbd_pool_name, rbd_data_pool_name,
+                    rados_namespace_name,
+                    rbd_image_name, rbd_image_size,
+                    enc_format, encryption_algorithm,
+                    passphrase=passphrase)
                 if rc:
                     data_pool_msg = ""
                     if rbd_data_pool_name:
@@ -1830,11 +1831,22 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                                 f"was not specified")
             except Exception:
                 self.logger.exception(f"Error getting {image_path} size")
-                self.logger.error(f"Error verifying RBD image {image_path} "
-                                  f"existence")
+                errmsg = f"Error verifying RBD image {image_path} existence"
+                self.logger.error(errmsg)
                 return BdevStatus(status=errno.EIO,
-                                  error_message=f"Error verifying RBD image {image_path} "
-                                                f"existence")
+                                  error_message=errmsg)
+
+            if len(encryption_entries) > 0:
+                enc_msg = self.ceph_utils.verify_image_encryption_settings(
+                    rbd_pool_name,
+                    rados_namespace_name,
+                    rbd_image_name,
+                    image_path,
+                    encryption_entries)
+                if enc_msg:
+                    self.logger.error(enc_msg)
+                    return BdevStatus(status=errno.EPERM,
+                                      error_message=enc_msg)
 
         if disable_auto_resize:
             try:
