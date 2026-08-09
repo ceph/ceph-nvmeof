@@ -1398,6 +1398,7 @@ type CreateSubsystemReq struct {
 	NetworkMask     []string               `protobuf:"bytes,8,rep,name=network_mask,json=networkMask,proto3" json:"network_mask,omitempty"`
 	SecureListeners *bool                  `protobuf:"varint,9,opt,name=secure_listeners,json=secureListeners,proto3,oneof" json:"secure_listeners,omitempty"`
 	Port            *uint32                `protobuf:"varint,10,opt,name=port,proto3,oneof" json:"port,omitempty"`
+	ModelName       *string                `protobuf:"bytes,11,opt,name=model_name,json=modelName,proto3,oneof" json:"model_name,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -1500,6 +1501,13 @@ func (x *CreateSubsystemReq) GetPort() uint32 {
 		return *x.Port
 	}
 	return 0
+}
+
+func (x *CreateSubsystemReq) GetModelName() string {
+	if x != nil && x.ModelName != nil {
+		return *x.ModelName
+	}
+	return ""
 }
 
 type DeleteSubsystemReq struct {
@@ -3927,18 +3935,19 @@ func (x *ListenAddress) GetSecure() bool {
 }
 
 type Namespace struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Nsid          uint32                 `protobuf:"varint,1,opt,name=nsid,proto3" json:"nsid,omitempty"`
-	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
-	BdevName      *string                `protobuf:"bytes,3,opt,name=bdev_name,json=bdevName,proto3,oneof" json:"bdev_name,omitempty"`
-	Nguid         *string                `protobuf:"bytes,4,opt,name=nguid,proto3,oneof" json:"nguid,omitempty"`
-	Uuid          *string                `protobuf:"bytes,5,opt,name=uuid,proto3,oneof" json:"uuid,omitempty"`
-	Anagrpid      *uint32                `protobuf:"varint,6,opt,name=anagrpid,proto3,oneof" json:"anagrpid,omitempty"`
-	Nonce         *string                `protobuf:"bytes,7,opt,name=nonce,proto3,oneof" json:"nonce,omitempty"`
-	AutoVisible   *bool                  `protobuf:"varint,8,opt,name=auto_visible,json=autoVisible,proto3,oneof" json:"auto_visible,omitempty"`
-	Hosts         []string               `protobuf:"bytes,9,rep,name=hosts,proto3" json:"hosts,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	Nsid               uint32                 `protobuf:"varint,1,opt,name=nsid,proto3" json:"nsid,omitempty"`
+	Name               string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	BdevName           *string                `protobuf:"bytes,3,opt,name=bdev_name,json=bdevName,proto3,oneof" json:"bdev_name,omitempty"`
+	Nguid              *string                `protobuf:"bytes,4,opt,name=nguid,proto3,oneof" json:"nguid,omitempty"`
+	Uuid               *string                `protobuf:"bytes,5,opt,name=uuid,proto3,oneof" json:"uuid,omitempty"`
+	Anagrpid           *uint32                `protobuf:"varint,6,opt,name=anagrpid,proto3,oneof" json:"anagrpid,omitempty"`
+	Nonce              *string                `protobuf:"bytes,7,opt,name=nonce,proto3,oneof" json:"nonce,omitempty"`
+	AutoVisible        *bool                  `protobuf:"varint,8,opt,name=auto_visible,json=autoVisible,proto3,oneof" json:"auto_visible,omitempty"`
+	Hosts              []string               `protobuf:"bytes,9,rep,name=hosts,proto3" json:"hosts,omitempty"`
+	RadosNamespaceName *string                `protobuf:"bytes,10,opt,name=rados_namespace_name,json=radosNamespaceName,proto3,oneof" json:"rados_namespace_name,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *Namespace) Reset() {
@@ -4032,6 +4041,13 @@ func (x *Namespace) GetHosts() []string {
 		return x.Hosts
 	}
 	return nil
+}
+
+func (x *Namespace) GetRadosNamespaceName() string {
+	if x != nil && x.RadosNamespaceName != nil {
+		return *x.RadosNamespaceName
+	}
+	return ""
 }
 
 type SubsystemsInfoCli struct {
@@ -7075,7 +7091,7 @@ const file_gateway_proto_rawDesc = "" +
 	"\x19namespace_delete_host_req\x12#\n" +
 	"\rsubsystem_nqn\x18\x01 \x01(\tR\fsubsystemNqn\x12\x12\n" +
 	"\x04nsid\x18\x02 \x01(\rR\x04nsid\x12\x19\n" +
-	"\bhost_nqn\x18\x03 \x01(\tR\ahostNqn\"\xf6\x03\n" +
+	"\bhost_nqn\x18\x03 \x01(\tR\ahostNqn\"\xa9\x04\n" +
 	"\x14create_subsystem_req\x12#\n" +
 	"\rsubsystem_nqn\x18\x01 \x01(\tR\fsubsystemNqn\x12#\n" +
 	"\rserial_number\x18\x02 \x01(\tR\fserialNumber\x12*\n" +
@@ -7088,13 +7104,16 @@ const file_gateway_proto_rawDesc = "" +
 	"\fnetwork_mask\x18\b \x03(\tR\vnetworkMask\x12.\n" +
 	"\x10secure_listeners\x18\t \x01(\bH\x04R\x0fsecureListeners\x88\x01\x01\x12\x17\n" +
 	"\x04port\x18\n" +
-	" \x01(\rH\x05R\x04port\x88\x01\x01B\x11\n" +
+	" \x01(\rH\x05R\x04port\x88\x01\x01\x12\"\n" +
+	"\n" +
+	"model_name\x18\v \x01(\tH\x06R\tmodelName\x88\x01\x01B\x11\n" +
 	"\x0f_max_namespacesB\x12\n" +
 	"\x10_no_group_appendB\r\n" +
 	"\v_dhchap_keyB\x10\n" +
 	"\x0e_key_encryptedB\x13\n" +
 	"\x11_secure_listenersB\a\n" +
-	"\x05_port\"\x8f\x01\n" +
+	"\x05_portB\r\n" +
+	"\v_model_name\"\x8f\x01\n" +
 	"\x14delete_subsystem_req\x12#\n" +
 	"\rsubsystem_nqn\x18\x01 \x01(\tR\fsubsystemNqn\x12\x19\n" +
 	"\x05force\x18\x02 \x01(\bH\x00R\x05force\x88\x01\x01\x12\x1f\n" +
@@ -7319,7 +7338,7 @@ const file_gateway_proto_rawDesc = "" +
 	"\x06secure\x18\x06 \x01(\bH\x01R\x06secure\x88\x01\x01B\f\n" +
 	"\n" +
 	"_transportB\t\n" +
-	"\a_secure\"\xcc\x02\n" +
+	"\a_secure\"\x9c\x03\n" +
 	"\tnamespace\x12\x12\n" +
 	"\x04nsid\x18\x01 \x01(\rR\x04nsid\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12 \n" +
@@ -7329,14 +7348,17 @@ const file_gateway_proto_rawDesc = "" +
 	"\banagrpid\x18\x06 \x01(\rH\x03R\banagrpid\x88\x01\x01\x12\x19\n" +
 	"\x05nonce\x18\a \x01(\tH\x04R\x05nonce\x88\x01\x01\x12&\n" +
 	"\fauto_visible\x18\b \x01(\bH\x05R\vautoVisible\x88\x01\x01\x12\x14\n" +
-	"\x05hosts\x18\t \x03(\tR\x05hostsB\f\n" +
+	"\x05hosts\x18\t \x03(\tR\x05hosts\x125\n" +
+	"\x14rados_namespace_name\x18\n" +
+	" \x01(\tH\x06R\x12radosNamespaceName\x88\x01\x01B\f\n" +
 	"\n" +
 	"_bdev_nameB\b\n" +
 	"\x06_nguidB\a\n" +
 	"\x05_uuidB\v\n" +
 	"\t_anagrpidB\b\n" +
 	"\x06_nonceB\x0f\n" +
-	"\r_auto_visible\"\x82\x01\n" +
+	"\r_auto_visibleB\x17\n" +
+	"\x15_rados_namespace_name\"\x82\x01\n" +
 	"\x13subsystems_info_cli\x12\x16\n" +
 	"\x06status\x18\x01 \x01(\x05R\x06status\x12#\n" +
 	"\rerror_message\x18\x02 \x01(\tR\ferrorMessage\x12.\n" +

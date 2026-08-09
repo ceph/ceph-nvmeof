@@ -1006,6 +1006,10 @@ class GatewayClient:
         if args.secure_listeners and not args.network_mask:
             self.cli.parser.error("Secure listeners cannot be set without a network mask")
 
+        model_check = GatewayUtils.is_valid_model_name(args.model_name)
+        if model_check:
+            self.cli.parser.error(f"Invalid model name: {model_check}")
+
         req = pb2.create_subsystem_req(subsystem_nqn=args.subsystem,
                                        serial_number=args.serial_number,
                                        max_namespaces=args.max_namespaces,
@@ -1014,7 +1018,8 @@ class GatewayClient:
                                        dhchap_key=args.dhchap_key,
                                        network_mask=args.network_mask,
                                        port=args.port,
-                                       secure_listeners=args.secure_listeners)
+                                       secure_listeners=args.secure_listeners,
+                                       model_name=args.model_name)
         try:
             ret = self.stub.create_subsystem(req)
         except Exception as ex:
@@ -1502,6 +1507,9 @@ class GatewayClient:
         argument("--secure-listeners",
                  help="Make all the auto-listeners for this subsystem secure",
                  action='store_true',
+                 required=False),
+        argument("--model-name",
+                 help="Subsystem model name",
                  required=False),
     ]
     subsys_del_args = [
