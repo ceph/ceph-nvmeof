@@ -1450,6 +1450,7 @@ type CreateSubsystemReq struct {
 	NetworkMask     []string               `protobuf:"bytes,8,rep,name=network_mask,json=networkMask,proto3" json:"network_mask,omitempty"`
 	SecureListeners *bool                  `protobuf:"varint,9,opt,name=secure_listeners,json=secureListeners,proto3,oneof" json:"secure_listeners,omitempty"`
 	Port            *uint32                `protobuf:"varint,10,opt,name=port,proto3,oneof" json:"port,omitempty"`
+	ModelName       *string                `protobuf:"bytes,11,opt,name=model_name,json=modelName,proto3,oneof" json:"model_name,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -1552,6 +1553,13 @@ func (x *CreateSubsystemReq) GetPort() uint32 {
 		return *x.Port
 	}
 	return 0
+}
+
+func (x *CreateSubsystemReq) GetModelName() string {
+	if x != nil && x.ModelName != nil {
+		return *x.ModelName
+	}
+	return ""
 }
 
 type DeleteSubsystemReq struct {
@@ -7266,7 +7274,7 @@ const file_gateway_proto_rawDesc = "" +
 	"\bhost_nqn\x18\x03 \x01(\tR\ahostNqn\"N\n" +
 	"\x13namespace_unpin_req\x12#\n" +
 	"\rsubsystem_nqn\x18\x01 \x01(\tR\fsubsystemNqn\x12\x12\n" +
-	"\x04nsid\x18\x02 \x01(\rR\x04nsid\"\xf6\x03\n" +
+	"\x04nsid\x18\x02 \x01(\rR\x04nsid\"\xa9\x04\n" +
 	"\x14create_subsystem_req\x12#\n" +
 	"\rsubsystem_nqn\x18\x01 \x01(\tR\fsubsystemNqn\x12#\n" +
 	"\rserial_number\x18\x02 \x01(\tR\fserialNumber\x12*\n" +
@@ -7279,13 +7287,16 @@ const file_gateway_proto_rawDesc = "" +
 	"\fnetwork_mask\x18\b \x03(\tR\vnetworkMask\x12.\n" +
 	"\x10secure_listeners\x18\t \x01(\bH\x04R\x0fsecureListeners\x88\x01\x01\x12\x17\n" +
 	"\x04port\x18\n" +
-	" \x01(\rH\x05R\x04port\x88\x01\x01B\x11\n" +
+	" \x01(\rH\x05R\x04port\x88\x01\x01\x12\"\n" +
+	"\n" +
+	"model_name\x18\v \x01(\tH\x06R\tmodelName\x88\x01\x01B\x11\n" +
 	"\x0f_max_namespacesB\x12\n" +
 	"\x10_no_group_appendB\r\n" +
 	"\v_dhchap_keyB\x10\n" +
 	"\x0e_key_encryptedB\x13\n" +
 	"\x11_secure_listenersB\a\n" +
-	"\x05_port\"\x8f\x01\n" +
+	"\x05_portB\r\n" +
+	"\v_model_name\"\x8f\x01\n" +
 	"\x14delete_subsystem_req\x12#\n" +
 	"\rsubsystem_nqn\x18\x01 \x01(\tR\fsubsystemNqn\x12\x19\n" +
 	"\x05force\x18\x02 \x01(\bH\x00R\x05force\x88\x01\x01\x12\x1f\n" +
