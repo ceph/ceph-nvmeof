@@ -1079,7 +1079,7 @@ def test_open_with_encryption_plain_image(caplog, two_gateways):
     cli(["namespace", "add", "--subsystem", subsystem1, "--rbd-pool", pool,
          "--rbd-data-pool", pool, "--rbd-image", image6,
          "--rbd-create-image", "--size", "16MB"])
-    wait_for_string(caplog, f"Adding namespace 1 to {subsystem1}: Successful", 5)
+    assert f"Adding namespace 1 to {subsystem1}: Successful" in caplog.text
     caplog.clear()
     cli(["namespace", "del", "--subsystem", subsystem1, "--nsid", "1"])
     assert f"Deleting namespace 1 from {subsystem1}: Successful" in caplog.text
