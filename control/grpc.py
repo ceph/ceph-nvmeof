@@ -49,7 +49,7 @@ from .kmip_client import NVMeoFKMIPClient
 
 # Assuming max of 32 gateways and protocol min 1 max 65519
 CNTLID_RANGE_SIZE = 2040
-DEFAULT_MODEL_NUMBER = "Ceph bdev Controller"
+DEFAULT_MODEL_NAME = "Ceph bdev Controller"
 
 MONITOR_POLLING_RATE_SEC = 2     # monitor polls gw each 2 seconds
 
@@ -2038,7 +2038,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
             f"{request.enable_ha}, max_namespaces: {request.max_namespaces}, no group "
             f"append: {request.no_group_append}, network mask: {request.network_mask}, "
             f"port: {request.port}, "
-            f"secure listeners: {request.secure_listeners}, context: {context}{peer_msg}")
+            f"secure listeners: {request.secure_listeners}, model name: {request.model_name}, "
+            f"context: {context}{peer_msg}")
 
         if not request.enable_ha:
             errmsg = f"{create_subsystem_error_prefix}: HA must be enabled for subsystems"
@@ -2199,10 +2200,20 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     return pb2.subsys_status(status=errno.EEXIST,
                                              error_message=errmsg,
                                              nqn=request.subsystem_nqn)
+                model_name = DEFAULT_MODEL_NAME
+                if request.HasField("model_name") and request.model_name:
+                    model_check = GatewayUtils.is_valid_model_name(request.model_name)
+                    if model_check:
+                        errmsg = f"{create_subsystem_error_prefix}: {model_check}"
+                        self.logger.error(errmsg)
+                        return pb2.subsys_status(status=errno.EINVAL,
+                                                 error_message=errmsg,
+                                                 nqn=request.subsystem_nqn)
+                    model_name = request.model_name
                 ret = self.spdk_rpc_client.nvmf_create_subsystem(
                     nqn=request.subsystem_nqn,
                     serial_number=request.serial_number,
-                    model_number=DEFAULT_MODEL_NUMBER,
+                    model_number=model_name,
                     max_namespaces=request.max_namespaces,
                     min_cntlid=min_cntlid,
                     max_cntlid=max_cntlid,
