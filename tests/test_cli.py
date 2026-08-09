@@ -64,6 +64,7 @@ subsystem16 = "nqn.2016-06.io.spdk:cnode16"
 subsystem17 = "nqn.2016-06.io.spdk:cnode17"
 subsystem18 = "nqn.2016-06.io.spdk:cnode18"
 subsystem19 = "nqn.2016-06.io.spdk:cnode19"
+subsystem20 = "nqn.2016-06.io.spdk:cnode20"
 subsystemX = "nqn.2016-06.io.spdk:cnodeX"
 discovery_nqn = "nqn.2014-08.org.nvmexpress.discovery"
 serial = "Ceph00000000000001"
@@ -3194,3 +3195,144 @@ class TestSubsystemsCache:
         assert host13 not in caplog.text
         assert host14 not in caplog.text
         assert host15 not in caplog.text
+
+
+class TestSubsystemModelName:
+    def test_subsystems_model_name_default(self, caplog, gateway):
+        caplog.clear()
+        cli(["subsystem", "add", "--subsystem", subsystem20, "--no-group-append"])
+        assert f"Adding subsystem {subsystem20}: Successful" in caplog.text
+        caplog.clear()
+        cli(["--format", "json", "subsystem", "list", "--subsystem", subsystem20])
+        assert '"status": 0' in caplog.text
+        assert f'"nqn": "{subsystem20}"' in caplog.text
+        assert '"model_number": "Ceph bdev Controller"' in caplog.text
+        caplog.clear()
+        cli(["subsystem", "del", "--subsystem", subsystem20])
+        assert f"Deleting subsystem {subsystem20}: Successful" in caplog.text
+        caplog.clear()
+        cli(["subsystem", "add", "--subsystem", subsystem20, "--no-group-append",
+             "--model-name", ""])
+        assert f"Adding subsystem {subsystem20}: Successful" in caplog.text
+        caplog.clear()
+        cli(["--format", "json", "subsystem", "list", "--subsystem", subsystem20])
+        assert '"status": 0' in caplog.text
+        assert f'"nqn": "{subsystem20}"' in caplog.text
+        assert '"model_number": "Ceph bdev Controller"' in caplog.text
+        caplog.clear()
+        cli(["subsystem", "del", "--subsystem", subsystem20])
+        assert f"Deleting subsystem {subsystem20}: Successful" in caplog.text
+
+    def test_subsystems_model_name_too_long(self, caplog, gateway):
+        gw, _ = gateway
+        rc = 0
+        caplog.clear()
+        try:
+            cli(["subsystem", "add", "--subsystem", subsystem20, "--no-group-append",
+                 "--model-name", "12345678901234567890123456789012345678901"])
+        except SystemExit as sysex:
+            rc = sysex.code
+            pass
+        assert f'error: Invalid model name: Model name ' \
+               f'"12345678901234567890123456789012345678901" is too long. ' \
+               f'Maximum length is {GatewayUtils.MAX_MODEL_NAME_LENGTH} ' \
+               f'characters.' in caplog.text
+        assert rc == 2
+
+        subsys_add_req = pb2.create_subsystem_req(
+            subsystem_nqn=subsystem20,
+            enable_ha=True,
+            no_group_append=True,
+            model_name="12345678901234567890123456789012345678901")
+        caplog.clear()
+        ret = gw.create_subsystem(subsys_add_req)
+        assert ret.status != 0
+        assert f'Failure creating subsystem {subsystem20}: Model name ' \
+               f'"12345678901234567890123456789012345678901" is too long. ' \
+               f'Maximum length is {GatewayUtils.MAX_MODEL_NAME_LENGTH} characters.' in caplog.text
+
+    def test_subsystems_model_name_control_characters(self, caplog, gateway):
+        gw, _ = gateway
+        rc = 0
+        caplog.clear()
+        try:
+            cli(["subsystem", "add", "--subsystem", subsystem20, "--no-group-append",
+                 "--model-name", "has\tcontrol"])
+        except SystemExit as sysex:
+            rc = sysex.code
+            pass
+        assert 'error: Invalid model name: Model name ' \
+               '"has\tcontrol" contains control characters.' in caplog.text
+        assert rc == 2
+        rc = 0
+        caplog.clear()
+        try:
+            cli(["subsystem", "add", "--subsystem", subsystem20, "--no-group-append",
+                 "--model-name", "has\x7fcontrol"])
+        except SystemExit as sysex:
+            rc = sysex.code
+            pass
+        assert 'error: Invalid model name: Model name ' \
+               '"has\x7fcontrol" contains control characters.' in caplog.text
+        assert rc == 2
+
+        subsys_add_req = pb2.create_subsystem_req(
+            subsystem_nqn=subsystem20,
+            enable_ha=True,
+            no_group_append=True,
+            model_name="has\tcontrol")
+        caplog.clear()
+        ret = gw.create_subsystem(subsys_add_req)
+        assert ret.status != 0
+        assert f'Failure creating subsystem {subsystem20}: Model name ' \
+               f'"has\tcontrol" contains control characters.' in caplog.text
+
+        subsys_add_req = pb2.create_subsystem_req(
+            subsystem_nqn=subsystem20,
+            enable_ha=True,
+            no_group_append=True,
+            model_name="has\x7fcontrol")
+        caplog.clear()
+        ret = gw.create_subsystem(subsys_add_req)
+        assert ret.status != 0
+        assert f'Failure creating subsystem {subsystem20}: Model name ' \
+               f'"has\x7fcontrol" contains control characters.' in caplog.text
+
+    def test_subsystems_model_name_non_ascii(self, caplog, gateway):
+        gw, _ = gateway
+        rc = 0
+        caplog.clear()
+        try:
+            cli(["subsystem", "add", "--subsystem", subsystem20, "--no-group-append",
+                 "--model-name", "Euro sign: \u20AC"])
+        except SystemExit as sysex:
+            rc = sysex.code
+            pass
+        assert 'error: Invalid model name: Model name ' \
+               '"Euro sign: \u20AC" must be an ASCII string.' in caplog.text
+        assert rc == 2
+
+        subsys_add_req = pb2.create_subsystem_req(
+            subsystem_nqn=subsystem20,
+            enable_ha=True,
+            no_group_append=True,
+            model_name="Euro sign: \u20AC")
+        caplog.clear()
+        ret = gw.create_subsystem(subsys_add_req)
+        assert ret.status != 0
+        assert f'Failure creating subsystem {subsystem20}: Model name ' \
+               f'"Euro sign: \u20AC" must be an ASCII string.' in caplog.text
+
+    def test_subsystems_model_name(self, caplog, gateway):
+        caplog.clear()
+        cli(["subsystem", "add", "--subsystem", subsystem20, "--no-group-append",
+             "--model-name", "Bla bla bla"])
+        assert f"Adding subsystem {subsystem20}: Successful" in caplog.text
+        caplog.clear()
+        cli(["--format", "json", "subsystem", "list", "--subsystem", subsystem20])
+        assert '"status": 0' in caplog.text
+        assert f'"nqn": "{subsystem20}"' in caplog.text
+        assert '"model_number": "Bla bla bla"' in caplog.text
+        caplog.clear()
+        cli(["subsystem", "del", "--subsystem", subsystem20])
+        assert f"Deleting subsystem {subsystem20}: Successful" in caplog.text
