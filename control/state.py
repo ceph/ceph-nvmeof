@@ -1497,7 +1497,7 @@ class GatewayStateHandler:
         req.read_only = GatewayStateHandler._normalize_json_boolean(req.read_only)
         req.nsid = GatewayStateHandler._normalize_json_int(req.nsid)
         req.block_size = GatewayStateHandler._normalize_json_int(req.block_size)
-        req.anagrpid = abs(GatewayStateHandler._normalize_json_int(req.anagrpid))
+        req.anagrpid = GatewayStateHandler._normalize_json_int(req.anagrpid)
         req.size = GatewayStateHandler._normalize_json_int(req.size)
 
         return req
