@@ -43,6 +43,13 @@ class Rebalance:
     def auto_rebalance_task(self, death_event):
         """Periodically calls for auto rebalance."""
         self.logger.debug(f"Rebalance thread id is {self.auto_rebalance.native_id}")
+        if self.rebalance_period_sec > 0:
+            while not self.gw_srv.gateway_state.is_initialization_over():
+                if not self.gw_srv.up_and_running:
+                    self.logger.warning("SPDK is not up and running!")
+                    return
+                time.sleep(0.5)
+
         while (self.rebalance_period_sec > 0):
             while self.gw_srv.gateway_state.update_is_active_lock.locked():
                 time.sleep(0.5)         # wait until update is over
