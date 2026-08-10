@@ -1066,7 +1066,6 @@ class GatewayService(pb2_grpc.GatewayServicer):
         self.subsystems_cache = SubsystemsCache()
         self.host_info = SubsystemHostAuth()
         self.up_and_running = True
-        self.rebalance = Rebalance(self)
         self.spdk_version = None
         self.spdk_qos_timeslice = self.config.getint_with_default("spdk",
                                                                   "qos_timeslice_in_usecs", None)
@@ -1097,6 +1096,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                                               daemon=True,
                                                               args=(spdk_notifications_interval,))
             self.spdk_notifications_thread.start()
+        # Keep towards the end of init as we use fields like gateway_state in the rebalance thread
+        self.rebalance = Rebalance(self)
 
     def read_spdk_notifications(self, read_interval):
         if read_interval <= 0:
