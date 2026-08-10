@@ -448,14 +448,19 @@ def test_degraded_namespace(caplog, two_gateways):
                f"in {subsystem1} to {gwB.gateway_rpc.MAINTENANCE_ANA_GROUP}, " \
                f"persistent: False, maintenance: True, context: context"
     wait_for_string(caplog, look_for, 300)
+    look_for = f"Received manual request to change load balancing group for namespace with ID 1 " \
+               f"in {subsystem1} to {gwB.gateway_rpc.MAINTENANCE_ANA_GROUP}, " \
+               f"persistent: False, maintenance: False, context: None"
+    wait_for_string(caplog, look_for, 300)
     time.sleep(20)
     look_for = f"Received auto request to change load balancing group for namespace with ID 1 " \
                f"in {subsystem1} to 1, " \
                f"persistent: True, maintenance: False, context: context"
     wait_for_string(caplog, look_for, 300)
-    assert f"Received auto request to change load balancing group for namespace with ID 1 " \
-           f"in {subsystem1} to 1, " \
-           f"persistent: True, maintenance: False, context: None" not in caplog.text
+    look_for = f"Received manual request to change load balancing group for namespace with ID 1 " \
+               f"in {subsystem1} to -1, " \
+               f"persistent: False, maintenance: False, context: None"
+    wait_for_string(caplog, look_for, 300)
     look_for_key = GatewayState.build_namespace_key(subsystem1, "1")
     state = gwB.gateway_state.omap.get_state()
     assert look_for_key in state.keys()
@@ -533,8 +538,10 @@ def test_unpin(caplog, two_gateways):
     val = state[look_for_key]
     req = json_format.Parse(val, pb2.namespace_add_req(), ignore_unknown_fields=True)
     assert req.anagrpid == 1
-    assert f"Received auto request to change load balancing group for namespace with ID 1 " \
-           f"in {subsystem1} to 1" not in caplog.text
+    look_for = f"Received manual request to change load balancing group for namespace with " \
+               f"ID 1 in {subsystem1} to 1, persistent: False, maintenance: False, " \
+               f"context: None"
+    wait_for_string(caplog, look_for, 300)
     assert f"Received request to delete namespace 1 from {subsystem1}" not in caplog.text
     assert f"Received request to add namespace 1 to {subsystem1}" not in caplog.text
     ns = cli_test(["namespace", "list", "--subsystem", subsystem1, "--nsid", "1"])
