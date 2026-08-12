@@ -3164,10 +3164,13 @@ class GatewayClient:
                         err_func(f"Failure listing namespace with UUID {args.uuid}: "
                                  f"Got namespace {ns.uuid} instead")
                         return errno.ENODEV
+                    pinned_msg = ""
                     if not ns.load_balancing_group:
                         lb_group = "<n/a>"
                     else:
                         lb_group = str(ns.load_balancing_group)
+                    if ns.pinned:
+                        pinned_msg = " (Pinned)"
                     if not ns.configured_load_balancing_group:
                         configured_lb_group = "<n/a>"
                     else:
@@ -3205,7 +3208,7 @@ class GatewayClient:
                     if not encryption or all_none:
                         encryption = "None"
                     if ns.degraded:
-                        encryption += " (Degraded)"
+                        encryption = "Degraded"
                     ro_msg = "Read-Only" if ns.read_only else "Read-Write"
                     trash_msg = "\nTrash on delete" if ns.trash_image else ""
                     auto_resize_msg = "\nDisable auto resize" if ns.disable_auto_resize else ""
@@ -3219,6 +3222,7 @@ class GatewayClient:
                     if args.verbose:
                         verbose_info = [cluster_name]
                         lb_group += f" ({configured_lb_group})"
+                    lb_group += pinned_msg
                     location = ns.location if ns.location else "<default>"
                     qos_str = f"{self.get_qos_limit_str_value(ns.rw_mbytes_per_second)}\n" \
                               f"{self.get_qos_limit_str_value(ns.r_mbytes_per_second)}\n" \
