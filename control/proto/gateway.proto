@@ -821,6 +821,7 @@ message namespace_cli {
 	optional EncryptionAlgorithm encryption_algorithm = 25;
 	repeated encryption_entry encryption_entries = 26;
 	optional bool degraded = 27;
+	optional bool pinned = 28;
 }
 
 message namespaces_info {
