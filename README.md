@@ -197,9 +197,7 @@ EOF
 
 // using containers
 docker compose run --env-file /etc/ceph/nvmeof-cli.env -it <container_image> subsystem add --subsystem nqn.2016-06.io.spdk:cnode1
-// using pypi package
-source /etc/ceph/nvmeof-cli.env
-ceph-nvmeof subsystem add --subsystem nqn.2016-06.io.spdk:cnode1 
+
 ```
 
 ### Mounting the NVMe-oF volume
@@ -472,15 +470,6 @@ RPMs exported to:
 Python wheel exported to:
 /tmp/ceph_nvmeof-0.0.1-py3-none-any.whl
 ```
-
-To install nvmeof-cli as a CLI tool from the above Python wheel package, (or alternatively only build the cli package):
-```
-make export-python
-pip install /tmp/ceph_nvmeof-0.0.1-py3-none-any.whl
-ceph-nvmeof // use nvmeof-cli tool!
-```
-
-This can also be installed from https://pypi.org/project/ceph-nvmeof/, by running `pip3 install ceph-nvmeof`.
 
 ### Development containers
 
