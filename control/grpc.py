@@ -399,6 +399,9 @@ class NamespaceInfo:
     def is_degraded(self) -> bool:
         return self.degraded
 
+    def is_pinned(self) -> bool:
+        return self.anagrpid < 0
+
     @staticmethod
     def are_uuids_equal(uuid1: str, uuid2: str) -> bool:
         assert uuid1 and uuid2, "UUID can't be empty"
@@ -3914,6 +3917,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                          f"{request.anagrpid}, persistent: {persistent}, "
                          f"maintenance: {maintenance}, context: {context}{peer_msg}")
 
+        original_anagrpid = request.anagrpid
+
         if not request.subsystem_nqn:
             errmsg = "Failure changing load balancing group for namespace, missing subsystem NQN"
             self.logger.error(errmsg)
@@ -4059,17 +4064,24 @@ class GatewayService(pb2_grpc.GatewayServicer):
             if not find_ret.empty():
                 find_ret.set_ana_group_id(request.anagrpid)
 
+            if persistent:
+                if original_anagrpid < 0:
+                    self.logger.error(f"Shouldn't get a persistent load balancing group change "
+                                      f"with a negative group id {original_anagrpid}")
+                    request.anagrpid = original_anagrpid
+                else:
+                    request.anagrpid = -original_anagrpid
+                self.logger.info(f"Persistent load balancing group {request.anagrpid} for "
+                                 f"namespace {request.nsid} on subsystem {request.subsystem_nqn}")
+            else:
+                request.anagrpid = original_anagrpid
+            find_ret.anagrpid = request.anagrpid
+
             if context:
                 assert ns_entry, "Namespace entry is None for non-update call"
                 # Update gateway state
                 try:
                     ns_entry.anagrpid = request.anagrpid
-                    if persistent:
-                        ns_entry.anagrpid = -request.anagrpid
-                        find_ret.anagrpid = ns_entry.anagrpid
-                        self.logger.info(f"persistent anagrp {ns_entry.anagrpid} for namespace "
-                                         f"{request.nsid} subsystem {request.subsystem_nqn}")
-
                     json_req = json_format.MessageToJson(
                         ns_entry, preserving_proto_field_name=True,
                         including_default_value_fields=True)
@@ -4813,7 +4825,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                                location=find_ret.location,
                                                encryption_entries=enc_entries,
                                                encryption_algorithm=enc_alg,
-                                               degraded=find_ret.is_degraded())
+                                               degraded=find_ret.is_degraded(),
+                                               pinned=find_ret.is_pinned())
                     with self.rpc_lock:
                         ns_bdev = self.get_bdev_info(bdev_name)
                     if ns_bdev is None:
