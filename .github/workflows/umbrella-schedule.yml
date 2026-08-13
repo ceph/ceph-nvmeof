@@ -496,7 +496,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          rref: 'umbrella'  # Checkout the umbrella branch
+          ref: 'umbrella'  # Checkout the umbrella branch
 
       - name: Setup huge-pages
         run: make setup HUGEPAGES=$HUGEPAGES
