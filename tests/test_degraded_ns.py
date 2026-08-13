@@ -399,10 +399,10 @@ def test_degraded_namespace(caplog, two_gateways):
     assert f"Namespace 3 on {subsystem1} is degraded, no resize was done" in caplog.text
     caplog.clear()
     cli(["--server-port", portB, "namespace", "list", "--subsystem", subsystem1, "--nsid", "3"])
-    assert "None (Degraded)" in caplog.text, "Should see degraded namespace on gateway B"
+    assert "Degraded" in caplog.text, "Should see degraded namespace on gateway B"
     caplog.clear()
     cli(["--server-port", portA, "namespace", "list", "--subsystem", subsystem1, "--nsid", "3"])
-    assert "None (Degraded)" not in caplog.text, "Shouldn't see degraded namespace on gateway A"
+    assert "Degraded" not in caplog.text, "Shouldn't see degraded namespace on gateway A"
     caplog.clear()
     ns_info = cli_test(["namespace", "list", "--subsystem", subsystem1, "--nsid", "3"])
     assert len(ns_info.namespaces) == 1
@@ -480,6 +480,23 @@ def test_degraded_namespace(caplog, two_gateways):
         assert req.anagrpid == -1
     assert f"Received auto request to change load balancing group for namespace with ID 1 " \
            f"in {subsystem1} to -1" not in caplog.text
+    caplog.clear()
+    cli(["--format", "json", "--server-port", portA, "namespace", "list",
+         "--subsystem", subsystem1, "--nsid", "1"])
+    assert '"degraded": false' in caplog.text
+    assert '"pinned": true' in caplog.text
+    caplog.clear()
+    cli(["--server-port", portA, "namespace", "list", "--subsystem", subsystem1, "--nsid", "1"])
+    assert "(Pinned)" in caplog.text
+    caplog.clear()
+    cli(["--format", "json", "--server-port", portB, "namespace", "list",
+         "--subsystem", subsystem1, "--nsid", "1"])
+    assert '"degraded": true' in caplog.text
+    assert '"pinned": true' in caplog.text
+    caplog.clear()
+    cli(["--server-port", portB, "namespace", "list", "--subsystem", subsystem1, "--nsid", "1"])
+    assert "Degraded" in caplog.text
+    assert "(Pinned)" in caplog.text
     print("Run the KMIP server again")
     kmip_dir1 = os.path.join(kmip_dir_prefix, kmip_server_name1)
     kmip_procs[(kmip_addr, kmip_port)] = start_kmip_server_endpoint(
@@ -527,7 +544,38 @@ def test_degraded_namespace(caplog, two_gateways):
     assert req.anagrpid == -1
 
 
+def test_list_pinned_not_degraded(caplog, two_gateways):
+    gwA, _, _, _ = two_gateways
+    configA = gwA.gateway_rpc.config
+    assert restarted_gw_b is not None
+    configB = restarted_gw_b.gateway_rpc.config
+    portA = configA.config["gateway"]["port"]
+    portB = configB.config["gateway"]["port"]
+    caplog.clear()
+    cli(["--format", "json", "--server-port", portA, "namespace", "list",
+         "--subsystem", subsystem1, "--nsid", "1"])
+    assert '"degraded": false' in caplog.text
+    assert '"pinned": true' in caplog.text
+    caplog.clear()
+    cli(["--server-port", portA, "namespace", "list", "--subsystem", subsystem1, "--nsid", "1"])
+    assert "(Pinned)" in caplog.text
+    caplog.clear()
+    cli(["--format", "json", "--server-port", portB, "namespace", "list",
+         "--subsystem", subsystem1, "--nsid", "1"])
+    assert '"degraded": false' in caplog.text
+    assert '"pinned": true' in caplog.text
+    caplog.clear()
+    cli(["--server-port", portB, "namespace", "list", "--subsystem", subsystem1, "--nsid", "1"])
+    assert "(Pinned)" in caplog.text
+
+
 def test_unpin(caplog, two_gateways):
+    gwA, _, _, _ = two_gateways
+    configA = gwA.gateway_rpc.config
+    assert restarted_gw_b is not None
+    configB = restarted_gw_b.gateway_rpc.config
+    portA = configA.config["gateway"]["port"]
+    portB = configB.config["gateway"]["port"]
     caplog.clear()
     cli(["namespace", "unpin", "--subsystem", subsystem1, "--nsid", "1"])
     assert f"Unpinning load balancing group for namespace 1 in {subsystem1}: " \
@@ -544,13 +592,32 @@ def test_unpin(caplog, two_gateways):
     wait_for_string(caplog, look_for, 300)
     assert f"Received request to delete namespace 1 from {subsystem1}" not in caplog.text
     assert f"Received request to add namespace 1 to {subsystem1}" not in caplog.text
-    ns = cli_test(["namespace", "list", "--subsystem", subsystem1, "--nsid", "1"])
+    ns = cli_test(["--server-port", portA, "namespace", "list",
+                   "--subsystem", subsystem1, "--nsid", "1"])
     assert ns.status == 0
     assert len(ns.namespaces) == 1
     assert ns.namespaces[0].nsid == 1
     assert ns.namespaces[0].rbd_image_name == image1
     assert ns.namespaces[0].rbd_pool_name == pool
     assert not ns.namespaces[0].degraded
+    assert not ns.namespaces[0].pinned
+    ns = cli_test(["--server-port", portB, "namespace", "list",
+                   "--subsystem", subsystem1, "--nsid", "1"])
+    assert ns.status == 0
+    assert len(ns.namespaces) == 1
+    assert ns.namespaces[0].nsid == 1
+    assert ns.namespaces[0].rbd_image_name == image1
+    assert ns.namespaces[0].rbd_pool_name == pool
+    assert not ns.namespaces[0].degraded
+    assert not ns.namespaces[0].pinned
+    caplog.clear()
+    cli(["--server-port", portA, "namespace", "list", "--subsystem", subsystem1, "--nsid", "1"])
+    assert "(Pinned)" not in caplog.text
+    assert "Degraded" not in caplog.text
+    caplog.clear()
+    cli(["--server-port", portB, "namespace", "list", "--subsystem", subsystem1, "--nsid", "1"])
+    assert "(Pinned)" not in caplog.text
+    assert "Degraded" not in caplog.text
 
 
 def test_delete_resources(caplog, two_gateways):
@@ -568,6 +635,7 @@ def test_delete_resources(caplog, two_gateways):
     with gwA.gateway_rpc.rpc_lock:
         bdev_list = gwA.gateway_rpc.spdk_rpc_client.bdev_get_bdevs()
     assert len(bdev_list) == 0, "There shouldn't be bdevs left on Gateway A"
+    assert restarted_gw_b is not None
     with restarted_gw_b.gateway_rpc.rpc_lock:
         bdev_list = restarted_gw_b.gateway_rpc.spdk_rpc_client.bdev_get_bdevs()
     assert len(bdev_list) == 0, "There shouldn't be bdevs left on Gateway B"
