@@ -1088,7 +1088,8 @@ def test_open_with_encryption_plain_image(caplog, two_gateways):
          "--rbd-data-pool", pool, "--rbd-image", image6,
          "--encryption-format", "luks1", "--key-id", key_id])
     assert f"Failure adding namespace to {subsystem1}: RBD " \
-           f"image {pool}/{image6} is not formatted for encryption" in caplog.text
+           f"image {pool}/{image6} is not formatted for encryption or " \
+           f"is formatted using the wrong encryption format" in caplog.text
 
 
 def test_list_namespaces(caplog, two_gateways):
