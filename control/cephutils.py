@@ -429,7 +429,8 @@ class CephUtils:
                     with rbd.Image(ioctx, image_name) as img:
                         img.encryption_load2(specs)
                 except rbd.InvalidArgument:
-                    errmsg = f"RBD image {image_path} is not formatted for encryption"
+                    errmsg = f"RBD image {image_path} is not formatted for encryption or " \
+                             f"is formatted using the wrong encryption format"
                     self.logger.exception(errmsg)
                     return errmsg
                 except rbd.PermissionError:
