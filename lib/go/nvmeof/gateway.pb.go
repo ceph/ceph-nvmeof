@@ -5896,7 +5896,6 @@ type NamespaceCli struct {
 	RbdDataPoolName              *string                `protobuf:"bytes,22,opt,name=rbd_data_pool_name,json=rbdDataPoolName,proto3,oneof" json:"rbd_data_pool_name,omitempty"`
 	Location                     *string                `protobuf:"bytes,23,opt,name=location,proto3,oneof" json:"location,omitempty"`
 	RadosNamespaceName           *string                `protobuf:"bytes,24,opt,name=rados_namespace_name,json=radosNamespaceName,proto3,oneof" json:"rados_namespace_name,omitempty"`
-	EncryptionAlgorithm          *EncryptionAlgorithm   `protobuf:"varint,25,opt,name=encryption_algorithm,json=encryptionAlgorithm,proto3,enum=EncryptionAlgorithm,oneof" json:"encryption_algorithm,omitempty"`
 	EncryptionEntries            []*EncryptionEntry     `protobuf:"bytes,26,rep,name=encryption_entries,json=encryptionEntries,proto3" json:"encryption_entries,omitempty"`
 	Degraded                     *bool                  `protobuf:"varint,27,opt,name=degraded,proto3,oneof" json:"degraded,omitempty"`
 	Pinned                       *bool                  `protobuf:"varint,28,opt,name=pinned,proto3,oneof" json:"pinned,omitempty"`
@@ -6100,13 +6099,6 @@ func (x *NamespaceCli) GetRadosNamespaceName() string {
 		return *x.RadosNamespaceName
 	}
 	return ""
-}
-
-func (x *NamespaceCli) GetEncryptionAlgorithm() EncryptionAlgorithm {
-	if x != nil && x.EncryptionAlgorithm != nil {
-		return *x.EncryptionAlgorithm
-	}
-	return EncryptionAlgorithm_no_algorithm
 }
 
 func (x *NamespaceCli) GetEncryptionEntries() []*EncryptionEntry {
@@ -7609,7 +7601,8 @@ const file_gateway_proto_rawDesc = "" +
 	"\x06status\x18\x01 \x01(\x05R\x06status\x12#\n" +
 	"\rerror_message\x18\x02 \x01(\tR\ferrorMessage\x12#\n" +
 	"\rsubsystem_nqn\x18\x03 \x01(\tR\fsubsystemNqn\x12-\n" +
-	"\vconnections\x18\x04 \x03(\v2\v.connectionR\vconnections\"\xb2\v\n" +
+	"\vconnections\x18\x04 \x03(\v2\v.connectionR\vconnections\"\xe7\n" +
+	"\n" +
 	"\rnamespace_cli\x12\x12\n" +
 	"\x04nsid\x18\x01 \x01(\rR\x04nsid\x12\x1b\n" +
 	"\tbdev_name\x18\x02 \x01(\tR\bbdevName\x12$\n" +
@@ -7637,12 +7630,11 @@ const file_gateway_proto_rawDesc = "" +
 	"\x10image_was_shrunk\x18\x15 \x01(\bH\x06R\x0eimageWasShrunk\x88\x01\x01\x120\n" +
 	"\x12rbd_data_pool_name\x18\x16 \x01(\tH\aR\x0frbdDataPoolName\x88\x01\x01\x12\x1f\n" +
 	"\blocation\x18\x17 \x01(\tH\bR\blocation\x88\x01\x01\x125\n" +
-	"\x14rados_namespace_name\x18\x18 \x01(\tH\tR\x12radosNamespaceName\x88\x01\x01\x12L\n" +
-	"\x14encryption_algorithm\x18\x19 \x01(\x0e2\x14.EncryptionAlgorithmH\n" +
-	"R\x13encryptionAlgorithm\x88\x01\x01\x12@\n" +
+	"\x14rados_namespace_name\x18\x18 \x01(\tH\tR\x12radosNamespaceName\x88\x01\x01\x12@\n" +
 	"\x12encryption_entries\x18\x1a \x03(\v2\x11.encryption_entryR\x11encryptionEntries\x12\x1f\n" +
-	"\bdegraded\x18\x1b \x01(\bH\vR\bdegraded\x88\x01\x01\x12\x1b\n" +
-	"\x06pinned\x18\x1c \x01(\bH\fR\x06pinned\x88\x01\x01B\x13\n" +
+	"\bdegraded\x18\x1b \x01(\bH\n" +
+	"R\bdegraded\x88\x01\x01\x12\x1b\n" +
+	"\x06pinned\x18\x1c \x01(\bH\vR\x06pinned\x88\x01\x01B\x13\n" +
 	"\x11_ns_subsystem_nqnB\x0e\n" +
 	"\f_trash_imageB\x16\n" +
 	"\x14_disable_auto_resizeB\f\n" +
@@ -7653,10 +7645,9 @@ const file_gateway_proto_rawDesc = "" +
 	"\x11_image_was_shrunkB\x15\n" +
 	"\x13_rbd_data_pool_nameB\v\n" +
 	"\t_locationB\x17\n" +
-	"\x15_rados_namespace_nameB\x17\n" +
-	"\x15_encryption_algorithmB\v\n" +
+	"\x15_rados_namespace_nameB\v\n" +
 	"\t_degradedB\t\n" +
-	"\a_pinned\"\xa3\x01\n" +
+	"\a_pinnedJ\x04\b\x19\x10\x1aR\x14encryption_algorithm\"\xa3\x01\n" +
 	"\x0fnamespaces_info\x12\x16\n" +
 	"\x06status\x18\x01 \x01(\x05R\x06status\x12#\n" +
 	"\rerror_message\x18\x02 \x01(\tR\ferrorMessage\x12#\n" +
@@ -7991,114 +7982,113 @@ var file_gateway_proto_depIdxs = []int32{
 	0,  // 35: connection.adrfam:type_name -> AddressFamily
 	5,  // 36: connection.dhchap_controller_origin:type_name -> DHCHAPControllerKeyOrigin
 	85, // 37: connections_info.connections:type_name -> connection
-	4,  // 38: namespace_cli.encryption_algorithm:type_name -> EncryptionAlgorithm
-	96, // 39: namespace_cli.encryption_entries:type_name -> encryption_entry
-	87, // 40: namespaces_info.namespaces:type_name -> namespace_cli
-	91, // 41: list_namespaces_io_stats_info.namespaces:type_name -> bdev_io_stats_info
-	89, // 42: bdev_io_stats_info.io_error:type_name -> namespace_io_error
-	89, // 43: namespace_io_stats_info.io_error:type_name -> namespace_io_error
-	93, // 44: spdk_nvmf_log_flags_and_level_info.nvmf_log_flags:type_name -> spdk_log_flag_info
-	1,  // 45: spdk_nvmf_log_flags_and_level_info.log_level:type_name -> LogLevel
-	1,  // 46: spdk_nvmf_log_flags_and_level_info.log_print_level:type_name -> LogLevel
-	2,  // 47: gateway_log_level_info.log_level:type_name -> GwLogLevel
-	3,  // 48: encryption_entry.format:type_name -> EncryptionFormat
-	7,  // 49: Gateway.namespace_add:input_type -> namespace_add_req
-	21, // 50: Gateway.create_subsystem:input_type -> create_subsystem_req
-	22, // 51: Gateway.delete_subsystem:input_type -> delete_subsystem_req
-	23, // 52: Gateway.change_subsystem_key:input_type -> change_subsystem_key_req
-	24, // 53: Gateway.add_subsystem_network:input_type -> add_subsystem_network_req
-	25, // 54: Gateway.del_subsystem_network:input_type -> del_subsystem_network_req
-	28, // 55: Gateway.add_kmip_server_endpoints:input_type -> add_kmip_server_endpoints_req
-	29, // 56: Gateway.del_kmip_server_endpoints:input_type -> del_kmip_server_endpoints_req
-	30, // 57: Gateway.list_kmip_server_endpoints:input_type -> list_kmip_server_endpoints_req
-	32, // 58: Gateway.list_namespaces:input_type -> list_namespaces_req
-	8,  // 59: Gateway.namespace_resize:input_type -> namespace_resize_req
-	9,  // 60: Gateway.namespace_get_io_stats:input_type -> namespace_get_io_stats_req
-	10, // 61: Gateway.list_namespaces_io_stats:input_type -> list_namespaces_io_stats_req
-	11, // 62: Gateway.namespace_set_qos_limits:input_type -> namespace_set_qos_req
-	12, // 63: Gateway.namespace_change_load_balancing_group:input_type -> namespace_change_load_balancing_group_req
-	13, // 64: Gateway.namespace_change_visibility:input_type -> namespace_change_visibility_req
-	14, // 65: Gateway.namespace_change_location:input_type -> namespace_change_location_req
-	15, // 66: Gateway.namespace_set_rbd_trash_image:input_type -> namespace_set_rbd_trash_image_req
-	16, // 67: Gateway.namespace_set_auto_resize:input_type -> namespace_set_auto_resize_req
-	17, // 68: Gateway.namespace_delete:input_type -> namespace_delete_req
-	18, // 69: Gateway.namespace_add_host:input_type -> namespace_add_host_req
-	19, // 70: Gateway.namespace_delete_host:input_type -> namespace_delete_host_req
-	20, // 71: Gateway.namespace_unpin:input_type -> namespace_unpin_req
-	33, // 72: Gateway.add_host:input_type -> add_host_req
-	36, // 73: Gateway.remove_host:input_type -> remove_host_req
-	37, // 74: Gateway.set_keep_host_connected:input_type -> set_keep_host_connected_req
-	34, // 75: Gateway.change_host_key:input_type -> change_host_key_req
-	38, // 76: Gateway.list_hosts:input_type -> list_hosts_req
-	39, // 77: Gateway.list_connections:input_type -> list_connections_req
-	35, // 78: Gateway.get_connection_io_statistics:input_type -> get_connection_io_statistics_req
-	40, // 79: Gateway.create_listener:input_type -> create_listener_req
-	41, // 80: Gateway.delete_listener:input_type -> delete_listener_req
-	42, // 81: Gateway.list_listeners:input_type -> list_listeners_req
-	43, // 82: Gateway.list_subsystems:input_type -> list_subsystems_req
-	44, // 83: Gateway.get_subsystems:input_type -> get_subsystems_req
-	57, // 84: Gateway.set_ana_state:input_type -> ana_info
-	45, // 85: Gateway.get_spdk_nvmf_log_flags_and_level:input_type -> get_spdk_nvmf_log_flags_and_level_req
-	46, // 86: Gateway.disable_spdk_nvmf_logs:input_type -> disable_spdk_nvmf_logs_req
-	47, // 87: Gateway.set_spdk_nvmf_logs:input_type -> set_spdk_nvmf_logs_req
-	48, // 88: Gateway.get_gateway_info:input_type -> get_gateway_info_req
-	49, // 89: Gateway.get_gateway_log_level:input_type -> get_gateway_log_level_req
-	50, // 90: Gateway.set_gateway_log_level:input_type -> set_gateway_log_level_req
-	51, // 91: Gateway.show_gateway_listeners_info:input_type -> show_gateway_listeners_info_req
-	52, // 92: Gateway.get_gateway_stats:input_type -> get_gateway_stats_req
-	53, // 93: Gateway.get_thread_stats:input_type -> get_thread_stats_req
-	54, // 94: Gateway.set_gateway_io_stats_mode:input_type -> set_gateway_io_stats_mode_req
-	60, // 95: Gateway.namespace_add:output_type -> nsid_status
-	59, // 96: Gateway.create_subsystem:output_type -> subsys_status
-	58, // 97: Gateway.delete_subsystem:output_type -> req_status
-	58, // 98: Gateway.change_subsystem_key:output_type -> req_status
-	58, // 99: Gateway.add_subsystem_network:output_type -> req_status
-	58, // 100: Gateway.del_subsystem_network:output_type -> req_status
-	58, // 101: Gateway.add_kmip_server_endpoints:output_type -> req_status
-	58, // 102: Gateway.del_kmip_server_endpoints:output_type -> req_status
-	31, // 103: Gateway.list_kmip_server_endpoints:output_type -> kmip_server_endpoints_info
-	88, // 104: Gateway.list_namespaces:output_type -> namespaces_info
-	58, // 105: Gateway.namespace_resize:output_type -> req_status
-	92, // 106: Gateway.namespace_get_io_stats:output_type -> namespace_io_stats_info
-	90, // 107: Gateway.list_namespaces_io_stats:output_type -> list_namespaces_io_stats_info
-	58, // 108: Gateway.namespace_set_qos_limits:output_type -> req_status
-	58, // 109: Gateway.namespace_change_load_balancing_group:output_type -> req_status
-	58, // 110: Gateway.namespace_change_visibility:output_type -> req_status
-	58, // 111: Gateway.namespace_change_location:output_type -> req_status
-	58, // 112: Gateway.namespace_set_rbd_trash_image:output_type -> req_status
-	58, // 113: Gateway.namespace_set_auto_resize:output_type -> req_status
-	58, // 114: Gateway.namespace_delete:output_type -> req_status
-	58, // 115: Gateway.namespace_add_host:output_type -> req_status
-	58, // 116: Gateway.namespace_delete_host:output_type -> req_status
-	58, // 117: Gateway.namespace_unpin:output_type -> req_status
-	58, // 118: Gateway.add_host:output_type -> req_status
-	58, // 119: Gateway.remove_host:output_type -> req_status
-	58, // 120: Gateway.set_keep_host_connected:output_type -> req_status
-	58, // 121: Gateway.change_host_key:output_type -> req_status
-	84, // 122: Gateway.list_hosts:output_type -> hosts_info
-	86, // 123: Gateway.list_connections:output_type -> connections_info
-	83, // 124: Gateway.get_connection_io_statistics:output_type -> connection_io_statistics
-	58, // 125: Gateway.create_listener:output_type -> req_status
-	58, // 126: Gateway.delete_listener:output_type -> req_status
-	76, // 127: Gateway.list_listeners:output_type -> listeners_info
-	65, // 128: Gateway.list_subsystems:output_type -> subsystems_info_cli
-	61, // 129: Gateway.get_subsystems:output_type -> subsystems_info
-	58, // 130: Gateway.set_ana_state:output_type -> req_status
-	94, // 131: Gateway.get_spdk_nvmf_log_flags_and_level:output_type -> spdk_nvmf_log_flags_and_level_info
-	58, // 132: Gateway.disable_spdk_nvmf_logs:output_type -> req_status
-	58, // 133: Gateway.set_spdk_nvmf_logs:output_type -> req_status
-	67, // 134: Gateway.get_gateway_info:output_type -> gateway_info
-	95, // 135: Gateway.get_gateway_log_level:output_type -> gateway_log_level_info
-	58, // 136: Gateway.set_gateway_log_level:output_type -> req_status
-	78, // 137: Gateway.show_gateway_listeners_info:output_type -> gateway_listeners_info
-	72, // 138: Gateway.get_gateway_stats:output_type -> gateway_stats_info
-	73, // 139: Gateway.get_thread_stats:output_type -> thread_stats_info
-	58, // 140: Gateway.set_gateway_io_stats_mode:output_type -> req_status
-	95, // [95:141] is the sub-list for method output_type
-	49, // [49:95] is the sub-list for method input_type
-	49, // [49:49] is the sub-list for extension type_name
-	49, // [49:49] is the sub-list for extension extendee
-	0,  // [0:49] is the sub-list for field type_name
+	96, // 38: namespace_cli.encryption_entries:type_name -> encryption_entry
+	87, // 39: namespaces_info.namespaces:type_name -> namespace_cli
+	91, // 40: list_namespaces_io_stats_info.namespaces:type_name -> bdev_io_stats_info
+	89, // 41: bdev_io_stats_info.io_error:type_name -> namespace_io_error
+	89, // 42: namespace_io_stats_info.io_error:type_name -> namespace_io_error
+	93, // 43: spdk_nvmf_log_flags_and_level_info.nvmf_log_flags:type_name -> spdk_log_flag_info
+	1,  // 44: spdk_nvmf_log_flags_and_level_info.log_level:type_name -> LogLevel
+	1,  // 45: spdk_nvmf_log_flags_and_level_info.log_print_level:type_name -> LogLevel
+	2,  // 46: gateway_log_level_info.log_level:type_name -> GwLogLevel
+	3,  // 47: encryption_entry.format:type_name -> EncryptionFormat
+	7,  // 48: Gateway.namespace_add:input_type -> namespace_add_req
+	21, // 49: Gateway.create_subsystem:input_type -> create_subsystem_req
+	22, // 50: Gateway.delete_subsystem:input_type -> delete_subsystem_req
+	23, // 51: Gateway.change_subsystem_key:input_type -> change_subsystem_key_req
+	24, // 52: Gateway.add_subsystem_network:input_type -> add_subsystem_network_req
+	25, // 53: Gateway.del_subsystem_network:input_type -> del_subsystem_network_req
+	28, // 54: Gateway.add_kmip_server_endpoints:input_type -> add_kmip_server_endpoints_req
+	29, // 55: Gateway.del_kmip_server_endpoints:input_type -> del_kmip_server_endpoints_req
+	30, // 56: Gateway.list_kmip_server_endpoints:input_type -> list_kmip_server_endpoints_req
+	32, // 57: Gateway.list_namespaces:input_type -> list_namespaces_req
+	8,  // 58: Gateway.namespace_resize:input_type -> namespace_resize_req
+	9,  // 59: Gateway.namespace_get_io_stats:input_type -> namespace_get_io_stats_req
+	10, // 60: Gateway.list_namespaces_io_stats:input_type -> list_namespaces_io_stats_req
+	11, // 61: Gateway.namespace_set_qos_limits:input_type -> namespace_set_qos_req
+	12, // 62: Gateway.namespace_change_load_balancing_group:input_type -> namespace_change_load_balancing_group_req
+	13, // 63: Gateway.namespace_change_visibility:input_type -> namespace_change_visibility_req
+	14, // 64: Gateway.namespace_change_location:input_type -> namespace_change_location_req
+	15, // 65: Gateway.namespace_set_rbd_trash_image:input_type -> namespace_set_rbd_trash_image_req
+	16, // 66: Gateway.namespace_set_auto_resize:input_type -> namespace_set_auto_resize_req
+	17, // 67: Gateway.namespace_delete:input_type -> namespace_delete_req
+	18, // 68: Gateway.namespace_add_host:input_type -> namespace_add_host_req
+	19, // 69: Gateway.namespace_delete_host:input_type -> namespace_delete_host_req
+	20, // 70: Gateway.namespace_unpin:input_type -> namespace_unpin_req
+	33, // 71: Gateway.add_host:input_type -> add_host_req
+	36, // 72: Gateway.remove_host:input_type -> remove_host_req
+	37, // 73: Gateway.set_keep_host_connected:input_type -> set_keep_host_connected_req
+	34, // 74: Gateway.change_host_key:input_type -> change_host_key_req
+	38, // 75: Gateway.list_hosts:input_type -> list_hosts_req
+	39, // 76: Gateway.list_connections:input_type -> list_connections_req
+	35, // 77: Gateway.get_connection_io_statistics:input_type -> get_connection_io_statistics_req
+	40, // 78: Gateway.create_listener:input_type -> create_listener_req
+	41, // 79: Gateway.delete_listener:input_type -> delete_listener_req
+	42, // 80: Gateway.list_listeners:input_type -> list_listeners_req
+	43, // 81: Gateway.list_subsystems:input_type -> list_subsystems_req
+	44, // 82: Gateway.get_subsystems:input_type -> get_subsystems_req
+	57, // 83: Gateway.set_ana_state:input_type -> ana_info
+	45, // 84: Gateway.get_spdk_nvmf_log_flags_and_level:input_type -> get_spdk_nvmf_log_flags_and_level_req
+	46, // 85: Gateway.disable_spdk_nvmf_logs:input_type -> disable_spdk_nvmf_logs_req
+	47, // 86: Gateway.set_spdk_nvmf_logs:input_type -> set_spdk_nvmf_logs_req
+	48, // 87: Gateway.get_gateway_info:input_type -> get_gateway_info_req
+	49, // 88: Gateway.get_gateway_log_level:input_type -> get_gateway_log_level_req
+	50, // 89: Gateway.set_gateway_log_level:input_type -> set_gateway_log_level_req
+	51, // 90: Gateway.show_gateway_listeners_info:input_type -> show_gateway_listeners_info_req
+	52, // 91: Gateway.get_gateway_stats:input_type -> get_gateway_stats_req
+	53, // 92: Gateway.get_thread_stats:input_type -> get_thread_stats_req
+	54, // 93: Gateway.set_gateway_io_stats_mode:input_type -> set_gateway_io_stats_mode_req
+	60, // 94: Gateway.namespace_add:output_type -> nsid_status
+	59, // 95: Gateway.create_subsystem:output_type -> subsys_status
+	58, // 96: Gateway.delete_subsystem:output_type -> req_status
+	58, // 97: Gateway.change_subsystem_key:output_type -> req_status
+	58, // 98: Gateway.add_subsystem_network:output_type -> req_status
+	58, // 99: Gateway.del_subsystem_network:output_type -> req_status
+	58, // 100: Gateway.add_kmip_server_endpoints:output_type -> req_status
+	58, // 101: Gateway.del_kmip_server_endpoints:output_type -> req_status
+	31, // 102: Gateway.list_kmip_server_endpoints:output_type -> kmip_server_endpoints_info
+	88, // 103: Gateway.list_namespaces:output_type -> namespaces_info
+	58, // 104: Gateway.namespace_resize:output_type -> req_status
+	92, // 105: Gateway.namespace_get_io_stats:output_type -> namespace_io_stats_info
+	90, // 106: Gateway.list_namespaces_io_stats:output_type -> list_namespaces_io_stats_info
+	58, // 107: Gateway.namespace_set_qos_limits:output_type -> req_status
+	58, // 108: Gateway.namespace_change_load_balancing_group:output_type -> req_status
+	58, // 109: Gateway.namespace_change_visibility:output_type -> req_status
+	58, // 110: Gateway.namespace_change_location:output_type -> req_status
+	58, // 111: Gateway.namespace_set_rbd_trash_image:output_type -> req_status
+	58, // 112: Gateway.namespace_set_auto_resize:output_type -> req_status
+	58, // 113: Gateway.namespace_delete:output_type -> req_status
+	58, // 114: Gateway.namespace_add_host:output_type -> req_status
+	58, // 115: Gateway.namespace_delete_host:output_type -> req_status
+	58, // 116: Gateway.namespace_unpin:output_type -> req_status
+	58, // 117: Gateway.add_host:output_type -> req_status
+	58, // 118: Gateway.remove_host:output_type -> req_status
+	58, // 119: Gateway.set_keep_host_connected:output_type -> req_status
+	58, // 120: Gateway.change_host_key:output_type -> req_status
+	84, // 121: Gateway.list_hosts:output_type -> hosts_info
+	86, // 122: Gateway.list_connections:output_type -> connections_info
+	83, // 123: Gateway.get_connection_io_statistics:output_type -> connection_io_statistics
+	58, // 124: Gateway.create_listener:output_type -> req_status
+	58, // 125: Gateway.delete_listener:output_type -> req_status
+	76, // 126: Gateway.list_listeners:output_type -> listeners_info
+	65, // 127: Gateway.list_subsystems:output_type -> subsystems_info_cli
+	61, // 128: Gateway.get_subsystems:output_type -> subsystems_info
+	58, // 129: Gateway.set_ana_state:output_type -> req_status
+	94, // 130: Gateway.get_spdk_nvmf_log_flags_and_level:output_type -> spdk_nvmf_log_flags_and_level_info
+	58, // 131: Gateway.disable_spdk_nvmf_logs:output_type -> req_status
+	58, // 132: Gateway.set_spdk_nvmf_logs:output_type -> req_status
+	67, // 133: Gateway.get_gateway_info:output_type -> gateway_info
+	95, // 134: Gateway.get_gateway_log_level:output_type -> gateway_log_level_info
+	58, // 135: Gateway.set_gateway_log_level:output_type -> req_status
+	78, // 136: Gateway.show_gateway_listeners_info:output_type -> gateway_listeners_info
+	72, // 137: Gateway.get_gateway_stats:output_type -> gateway_stats_info
+	73, // 138: Gateway.get_thread_stats:output_type -> thread_stats_info
+	58, // 139: Gateway.set_gateway_io_stats_mode:output_type -> req_status
+	94, // [94:140] is the sub-list for method output_type
+	48, // [48:94] is the sub-list for method input_type
+	48, // [48:48] is the sub-list for extension type_name
+	48, // [48:48] is the sub-list for extension extendee
+	0,  // [0:48] is the sub-list for field type_name
 }
 
 func init() { file_gateway_proto_init() }
@@ -8127,6 +8117,7 @@ func file_gateway_proto_init() {
 	file_gateway_proto_msgTypes[27].OneofWrappers = []any{}
 	file_gateway_proto_msgTypes[28].OneofWrappers = []any{}
 	file_gateway_proto_msgTypes[29].OneofWrappers = []any{}
+	file_gateway_proto_msgTypes[30].OneofWrappers = []any{}
 	file_gateway_proto_msgTypes[31].OneofWrappers = []any{}
 	file_gateway_proto_msgTypes[32].OneofWrappers = []any{}
 	file_gateway_proto_msgTypes[33].OneofWrappers = []any{}
