@@ -907,10 +907,6 @@ def test_create_with_encryption(caplog, two_gateways):
     time.sleep(30)
     assert f'encryption_entries: [(format: luks1, key id: {key_id})], encryption_algorithm: ' \
            f'no_algorithm, context: None' in caplog.text
-    caplog.clear()
-    cli(["--format", "json", "namespace", "list", "--subsystem", subsystem1, "--nsid", "1"])
-    assert '"encryption_algorithm": "no_algorithm"' not in caplog.text
-    assert '"encryption_algorithm": "aes256"' in caplog.text
 
 
 def test_delete_the_last_server_endpoint(caplog, two_gateways):
@@ -1033,14 +1029,13 @@ def test_encryption_algorithm_update(caplog, two_gateways):
     assert '"nsid": 1' in caplog.text
     assert '"format": "luks1"' in caplog.text
     assert f'"key_id": "{key_id}"' in caplog.text
-    assert '"encryption_algorithm": "aes128"' in caplog.text
+    assert '"encryption_algorithm"' not in caplog.text
     caplog.clear()
     cli(["--format", "json", "--server-port", portB, "namespace", "list",
          "--subsystem", subsystem1, "--nsid", "1"])
     assert '"nsid": 1' in caplog.text
     assert '"format": "luks1"' in caplog.text
     assert f'"key_id": "{key_id}"' in caplog.text
-    assert '"encryption_algorithm": "aes128"' in caplog.text
     cli(["namespace", "del", "--subsystem", subsystem1, "--nsid", "1"])
     assert f"Deleting namespace 1 from {subsystem1}: Successful" in caplog.text
 
@@ -1116,6 +1111,7 @@ def test_list_namespaces(caplog, two_gateways):
     assert '"nsid": 1' in caplog.text
     assert '"format": "luks1"' in caplog.text
     assert f'"key_id": "{key_id}"' in caplog.text
+    assert '"encryption_algorithm"' not in caplog.text
     caplog.clear()
     cli(["namespace", "del", "--subsystem", subsystem1, "--nsid", "1"])
     assert f"Deleting namespace 1 from {subsystem1}: Successful" in caplog.text

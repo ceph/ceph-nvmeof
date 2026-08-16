@@ -4638,17 +4638,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
                         except KeyError:
                             cluster_name = None
 
-                    enc_alg = find_ret.encryption_algorithm
-                    if enc_alg is None:
-                        enc_alg = pb2.EncryptionAlgorithm.no_algorithm
                     enc_entries = find_ret.encryption_entries
                     if not enc_entries:
                         enc_entries = []
-                    if enc_alg == pb2.EncryptionAlgorithm.no_algorithm:
-                        if any(entry.format != pb2.EncryptionFormat.none
-                               for entry in enc_entries):
-                            enc_alg = pb2.EncryptionAlgorithm.aes256
-
                     one_ns = pb2.namespace_cli(nsid=nsid,
                                                bdev_name=bdev_name,
                                                uuid=n["uuid"],
@@ -4663,8 +4655,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                                image_was_shrunk=was_image_shrunk,
                                                rbd_data_pool_name=find_ret.data_pool,
                                                location=find_ret.location,
-                                               encryption_entries=enc_entries,
-                                               encryption_algorithm=enc_alg)
+                                               encryption_entries=enc_entries)
                     with self.rpc_lock:
                         ns_bdev = self.get_bdev_info(bdev_name)
                     if ns_bdev is None:
