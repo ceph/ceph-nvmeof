@@ -794,6 +794,8 @@ message connections_info {
 }
 
 message namespace_cli {
+	reserved 25;
+	reserved "encryption_algorithm";
 	uint32 nsid = 1;
 	string bdev_name = 2;
 	string rbd_image_name = 3;
@@ -818,7 +820,6 @@ message namespace_cli {
 	optional string rbd_data_pool_name = 22;
 	optional string location = 23;
 	optional string rados_namespace_name = 24;
-	optional EncryptionAlgorithm encryption_algorithm = 25;
 	repeated encryption_entry encryption_entries = 26;
 	optional bool degraded = 27;
 	optional bool pinned = 28;
