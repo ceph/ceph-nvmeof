@@ -4798,17 +4798,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
                         lb_group_configured = abs(find_ret.anagrpid)
                         cluster_name = self.bdev_cluster.get(find_ret.bdev, None)
 
-                    enc_alg = find_ret.encryption_algorithm
-                    if enc_alg is None:
-                        enc_alg = pb2.EncryptionAlgorithm.no_algorithm
                     enc_entries = find_ret.encryption_entries
                     if not enc_entries:
                         enc_entries = []
-                    if enc_alg == pb2.EncryptionAlgorithm.no_algorithm:
-                        if any(entry.format != pb2.EncryptionFormat.none
-                               for entry in enc_entries):
-                            enc_alg = pb2.EncryptionAlgorithm.aes256
-
                     one_ns = pb2.namespace_cli(nsid=nsid,
                                                bdev_name=bdev_name,
                                                uuid=n["uuid"],
@@ -4824,7 +4816,6 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                                rbd_data_pool_name=find_ret.data_pool,
                                                location=find_ret.location,
                                                encryption_entries=enc_entries,
-                                               encryption_algorithm=enc_alg,
                                                degraded=find_ret.is_degraded(),
                                                pinned=find_ret.is_pinned())
                     with self.rpc_lock:
