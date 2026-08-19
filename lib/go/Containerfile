@@ -1,4 +1,4 @@
-FROM golang:1.25
+FROM golang:1.26.4
 
 ENV MODULE=github.com/ceph/ceph-nvmeof/lib/go/nvmeof
 
