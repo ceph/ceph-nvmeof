@@ -67,6 +67,7 @@ class GatewayUtils:
     MAX_HOST_NAME_LENGTH = 253
     DOMAIN_LABEL_MAX_LEN = 63
     MAX_MESSAGE_LENGTH_DEFAULT = 4
+    MAX_MODEL_NAME_LENGTH = 40
 
     # We need to enclose IPv6 addresses in brackets before concatenating
     # a colon and port number to it
@@ -124,13 +125,14 @@ class GatewayUtils:
 
         return True
 
+    @staticmethod
     def get_hostname(ip_addr: str, logger) -> str:
         try:
             ret = socket.gethostbyaddr(ip_addr)
             if ret:
                 return ret[0]
         except Exception as e:
-            logger.error(f'error in get_hostname: {e}')
+            logger.error(f'Failed to resolve hostname for IP {ip_addr}: {e}')
         return ''
 
     @staticmethod
@@ -283,6 +285,22 @@ class GatewayUtils:
                     f"Invalid NQN \"{nqn}\": reverse domain is not formatted correctly: {rc[1]}")
 
         return (0, "")
+
+    @staticmethod
+    def is_valid_model_name(model_name: str) -> str:
+        if (model_name is None) or (model_name == ""):
+            return ""
+        if not isinstance(model_name, str):
+            return f"Model name \"{model_name}\" must be a string."
+        if not model_name.isascii():
+            return f"Model name \"{model_name}\" must be an ASCII string."
+        if len(model_name) > GatewayUtils.MAX_MODEL_NAME_LENGTH:
+            return f"Model name \"{model_name}\" is too long. Maximum length is " \
+                   f"{GatewayUtils.MAX_MODEL_NAME_LENGTH} characters."
+        for c in model_name:
+            if c < '\x20' or c > '\x7e':
+                return f"Model name \"{model_name}\" contains control characters."
+        return ""
 
 
 class GatewayUtilsCrypto:

@@ -26,6 +26,8 @@ image = "enc_test_image"
 image2 = "enc_test_image2"
 image3 = "enc_test_image3"
 image4 = "enc_test_image4"
+image5 = "enc_test_image5"
+image6 = "enc_test_image6"
 pool = "rbd"
 subsystem1 = "nqn.2016-06.io.spdk:cnode1"
 subsystem2 = "nqn.2016-06.io.spdk:cnode2"
@@ -197,6 +199,15 @@ def look_for_string_from_file(lines, filename, lookfor):
             continue
         return
     raise AssertionError(f"Didn't find \"{lookfor}\" from file {filename} in {broken_lines}")
+
+
+def wait_for_string(caplog, needle, timeout):
+    for _ in range(timeout):
+        if needle in caplog.text:
+            return
+        time.sleep(1)
+
+    raise AssertionError(f"Couldn't find string \"{needle}\" in {timeout} seconds")
 
 
 @pytest.fixture(scope="module")
@@ -1037,16 +1048,11 @@ def test_create_with_encryption(caplog, two_gateways):
          "--rbd-data-pool", pool, "--rbd-image", image, "--size", "16MB",
          "--rbd-create-image", "--encryption-format", "luks1",
          "--key-id", key_id])
-    assert f"Adding namespace 1 to {subsystem1}: Successful" in caplog.text
-    assert f'encryption_entries: [(format: luks1, key id: {key_id})], encryption_algorithm: ' \
-           f'no_algorithm, context: <' in caplog.text
-    time.sleep(30)
-    assert f'encryption_entries: [(format: luks1, key id: {key_id})], encryption_algorithm: ' \
-           f'no_algorithm, context: None' in caplog.text
-    caplog.clear()
-    cli(["--format", "json", "namespace", "list", "--subsystem", subsystem1, "--nsid", "1"])
-    assert '"encryption_algorithm": "no_algorithm"' not in caplog.text
-    assert '"encryption_algorithm": "aes256"' in caplog.text
+    wait_for_string(caplog, f"Adding namespace 1 to {subsystem1}: Successful", 5)
+    wait_for_string(caplog, f'encryption_entries: [(format: luks1, key id: {key_id})], '
+                            f'encryption_algorithm: no_algorithm, context: <', 5)
+    wait_for_string(caplog, f'encryption_entries: [(format: luks1, key id: {key_id})], '
+                            f'encryption_algorithm: no_algorithm, context: None', 60)
 
 
 def test_delete_the_last_server_endpoint(caplog, two_gateways):
@@ -1130,16 +1136,50 @@ def test_encryption_algorithm_without_create(caplog, two_gateways):
     enc_entries = [pb2.encryption_entry(format="luks1", key_id=key_id)]
     ns_add_req = pb2.namespace_add_req(rbd_pool_name=pool,
                                        rbd_image_name=image,
-                                       force=True,
                                        subsystem_nqn=subsystem1,
                                        block_size=512,
                                        encryption_entries=enc_entries,
                                        encryption_algorithm="aes128")
     caplog.clear()
     ret = stub.namespace_add(ns_add_req)
-    assert ret.status == 0
+    assert ret.status != 0
     assert f'encryption_entries: [(format: luks1, key id: {key_id})], encryption_algorithm: ' \
            f'aes128, context: <' in caplog.text
+    assert f"Failure adding namespace to {subsystem1}: Encryption algorithm is only allowed " \
+           f"when creating a new image" in caplog.text
+
+
+def test_encryption_algorithm_update(caplog, two_gateways):
+    gwA, _, gwB, _ = two_gateways
+    key_id = add_key_to_kmip_server_endpoint(kmip_dir1, kmip_addr, kmip_port, "bla")
+    configA = gwA.gateway_rpc.config
+    configB = gwB.gateway_rpc.config
+    portA = configA.config["gateway"]["port"]
+    portB = configB.config["gateway"]["port"]
+    caplog.clear()
+    cli(["namespace", "add", "--subsystem", subsystem1, "--rbd-pool", pool,
+         "--rbd-data-pool", pool, "--rbd-image", image5,
+         "--rbd-create-image", "--size", "16MB",
+         "--encryption-format", "luks1", "--key-id", key_id,
+         "--encryption-algorithm", "aes128"])
+    wait_for_string(caplog, f"Adding namespace 1 to {subsystem1}: Successful", 5)
+    wait_for_string(caplog, f'encryption_entries: [(format: luks1, key id: {key_id})], '
+                            f'encryption_algorithm: aes128, context: <', 5)
+    wait_for_string(caplog, f'encryption_entries: [(format: luks1, key id: {key_id})], '
+                            f'encryption_algorithm: aes128, context: None', 60)
+    caplog.clear()
+    cli(["--format", "json", "--server-port", portA, "namespace", "list",
+         "--subsystem", subsystem1, "--nsid", "1"])
+    assert '"nsid": 1' in caplog.text
+    assert '"format": "luks1"' in caplog.text
+    assert f'"key_id": "{key_id}"' in caplog.text
+    assert '"encryption_algorithm"' not in caplog.text
+    caplog.clear()
+    cli(["--format", "json", "--server-port", portB, "namespace", "list",
+         "--subsystem", subsystem1, "--nsid", "1"])
+    assert '"nsid": 1' in caplog.text
+    assert '"format": "luks1"' in caplog.text
+    assert f'"key_id": "{key_id}"' in caplog.text
     cli(["namespace", "del", "--subsystem", subsystem1, "--nsid", "1"])
     assert f"Deleting namespace 1 from {subsystem1}: Successful" in caplog.text
 
@@ -1150,12 +1190,11 @@ def test_open_with_encryption(caplog, two_gateways):
     cli(["namespace", "add", "--subsystem", subsystem1, "--rbd-pool", pool,
          "--rbd-data-pool", pool, "--rbd-image", image,
          "--encryption-format", "luks1", "--key-id", key_id])
-    assert f"Adding namespace 1 to {subsystem1}: Successful" in caplog.text
-    assert f'encryption_entries: [(format: luks1, key id: {key_id})], encryption_algorithm: ' \
-           f'no_algorithm, context: <' in caplog.text
-    time.sleep(20)
-    assert f'encryption_entries: [(format: luks1, key id: {key_id})], encryption_algorithm: ' \
-           f'no_algorithm, context: None' in caplog.text
+    wait_for_string(caplog, f"Adding namespace 1 to {subsystem1}: Successful", 5)
+    wait_for_string(caplog, f'encryption_entries: [(format: luks1, key id: {key_id})], '
+                            f'encryption_algorithm: no_algorithm, context: <', 5)
+    wait_for_string(caplog, f'encryption_entries: [(format: luks1, key id: {key_id})], '
+                            f'encryption_algorithm: no_algorithm, context: None', 60)
     caplog.clear()
     cli(["namespace", "del", "--subsystem", subsystem1, "--nsid", "1"])
     assert f"Deleting namespace 1 from {subsystem1}: Successful" in caplog.text
@@ -1168,29 +1207,54 @@ def test_open_with_encryption_wrong_key_id(caplog, two_gateways):
     cli(["namespace", "add", "--subsystem", subsystem1, "--rbd-pool", pool,
          "--rbd-data-pool", pool, "--rbd-image", image,
          "--encryption-format", "luks1", "--key-id", key_id])
-    assert f"Failure adding namespace to {subsystem1}: Operation not permitted" in caplog.text
+    assert f"Failure adding namespace to {subsystem1}: Wrong passphrase for RBD " \
+           f"image {pool}/{image}" in caplog.text
+
+
+def test_open_with_encryption_plain_image(caplog, two_gateways):
+    key_id = add_key_to_kmip_server_endpoint(kmip_dir1, kmip_addr, kmip_port, "bla")
+    caplog.clear()
+    cli(["namespace", "add", "--subsystem", subsystem1, "--rbd-pool", pool,
+         "--rbd-data-pool", pool, "--rbd-image", image6,
+         "--rbd-create-image", "--size", "16MB"])
+    wait_for_string(caplog, f"Adding namespace 1 to {subsystem1}: Successful", 5)
+    caplog.clear()
+    cli(["namespace", "del", "--subsystem", subsystem1, "--nsid", "1"])
+    assert f"Deleting namespace 1 from {subsystem1}: Successful" in caplog.text
+    caplog.clear()
+    cli(["namespace", "add", "--subsystem", subsystem1, "--rbd-pool", pool,
+         "--rbd-data-pool", pool, "--rbd-image", image6,
+         "--encryption-format", "luks1", "--key-id", key_id])
+    assert f"Failure adding namespace to {subsystem1}: RBD " \
+           f"image {pool}/{image6} is not formatted for encryption or " \
+           f"is formatted using the wrong encryption format" in caplog.text
 
 
 def test_list_namespaces(caplog, two_gateways):
+    gwA, _, gwB, _ = two_gateways
     key_id = add_key_to_kmip_server_endpoint(kmip_dir1, kmip_addr, kmip_port, "bla")
+    configA = gwA.gateway_rpc.config
+    configB = gwB.gateway_rpc.config
+    portA = configA.config["gateway"]["port"]
+    portB = configB.config["gateway"]["port"]
     caplog.clear()
     cli(["namespace", "add", "--subsystem", subsystem1, "--rbd-pool", pool,
          "--rbd-data-pool", pool, "--rbd-image", image,
          "--encryption-format", "luks1", "--key-id", key_id])
-    assert f"Adding namespace 1 to {subsystem1}: Successful" in caplog.text
-    assert f'encryption_entries: [(format: luks1, key id: {key_id})], encryption_algorithm: ' \
-           f'no_algorithm, context: <' in caplog.text
-    time.sleep(20)
-    assert f'encryption_entries: [(format: luks1, key id: {key_id})], encryption_algorithm: ' \
-           f'no_algorithm, context: None' in caplog.text
+    wait_for_string(caplog, f"Adding namespace 1 to {subsystem1}: Successful", 5)
+    wait_for_string(caplog, f'encryption_entries: [(format: luks1, key id: {key_id})], '
+                            f'encryption_algorithm: no_algorithm, context: <', 5)
+    wait_for_string(caplog, f'encryption_entries: [(format: luks1, key id: {key_id})], '
+                            f'encryption_algorithm: no_algorithm, context: None', 60)
     caplog.clear()
-    cli(["--format", "json", "namespace", "list", "--subsystem", subsystem1, "--nsid", "1"])
+    cli(["--format", "json", "--server-port", portA, "namespace", "list",
+         "--subsystem", subsystem1, "--nsid", "1"])
     assert '"nsid": 1' in caplog.text
     assert '"format": "luks1"' in caplog.text
     assert f'"key_id": "{key_id}"' in caplog.text
-    time.sleep(20)
+    assert '"encryption_algorithm"' not in caplog.text
     caplog.clear()
-    cli(["--format", "json", "--server-port", "5502", "namespace", "list",
+    cli(["--format", "json", "--server-port", portB, "namespace", "list",
          "--subsystem", subsystem1, "--nsid", "1"])
     assert '"nsid": 1' in caplog.text
     assert '"format": "luks1"' in caplog.text
@@ -1233,12 +1297,11 @@ def test_open_with_encryption_second_endpoint(caplog, two_gateways):
     cli(["namespace", "add", "--subsystem", subsystem1, "--rbd-pool", pool,
          "--rbd-data-pool", pool, "--rbd-image", image,
          "--encryption-format", "luks1", "--key-id", key_id2])
-    assert f"Adding namespace 1 to {subsystem1}: Successful" in caplog.text
-    assert f'encryption_entries: [(format: luks1, key id: {key_id2})], encryption_algorithm: ' \
-           f'no_algorithm, context: <' in caplog.text
-    time.sleep(30)
-    assert f'encryption_entries: [(format: luks1, key id: {key_id2})], encryption_algorithm: ' \
-           f'no_algorithm, context: None' in caplog.text
+    wait_for_string(caplog, f"Adding namespace 1 to {subsystem1}: Successful", 5)
+    wait_for_string(caplog, f'encryption_entries: [(format: luks1, key id: {key_id2})], '
+                            f'encryption_algorithm: no_algorithm, context: <', 5)
+    wait_for_string(caplog, f'encryption_entries: [(format: luks1, key id: {key_id2})], '
+                            f'encryption_algorithm: no_algorithm, context: None', 60)
     caplog.clear()
     cli(["namespace", "del", "--subsystem", subsystem1, "--nsid", "1"])
     assert f"Deleting namespace 1 from {subsystem1}: Successful" in caplog.text
@@ -1281,17 +1344,17 @@ def test_open_with_encryption_second_server(caplog, two_gateways):
     cli(["namespace", "add", "--subsystem", subsystem2, "--rbd-pool", pool,
          "--rbd-data-pool", pool, "--rbd-image", image,
          "--encryption-format", "luks1", "--key-id", key_id])
-    assert f"Failure adding namespace to {subsystem2}: Operation not permitted" in caplog.text
+    assert f"Failure adding namespace to {subsystem2}: Wrong passphrase for RBD " \
+           f"image {pool}/{image}" in caplog.text
     caplog.clear()
     cli(["namespace", "add", "--subsystem", subsystem2, "--rbd-pool", pool,
          "--rbd-data-pool", pool, "--rbd-image", image,
          "--encryption-format", "luks1", "--key-id", key_id2])
-    assert f"Adding namespace 1 to {subsystem2}: Successful" in caplog.text
-    assert f'encryption_entries: [(format: luks1, key id: {key_id2})], encryption_algorithm: ' \
-           f'no_algorithm, context: <' in caplog.text
-    time.sleep(30)
-    assert f'encryption_entries: [(format: luks1, key id: {key_id2})], encryption_algorithm: ' \
-           f'no_algorithm, context: None' in caplog.text
+    wait_for_string(caplog, f"Adding namespace 1 to {subsystem2}: Successful", 5)
+    wait_for_string(caplog, f'encryption_entries: [(format: luks1, key id: {key_id2})], '
+                            f'encryption_algorithm: no_algorithm, context: <', 5)
+    wait_for_string(caplog, f'encryption_entries: [(format: luks1, key id: {key_id2})], '
+                            f'encryption_algorithm: no_algorithm, context: None', 60)
     caplog.clear()
     cli(["namespace", "del", "--subsystem", subsystem2, "--nsid", "1"])
     assert f"Deleting namespace 1 from {subsystem2}: Successful" in caplog.text

@@ -1092,6 +1092,10 @@ class GatewayClient:
         if args.secure_listeners and not args.network_mask:
             self.cli.parser.error("Secure listeners cannot be set without a network mask")
 
+        model_check = GatewayUtils.is_valid_model_name(args.model_name)
+        if model_check:
+            self.cli.parser.error(f"Invalid model name: {model_check}")
+
         req = pb2.create_subsystem_req(subsystem_nqn=args.subsystem,
                                        serial_number=args.serial_number,
                                        max_namespaces=args.max_namespaces,
@@ -1100,7 +1104,8 @@ class GatewayClient:
                                        dhchap_key=args.dhchap_key,
                                        network_mask=args.network_mask,
                                        port=args.port,
-                                       secure_listeners=args.secure_listeners)
+                                       secure_listeners=args.secure_listeners,
+                                       model_name=args.model_name)
         try:
             ret = self.stub.create_subsystem(req)
         except Exception as ex:
@@ -1596,6 +1601,9 @@ class GatewayClient:
         argument("--secure-listeners",
                  help="Make all the auto-listeners for this subsystem secure",
                  action='store_true',
+                 required=False),
+        argument("--model-name",
+                 help="Subsystem model name",
                  required=False),
     ]
     subsys_del_args = [
@@ -2800,6 +2808,9 @@ class GatewayClient:
             self.cli.parser.error("load-balancing-group value must be positive")
         if args.nsid is not None and args.nsid <= 0:
             self.cli.parser.error("nsid value must be positive")
+        if args.uuid is not None and not GatewayUtils.is_valid_uuid(args.uuid):
+            self.cli.parser.error(f"--uuid value '{args.uuid}' is not a valid UUID "
+                                  f"(expected format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)")
         if args.rbd_create_image:
             if args.size is None:
                 self.cli.parser.error("--size argument is mandatory for add command when "
@@ -3156,10 +3167,13 @@ class GatewayClient:
                         err_func(f"Failure listing namespace with UUID {args.uuid}: "
                                  f"Got namespace {ns.uuid} instead")
                         return errno.ENODEV
+                    pinned_msg = ""
                     if not ns.load_balancing_group:
                         lb_group = "<n/a>"
                     else:
                         lb_group = str(ns.load_balancing_group)
+                    if ns.pinned:
+                        pinned_msg = " (Pinned)"
                     if not ns.configured_load_balancing_group:
                         configured_lb_group = "<n/a>"
                     else:
@@ -3197,7 +3211,7 @@ class GatewayClient:
                     if not encryption or all_none:
                         encryption = "None"
                     if ns.degraded:
-                        encryption += " (Degraded)"
+                        encryption = "Degraded"
                     ro_msg = "Read-Only" if ns.read_only else "Read-Write"
                     trash_msg = "\nTrash on delete" if ns.trash_image else ""
                     auto_resize_msg = "\nDisable auto resize" if ns.disable_auto_resize else ""
@@ -3211,6 +3225,7 @@ class GatewayClient:
                     if args.verbose:
                         verbose_info = [cluster_name]
                         lb_group += f" ({configured_lb_group})"
+                    lb_group += pinned_msg
                     location = ns.location if ns.location else "<default>"
                     qos_str = f"{self.get_qos_limit_str_value(ns.rw_mbytes_per_second)}\n" \
                               f"{self.get_qos_limit_str_value(ns.r_mbytes_per_second)}\n" \

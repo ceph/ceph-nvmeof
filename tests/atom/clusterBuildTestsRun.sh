@@ -107,8 +107,15 @@ if [ "$NIGHTLY" != "nightly" ]; then
         --dont-power-off-cloud-vms \
         --skip-lb-group-change-test \
         --skip-gw-failover-latency-test \
+        --skip-get-subsystems-latency-test \
         --ibm-cloud-key=nokey \
         --github-nvmeof-token=nokey \
+        --check-vms-stage \
+        --ceph-deploy-stage \
+        --nvmeof-setup-stage \
+        --initiator-setup-stage \
+        --nvmeof-tests-stage \
+        --teardown-stage \
         --env=m7; exit \$?" 2>&1 | tee "$TEMP_OUTPUT"
     DOCKER_EXIT_STATUS=$?
 
@@ -158,6 +165,12 @@ else
         --ibm-cloud-key=nokey \
         --github-nvmeof-token=nokey \
         --encryption-key \
+        --check-vms-stage \
+        --ceph-deploy-stage \
+        --nvmeof-setup-stage \
+        --initiator-setup-stage \
+        --nvmeof-tests-stage \
+        --teardown-stage \
         --env=m8; exit \$?" 2>&1 | tee "$TEMP_OUTPUT"
     DOCKER_EXIT_STATUS=$?
 

@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: 'umbrella'  # Checkout the umbrella branch
           submodules: recursive
@@ -46,14 +46,14 @@ jobs:
           docker save $QUAY_SPDK:$SPDK_VERSION > spdk.tar
 
       - name: Upload bdevperf container image
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: container_images_bdevperf
           path: |
             bdevperf.tar
 
       - name: Upload nvmeof container images
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: container_images_nvmeof
           path: |
@@ -61,7 +61,7 @@ jobs:
             nvmeof-cli.tar
 
       - name: Upload spdk container image
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: container_image_spdk
           path: |
@@ -71,7 +71,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: 'umbrella'  # Checkout the umbrella branch
 
@@ -84,7 +84,7 @@ jobs:
           docker save $QUAY_CEPH:$CEPH_VERSION > ceph.tar
 
       - name: Upload ceph container image
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: container_images_ceph
           path: |
@@ -101,7 +101,7 @@ jobs:
       HUGEPAGES: 512  # for multi gateway test, approx 256 per gateway instance
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: 'umbrella'  # Checkout the umbrella branch
 
@@ -110,7 +110,7 @@ jobs:
           make setup HUGEPAGES=$HUGEPAGES
 
       - name: Download container images
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: container_images*
           merge-multiple: true
@@ -191,7 +191,7 @@ jobs:
 
       - name: Upload ceph logs
         if: success() || failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ceph_out_pytest_${{ matrix.test }}
           path: /tmp/out/*.log
@@ -218,7 +218,7 @@ jobs:
       HUGEPAGES: 512
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: 'umbrella'  # Checkout the umbrella branch
 
@@ -226,7 +226,7 @@ jobs:
         run: make setup HUGEPAGES=$HUGEPAGES
 
       - name: Download container images
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: container_images*
           merge-multiple: true
@@ -297,7 +297,7 @@ jobs:
 
       - name: Upload ceph logs
         if: success() || failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ceph_out_demo_${{ matrix.security_protocol }}
           path: /tmp/out/*.log
@@ -324,7 +324,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: 'umbrella'  # Checkout the umbrella branch
 
@@ -332,7 +332,7 @@ jobs:
         run: make setup HUGEPAGES=$HUGEPAGES
 
       - name: Download container images
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: container_images*
           merge-multiple: true
@@ -494,15 +494,15 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
-          rref: 'umbrella'  # Checkout the umbrella branch
+          ref: 'umbrella'  # Checkout the umbrella branch
 
       - name: Setup huge-pages
         run: make setup HUGEPAGES=$HUGEPAGES
 
       - name: Download container images
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: container_images*
           merge-multiple: true
@@ -566,7 +566,7 @@ jobs:
 
       - name: Upload ceph logs
         if: success() || failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ceph_out_ha_${{ matrix.test }}
           path: /tmp/out/*.log
@@ -588,7 +588,7 @@ jobs:
   #   timeout-minutes: 1440
   #   steps:
   #     - name: Checkout code
-  #       uses: actions/checkout@v4
+  #       uses: actions/checkout@v6
   #       with:
   #         ref: 'umbrella'  # Checkout the umbrella branch
 
@@ -616,13 +616,13 @@ jobs:
 
   #     - name: Upload nightly nvmeof console as artifact
   #       if: always()
-  #       uses: actions/upload-artifact@v4
+  #       uses: actions/upload-artifact@v7
   #       with:
   #         name: atom-nightly-nvmeof-full-console
   #         path: atom_nightly_nvmeof_console.log
 
   #     - name: Upload artifact for schedule events
-  #       uses: actions/upload-artifact@v4
+  #       uses: actions/upload-artifact@v7
   #       if: always()
   #       with:
   #         name: atom-artifact
