@@ -1092,6 +1092,10 @@ class GatewayClient:
         if args.secure_listeners and not args.network_mask:
             self.cli.parser.error("Secure listeners cannot be set without a network mask")
 
+        model_check = GatewayUtils.is_valid_model_name(args.model_name)
+        if model_check:
+            self.cli.parser.error(f"Invalid model name: {model_check}")
+
         req = pb2.create_subsystem_req(subsystem_nqn=args.subsystem,
                                        serial_number=args.serial_number,
                                        max_namespaces=args.max_namespaces,
@@ -1100,7 +1104,8 @@ class GatewayClient:
                                        dhchap_key=args.dhchap_key,
                                        network_mask=args.network_mask,
                                        port=args.port,
-                                       secure_listeners=args.secure_listeners)
+                                       secure_listeners=args.secure_listeners,
+                                       model_name=args.model_name)
         try:
             ret = self.stub.create_subsystem(req)
         except Exception as ex:
@@ -1463,7 +1468,8 @@ class GatewayClient:
         endpoint = pb2.kmip_server_endpoint(address=args.address, port=args.port)
         req = pb2.del_kmip_server_endpoints_req(subsystem_nqn=args.subsystem,
                                                 server_name=args.server_name,
-                                                endpoints=[endpoint])
+                                                endpoints=[endpoint],
+                                                force=args.force)
         endpoint_addr = f"{args.address}:{args.port}" if args.port else args.address
         try:
             ret = self.stub.del_kmip_server_endpoints(req)
@@ -1596,6 +1602,9 @@ class GatewayClient:
                  help="Make all the auto-listeners for this subsystem secure",
                  action='store_true',
                  required=False),
+        argument("--model-name",
+                 help="Subsystem model name",
+                 required=False),
     ]
     subsys_del_args = [
         argument("--subsystem",
@@ -1673,6 +1682,10 @@ class GatewayClient:
                  type=int,
                  help="KMIP server endpoint port",
                  required=False),
+        argument("--force",
+                 help="Allow deleting the KMIP server's endpoint even if encrypted "
+                      "(or degraded) namespaces still use it",
+                 action='store_true', required=False),
     ]
     subsys_add_kmip_server_endpoint_args = [
         argument("--subsystem",
@@ -2795,6 +2808,9 @@ class GatewayClient:
             self.cli.parser.error("load-balancing-group value must be positive")
         if args.nsid is not None and args.nsid <= 0:
             self.cli.parser.error("nsid value must be positive")
+        if args.uuid is not None and not GatewayUtils.is_valid_uuid(args.uuid):
+            self.cli.parser.error(f"--uuid value '{args.uuid}' is not a valid UUID "
+                                  f"(expected format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)")
         if args.rbd_create_image:
             if args.size is None:
                 self.cli.parser.error("--size argument is mandatory for add command when "
@@ -3151,10 +3167,13 @@ class GatewayClient:
                         err_func(f"Failure listing namespace with UUID {args.uuid}: "
                                  f"Got namespace {ns.uuid} instead")
                         return errno.ENODEV
+                    pinned_msg = ""
                     if not ns.load_balancing_group:
                         lb_group = "<n/a>"
                     else:
                         lb_group = str(ns.load_balancing_group)
+                    if ns.pinned:
+                        pinned_msg = " (Pinned)"
                     if not ns.configured_load_balancing_group:
                         configured_lb_group = "<n/a>"
                     else:
@@ -3191,6 +3210,8 @@ class GatewayClient:
                             all_none = False
                     if not encryption or all_none:
                         encryption = "None"
+                    if ns.degraded:
+                        encryption = "Degraded"
                     ro_msg = "Read-Only" if ns.read_only else "Read-Write"
                     trash_msg = "\nTrash on delete" if ns.trash_image else ""
                     auto_resize_msg = "\nDisable auto resize" if ns.disable_auto_resize else ""
@@ -3204,6 +3225,7 @@ class GatewayClient:
                     if args.verbose:
                         verbose_info = [cluster_name]
                         lb_group += f" ({configured_lb_group})"
+                    lb_group += pinned_msg
                     location = ns.location if ns.location else "<default>"
                     qos_str = f"{self.get_qos_limit_str_value(ns.rw_mbytes_per_second)}\n" \
                               f"{self.get_qos_limit_str_value(ns.r_mbytes_per_second)}\n" \
@@ -3854,6 +3876,45 @@ class GatewayClient:
 
         return ret.status
 
+    def ns_unpin(self, args):
+        """Unpin namespace load balancing group."""
+
+        out_func, err_func, wrn_func = self.get_output_functions(args)
+        if args.nsid <= 0:
+            self.cli.parser.error("nsid value must be positive")
+
+        try:
+            ret = self.stub.namespace_unpin(pb2.namespace_unpin_req(
+                subsystem_nqn=args.subsystem, nsid=args.nsid))
+        except Exception as ex:
+            ret = pb2.req_status(status=errno.EINVAL,
+                                 error_message=f"Failure unpinning namespace load balancing "
+                                               f"group:\n{ex}")
+
+        if args.format == "text" or args.format == "plain":
+            if ret.status == 0:
+                out_func(f"Unpinning load balancing group for namespace {args.nsid} "
+                         f"in {args.subsystem}: Successful")
+                if ret.error_message:
+                    wrn_func(ret.error_message)
+            else:
+                err_func(ret.error_message)
+        elif args.format == "json" or args.format == "yaml":
+            ret_str = json_format.MessageToJson(ret, indent=4,
+                                                including_default_value_fields=True,
+                                                preserving_proto_field_name=True)
+            if args.format == "json":
+                out_func(ret_str)
+            elif args.format == "yaml":
+                obj = json.loads(ret_str)
+                out_func(yaml.dump(obj))
+        elif args.format == "python":
+            return ret
+        else:
+            assert False
+
+        return ret.status
+
     ns_common_args = [
         argument("--subsystem",
                  "-n",
@@ -4091,6 +4152,9 @@ class GatewayClient:
                  choices=["yes", "no", "true", "false", "1", "0"],
                  required=True),
     ]
+    ns_unpin_args_list = ns_common_args + [
+        argument("--nsid", help="Namespace ID", type=int, required=True),
+    ]
     ns_actions = []
     ns_actions.append({"name": "add",
                        "args": ns_add_args_list,
@@ -4140,6 +4204,9 @@ class GatewayClient:
     ns_actions.append({"name": "refresh_size",
                        "args": ns_refresh_size_args_list,
                        "help": "Refresh namespace size to the current RBD image size"})
+    ns_actions.append({"name": "unpin",
+                       "args": ns_unpin_args_list,
+                       "help": "Unpin namespace load balancing group"})
     ns_choices = get_actions(ns_actions)
 
     @cli.cmd(ns_actions, ["ns"])
@@ -4177,6 +4244,8 @@ class GatewayClient:
             return self.ns_set_auto_resize(args)
         elif args.action == "refresh_size":
             return self.ns_refresh_size(args)
+        elif args.action == "unpin":
+            return self.ns_unpin(args)
         if not args.action:
             self.cli.parser.error(f"missing action for namespace command "
                                   f"(choose from {GatewayClient.ns_choices})")

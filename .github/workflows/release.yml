@@ -53,10 +53,10 @@ jobs:
     permissions:
       id-token: write
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v6
         with:
           ref: ${{env.REF}} 
-      - uses: pdm-project/setup-pdm@v3
+      - uses: pdm-project/setup-pdm@v4
         with:
           python-version: ${{env.DEFAULT_PYTHON}}
           version: ${{env.DEFAULT_PDM}}

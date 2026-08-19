@@ -1229,9 +1229,12 @@ class OmapGatewayState(GatewayState):
             raise RuntimeError("Can't delete state when Rados is closed")
 
         try:
+            # Clear the object and re-add the version key in a single atomic
+            # write operation. Committing the clear on its own would leave the
+            # object momentarily empty, and a peer gateway's update thread
+            # reading it in that window would see no version key.
             with rados.WriteOpCtx() as write_op:
                 self.ioctx.clear_omap(write_op)
-                self.ioctx.operate_write_op(write_op, self.omap_name)
                 self.ioctx.set_omap(write_op, (self.OMAP_VERSION_KEY,),
                                     (str(1),))
                 self.ioctx.operate_write_op(write_op, self.omap_name)
@@ -1880,13 +1883,19 @@ class GatewayStateHandler:
                 only_subsystem_key_changed = []
                 only_subsystem_network_changed = []
                 auto_listener_add = []
-                for key in changed.keys():
+                for key in list(changed.keys()):
                     if key.startswith(GatewayState.NAMESPACE_PREFIX):
                         old_req = self._parse_namespace_req(local_state_dict[key])
                         if old_req is None:
                             continue
                         new_req = self._parse_namespace_req(omap_state_dict[key])
                         if new_req is None:
+                            continue
+                        if old_req == new_req:
+                            changed.pop(key, None)
+                            if GatewayState.NAMESPACE_PREFIX in grouped_changed:
+                                if key in grouped_changed[GatewayState.NAMESPACE_PREFIX]:
+                                    grouped_changed[GatewayState.NAMESPACE_PREFIX].pop(key, None)
                             continue
                         if self.namespace_need_to_be_re_added(old_req, new_req):
                             # a namespace field we don't know to handle has changed

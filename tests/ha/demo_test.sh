@@ -388,10 +388,27 @@ function demo_bdevperf_unsecured()
     echo "ℹ️  add hosts for deletion test"
     cephnvmf_func host add --subsystem ${NQN} --host-nqn ${NQN}host31
     cephnvmf_func host add --subsystem ${NQN} --host-nqn ${NQN}host32
+    cephnvmf_func host add --subsystem ${NQN} --host-nqn ${NQN}host34
 
     echo "ℹ️  bdevperf tcp connect ip: $NVMEOF_IP_ADDRESS port: $NVMEOF_IO_PORT nqn: ${NQN}host31"
-    devs=`make exec -s SVC=bdevperf OPTS=-T CMD="$rpc -v -s $BDEVPERF_SOCKET bdev_nvme_attach_controller -b Nvme0 -t tcp -a $NVMEOF_IP_ADDRESS -s $NVMEOF_IO_PORT -f ipv4 -n $NQN -q ${NQN}host31 -l -1 -o 10"`
-    [[ "$devs" == "Nvme0n1" ]]
+    make exec -s SVC=bdevperf OPTS=-T CMD="$rpc -v -s $BDEVPERF_SOCKET bdev_nvme_attach_controller -b Nvme0 -t tcp -a $NVMEOF_IP_ADDRESS -s $NVMEOF_IO_PORT -f ipv4 -n $NQN -q ${NQN}host31 -l -1 -o 10"
+
+    echo "ℹ️  bdevperf tcp connect ip: $NVMEOF_IP_ADDRESS port: $NVMEOF_IO_PORT nqn: ${NQN}host34"
+    make exec -s SVC=bdevperf OPTS=-T CMD="$rpc -v -s $BDEVPERF_SOCKET bdev_nvme_attach_controller -b Nvme3 -t tcp -a $NVMEOF_IP_ADDRESS -s ${port2} -f ipv4 -n $NQN -q ${NQN}host34 -l -1 -o 10"
+
+    echo "ℹ️  verify controllers list"
+    controllers=`make -s exec SVC=bdevperf OPTS=-T CMD="$rpc -v -s $BDEVPERF_SOCKET bdev_nvme_get_controllers"`
+    [[ `echo $controllers | jq -r '.[0].name'` == "Nvme0" ]]
+    [[ `echo $controllers | jq -r '.[0].ctrlrs[0].state'` == "enabled" ]]
+    [[ `echo $controllers | jq -r '.[0].ctrlrs[0].trid.traddr'` == "${NVMEOF_IP_ADDRESS}" ]]
+    [[ `echo $controllers | jq -r '.[0].ctrlrs[0].trid.trsvcid'` == "${NVMEOF_IO_PORT}" ]]
+    [[ `echo $controllers | jq -r '.[0].ctrlrs[0].host.nqn'` == "${NQN}host31" ]]
+    [[ `echo $controllers | jq -r '.[1].name'` == "Nvme3" ]]
+    [[ `echo $controllers | jq -r '.[1].ctrlrs[0].state'` == "enabled" ]]
+    [[ `echo $controllers | jq -r '.[1].ctrlrs[0].trid.traddr'` == "${NVMEOF_IP_ADDRESS}" ]]
+    [[ `echo $controllers | jq -r '.[1].ctrlrs[0].trid.trsvcid'` == "${port2}" ]]
+    [[ `echo $controllers | jq -r '.[1].ctrlrs[0].host.nqn'` == "${NQN}host34" ]]
+    [[ `echo $controllers | jq -r '.[2]'` == "null" ]]
 
     echo "ℹ️  verify connection list for deletion test"
     conns=$(cephnvmf_func --output stdio --format json connection list --subsystem $NQN)
@@ -409,28 +426,76 @@ function demo_bdevperf_unsecured()
     [[ `echo $conns | jq -r '.connections[0].use_dhchap'` == "false" ]]
     [[ `echo $conns | jq -r '.connections[0].dhchap_controller_origin'` == "no_key" ]]
     [[ `echo $conns | jq -r '.connections[0].subsystem'` == "${NQN}" ]]
-    [[ `echo $conns | jq -r '.connections[1].nqn'` == "${NQN}host32" ]]
-    [[ `echo $conns | jq -r '.connections[1].trsvcid'` == 0 ]]
-    [[ `echo $conns | jq -r '.connections[1].traddr'` == "<n/a>" ]]
+    [[ `echo $conns | jq -r '.connections[1].nqn'` == "${NQN}host34" ]]
+    [[ `echo $conns | jq -r '.connections[1].trsvcid'` == "${port2}" ]]
+    [[ `echo $conns | jq -r '.connections[1].traddr'` == "${NVMEOF_IP_ADDRESS}" ]]
     [[ `echo $conns | jq -r '.connections[1].adrfam'` == "ipv4" ]]
-    [[ `echo $conns | jq -r '.connections[1].trtype'` == "" ]]
-    [[ `echo $conns | jq -r '.connections[1].qpairs_count'` == -1 ]]
-    [[ `echo $conns | jq -r '.connections[1].controller_id'` == -1 ]]
-    [[ `echo $conns | jq -r '.connections[1].connected'` == "false" ]]
+    [[ `echo $conns | jq -r '.connections[1].trtype'` == "TCP" ]]
+    [[ `echo $conns | jq -r '.connections[1].connected'` == "true" ]]
+    [[ `echo $conns | jq -r '.connections[1].qpairs_count'` == "1" ]]
+    [[ `echo $conns | jq -r '.connections[1].secure'` == "false" ]]
     [[ `echo $conns | jq -r '.connections[1].use_psk'` == "false" ]]
     [[ `echo $conns | jq -r '.connections[1].use_dhchap'` == "false" ]]
     [[ `echo $conns | jq -r '.connections[1].dhchap_controller_origin'` == "no_key" ]]
-    [[ `echo $conns | jq -r '.connections[1].subsystem'` == "${NQN}" ]]
-    [[ `echo $conns | jq -r '.connections[2]'` == "null" ]]
+    [[ `echo $conns | jq -r '.connections[2].nqn'` == "${NQN}host32" ]]
+    [[ `echo $conns | jq -r '.connections[2].trsvcid'` == 0 ]]
+    [[ `echo $conns | jq -r '.connections[2].traddr'` == "<n/a>" ]]
+    [[ `echo $conns | jq -r '.connections[2].adrfam'` == "ipv4" ]]
+    [[ `echo $conns | jq -r '.connections[2].trtype'` == "" ]]
+    [[ `echo $conns | jq -r '.connections[2].qpairs_count'` == -1 ]]
+    [[ `echo $conns | jq -r '.connections[2].controller_id'` == -1 ]]
+    [[ `echo $conns | jq -r '.connections[2].connected'` == "false" ]]
+    [[ `echo $conns | jq -r '.connections[2].use_psk'` == "false" ]]
+    [[ `echo $conns | jq -r '.connections[2].use_dhchap'` == "false" ]]
+    [[ `echo $conns | jq -r '.connections[2].dhchap_controller_origin'` == "no_key" ]]
+    [[ `echo $conns | jq -r '.connections[2].subsystem'` == "${NQN}" ]]
+    [[ `echo $conns | jq -r '.connections[3]'` == "null" ]]
 
     echo "ℹ️  test deleting connected host"
     rm -f /tmp/hostdel.err
     cephnvmf_func --output stdio host del --subsystem ${NQN} --host-nqn ${NQN}host31 ${NQN}host32 > /dev/null 2> /tmp/hostdel.err
     cat /tmp/hostdel.err
-    grep -q "Host ${NQN}host31 is still connected to ${NQN}" /tmp/hostdel.err
+    grep -q "There is an active connection from host ${NQN}host31 to subsystem ${NQN}" /tmp/hostdel.err
     grep -q "Reconnecting the host would fail unless it is re-added to the subsystem" /tmp/hostdel.err
-    grep "is still connected" /tmp/hostdel.err | grep -q -v "Host ${NQN}host32"
+    set +e
+    grep "There is an active connection from host ${NQN}host32 to subsystem ${NQN}" /tmp/hostdel.err
+    if [[ $? -eq 0 ]]; then
+        echo "Shouldn't see the message about host connected for ${NQN}host32"
+        exit 1
+    fi
+    grep -q "The connection will be kept open after host access removal" /tmp/hostdel.err
+    if [[ $? -eq 0 ]]; then
+        echo "Shouldn't see the message about connection being kept"
+        exit 1
+    fi
+    set -e
     rm -f /tmp/hostdel.err
+
+    echo "ℹ️  test deleting connected host keeping connections"
+    rm -f /tmp/hostdel.err
+    cephnvmf_func --output stdio host del --subsystem ${NQN} --host-nqn ${NQN}host34 --keep-connections > /dev/null 2> /tmp/hostdel.err
+    cat /tmp/hostdel.err
+    grep -q "There is an active connection from host ${NQN}host34 to subsystem ${NQN}" /tmp/hostdel.err
+    grep -q "The connection will be kept open after host access removal but, in case of disconnection, a reconnect would fail unless the host is re-added to the subsystem." /tmp/hostdel.err
+    set +e
+    grep -q "There is an active connection from host ${NQN}host32 to subsystem ${NQN}" /tmp/hostdel.err
+    if [[ $? -eq 0 ]]; then
+        echo "Shouldn't see the message about host connected for ${NQN}host32"
+        exit 1
+    fi
+    set -e
+    rm -f /tmp/hostdel.err
+
+    make exec SVC=bdevperf OPTS=-T CMD="$rpc -v -s $BDEVPERF_SOCKET bdev_nvme_detach_controller Nvme3"
+
+    echo "ℹ️  verify controllers list after detach"
+    controllers=`make -s exec SVC=bdevperf OPTS=-T CMD="$rpc -v -s $BDEVPERF_SOCKET bdev_nvme_get_controllers"`
+    [[ `echo $controllers | jq -r '.[0].name'` == "Nvme0" ]]
+    [[ `echo $controllers | jq -r '.[0].ctrlrs[0].state'` == "enabled" ]]
+    [[ `echo $controllers | jq -r '.[0].ctrlrs[0].trid.traddr'` == "${NVMEOF_IP_ADDRESS}" ]]
+    [[ `echo $controllers | jq -r '.[0].ctrlrs[0].trid.trsvcid'` == "${NVMEOF_IO_PORT}" ]]
+    [[ `echo $controllers | jq -r '.[0].ctrlrs[0].host.nqn'` == "${NQN}host31" ]]
+    [[ `echo $controllers | jq -r '.[1]'` == "null" ]]
 
     echo "ℹ️  test deleting connected namespace host"
     cephnvmf_func host add --subsystem ${NQN} --host-nqn ${NQN}host33
@@ -468,7 +533,7 @@ function demo_bdevperf_unsecured()
     rm -f /tmp/hostdel.err
     cephnvmf_func --output stdio host del --subsystem ${NQN} --host-nqn ${NQN}host33 --force > /dev/null 2> /tmp/hostdel.err
     cat /tmp/hostdel.err
-    grep -q "Host ${NQN}host33 is still connected to ${NQN}" /tmp/hostdel.err
+    grep -q "There is an active connection from host ${NQN}host33 to subsystem ${NQN}" /tmp/hostdel.err
     grep -q "Reconnecting the host would fail unless it is re-added to the subsystem" /tmp/hostdel.err
     grep -zoPq "Host ${NQN}host33 is included in the netmask of namespace 2 in subsystem ${NQN}.\nWill continue as the" /tmp/hostdel.err
     rm -f /tmp/hostdel.err
@@ -649,6 +714,24 @@ function demo_bdevperf_psk()
     sed -i 's#encryption_key = /var/log/ceph/ex_encryption.key#encryption_key = /etc/ceph/encryption.key#' ceph-nvmeof.conf
     docker exec ${NVMEOF_CONTAINER_NAME} rm -f /var/log/ceph/ex_encryption.key /tmp/create_enckey.sh
 
+    echo "ℹ️  use a modified encryption key"
+    docker exec ${NVMEOF_CONTAINER_NAME} rm -f /var/log/ceph/mod_encryption.key /tmp/create_enckey.sh
+    rm -f /tmp/create_enckey.sh
+    echo "#!/bin/bash" > /tmp/create_enckey.sh
+    echo 'echo -n "-----BEGIN MODIFIED KEY----- MIIBVAIBADANBgkqhkiG9w0BAQEFAASCAT4wggE6AgEAAkEAqg+wrkvj9D47BRVi A4tMOv4aBL6RLBbLEwYuhJSLTG6FagZFNknjRj0y9s5C+J0fktl3XMu9UmyUR1LR 3ojPlwIDAQABAkA2F9ONPVp+4CSJ02lf0zkmMpk4FR28NmvV20uEpHNClggqmjmW zFjGV+KHJ//r17gQD3yh+NvJzX9FlncseluBAiEA3MjrizLw6wjsk80IaGL8oQNd cUlD2wYTW6Gk7JLlFmECIQDFL6Chljk3rBoPl0jASBFHq1FT/Zqgg/z060OWBns4 9wIhAKkd3g7J/nCKbWzpaL9M02YiRbk4/ZkPllRiBQqRmpkBAiAgCx9VYu4lZ+hM RE9kP9HfDa4HshygnRJMUrcG+EKp/QIgR5uDteq1fToI5ZbYOf+KJsVoJOpPrN3b vPKX3JuIds8= -----END MODIFIED KEY-----" > /var/log/ceph/mod_encryption.key' >> /tmp/create_enckey.sh
+    chmod 755 /tmp/create_enckey.sh
+    docker cp /tmp/create_enckey.sh ${NVMEOF_CONTAINER_NAME}:/tmp/
+    docker exec ${NVMEOF_CONTAINER_NAME} /tmp/create_enckey.sh
+    rm -f /tmp/create_enckey.sh
+    sed -i 's#encryption_key = /etc/ceph/encryption.key#encryption_key = /var/log/ceph/mod_encryption.key#' ceph-nvmeof.conf
+    docker restart ${NVMEOF_CONTAINER_NAME}
+    sleep 20
+    cephnvmf_func subsystem add --subsystem ${NQN}9 --no-group-append
+    cephnvmf_func host add --subsystem ${NQN}9 --host-nqn ${NQN}host23 --psk "${PSK_KEY1}"
+    make -s exec SVC=ceph OPTS=-T CMD="rados --pool rbd listomapvals nvmeof.state" | grep "host23"
+    sed -i 's#encryption_key = /var/log/ceph/mod_encryption.key#encryption_key = /etc/ceph/encryption.key#' ceph-nvmeof.conf
+    docker exec ${NVMEOF_CONTAINER_NAME} rm -f /var/log/ceph/mod_encryption.key /tmp/create_enckey.sh
+
     echo "ℹ️  use invalid encryption key"
     docker exec ${NVMEOF_CONTAINER_NAME} rm -f /var/log/ceph/bad_encryption.key /tmp/create_enckey.sh
     rm -f /tmp/create_enckey.sh
@@ -668,10 +751,70 @@ function demo_bdevperf_psk()
             echo "Add host with PSK key should fail without valid encryption key"
             exit 1
         fi
+        make -s exec SVC=ceph OPTS=-T CMD="rados --pool rbd listomapvals nvmeof.state" | grep -q "host22"
+        if [[ $? -eq 0 ]]; then
+            echo "Add host with PSK key should fail without valid encryption key"
+            exit 1
+        fi
     set -e
-    make -s exec SVC=ceph OPTS=-T CMD="rados --pool rbd listomapvals nvmeof.state" | grep -q -v "host22"
     sed -i 's#encryption_key = /var/log/ceph/bad_encryption.key#encryption_key = /etc/ceph/encryption.key#' ceph-nvmeof.conf
-    docker exec ${NVMEOF_CONTAINER_NAME} rm -f /var/log/ceph/baad_encryption.key /tmp/create_enckey.sh
+    docker exec ${NVMEOF_CONTAINER_NAME} rm -f /var/log/ceph/bad_encryption.key /tmp/create_enckey.sh
+
+    echo "ℹ️  use invalid encryption key, different start and end labels"
+    docker exec ${NVMEOF_CONTAINER_NAME} rm -f /var/log/ceph/bad_labels_encryption.key /tmp/create_enckey.sh
+    rm -f /tmp/create_enckey.sh
+    echo "#!/bin/bash" > /tmp/create_enckey.sh
+    echo 'echo -n "-----BEGIN JUNK KEY----- MIIBVAIBADANBgkqhkiG9w0BAQEFAASCAT4wggE6AgEAAkEAqg+wrkvj9D47BRVi A4tMOv4aBL6RLBbLEwYuhJSLTG6FagZFNknjRj0y9s5C+J0fktl3XMu9UmyUR1LR 3ojPlwIDAQABAkA2F9ONPVp+4CSJ02lf0zkmMpk4FR28NmvV20uEpHNClggqmjmW zFjGV+KHJ//r17gQD3yh+NvJzX9FlncseluBAiEA3MjrizLw6wjsk80IaGL8oQNd cUlD2wYTW6Gk7JLlFmECIQDFL6Chljk3rBoPl0jASBFHq1FT/Zqgg/z060OWBns4 9wIhAKkd3g7J/nCKbWzpaL9M02YiRbk4/ZkPllRiBQqRmpkBAiAgCx9VYu4lZ+hM RE9kP9HfDa4HshygnRJMUrcG+EKp/QIgR5uDteq1fToI5ZbYOf+KJsVoJOpPrN3b vPKX3JuIds8= -----END PRIVATE KEY-----" > /var/log/ceph/bad_labels_encryption.key' >> /tmp/create_enckey.sh
+    chmod 755 /tmp/create_enckey.sh
+    docker cp /tmp/create_enckey.sh ${NVMEOF_CONTAINER_NAME}:/tmp/
+    docker exec ${NVMEOF_CONTAINER_NAME} /tmp/create_enckey.sh
+    rm -f /tmp/create_enckey.sh
+    sed -i 's#encryption_key = /etc/ceph/encryption.key#encryption_key = /var/log/ceph/bad_labels_encryption.key#' ceph-nvmeof.conf
+    docker restart ${NVMEOF_CONTAINER_NAME}
+    sleep 20
+    cephnvmf_func subsystem add --subsystem ${NQN}10 --no-group-append
+    set +e
+        cephnvmf_func host add --subsystem ${NQN}10 --host-nqn ${NQN}host24 --psk "${PSK_KEY1}"
+        if [[ $? -eq 0 ]]; then
+            echo "Add host with PSK key should fail without valid encryption key"
+            exit 1
+        fi
+        make -s exec SVC=ceph OPTS=-T CMD="rados --pool rbd listomapvals nvmeof.state" | grep -q "host24"
+        if [[ $? -eq 0 ]]; then
+            echo "Add host with PSK key should fail without valid encryption key"
+            exit 1
+        fi
+    set -e
+    sed -i 's#encryption_key = /var/log/ceph/bad_labels_encryption.key#encryption_key = /etc/ceph/encryption.key#' ceph-nvmeof.conf
+    docker exec ${NVMEOF_CONTAINER_NAME} rm -f /var/log/ceph/bad_labels_encryption.key /tmp/create_enckey.sh
+
+    echo "ℹ️  use invalid encryption key, empty start and end labels"
+    docker exec ${NVMEOF_CONTAINER_NAME} rm -f /var/log/ceph/empty_labels_encryption.key /tmp/create_enckey.sh
+    rm -f /tmp/create_enckey.sh
+    echo "#!/bin/bash" > /tmp/create_enckey.sh
+    echo 'echo -n "-----BEGIN----- MIIBVAIBADANBgkqhkiG9w0BAQEFAASCAT4wggE6AgEAAkEAqg+wrkvj9D47BRVi A4tMOv4aBL6RLBbLEwYuhJSLTG6FagZFNknjRj0y9s5C+J0fktl3XMu9UmyUR1LR 3ojPlwIDAQABAkA2F9ONPVp+4CSJ02lf0zkmMpk4FR28NmvV20uEpHNClggqmjmW zFjGV+KHJ//r17gQD3yh+NvJzX9FlncseluBAiEA3MjrizLw6wjsk80IaGL8oQNd cUlD2wYTW6Gk7JLlFmECIQDFL6Chljk3rBoPl0jASBFHq1FT/Zqgg/z060OWBns4 9wIhAKkd3g7J/nCKbWzpaL9M02YiRbk4/ZkPllRiBQqRmpkBAiAgCx9VYu4lZ+hM RE9kP9HfDa4HshygnRJMUrcG+EKp/QIgR5uDteq1fToI5ZbYOf+KJsVoJOpPrN3b vPKX3JuIds8= -----END-----" > /var/log/ceph/empty_labels_encryption.key' >> /tmp/create_enckey.sh
+    chmod 755 /tmp/create_enckey.sh
+    docker cp /tmp/create_enckey.sh ${NVMEOF_CONTAINER_NAME}:/tmp/
+    docker exec ${NVMEOF_CONTAINER_NAME} /tmp/create_enckey.sh
+    rm -f /tmp/create_enckey.sh
+    sed -i 's#encryption_key = /etc/ceph/encryption.key#encryption_key = /var/log/ceph/empty_labels_encryption.key#' ceph-nvmeof.conf
+    docker restart ${NVMEOF_CONTAINER_NAME}
+    sleep 20
+    cephnvmf_func subsystem add --subsystem ${NQN}11 --no-group-append
+    set +e
+        cephnvmf_func host add --subsystem ${NQN}11 --host-nqn ${NQN}host25 --psk "${PSK_KEY1}"
+        if [[ $? -eq 0 ]]; then
+            echo "Add host with PSK key should fail without valid encryption key"
+            exit 1
+        fi
+        make -s exec SVC=ceph OPTS=-T CMD="rados --pool rbd listomapvals nvmeof.state" | grep -q "host25"
+        if [[ $? -eq 0 ]]; then
+            echo "Add host with PSK key should fail without valid encryption key"
+            exit 1
+        fi
+    set -e
+    sed -i 's#encryption_key = /var/log/ceph/empty_labels_encryption.key#encryption_key = /etc/ceph/encryption.key#' ceph-nvmeof.conf
+    docker exec ${NVMEOF_CONTAINER_NAME} rm -f /var/log/ceph/empty_labels_encryption.key /tmp/create_enckey.sh
 
     echo "ℹ️  use missing encryption key"
     sed -i 's#encryption_key = /etc/ceph/encryption.key#encryption_key = /etc/ceph/XXXencryption.key#' ceph-nvmeof.conf
@@ -687,6 +830,11 @@ function demo_bdevperf_psk()
         make -s exec SVC=ceph OPTS=-T CMD="rados --pool rbd listomapvals nvmeof.state" | grep "NVMeTLSkey"
         if [[ $? -eq 0 ]]; then
             echo "Shouldn't have unencrypted PSK keys in OMAP"
+            exit 1
+        fi
+        make -s exec SVC=ceph OPTS=-T CMD="rados --pool rbd listomapvals nvmeof.state" | grep -q "host20"
+        if [[ $? -eq 0 ]]; then
+            echo "Add host with PSK key should fail without valid encryption key"
             exit 1
         fi
     set -e

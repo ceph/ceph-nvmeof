@@ -43,6 +43,7 @@ image28 = "mytestdevimage28"
 image29 = "mytestdevimage29"
 image30 = "mytestdevimage30"
 image31 = "mytestdevimage31"
+image32 = "mytestdevimage32"
 pool = "rbd"
 subsystem = "nqn.2016-06.io.spdk:cnode1"
 subsystem2 = "nqn.2016-06.io.spdk:cnode2"
@@ -63,6 +64,7 @@ subsystem16 = "nqn.2016-06.io.spdk:cnode16"
 subsystem17 = "nqn.2016-06.io.spdk:cnode17"
 subsystem18 = "nqn.2016-06.io.spdk:cnode18"
 subsystem19 = "nqn.2016-06.io.spdk:cnode19"
+subsystem20 = "nqn.2016-06.io.spdk:cnode20"
 subsystemX = "nqn.2016-06.io.spdk:cnodeX"
 discovery_nqn = "nqn.2014-08.org.nvmexpress.discovery"
 serial = "Ceph00000000000001"
@@ -126,8 +128,8 @@ def gateway(config):
     config.config["gateway"]["max_namespaces_with_netmask"] = "3"
     config.config["gateway"]["max_hosts_per_namespace"] = "3"
     config.config["gateway"]["max_subsystems"] = "4"
-    config.config["gateway"]["max_namespaces"] = "12"
-    config.config["gateway"]["max_namespaces_per_subsystem"] = "11"
+    config.config["gateway"]["max_namespaces"] = "95"
+    config.config["gateway"]["max_namespaces_per_subsystem"] = "64"
     config.config["gateway"]["max_hosts_per_subsystem"] = "4"
     config.config["gateway"]["max_hosts"] = "6"
     config.config["gateway-logs"]["log_level"] = "debug"
@@ -225,8 +227,8 @@ class TestGet:
         assert gw_info.name == gw.gateway_name
         assert gw_info.hostname == gw.host_name
         assert gw_info.max_subsystems == 4
-        assert gw_info.max_namespaces == 12
-        assert gw_info.max_namespaces_per_subsystem == 11
+        assert gw_info.max_namespaces == 95
+        assert gw_info.max_namespaces_per_subsystem == 64
         assert gw_info.max_hosts == 6
         assert gw_info.max_hosts_per_subsystem == 4
         assert gw_info.status == 0
@@ -352,7 +354,7 @@ class TestCreate:
         cli(["subsystem", "add", "--subsystem", subsystem,
              "--max-namespaces", "2039", "--no-group-append"])
         assert f"The requested max number of namespaces for subsystem {subsystem} (2039) " \
-               f"is greater than the global limit on the number of namespaces (12), " \
+               f"is greater than the global limit on the number of namespaces (95), " \
                f"will continue" in caplog.text
         assert f"Adding subsystem {subsystem}: Successful" in caplog.text
         cli(["--format", "json", "subsystem", "list"])
@@ -567,6 +569,27 @@ class TestCreate:
         cli(["namespace", "del", "--subsystem", subsystem, "--nsid", "1"])
         assert f"Deleting namespace 1 from {subsystem}: Successful" in caplog.text
 
+    def test_add_namespace_invalid_uuid(self, caplog, gateway):
+        invalid_uuids = [
+            "not-a-uuid",
+            "948878ee-c3b2-4d58-a29b",  # too short
+            "948878ee-c3b2-4d58-a29b-2cff713fc02dXXXX",  # too long
+            "948878ee-ZZZZ-4d58-a29b-2cff713fc02d",  # non-hex chars
+            "948878eec3b24d58a29b2cff713fc02d",  # no dashes
+        ]
+        for bad_uuid in invalid_uuids:
+            caplog.clear()
+            rc = 0
+            try:
+                cli(["namespace", "add", "--subsystem", subsystem,
+                     "--rbd-pool", pool, "--rbd-image", image2,
+                     "--uuid", bad_uuid, "--size", "16MB", "--rbd-create-image"])
+            except SystemExit as sysex:
+                rc = sysex.code
+            assert rc == 2, f"Expected exit code 2 for uuid={bad_uuid!r}, got {rc}"
+            assert "is not a valid UUID" in caplog.text, (
+                f"Expected validation error for uuid={bad_uuid!r}, got: {caplog.text}")
+
     def test_add_namespace_double_uuid(self, caplog, gateway):
         caplog.clear()
         cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool,
@@ -632,6 +655,7 @@ class TestCreate:
         assert "Size is only allowed when creating an image" in caplog.text
 
     def test_add_namespace(self, caplog, gateway):
+        gw, _ = gateway
         caplog.clear()
         cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", "junk",
              "--rbd-image", image2, "--uuid", uuid, "--size", "16MB", "--rbd-create-image",
@@ -738,6 +762,12 @@ class TestCreate:
         assert f"Failure changing load balancing group for namespace with ID {nsid} " \
                f"in {subsystem}" in caplog.text
         assert "Load balancing group 10 doesn't exist" in caplog.text
+        caplog.clear()
+        cli(["namespace", "change_load_balancing_group", "--subsystem", subsystem,
+             "--nsid", nsid, "--load-balancing-group", str(gw.MAINTENANCE_ANA_GROUP)])
+        assert f"Failure changing load balancing group for namespace with ID {nsid} " \
+               f"in {subsystem}: Load balancing group {gw.MAINTENANCE_ANA_GROUP} " \
+               f"is reserved" in caplog.text
         caplog.clear()
         cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool,
              "--rbd-image", image3, "--size", "4GB", "--rbd-create-image"])
@@ -1046,6 +1076,7 @@ class TestCreate:
         assert f"Failure adding namespace to {subsystem3}: No such subsystem"
 
     def test_add_too_many_namespaces_to_a_subsystem(self, caplog, gateway):
+        gw, _ = gateway
         caplog.clear()
         cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool,
              "--rbd-image", image9, "--nsid", "3000", "--size", "16MB", "--rbd-create-image"])
@@ -1056,16 +1087,38 @@ class TestCreate:
         cli(["subsystem", "add", "--subsystem", subsystem5, "--no-group-append",
              "--max-namespaces", "1"])
         assert f"Adding subsystem {subsystem5}: Successful" in caplog.text
+        assert f"Max namespaces can't be less than {gw.MAINTENANCE_ANA_GROUP}, " \
+               f"will increase it" in caplog.text
         caplog.clear()
-        cli(["namespace", "add", "--subsystem", subsystem5, "--rbd-pool", pool,
-             "--rbd-image", image9, "--size", "16MB", "--rbd-create-image"])
-        assert f"Adding namespace 1 to {subsystem5}: Successful" in caplog.text
+        cli(["--format", "json", "subsystem", "list", "--subsystem", subsystem5])
+        assert f'"max_namespaces": {gw.MAINTENANCE_ANA_GROUP},' in caplog.text
+        for nsid in range(1, gw.MAINTENANCE_ANA_GROUP + 1):
+            img = image9 + "_" + str(nsid)
+            caplog.clear()
+            cli(["namespace", "add", "--subsystem", subsystem5, "--rbd-pool", pool,
+                 "--rbd-image", img, "--size", "16MB", "--rbd-create-image"])
+            assert f"Adding namespace {nsid} to {subsystem5}: Successful" in caplog.text
         caplog.clear()
         cli(["namespace", "add", "--subsystem", subsystem5, "--rbd-pool", pool,
              "--rbd-image", image10, "--size", "16MB", "--rbd-create-image"])
         assert f"Failure adding namespace to {subsystem5}: Subsystem's maximal number of " \
-               f"namespaces (1) has already been reached" in caplog.text
+               f"namespaces ({gw.MAINTENANCE_ANA_GROUP}) has already been reached" in caplog.text
         assert "Received request to delete RBD bdev" in caplog.text
+        caplog.clear()
+        cli(["subsystem", "del", "--subsystem", subsystem5, "--force"])
+        assert f"Deleting subsystem {subsystem5}: Successful" in caplog.text
+
+    def test_add_namespace_maint_lb_group(self, caplog, gateway):
+        gw, _ = gateway
+        caplog.clear()
+        cli(["subsystem", "add", "--subsystem", subsystem5, "--no-group-append"])
+        assert f"Adding subsystem {subsystem5}: Successful" in caplog.text
+        caplog.clear()
+        cli(["namespace", "add", "--subsystem", subsystem5, "--rbd-pool", pool,
+             "--rbd-image", image32, "--size", "16MB", "--rbd-create-image",
+             "--load-balancing-group", str(gw.MAINTENANCE_ANA_GROUP)])
+        assert f"Failure adding namespace to {subsystem5}: Load balancing group " \
+               f"{gw.MAINTENANCE_ANA_GROUP} is reserved" in caplog.text
         caplog.clear()
         cli(["subsystem", "del", "--subsystem", subsystem5, "--force"])
         assert f"Deleting subsystem {subsystem5}: Successful" in caplog.text
@@ -1362,15 +1415,21 @@ class TestCreate:
         assert '"hosts": []' in caplog.text
 
     def test_add_too_many_namespaces(self, caplog, gateway):
-        caplog.clear()
-        cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool,
-             "--rbd-image", image11, "--size", "16MB", "--rbd-create-image"])
-        assert f"Adding namespace 12 to {subsystem}: Successful" in caplog.text
+        for nsid in range(12, 96):
+            img = image11 + "_" + str(nsid)
+            caplog.clear()
+            cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool,
+                 "--rbd-image", img, "--size", "16MB", "--rbd-create-image"])
+            assert f"Adding namespace {nsid} to {subsystem}: Successful" in caplog.text
         caplog.clear()
         cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool,
              "--rbd-image", image12, "--size", "16MB", "--rbd-create-image"])
-        assert f"Failure adding namespace to {subsystem}: Maximal number of namespaces (12) " \
+        assert f"Failure adding namespace to {subsystem}: Maximal number of namespaces (95) " \
                f"has already been reached" in caplog.text
+        for nsid in range(12, 96):
+            caplog.clear()
+            cli(["namespace", "del", "--subsystem", subsystem, "--nsid", str(nsid)])
+            assert f"Deleting namespace {nsid} from {subsystem}: Successful" in caplog.text
 
     def test_resize_namespace(self, caplog, gateway):
         gw, stub = gateway
@@ -1532,8 +1591,8 @@ class TestCreate:
         assert '"nsid": 4,' not in caplog.text
         assert '"nsid": 5,' not in caplog.text
         caplog.clear()
-        cli(["namespace", "resize", "--subsystem", subsystem, "--nsid", "22", "--size", "128MB"])
-        assert f"Failure resizing namespace 22 on {subsystem}: Can't find namespace" in caplog.text
+        cli(["namespace", "resize", "--subsystem", subsystem, "--nsid", "72", "--size", "128MB"])
+        assert f"Failure resizing namespace 72 on {subsystem}: Can't find namespace" in caplog.text
         caplog.clear()
         cli(["namespace", "resize", "--subsystem", subsystem, "--nsid", "6", "--size", "32MB"])
         assert f"Failure resizing namespace 6 on {subsystem}: new size 33554432 bytes is " \
@@ -1667,10 +1726,10 @@ class TestCreate:
         cli(["--format", "json", "namespace", "get_io_stats"])
         assert '"status": 0' in caplog.text
         assert '"ticks":' in caplog.text
-        assert caplog.text.count('"max_write_latency_ticks":') == 12
-        assert caplog.text.count('"bytes_written":') == 12
-        assert caplog.text.count('"bytes_read":') == 12
-        assert caplog.text.count('"io_error":') == 12
+        assert caplog.text.count('"max_write_latency_ticks":') == 11
+        assert caplog.text.count('"bytes_written":') == 11
+        assert caplog.text.count('"bytes_read":') == 11
+        assert caplog.text.count('"io_error":') == 11
 
     def test_namespace_get_io_stats(self, caplog, gateway):
         gw, stub = gateway
@@ -1698,6 +1757,41 @@ class TestCreate:
         assert hasattr(ret, 'tick_rate')
         assert hasattr(ret, 'ticks')
         assert hasattr(ret, 'num_write_ops')
+
+    def test_namespace_unpin_wrong_nsid(self, caplog):
+        caplog.clear()
+        cli(["namespace", "unpin", "--subsystem", subsystem, "--nsid", "999"])
+        assert f"Failure unpinning load balancing group for namespace 999 on {subsystem}: " \
+               f"Can't find namespace 999 in {subsystem}" in caplog.text
+
+    def test_namespace_unpin_wrong_nqn(self, caplog):
+        caplog.clear()
+        cli(["namespace", "unpin", "--subsystem", "junk", "--nsid", "1"])
+        assert "Failure unpinning load balancing group for namespace 1 on junk: " \
+               "Can't find subsystem" in caplog.text
+
+    def test_namespace_unpin_for_unpinned_ns(self, caplog):
+        caplog.clear()
+        cli(["namespace", "unpin", "--subsystem", subsystem, "--nsid", "1"])
+        assert f"Failure unpinning load balancing group for namespace 1 on {subsystem}: " \
+               f"Namespace load balancing group is not pinned" in caplog.text
+
+    def test_namespace_unpin_missing_nsid(self, caplog, gateway):
+        gw, stub = gateway
+        ns_unpin_req = pb2.namespace_unpin_req(subsystem_nqn=subsystem)
+        caplog.clear()
+        ret = stub.namespace_unpin(ns_unpin_req)
+        assert ret.status != 0
+        assert "Failure unpinning load balancing group for namespace, missing ID" in caplog.text
+
+    def test_namespace_unpin_missing_nqn(self, caplog, gateway):
+        gw, stub = gateway
+        ns_unpin_req = pb2.namespace_unpin_req(nsid=1)
+        caplog.clear()
+        ret = stub.namespace_unpin(ns_unpin_req)
+        assert ret.status != 0
+        assert "Failure unpinning load balancing group for namespace 1, " \
+               "missing subsystem NQN" in caplog.text
 
     def test_host_missing_nqn(self, caplog):
         caplog.clear()
@@ -2106,9 +2200,6 @@ class TestCreate:
         cli(["namespace", "del", "--subsystem", subsystem, "--nsid", "11"])
         assert f"Deleting namespace 11 from {subsystem}: Successful" in caplog.text
         caplog.clear()
-        cli(["namespace", "del", "--subsystem", subsystem, "--nsid", "12"])
-        assert f"Deleting namespace 12 from {subsystem}: Successful" in caplog.text
-        caplog.clear()
         cli(["namespace", "add", "--subsystem", subsystem9, "--rbd-pool", pool,
              "--rbd-image", image15, "--size", "16MB", "--rbd-create-image"])
         assert f"Adding namespace 1 to {subsystem9}: Successful" in caplog.text
@@ -2160,16 +2251,19 @@ class TestCreate:
 
     def test_namespace_count_updated(self, caplog):
         caplog.clear()
-        cli(["subsystem", "add", "--subsystem", subsystem5, "--no-group-append"])
+        cli(["subsystem", "add", "--subsystem", subsystem5, "--no-group-append",
+             "--max-namespaces", "100"])
         assert f"Adding subsystem {subsystem5}: Successful" in caplog.text
-        caplog.clear()
-        cli(["namespace", "add", "--subsystem", subsystem5, "--rbd-pool", pool,
-             "--rbd-image", image17, "--size", "16MB", "--rbd-create-image"])
-        assert f"Adding namespace 1 to {subsystem5}: Successful" in caplog.text
+        for nsid in range(1, 85):
+            img = image17 + "_" + str(nsid)
+            caplog.clear()
+            cli(["namespace", "add", "--subsystem", subsystem5, "--rbd-pool", pool,
+                 "--rbd-image", img, "--size", "16MB", "--rbd-create-image"])
+            assert f"Adding namespace {nsid} to {subsystem5}: Successful" in caplog.text
         caplog.clear()
         cli(["namespace", "add", "--subsystem", subsystem5, "--rbd-pool", pool,
              "--rbd-image", image18, "--size", "16MB", "--rbd-create-image"])
-        assert f"Failure adding namespace to {subsystem5}: Maximal number of namespaces (12) " \
+        assert f"Failure adding namespace to {subsystem5}: Maximal number of namespaces (95) " \
                f"has already been reached" in caplog.text
         caplog.clear()
         cli(["subsystem", "del", "--subsystem", subsystem9, "--force"])
@@ -2177,7 +2271,7 @@ class TestCreate:
         caplog.clear()
         cli(["namespace", "add", "--subsystem", subsystem5, "--rbd-pool", pool,
              "--rbd-image", image18, "--size", "16MB", "--rbd-create-image"])
-        assert f"Adding namespace 2 to {subsystem5}: Successful" in caplog.text
+        assert f"Adding namespace 85 to {subsystem5}: Successful" in caplog.text
 
 
 class TestDelete:
@@ -2485,9 +2579,9 @@ class TestTooManySubsystemsAndHosts:
     def test_add_too_many_subsystem(self, caplog, gateway):
         caplog.clear()
         cli(["subsystem", "add", "--subsystem", subsystem6, "--no-group-append",
-             "--max-namespaces", "12"])
-        assert f"The requested max number of namespaces for subsystem {subsystem6} (12) " \
-               f"is greater than the limit on the number of namespaces per subsystem (11), " \
+             "--max-namespaces", "65"])
+        assert f"The requested max number of namespaces for subsystem {subsystem6} (65) " \
+               f"is greater than the limit on the number of namespaces per subsystem (64), " \
                f"will continue" in caplog.text
         assert f"Adding subsystem {subsystem6}: Successful" in caplog.text
         caplog.clear()
@@ -2691,7 +2785,7 @@ class TestDeleteRBDImage:
         cli(["namespace", "add", "--subsystem", subsystem10, "--rbd-pool", pool,
              "--rbd-image", image19])
         assert f"Failure adding namespace to {subsystem10}: RBD image {pool}/{image19} " \
-               f"does not exist and '--rbd-create-image' was not specified" in caplog.text
+               f"does not exist and the create image parameter was not specified" in caplog.text
         caplog.clear()
         cli(["namespace", "add", "--subsystem", subsystem10, "--rbd-pool", pool,
              "--rbd-image", image19, "--rbd-create-image", "--size", "32MB"])
@@ -3122,3 +3216,144 @@ class TestSubsystemsCache:
         assert host13 not in caplog.text
         assert host14 not in caplog.text
         assert host15 not in caplog.text
+
+
+class TestSubsystemModelName:
+    def test_subsystems_model_name_default(self, caplog, gateway):
+        caplog.clear()
+        cli(["subsystem", "add", "--subsystem", subsystem20, "--no-group-append"])
+        assert f"Adding subsystem {subsystem20}: Successful" in caplog.text
+        caplog.clear()
+        cli(["--format", "json", "subsystem", "list", "--subsystem", subsystem20])
+        assert '"status": 0' in caplog.text
+        assert f'"nqn": "{subsystem20}"' in caplog.text
+        assert '"model_number": "Ceph bdev Controller"' in caplog.text
+        caplog.clear()
+        cli(["subsystem", "del", "--subsystem", subsystem20])
+        assert f"Deleting subsystem {subsystem20}: Successful" in caplog.text
+        caplog.clear()
+        cli(["subsystem", "add", "--subsystem", subsystem20, "--no-group-append",
+             "--model-name", ""])
+        assert f"Adding subsystem {subsystem20}: Successful" in caplog.text
+        caplog.clear()
+        cli(["--format", "json", "subsystem", "list", "--subsystem", subsystem20])
+        assert '"status": 0' in caplog.text
+        assert f'"nqn": "{subsystem20}"' in caplog.text
+        assert '"model_number": "Ceph bdev Controller"' in caplog.text
+        caplog.clear()
+        cli(["subsystem", "del", "--subsystem", subsystem20])
+        assert f"Deleting subsystem {subsystem20}: Successful" in caplog.text
+
+    def test_subsystems_model_name_too_long(self, caplog, gateway):
+        gw, _ = gateway
+        rc = 0
+        caplog.clear()
+        try:
+            cli(["subsystem", "add", "--subsystem", subsystem20, "--no-group-append",
+                 "--model-name", "12345678901234567890123456789012345678901"])
+        except SystemExit as sysex:
+            rc = sysex.code
+            pass
+        assert f'error: Invalid model name: Model name ' \
+               f'"12345678901234567890123456789012345678901" is too long. ' \
+               f'Maximum length is {GatewayUtils.MAX_MODEL_NAME_LENGTH} ' \
+               f'characters.' in caplog.text
+        assert rc == 2
+
+        subsys_add_req = pb2.create_subsystem_req(
+            subsystem_nqn=subsystem20,
+            enable_ha=True,
+            no_group_append=True,
+            model_name="12345678901234567890123456789012345678901")
+        caplog.clear()
+        ret = gw.create_subsystem(subsys_add_req)
+        assert ret.status != 0
+        assert f'Failure creating subsystem {subsystem20}: Model name ' \
+               f'"12345678901234567890123456789012345678901" is too long. ' \
+               f'Maximum length is {GatewayUtils.MAX_MODEL_NAME_LENGTH} characters.' in caplog.text
+
+    def test_subsystems_model_name_control_characters(self, caplog, gateway):
+        gw, _ = gateway
+        rc = 0
+        caplog.clear()
+        try:
+            cli(["subsystem", "add", "--subsystem", subsystem20, "--no-group-append",
+                 "--model-name", "has\tcontrol"])
+        except SystemExit as sysex:
+            rc = sysex.code
+            pass
+        assert 'error: Invalid model name: Model name ' \
+               '"has\tcontrol" contains control characters.' in caplog.text
+        assert rc == 2
+        rc = 0
+        caplog.clear()
+        try:
+            cli(["subsystem", "add", "--subsystem", subsystem20, "--no-group-append",
+                 "--model-name", "has\x7fcontrol"])
+        except SystemExit as sysex:
+            rc = sysex.code
+            pass
+        assert 'error: Invalid model name: Model name ' \
+               '"has\x7fcontrol" contains control characters.' in caplog.text
+        assert rc == 2
+
+        subsys_add_req = pb2.create_subsystem_req(
+            subsystem_nqn=subsystem20,
+            enable_ha=True,
+            no_group_append=True,
+            model_name="has\tcontrol")
+        caplog.clear()
+        ret = gw.create_subsystem(subsys_add_req)
+        assert ret.status != 0
+        assert f'Failure creating subsystem {subsystem20}: Model name ' \
+               f'"has\tcontrol" contains control characters.' in caplog.text
+
+        subsys_add_req = pb2.create_subsystem_req(
+            subsystem_nqn=subsystem20,
+            enable_ha=True,
+            no_group_append=True,
+            model_name="has\x7fcontrol")
+        caplog.clear()
+        ret = gw.create_subsystem(subsys_add_req)
+        assert ret.status != 0
+        assert f'Failure creating subsystem {subsystem20}: Model name ' \
+               f'"has\x7fcontrol" contains control characters.' in caplog.text
+
+    def test_subsystems_model_name_non_ascii(self, caplog, gateway):
+        gw, _ = gateway
+        rc = 0
+        caplog.clear()
+        try:
+            cli(["subsystem", "add", "--subsystem", subsystem20, "--no-group-append",
+                 "--model-name", "Euro sign: \u20AC"])
+        except SystemExit as sysex:
+            rc = sysex.code
+            pass
+        assert 'error: Invalid model name: Model name ' \
+               '"Euro sign: \u20AC" must be an ASCII string.' in caplog.text
+        assert rc == 2
+
+        subsys_add_req = pb2.create_subsystem_req(
+            subsystem_nqn=subsystem20,
+            enable_ha=True,
+            no_group_append=True,
+            model_name="Euro sign: \u20AC")
+        caplog.clear()
+        ret = gw.create_subsystem(subsys_add_req)
+        assert ret.status != 0
+        assert f'Failure creating subsystem {subsystem20}: Model name ' \
+               f'"Euro sign: \u20AC" must be an ASCII string.' in caplog.text
+
+    def test_subsystems_model_name(self, caplog, gateway):
+        caplog.clear()
+        cli(["subsystem", "add", "--subsystem", subsystem20, "--no-group-append",
+             "--model-name", "Bla bla bla"])
+        assert f"Adding subsystem {subsystem20}: Successful" in caplog.text
+        caplog.clear()
+        cli(["--format", "json", "subsystem", "list", "--subsystem", subsystem20])
+        assert '"status": 0' in caplog.text
+        assert f'"nqn": "{subsystem20}"' in caplog.text
+        assert '"model_number": "Bla bla bla"' in caplog.text
+        caplog.clear()
+        cli(["subsystem", "del", "--subsystem", subsystem20])
+        assert f"Deleting subsystem {subsystem20}: Successful" in caplog.text

@@ -44,6 +44,13 @@ class Rebalance:
     def auto_rebalance_task(self, death_event):
         """Periodically calls for auto rebalance."""
         self.logger.debug(f"Rebalance thread id is {self.auto_rebalance.native_id}")
+        if self.rebalance_period_sec > 0:
+            while not self.gw_srv.gateway_state.is_initialization_over():
+                if not self.gw_srv.up_and_running:
+                    self.logger.warning("SPDK is not up and running!")
+                    return
+                time.sleep(0.5)
+
         while (self.rebalance_period_sec > 0):
             while self.gw_srv.gateway_state.update_is_active_lock.locked():
                 time.sleep(0.5)         # wait until update is over
@@ -322,6 +329,8 @@ class Rebalance:
         self.logger.debug(f"Doing loop on namespaces in anagrp {self.degraded_group} ")
         for nsid, subsys in ns:
             ns_info = self.gw_srv.subsystem_nsid_bdev_and_uuid.find_namespace(subsys, nsid)
+            if ns_info.empty():
+                continue
             self.logger.info(f"Found nsid {nsid} nqn {subsys} in degraded anagrp"
                              f" {self.degraded_group}")
             if not ns_info.is_degraded():
@@ -337,6 +346,8 @@ class Rebalance:
         self.logger.debug(f"Doing loop on namespaces in anagrp {ana_id} ")
         for nsid, subsys in ns:
             ns_info = self.gw_srv.subsystem_nsid_bdev_and_uuid.find_namespace(subsys, nsid)
+            if ns_info.empty():
+                continue
             if ns_info.is_degraded():
                 self.logger.info(f"Found degraded nsid {nsid} nqn {subsys} "
                                  f"in anagrp {ana_id} - rebalance to anagrp {self.degraded_group}")

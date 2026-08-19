@@ -29,7 +29,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           submodules: recursive
 
@@ -60,14 +60,14 @@ jobs:
           docker save $QUAY_SPDK:$SPDK_VERSION > spdk.tar
 
       - name: Upload bdevperf container image
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: container_images_bdevperf
           path: |
             bdevperf.tar
 
       - name: Upload nvmeof container images
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: container_images_nvmeof
           path: |
@@ -75,7 +75,7 @@ jobs:
             nvmeof-cli.tar
 
       - name: Upload spdk container image
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: container_image_spdk
           path: |
@@ -85,7 +85,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Build container images - ceph
         run: make build SVC=ceph
@@ -96,7 +96,7 @@ jobs:
           docker save $QUAY_CEPH:$CEPH_VERSION > ceph.tar
 
       - name: Upload ceph container image
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: container_images_ceph
           path: |
@@ -106,7 +106,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Build KMIP container images
         run: |
@@ -117,7 +117,7 @@ jobs:
           docker save kmip-server:latest > kmip-server.tar
           docker save kmip-cli:latest > kmip-cli.tar
       - name: Upload KMIP container images
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: kmip_images
           path: |
@@ -129,20 +129,20 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        test: ["cli", "cli_change_lb", "cli_change_keys", "cli_change_ns_visibility", "cli_change_ns_location", "cli_list_ns_locations", "cli_trash_rbd", "state", "multi_gateway", "server", "grpc", "omap_lock", "log_files", "nsid", "psk", "dhchap", "dhchap_ctrlr", "subsys_grp_name_append", "max_subsystems", "omap_no_read_lock", "omap_read_lock", "omap_read_lock_ignore_errors", "big_omap", "ns_limit", "cli_force_tls", "erasure_pool", "cli_ns_resize", "auto_listeners", "update_error", "discovery_bind", "cli_ns_hosts", "io_stats", "rbd_encrypt", "rados_namespace", "dsa"]
+        test: ["cli", "cli_change_lb", "cli_change_keys", "cli_change_ns_visibility", "cli_change_ns_location", "cli_list_ns_locations", "cli_trash_rbd", "state", "multi_gateway", "server", "grpc", "omap_lock", "log_files", "nsid", "psk", "dhchap", "dhchap_ctrlr", "subsys_grp_name_append", "max_subsystems", "omap_no_read_lock", "omap_read_lock", "omap_read_lock_ignore_errors", "big_omap", "ns_limit", "cli_force_tls", "erasure_pool", "cli_ns_resize", "auto_listeners", "update_error", "discovery_bind", "cli_ns_hosts", "io_stats", "rbd_encrypt", "rados_namespace", "dsa", "degraded_ns"]
     runs-on: ubuntu-latest
     env:
       HUGEPAGES: 512  # for multi gateway test, approx 256 per gateway instance
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup huge pages
         run: |
           make setup HUGEPAGES=$HUGEPAGES
 
       - name: Download container images
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: container_images*
           merge-multiple: true
@@ -239,7 +239,7 @@ jobs:
 
       - name: Upload ceph logs
         if: success() || failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ceph_out_pytest_${{ matrix.test }}
           path: /tmp/out/*.log
@@ -266,13 +266,13 @@ jobs:
       HUGEPAGES: 512
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup huge-pages
         run: make setup HUGEPAGES=$HUGEPAGES
 
       - name: Download container images
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: container_images*
           merge-multiple: true
@@ -348,7 +348,7 @@ jobs:
 
       - name: Upload ceph logs
         if: success() || failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ceph_out_demo_${{ matrix.security_protocol }}
           path: /tmp/out/*.log
@@ -375,13 +375,13 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup huge-pages
         run: make setup HUGEPAGES=$HUGEPAGES
 
       - name: Download container images
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: container_images*
           merge-multiple: true
@@ -543,13 +543,13 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup huge-pages
         run: make setup HUGEPAGES=$HUGEPAGES
 
       - name: Download container images
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: container_images*
           merge-multiple: true
@@ -613,7 +613,7 @@ jobs:
 
       - name: Upload ceph logs
         if: success() || failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ceph_out_ha_${{ matrix.test }}
           path: /tmp/out/*.log
@@ -633,10 +633,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         
       - name: Download container images
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: container_images_nvmeof
 
@@ -653,7 +653,7 @@ jobs:
     runs-on: dailyAtomRunner
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Container_images_nvmeof folder (tar files) download
         run: |
@@ -680,7 +680,7 @@ jobs:
 
       # TODO: investigating upluad to artifact issue
       # - name: Upload artifact for non-schedule events
-      #   uses: actions/upload-artifact@v4
+      #   uses: actions/upload-artifact@v7
       #   if: always()
       #   with:
       #     name: atom-artifact
@@ -693,7 +693,7 @@ jobs:
   #   timeout-minutes: 1440
   #   steps:
   #     - name: Checkout code
-  #       uses: actions/checkout@v4
+  #       uses: actions/checkout@v6
 
   #     - name: Container_images_nvmeof folder (tar files) download
   #       run: |
@@ -720,13 +720,13 @@ jobs:
 
   #     - name: Upload nightly nvmeof console as artifact
   #       if: always()
-  #       uses: actions/upload-artifact@v4
+  #       uses: actions/upload-artifact@v7
   #       with:
   #         name: atom-nightly-nvmeof-full-console
   #         path: atom_nightly_nvmeof_console.log
 
   #     - name: Upload artifact for schedule events
-  #       uses: actions/upload-artifact@v4
+  #       uses: actions/upload-artifact@v7
   #       if: always()
   #       with:
   #         name: atom-artifact
@@ -739,16 +739,16 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Download container images (nvmeof)
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: container_images_nvmeof*
           merge-multiple: true
 
       - name: Download container image (spdk)
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: container_image_spdk
           merge-multiple: true
@@ -777,10 +777,10 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Download container images
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: container_images_nvmeof*
           merge-multiple: true
@@ -810,7 +810,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: setup
         run: make setup
