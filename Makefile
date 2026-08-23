@@ -67,10 +67,14 @@ SHAMAN_FETCH_ATTEMPTS := 3
 # goal, so non-build targets (help, clean, verify, ...) don't hit the network
 # on every Makefile parse
 ifneq (,$(filter build check-ceph-repo-url,$(MAKECMDGOALS)))
-# Fetch and export CEPH_CLUSTER_CEPH_REPO_BASEURL with retries
-CEPH_CLUSTER_CEPH_REPO_BASEURL := $(shell \
+# Fetch shaman repo URL and the git SHA it corresponds to (same attempt).
+# Output: <url> <sha>
+CEPH_SHAMAN_FETCH := $(shell \
 	for i in $$(seq 1 $(SHAMAN_FETCH_ATTEMPTS)); do \
 		ceph_commit_sha="$(CEPH_SHA)"; \
+		resolved_sha=; \
+		tag_sha=; \
+		tag_type=; \
 		if [ "$$ceph_commit_sha" = "latest" ]; then \
 			idx=$$((i - 1)); \
 			ceph_commit_sha=$$(curl -s \
@@ -92,28 +96,47 @@ CEPH_CLUSTER_CEPH_REPO_BASEURL := $(shell \
 				>&2 echo "Attempt ($$i): Resolved tag '$$ceph_commit_sha' to commit SHA: $$resolved_sha"; \
 				ceph_commit_sha="$$resolved_sha"; \
 			else \
-				>&2 echo "Warning: Failed to resolve tag '$$ceph_commit_sha', will try using it directly"; \
+				>&2 echo "Attempt ($$i): Failed to resolve tag '$$ceph_commit_sha' to a commit SHA"; \
+				sleep 2; \
+				continue; \
 			fi; \
 		fi; \
+		if ! printf '%s' "$$ceph_commit_sha" | grep -qE '^[0-9a-fA-F]{40}$$'; then \
+			>&2 echo "Attempt ($$i): Refused non-SHA value '$$ceph_commit_sha' (expected a 40-char commit SHA)"; \
+			sleep 2; \
+			continue; \
+		fi; \
+		ceph_commit_sha=$$(printf '%s' "$$ceph_commit_sha" | tr 'A-F' 'a-f'); \
 		>&2 echo "Attempt ($$i): Fetching URL for arch=$(ceph_repo_arch), branch=$(CEPH_BRANCH), sha=$$ceph_commit_sha..."; \
-		url=$$(curl -s "https://shaman.ceph.com/api/repos/ceph/$(CEPH_BRANCH)/$$ceph_commit_sha/rocky/10/" | jq -r '.[] | select(.status == "ready" and .archs[] == "$(ceph_repo_arch)") | .url'); \
+		url=$$(curl -s "https://shaman.ceph.com/api/repos/ceph/$(CEPH_BRANCH)/$$ceph_commit_sha/rocky/10/" | jq -r '[.[] | select(.status == "ready" and .archs[] == "$(ceph_repo_arch)")] | first | .url // empty'); \
 		if [ -n "$$url" ] && [ "$$url" != "null" ]; then \
+			if printf '%s' "$$url" | grep -q '[[:space:]]'; then \
+				>&2 echo "Attempt ($$i): Refused shaman URL with whitespace: $$url"; \
+				sleep 2; \
+				continue; \
+			fi; \
 			>&2 echo "Success: Retrieved URL for arch=$(ceph_repo_arch), branch=$(CEPH_BRANCH), sha=$$ceph_commit_sha: $$url"; \
-			printf "%s" "$$url"; \
+			printf "%s %s" "$$url" "$$ceph_commit_sha"; \
 			break; \
 		fi; \
 		>&2 echo "Retrying... Failed attempt ($$i) for arch=$(ceph_repo_arch), branch=$(CEPH_BRANCH), sha=$$ceph_commit_sha"; \
 		sleep 2; \
 	done)
+CEPH_CLUSTER_CEPH_REPO_BASEURL := $(firstword $(CEPH_SHAMAN_FETCH))
+CEPH_CLUSTER_CEPH_SHA := $(lastword $(CEPH_SHAMAN_FETCH))
 endif
 
 build: export CEPH_CLUSTER_CEPH_REPO_BASEURL := $(CEPH_CLUSTER_CEPH_REPO_BASEURL)
+build: export CEPH_CLUSTER_CEPH_SHA := $(CEPH_CLUSTER_CEPH_SHA)
 build: check-ceph-repo-url
 
 check-ceph-repo-url:
 	@test -n "$(CEPH_CLUSTER_CEPH_REPO_BASEURL)" && test "$(CEPH_CLUSTER_CEPH_REPO_BASEURL)" != "null" || \
-		(>&2 echo "Failure: No ready Ceph Shaman repo for arch=$(ceph_repo_arch), branch=$(CEPH_BRANCH), sha=$(CEPH_SHA) on rocky/10"; \
+		(>&2 echo "Failure: No ready Ceph Shaman repo for arch=$(ceph_repo_arch), branch=$(CEPH_BRANCH), sha=$(CEPH_CLUSTER_CEPH_SHA) (CEPH_SHA=$(CEPH_SHA)) on rocky/10"; \
 		 >&2 echo "Shaman currently provides rocky/10 repos only for x86_64 in this branch/ref combination."; \
+		 exit 1)
+	@printf '%s' "$(CEPH_CLUSTER_CEPH_SHA)" | grep -qE '^[0-9a-fA-F]{40}$$' || \
+		(>&2 echo "Failure: CEPH_CLUSTER_CEPH_SHA is not a 40-char commit SHA: '$(CEPH_CLUSTER_CEPH_SHA)'"; \
 		 exit 1)
 
 build: export TARGET_PLATFORM := $(TARGET_PLATFORM)
