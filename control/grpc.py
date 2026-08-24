@@ -6997,9 +6997,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
         else:
             subsysmsg = "all subsystems"
         hostmsg = f"host {request.host_nqn}" if request.host_nqn else "all hosts"
-        self.logger.info(f"Received request to {cmd} IO statistics for {hostmsg} "
-                         f"on {subsysmsg}, verbose: {verbose}, "
-                         f"context: {context}{peer_msg}")
+        self.logger.debug(f"Received request to {cmd} IO statistics for {hostmsg} "
+                          f"on {subsysmsg}, verbose: {verbose}, "
+                          f"context: {context}{peer_msg}")
         failure_prefix = f"Failure {cmd2} IO statistics for {hostmsg} " \
                          f"on {subsysmsg}"
 
