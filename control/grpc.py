@@ -1051,6 +1051,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
             self.kmip_cert_dir = "."
         self.kmip_server_endpoints = KMIPServerEndpointList()
         self.kmip_clients = KMIPClientList(self.config)
+        self.fail_io_for_degraded_namespace = self.config.getboolean_with_default(
+            "gateway", "fail_io_for_degraded_namespace", True)
 
         for i in range(self.max_ana_grps + 1):
             self.ana_grp_ns_load[i] = 0
@@ -1546,53 +1548,12 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 self.logger.exception(f"Error setting image identification {img_id_value} for "
                                       f"{image_path}")
 
-    def create_degraded_bdev(self, name, uuid, block_size):
-        """Create a degraded null bdev with no IO allowed"""
-
-        assert self.rpc_lock.locked(), "RPC is unlocked when calling create_degraded_bdev()"
-        self.logger.info(f"Received request to create a degraded bdev {name}")
-
-        try:
-            # Even though we don't really care about the number of blocks or the block size
-            # as we don't perform any IO on these bdevs, we need to set the values to 64
-            # and 512 for SPDK. An SPDK internal code calls bdev_io_valid_blocks() which
-            # will fail if the number of blocks times the block size is smaller than
-            # SPDK_GPT_BUFFER_SIZE (32K). See vbdev_gpt_read_gpt() in module/bdev/gpt/vbdev_gpt.c
-            bdev_name = self.spdk_rpc_client.bdev_null_create(
-                name=name,
-                num_blocks=64,
-                block_size=512,
-                uuid=uuid,
-                fail_io=True)
-            self.logger.debug(f"bdev_null_create: {bdev_name}")
-        except Exception as ex:
-            errmsg = f"bdev_null_create {name} failed"
-            self.logger.exception(errmsg)
-            errmsg = f"{errmsg} with:\n{ex}"
-            resp = self.parse_json_exeption(ex)
-            status = errno.ENODEV
-            if resp:
-                status = resp["code"]
-                errmsg = resp['message']
-            return BdevStatus(status=status, error_message=errmsg)
-
-        # Just in case SPDK failed with no exception
-        if not bdev_name:
-            errmsg = f"Can't create bdev {name}"
-            self.logger.error(errmsg)
-            return BdevStatus(status=errno.ENODEV, error_message=errmsg)
-
-        assert name == bdev_name, f"Created bdev name {bdev_name} differs " \
-                                  f"from requested name {name}"
-
-        return BdevStatus(status=0, error_message="", bdev_name=bdev_name, degraded=True)
-
     def create_rbd_bdev(self, anagrp: int, name, uuid, rbd_pool_name, rbd_data_pool_name,
                         rbd_image_name,
                         block_size, create_image, trash_image, rbd_image_size, disable_auto_resize,
                         read_only, rados_namespace_name,
                         encryption_entries, encryption_algorithm,
-                        context, peer_msg=""):
+                        degraded, context, peer_msg=""):
         """Creates a bdev from an RBD image."""
 
         assert self.rpc_lock.locked(), "RPC is unlocked when calling create_rbd_bdev()"
@@ -1621,9 +1582,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         enc_formats_str = ""
         enc_algo_str = None
-        if encryption_entries is None:
+        if degraded or (encryption_entries is None):
             encryption_entries = []
-        if encryption_algorithm is None:
+        if degraded or (encryption_algorithm is None):
             encryption_algorithm = pb2.EncryptionAlgorithm.no_algorithm
 
         for ent in encryption_entries:
@@ -1661,11 +1622,14 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 enc_format_msg += f" and encryption algorithm {enc_algo_str}"
             enc_format_msg += ", "
 
+        degraded_msg = ", will create a degraded bdev" if degraded else ""
+
         self.logger.info(f"Received request to create {ro_msg} bdev {name} from"
                          f" {image_path} {data_pool_msg}"
                          f"(size {rbd_image_size} bytes)"
                          f" with block size {block_size}, {cr_img_msg}, {trsh_msg}"
                          f"{enc_format_msg}"
+                         f"{degraded_msg}"
                          f"context={context}{peer_msg}")
 
         created_rbd_pool = None
@@ -1850,7 +1814,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 rbd_name=rbd_image_name,
                 block_size=block_size,
                 uuid=uuid,
-                read_only=read_only,
+                read_only=read_only or degraded,
+                #  fail_io=degraded and self.fail_io_for_degraded_namespace,  ######################
                 encryption_format=enc_format_list,
                 passphrase=passphrase_list,
             )
@@ -1956,34 +1921,6 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         if not ret:
             errmsg = f"Failure resizing bdev {bdev_name}"
-            self.logger.error(errmsg)
-            return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
-
-        return pb2.req_status(status=0, error_message="")
-
-    def delete_degraded_bdev(self, bdev_name, peer_msg=""):
-        """Deletes a degraded bdev."""
-
-        assert self.rpc_lock.locked(), "RPC is unlocked when calling delete_degraded_bdev()"
-
-        self.logger.info(f"Received request to delete degraded bdev {bdev_name}{peer_msg}")
-        try:
-            ret = self.spdk_rpc_client.bdev_null_delete(name=bdev_name)
-            self.logger.debug(f"bdev_null_delete {bdev_name}: {ret}")
-        except Exception as ex:
-            errmsg = f"Failure deleting degraded bdev {bdev_name}"
-            self.logger.exception(errmsg)
-            errmsg = f"{errmsg}:\n{ex}"
-            resp = self.parse_json_exeption(ex)
-            status = errno.EINVAL
-            if resp:
-                status = resp["code"]
-                errmsg = f"Failure deleting degraded bdev {bdev_name}: {resp['message']}"
-            return pb2.req_status(status=status, error_message=errmsg)
-
-        # Just in case SPDK failed with no exception
-        if not ret:
-            errmsg = f"Failure deleting degraded bdev {bdev_name}"
             self.logger.error(errmsg)
             return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
 
@@ -3767,7 +3704,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         bdev_name = GatewayService.find_unique_bdev_name(request.uuid)
         omap_lock = self.omap_lock.get_omap_lock_to_use(context)
         with omap_lock:
-            if context and not create_degraded:
+            if context:
                 errmsg, ns_nqn = self.check_if_image_used(request.rbd_pool_name,
                                                           request.rbd_image_name,
                                                           request.rados_namespace_name,
@@ -3783,19 +3720,15 @@ class GatewayService(pb2_grpc.GatewayServicer):
                         self.logger.error(errmsg)
                         return pb2.nsid_status(status=errno.EEXIST, error_message=errmsg)
 
-            if create_degraded:
-                bdev_name += "_degraded"
-                ret_bdev = self.create_degraded_bdev(bdev_name, request.uuid, request.block_size)
-            else:
-                ret_bdev = self.create_rbd_bdev(abs(anagrp), bdev_name, request.uuid,
-                                                request.rbd_pool_name,
-                                                request.rbd_data_pool_name, request.rbd_image_name,
-                                                request.block_size, request.create_image,
-                                                request.trash_image, request.size,
-                                                request.disable_auto_resize, request.read_only,
-                                                request.rados_namespace_name,
-                                                decrypted_enc_entries, request.encryption_algorithm,
-                                                context, peer_msg)
+            ret_bdev = self.create_rbd_bdev(abs(anagrp), bdev_name, request.uuid,
+                                            request.rbd_pool_name,
+                                            request.rbd_data_pool_name, request.rbd_image_name,
+                                            request.block_size, request.create_image,
+                                            request.trash_image, request.size,
+                                            request.disable_auto_resize, request.read_only,
+                                            request.rados_namespace_name,
+                                            decrypted_enc_entries, request.encryption_algorithm,
+                                            create_degraded, context, peer_msg)
             if ret_bdev.status != 0:
                 errmsg = f"Failure adding namespace {nsid_msg}to {request.subsystem_nqn}: " \
                          f"{ret_bdev.error_message}"
@@ -3805,13 +3738,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     ns_bdev = self.get_bdev_info(bdev_name)
                     if ns_bdev is not None:
                         try:
-                            if create_degraded:
-                                ret_del = self.delete_degraded_bdev(bdev_name, peer_msg=peer_msg)
-                                self.logger.debug(f"delete_degraded_bdev({bdev_name}): "
-                                                  f"{ret_del.status}")
-                            else:
-                                ret_del = self.delete_rbd_bdev(bdev_name, peer_msg=peer_msg)
-                                self.logger.debug(f"delete_rbd_bdev({bdev_name}): {ret_del.status}")
+                            ret_del = self.delete_rbd_bdev(bdev_name, peer_msg=peer_msg)
+                            self.logger.debug(f"delete_rbd_bdev({bdev_name}): {ret_del.status}")
                         except AssertionError:
                             self.logger.exception(
                                 f"Got an assert while trying to delete bdev {bdev_name}")
@@ -3823,21 +3751,12 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
             # If we got here we asserted that ret_bdev.bdev_name == bdev_name
 
-            # degraded bdevs are null ones and not RBD ones, so reset RBD related info
-            if create_degraded:
-                pool_to_use = ""
-                data_pool_to_use = ""
-                image_name_to_use = ""
-                rados_namespace_to_use = ""
-                enc_entries_to_use = []
-                enc_algorithm_to_use = pb2.EncryptionAlgorithm.no_algorithm
-            else:
-                pool_to_use = ret_bdev.rbd_pool
-                data_pool_to_use = request.rbd_data_pool_name
-                image_name_to_use = ret_bdev.rbd_image_name
-                rados_namespace_to_use = ret_bdev.rados_namespace_name
-                enc_entries_to_use = request.encryption_entries
-                enc_algorithm_to_use = request.encryption_algorithm
+            pool_to_use = ret_bdev.rbd_pool
+            data_pool_to_use = request.rbd_data_pool_name
+            image_name_to_use = ret_bdev.rbd_image_name
+            rados_namespace_to_use = ret_bdev.rados_namespace_name
+            enc_entries_to_use = request.encryption_entries
+            enc_algorithm_to_use = request.encryption_algorithm
 
             ret_ns = self.create_namespace(request.subsystem_nqn, bdev_name,
                                            request.nsid, anagrp, request.uuid,
@@ -3859,10 +3778,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
             if ret_ns.status != 0:
                 try:
-                    if create_degraded:
-                        ret_del = self.delete_degraded_bdev(bdev_name, peer_msg=peer_msg)
-                    else:
-                        ret_del = self.delete_rbd_bdev(bdev_name, peer_msg=peer_msg)
+                    ret_del = self.delete_rbd_bdev(bdev_name, peer_msg=peer_msg)
                     if ret_del.status != 0:
                         self.logger.warning(f"Failure {ret_del.status} deleting bdev "
                                             f"{bdev_name}: {ret_del.error_message}")
@@ -3892,10 +3808,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     self.logger.exception(errmsg)
                     errmsg = f"{errmsg}:\n{ex}"
                     try:
-                        if create_degraded:
-                            ret_del = self.delete_degraded_bdev(bdev_name, peer_msg=peer_msg)
-                        else:
-                            ret_del = self.delete_rbd_bdev(bdev_name, peer_msg=peer_msg)
+                        ret_del = self.delete_rbd_bdev(bdev_name, peer_msg=peer_msg)
                     except Exception:
                         pass
                     if ret_bdev.trash_image:
@@ -4098,6 +4011,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                  f"namespace {request.nsid} on subsystem {request.subsystem_nqn}")
             else:
                 request.anagrpid = original_anagrpid
+
             find_ret.anagrpid = request.anagrpid
 
             if context:
@@ -5591,10 +5505,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                                                  self.fsid))
         self.subsystem_nsid_bdev_and_uuid.remove_namespace(request.subsystem_nqn, request.nsid)
         if bdev_name:
-            if is_degraded:
-                ret_del = self.delete_degraded_bdev(bdev_name, peer_msg=peer_msg)
-            else:
-                ret_del = self.delete_rbd_bdev(bdev_name, peer_msg=peer_msg)
+            ret_del = self.delete_rbd_bdev(bdev_name, peer_msg=peer_msg)
             if ret_del.status != 0:
                 errmsg = f"Failure deleting namespace {request.nsid} from " \
                          f"{request.subsystem_nqn}: {ret_del.error_message}"
@@ -7692,6 +7603,22 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                     self.logger.debug(f"create_listener "
                                                       f"nvmf_subsystem_listener_set_ana_state "
                                                       f"response {rc=}")
+
+                    self.logger.info(f"Set ana group state to inaccessible loss for group "
+                                     f"{GatewayService.MAINTENANCE_ANA_GROUP}, subsystem "
+                                     f"{request.nqn}, listen address "
+                                     f"{traddr}:{request.trsvcid}")
+                    rc = self.spdk_rpc_client.nvmf_subsystem_listener_set_ana_state(
+                        nqn=request.nqn,
+                        ana_state="inaccessible",
+                        listen_address={"trtype": "TCP",
+                                        "traddr": traddr,
+                                        "trsvcid": str(request.trsvcid),
+                                        "adrfam": adrfam},
+                        anagrpid=GatewayService.MAINTENANCE_ANA_GROUP)
+                    self.logger.debug(f"create_listener "
+                                      f"nvmf_subsystem_listener_set_ana_state persistent loss"
+                                      f" -> {rc}")
 
                 except Exception as ex:
                     errmsg = f"{create_listener_error_prefix}: Error setting ANA state"
