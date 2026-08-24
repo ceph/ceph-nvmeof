@@ -349,7 +349,9 @@ class Rebalance:
             if ns_info.empty():
                 continue
             if ns_info.is_degraded():
-                self.logger.info(f"Found degraded nsid {nsid} nqn {subsys} "
+                pers = self.gw_srv.subsystem_nsid_bdev_and_uuid.is_nsid_in_persistent_ana(
+                    subsys, nsid)
+                self.logger.info(f"Found degraded nsid {nsid} persistent ana {pers} nqn {subsys} "
                                  f"in anagrp {ana_id} - rebalance to anagrp {self.degraded_group}")
                 self.do_rebalance(ana_id, self.degraded_group, subsys, nsid, context, False, True)
                 return 0
