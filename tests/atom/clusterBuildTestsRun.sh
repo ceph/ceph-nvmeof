@@ -80,6 +80,7 @@ if [ "$NIGHTLY" != "nightly" ]; then
         --ceph-branch="$CEPH_BRANCH" \
         --gw-img=quay.io/ceph/nvmeof:"$VERSION" \
         --cli-img=quay.io/ceph/nvmeof-cli:"$VERSION" \
+        --container-runtime docker \
         --initiators=1 \
         --gw-group-num=1 \
         --gw-num=2 \
