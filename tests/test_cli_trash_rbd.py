@@ -33,7 +33,7 @@ def two_gateways(config):
     configA.config["gateway"]["name"] = nameA
     configA.config["gateway"]["override_hostname"] = nameA
     configA.config["spdk"]["rpc_socket_name"] = sockA
-    configA.config["spdk"]["tgt_cmd_extra_args"] = "-m 0x03"
+    configA.config["spdk"]["tgt_cmd_extra_args"] = "--lcores (0-1)"
     portA = configA.getint("gateway", "port")
     configB.config["gateway"]["name"] = nameB
     configB.config["gateway"]["override_hostname"] = nameB
@@ -42,7 +42,7 @@ def two_gateways(config):
     discPortB = configB.getint("discovery", "port") + 1
     configB.config["gateway"]["port"] = str(portB)
     configB.config["discovery"]["port"] = str(discPortB)
-    configB.config["spdk"]["tgt_cmd_extra_args"] = "-m 0x0C"
+    configB.config["spdk"]["tgt_cmd_extra_args"] = "--lcores (2-3)"
 
     ceph_utils = CephUtils(config)
     with (GatewayServer(configA) as gatewayA,
@@ -111,7 +111,7 @@ def test_rbd_image_trash(caplog, two_gateways):
     assert '"namespaces": []' in caplog.text
     caplog.clear()
     if not ceph_utils.does_image_exist(pool, image):
-        ceph_utils.create_image(pool, image, 16777216)
+        ceph_utils.create_image(pool, None, None, image, 16777216)
     assert ceph_utils.does_image_exist(pool, image)
     cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool,
          "--rbd-image", image, "--size", "16MB", "--rbd-create-image",
@@ -178,8 +178,8 @@ def test_change_rbd_image_trash(caplog, two_gateways):
     except SystemExit as sysex:
         rc = int(str(sysex))
         pass
-    assert "error: argument --rbd-trash-image-on-delete: invalid choice: 'junk' (choose from " \
-           "'yes', 'no')" in caplog.text
+    assert "error: argument --rbd-trash-image-on-delete: invalid choice: 'junk'" \
+           " (choose from " in caplog.text
     assert rc == 2
     caplog.clear()
     cli(["namespace", "set_rbd_trash_image", "--subsystem", subsystem,

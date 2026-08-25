@@ -11,7 +11,7 @@ ARG DNF_OPTS="\
   "
 ARG ACCEL_CONFIG_SRC="/accel-config"
 
-FROM quay.io/centos/centos:stream9 AS build
+FROM quay.io/rockylinux/rockylinux:10 AS build
 
 ARG SPDK_CEPH_VERSION \
     CEPH_CLUSTER_CEPH_REPO_BASEURL \
@@ -71,18 +71,19 @@ RUN \
     --mount=type=cache,target=/var/cache/dnf \
     --mount=type=cache,target=/var/lib/dnf \
     --mount=type=cache,target=/root/.cache/pip \
-    rpm --import https://www.elrepo.org/RPM-GPG-KEY-elrepo.org \
-    && rpm --import https://www.elrepo.org/RPM-GPG-KEY-v2-elrepo.org \
-    && dnf install -y $DNF_OPTS -y 'dnf-command(config-manager)' \
-    && yum install -y https://www.elrepo.org/elrepo-release-9.el9.elrepo.noarch.rpm \
+    dnf install -y $DNF_OPTS -y 'dnf-command(config-manager)' \
+    && yum install -y --nogpgcheck https://www.elrepo.org/elrepo-release-10.el10.elrepo.noarch.rpm \
     && dnf config-manager --set-enabled crb \
     && dnf install $DNF_OPTS -y \
         rpm-build \
         git-core \
 	epel-release \
-	epel-next-release \
     && scripts/pkgdep.sh $SPDK_PKGDEP_ARGS \
     && dnf $DNF_OPTS update -y
+
+COPY --from=ghcr.io/astral-sh/uv:0.11.7 /uv /uvx /bin/
+# If this doesn't work, add the following to the RUN below, instead:
+# python3 -m pip install "uv==0.11.7"
 
 RUN \
     --mount=type=cache,target=/var/cache/dnf \
@@ -92,6 +93,7 @@ RUN \
     && dnf install -y autoconf automake libtool pkgconf rpm-build rpmdevtools \
     && dnf install -y which asciidoc xmlto libuuid-devel json-c-devel zlib-devel openssl-devel \
     && mkdir -p $ACCEL_CONFIG_SRC \
+    && python3 -m pip install "jinja2==3.1.6" "tabulate==0.10.0" \
     && git clone https://github.com/intel/idxd-config.git $ACCEL_CONFIG_SRC \
     && pushd $ACCEL_CONFIG_SRC \
     && ./autogen.sh \
@@ -118,20 +120,20 @@ RUN \
 RUN make -C ./examples/bdev/bdevperf
 
 #------------------------------------------------------------------------------
-FROM registry.access.redhat.com/ubi9/ubi@sha256:66233eebd72bb5baa25190d4f55e1dc3fff3a9b77186c1f91a0abdb274452072 AS rpm-export
+FROM registry.access.redhat.com/ubi10/ubi:latest AS rpm-export
 COPY --from=build /root/rpmbuild/rpm /rpm
 COPY --from=build /root/rpmbuild/RPMS /rpm
 
 #------------------------------------------------------------------------------
-FROM registry.access.redhat.com/ubi9/ubi@sha256:66233eebd72bb5baa25190d4f55e1dc3fff3a9b77186c1f91a0abdb274452072 as spdk
+FROM quay.io/rockylinux/rockylinux:10 as spdk
 
 ARG SPDK_CEPH_VERSION \
     SPDK_VERSION \
     DNF_OPTS
 
-ARG SPDK_CENTOS_BASE="https://mirror.stream.centos.org/9-stream/BaseOS/x86_64/os/Packages/"
+ARG SPDK_ROCKY_BASE="https://dl.rockylinux.org/pub/rocky/10/BaseOS/x86_64/os/Packages/r/"
 # This would become obsolete as the release rolls out new packages
-ARG SPDK_CENTOS_REPO_VER="9.0-28.el9"
+ARG SPDK_ROCKY_REPO_VER="10.1-1.5.el10"
 
 ARG SPDK_PKGDEP_ARGS \
     SPDK_CONFIGURE_ARGS \
@@ -170,20 +172,22 @@ LABEL io.spdk.version="$SPDK_VERSION" \
       io.spdk.git.branch="$SPDK_GIT_BRANCH" \
       io.spdk.git.commit="$SPDK_GIT_COMMIT"
 
-# CentOS-specific labels
-LABEL org.centos.url="$SPDK_CENTOS_BASE" \
-      org.centos.version="$SPDK_CENTOS_REPO_VER"
+# Rocky Linux-specific labels
+LABEL org.rockylinux.url="$SPDK_ROCKY_BASE" \
+      org.rockylinux.version="$SPDK_ROCKY_REPO_VER"
 
 COPY --from=build /etc/yum.conf /etc/yum.conf
 COPY --from=build /etc/yum.repos.d/ceph.repo /etc/yum.repos.d/ceph.repo
 
 RUN \
     --mount=type=bind,from=build,source=/root/rpmbuild/rpm,target=/rpm \
+    --mount=type=bind,from=build,source=/root/rpmbuild/RPMS,target=/accel-rpms \
     --mount=type=cache,target=/var/cache/dnf \
     --mount=type=cache,target=/var/lib/dnf \
-    rpm -vih $SPDK_CENTOS_BASE/centos-stream-repos-$SPDK_CENTOS_REPO_VER.noarch.rpm \
-             $SPDK_CENTOS_BASE/centos-gpg-keys-$SPDK_CENTOS_REPO_VER.noarch.rpm \
-    && rpm -vih https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm \
+    dnf $DNF_OPTS install -y dnf-plugins-core \
+    && rpm -ivh https://dl.fedoraproject.org/pub/epel/epel-release-latest-10.noarch.rpm \
+    && dnf config-manager --set-enabled crb \
+    && rpm -ivh /accel-rpms/$(uname -m)/accel-config-libs-[0-9]*.rpm /accel-rpms/$(uname -m)/accel-config-[0-9]*.rpm \
     && dnf $DNF_OPTS install -y /rpm/$(uname -m)/*.rpm \
     && dnf $DNF_OPTS update -y
 
@@ -209,10 +213,14 @@ ENV BDEVPERF_IO_BS="4096"
 # for available types
 ENV BDEVPERF_IO_TYPE="verify"
 
+# Core list
+ENV BDEVPERF_CORE_LIST="0"
+
 COPY --from=build /src/build/examples/bdevperf /usr/local/bin/bdevperf
 COPY --from=build /src/examples/bdev/bdevperf/bdevperf.py /usr/libexec/spdk/scripts/bdevperf.py
 RUN echo "#!/bin/sh -x"                                                 > /entrypoint
 RUN echo "bdevperf -z -r \$BDEVPERF_SOCKET \\"                         >> /entrypoint
+RUN echo "         --lcores \$BDEVPERF_CORE_LIST \\"                   >> /entrypoint
 RUN echo "         -q \$BDEVPERF_IO_QUEUE -o \$BDEVPERF_IO_BS \\"      >> /entrypoint
 RUN echo "         -w \$BDEVPERF_IO_TYPE -t \$BDEVPERF_TEST_DURATION"  >> /entrypoint
 RUN chmod 755 /entrypoint

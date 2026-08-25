@@ -29,7 +29,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           submodules: recursive
 
@@ -60,14 +60,14 @@ jobs:
           docker save $QUAY_SPDK:$SPDK_VERSION > spdk.tar
 
       - name: Upload bdevperf container image
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: container_images_bdevperf
           path: |
             bdevperf.tar
 
       - name: Upload nvmeof container images
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: container_images_nvmeof
           path: |
@@ -75,7 +75,7 @@ jobs:
             nvmeof-cli.tar
 
       - name: Upload spdk container image
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: container_image_spdk
           path: |
@@ -85,7 +85,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Build container images - ceph
         run: make build SVC=ceph
@@ -96,31 +96,53 @@ jobs:
           docker save $QUAY_CEPH:$CEPH_VERSION > ceph.tar
 
       - name: Upload ceph container image
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: container_images_ceph
           path: |
             ceph.tar
+
+  build-kmip:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Build KMIP container images
+        run: |
+          cd tests/kmip
+          make build
+      - name: Save KMIP container images
+        run: |
+          docker save kmip-server:latest > kmip-server.tar
+          docker save kmip-cli:latest > kmip-cli.tar
+      - name: Upload KMIP container images
+        uses: actions/upload-artifact@v7
+        with:
+          name: kmip_images
+          path: |
+            kmip-server.tar
+            kmip-cli.tar
 
   pytest:
     needs: [build, build-ceph]
     strategy:
       fail-fast: false
       matrix:
-        test: ["cli", "cli_change_lb", "cli_change_keys", "cli_change_ns_visibility", "cli_trash_rbd", "state", "multi_gateway", "server", "grpc", "omap_lock", "log_files", "nsid", "psk", "dhchap", "subsys_grp_name_append", "max_subsystems", "omap_no_read_lock", "omap_read_lock", "omap_read_lock_ignore_errors", "big_omap", "ns_limit", "cli_force_tls"]
+        test: ["cli", "cli_change_lb", "cli_change_keys", "cli_change_ns_visibility", "cli_change_ns_location", "cli_list_ns_locations", "cli_trash_rbd", "state", "multi_gateway", "server", "grpc", "omap_lock", "log_files", "nsid", "psk", "dhchap", "dhchap_ctrlr", "subsys_grp_name_append", "max_subsystems", "omap_no_read_lock", "omap_read_lock", "omap_read_lock_ignore_errors", "big_omap", "ns_limit", "cli_force_tls", "erasure_pool", "cli_ns_resize", "auto_listeners", "update_error", "discovery_bind", "cli_ns_hosts", "io_stats", "rbd_encrypt", "rados_namespace", "dsa", "degraded_ns"]
     runs-on: ubuntu-latest
     env:
       HUGEPAGES: 512  # for multi gateway test, approx 256 per gateway instance
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup huge pages
         run: |
           make setup HUGEPAGES=$HUGEPAGES
 
       - name: Download container images
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: container_images*
           merge-multiple: true
@@ -178,9 +200,19 @@ jobs:
           make exec SVC=ceph OPTS="-T" CMD="ceph osd pool create rbd2"
           echo "💁 ceph list pools:"
           make exec SVC=ceph OPTS="-T" CMD="ceph osd lspools"
+          echo "💁 rbd create RADOS namespace:"
+          make exec SVC=ceph OPTS="-T" CMD="rbd namespace create rbd/rados_ns1"
+          make exec SVC=ceph OPTS="-T" CMD="rbd namespace create rbd/rados_ns2"
+          make exec SVC=ceph OPTS="-T" CMD="rbd namespace create rbd2/rados_ns1"
+          echo "💁 rbd list RADOS namespaces in the pool rbd:"
+          make exec SVC=ceph OPTS="-T" CMD="rbd namespace ls rbd"
           echo "💁 rbd create:"
           make exec SVC=ceph OPTS="-T" CMD="rbd create rbd/mytestdevimage --size 16"
-          make exec SVC=ceph OPTS="-T" CMD="rbd create rbd2/mytestdevimage2 --size 16"
+          make exec SVC=ceph OPTS="-T" CMD="rbd create rbd/rados_ns1/mytestdevimage2 --size 16"
+          make exec SVC=ceph OPTS="-T" CMD="rbd create rbd2/rados_ns1/mytestdevimage2 --size 16"
+          make exec SVC=ceph OPTS="-T" CMD="rbd create rbd/rados_ns1/image1 --size 16"
+          make exec SVC=ceph OPTS="-T" CMD="rbd create rbd/rados_ns1/image2 --size 16"
+          make exec SVC=ceph OPTS="-T" CMD="rbd create rbd/rados_ns2/image1 --size 16"
           echo "💁 ls rbd:"
           make exec SVC=ceph OPTS="-T" CMD="rbd ls rbd"
           make exec SVC=ceph OPTS="-T" CMD="rbd ls rbd2"
@@ -195,13 +227,19 @@ jobs:
           # Managing pytest’s output: https://docs.pytest.org/en/7.1.x/how-to/output.html
           make run SVC="nvmeof" OPTS="--volume=$(pwd)/tests:/src/tests --entrypoint=python3" CMD="-m pytest --show-capture=all -s --full-trace -vv -rA tests/test_${{ matrix.test }}.py"
 
+      - name: Verify erasure pool image
+        if: ${{ matrix.test == 'erasure_pool' }}
+        run: |
+          echo "💁 check rbd image data-pool is set:"
+          make exec SVC=ceph OPTS="-T" CMD="rbd info -p rbd ec_pool_image" 2> /dev/null | grep "data_pool: ec_pool_overwrites"
+
       - name: Copy ceph logs
         if: success() || failure()
         run: docker cp  ceph:/ceph/out /tmp/out
 
       - name: Upload ceph logs
         if: success() || failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ceph_out_pytest_${{ matrix.test }}
           path: /tmp/out/*.log
@@ -222,19 +260,19 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        security_protocol: ["unsecured", "psk", "dhchap"]
+        security_protocol: ["unsecured", "psk", "dhchap", "dhchap_ctrlr"]
     runs-on: ubuntu-latest
     env:
       HUGEPAGES: 512
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup huge-pages
         run: make setup HUGEPAGES=$HUGEPAGES
 
       - name: Download container images
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: container_images*
           merge-multiple: true
@@ -249,6 +287,7 @@ jobs:
       - name: Start containers
         timeout-minutes: 3
         run: |
+          sed -i 's/^.*abort_on_update_error.*$/abort_on_update_error = False/' ceph-nvmeof.conf
           make up
 
       - name: Wait for the Gateway to be listening
@@ -293,6 +332,10 @@ jobs:
         run: |
           ./tests/ha/demo_test.sh bdevperf_${{ matrix.security_protocol }}
 
+      - name: Restore modified configuration file to default
+        run: |
+          sed -i 's/^.*abort_on_update_error.*$/#abort_on_update_error = True/' ceph-nvmeof.conf
+
       # For debugging purposes (provides an SSH connection to the runner)
       # - name: Setup tmate session
       #   uses: mxschmitt/action-tmate@v3
@@ -305,7 +348,7 @@ jobs:
 
       - name: Upload ceph logs
         if: success() || failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ceph_out_demo_${{ matrix.security_protocol }}
           path: /tmp/out/*.log
@@ -332,13 +375,13 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup huge-pages
         run: make setup HUGEPAGES=$HUGEPAGES
 
       - name: Download container images
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: container_images*
           merge-multiple: true
@@ -493,20 +536,20 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        test: ["sanity", "no_huge", "ns_lb_change", "no_subsystems", "auto_load_balance", "state_transitions", "state_transitions_both_gws", "state_transitions_loop", "state_transitions_rand_loop", "late_registration", "late_registration_loop", "connect_panic", "4gws", "4gws_loop", "4gws_create_delete", "4gws_create_delete_loop", "namespaces", "namespaces_loop", "mtls", "notify", "ceph_status", "blocklist", "main_exit", "listener_hostname", "cluster_pool", "flat_bdev_per_cluster", "set_qos", "set_qos_2ms", "rbd_qos", "auto_resize", "ns_read_only", "reuse_image", "image_shrink"]
+        test: ["sanity", "no_huge", "ns_lb_change", "no_subsystems", "auto_load_balance", "auto_listeners", "state_transitions", "state_transitions_both_gws", "state_transitions_loop", "state_transitions_rand_loop", "late_registration", "late_registration_loop", "connect_panic", "4gws", "4gws_loop", "4gws_create_delete", "4gws_create_delete_loop", "namespaces", "namespaces_loop", "mtls", "notify", "ceph_status", "blocklist", "main_exit", "listener_hostname", "cluster_pool", "flat_bdev_per_cluster", "set_qos", "set_qos_2ms", "rbd_qos", "auto_resize", "ns_read_only", "reuse_image", "reuse_image2", "image_shrink", "gateway_removal", "rados_namespace", "crc32c", "keep_connection"]
     runs-on: ubuntu-latest
     env:
       HUGEPAGES: 1024  # 4 spdk instances
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup huge-pages
         run: make setup HUGEPAGES=$HUGEPAGES
 
       - name: Download container images
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: container_images*
           merge-multiple: true
@@ -570,7 +613,7 @@ jobs:
 
       - name: Upload ceph logs
         if: success() || failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ceph_out_ha_${{ matrix.test }}
           path: /tmp/out/*.log
@@ -585,13 +628,32 @@ jobs:
           make down
           make clean
 
+  kmip_test:
+    needs: [build, build-ceph]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        
+      - name: Download container images
+        uses: actions/download-artifact@v8
+        with:
+          name: container_images_nvmeof
+
+      - name: Load container image
+        run: docker load < nvmeof.tar
+
+      - name: Run KMIP test inside container
+        run: |
+          make run SVC="nvmeof" OPTS="--volume=$(pwd)/tests:/src/tests --entrypoint=python3" CMD="tests/kmip/test_kmip_client.py"
+
   atom:
     needs: [build, build-ceph]
     if: github.repository == 'ceph/ceph-nvmeof' && github.event_name != 'schedule'
     runs-on: dailyAtomRunner
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Container_images_nvmeof folder (tar files) download
         run: |
@@ -607,6 +669,7 @@ jobs:
       - name: Cluster build and Atom tests run
         if: always()
         run: |
+          set -o pipefail
           . .env
           ACTION_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           ./tests/atom/clusterBuildTestsRun.sh $NVMEOF_VERSION $CEPH_BRANCH $CEPH_SHA $ATOM_SHA $ACTION_URL 2>&1 | tee atom_nvmeof_console.log
@@ -617,7 +680,7 @@ jobs:
 
       # TODO: investigating upluad to artifact issue
       # - name: Upload artifact for non-schedule events
-      #   uses: actions/upload-artifact@v4
+      #   uses: actions/upload-artifact@v7
       #   if: always()
       #   with:
       #     name: atom-artifact
@@ -630,7 +693,7 @@ jobs:
   #   timeout-minutes: 1440
   #   steps:
   #     - name: Checkout code
-  #       uses: actions/checkout@v4
+  #       uses: actions/checkout@v6
 
   #     - name: Container_images_nvmeof folder (tar files) download
   #       run: |
@@ -657,13 +720,13 @@ jobs:
 
   #     - name: Upload nightly nvmeof console as artifact
   #       if: always()
-  #       uses: actions/upload-artifact@v4
+  #       uses: actions/upload-artifact@v7
   #       with:
   #         name: atom-nightly-nvmeof-full-console
   #         path: atom_nightly_nvmeof_console.log
 
   #     - name: Upload artifact for schedule events
-  #       uses: actions/upload-artifact@v4
+  #       uses: actions/upload-artifact@v7
   #       if: always()
   #       with:
   #         name: atom-artifact
@@ -676,16 +739,16 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Download container images (nvmeof)
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: container_images_nvmeof*
           merge-multiple: true
 
       - name: Download container image (spdk)
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: container_image_spdk
           merge-multiple: true
@@ -714,10 +777,10 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Download container images
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: container_images_nvmeof*
           merge-multiple: true
@@ -747,7 +810,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: setup
         run: make setup

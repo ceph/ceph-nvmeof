@@ -1,0 +1,35 @@
+# Dockerfile for KMIP CLI Tool
+# Separate container for running KMIP administrative commands
+
+# Stage 1: Get certificates from the server image
+FROM kmip-server:latest AS cert-source
+
+# Stage 2: Build CLI with certificates
+FROM python:3.11-slim
+
+LABEL description="KMIP CLI Tool for managing passphrases"
+
+# Install git for VCS-based PyKMIP install and then install ceph PyKMIP (master)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends git && \
+    rm -rf /var/lib/apt/lists/* && \
+    pip install --no-cache-dir git+https://github.com/ceph/PyKMIP.git
+
+# Copy certificates from server image
+COPY --from=cert-source /kmip/certs /kmip/certs
+
+# Create working directory
+WORKDIR /kmip-cli
+
+# Copy CLI script
+COPY kmip_cli.py /kmip-cli/
+
+# Make CLI executable
+RUN chmod +x /kmip-cli/kmip_cli.py
+
+# Set Python path
+ENV PYTHONUNBUFFERED=1
+
+# Default command shows help
+ENTRYPOINT ["python3", "/kmip-cli/kmip_cli.py"]
+CMD ["--help"]

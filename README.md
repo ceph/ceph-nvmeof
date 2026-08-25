@@ -430,11 +430,11 @@ make build
 ```
 
 **NOTE:**
-For Arm64 build, the default SPDK building SoC is `generic`. To build SPDK for other SoC you need to override the default values of `SPDK_TARGET_ARCH` and `SPDK_MAKEFLAGS`. To know which values to set for all the supported Arm64 SoCs see [the socs and implementer_xxx parts](https://github.com/DPDK/dpdk/blob/main/config/arm/meson.build#L674).
+For Arm64 build, the default SPDK building SoC is `generic`. To build SPDK for other SoC you need to override the default values of `SPDK_TARGET_ARCH`, `SPDK_CONFIGURE_DSA` and `SPDK_MAKEFLAGS`. To know which values to set for all the supported Arm64 SoCs see [the socs and implementer_xxx parts](https://github.com/DPDK/dpdk/blob/main/config/arm/meson.build#L674).
 E.g. for kunpeng920 SoC:
 ```bash
 make build SPDK_TARGET_ARCH="armv8.2-a+crypto" \
-    SPDK_MAKEFLAGS="DPDKBUILD_FLAGS=-Dplatform=kunpeng920"
+    SPDK_MAKEFLAGS="DPDKBUILD_FLAGS=-Dplatform=kunpeng920" SPDK_CONFIGURE_DSA=""
 ```
 
 The resulting images should be like these:
@@ -501,8 +501,11 @@ After modifying it, the dependency lockfile (`pdm.lock`) needs to be updated acc
 
 ```bash
 make update-lockfile
+make regenerate-lockfile   # manylinux_2_39 x86_64 + aarch64, Python 3.12.x (see Makefile)
 git add pdm.lock
 ```
+
+`make update-lockfile` refreshes pins from `pyproject.toml` via `pdm update`. `make regenerate-lockfile` then re-resolves locks for **both** `manylinux_2_39_x86_64` and `manylinux_2_39_aarch64` with **`requires_python` `>=3.12,<3.13`**, so local ARM/Apple builds and minor 3.12 patch bumps (e.g. UBI 3.12.13) match a lock target. Omit `regenerate-lockfile` only if you intentionally want a single-platform lock.
 
 ## Help
 
@@ -522,6 +525,7 @@ Targets:
       export-rpms     Build SPDK RPMs and copy them to $(EXPORT_DIR)/rpm
       setup           Configure huge-pages (requires sudo/root password)
       up              Services
+      regenerate-lockfile Re-resolve pdm.lock for manylinux x86_64 + aarch64 (Python 3.12.x)
       update-lockfile Update dependencies in lockfile (pdm.lock)
 
     Options:

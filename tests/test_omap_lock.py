@@ -9,7 +9,7 @@ from control.server import GatewayServer
 from control.cephutils import CephUtils
 from control.proto import gateway_pb2 as pb2
 from control.proto import gateway_pb2_grpc as pb2_grpc
-import spdk.rpc.bdev as rpc_bdev
+from control.cli import main as cli
 
 image = "mytestdevimage"
 pool = "rbd"
@@ -19,7 +19,8 @@ created_resource_count = 10
 
 
 def setup_config(config, gw1_name, gw2_name, gw_group, update_notify, update_interval_sec,
-                 disable_unlock, lock_duration, sock1_name, sock2_name, port_inc):
+                 disable_unlock, disable_exclusive_unlock, lock_duration, sock1_name,
+                 sock2_name, port_inc):
     """Sets up the config objects for gateways A and B """
 
     configA = copy.deepcopy(config)
@@ -29,11 +30,12 @@ def setup_config(config, gw1_name, gw2_name, gw_group, update_notify, update_int
     configA.config["gateway"]["state_update_notify"] = str(update_notify)
     configA.config["gateway"]["state_update_interval_sec"] = str(update_interval_sec)
     configA.config["gateway"]["omap_file_disable_unlock"] = str(disable_unlock)
+    configA.config["gateway"]["omap_file_disable_exclusive_unlock"] = str(disable_exclusive_unlock)
     configA.config["gateway"]["omap_file_lock_duration"] = str(lock_duration)
     configA.config["gateway"]["enable_spdk_discovery_controller"] = "True"
     configA.config["spdk"]["rpc_socket_name"] = sock1_name
     if os.cpu_count() >= 4:
-        configA.config["spdk"]["tgt_cmd_extra_args"] = "-m 0x03"
+        configA.config["spdk"]["tgt_cmd_extra_args"] = "--lcores (0-1)"
     else:
         configA.config["spdk"]["tgt_cmd_extra_args"] = "--disable-cpumask-locks"
     configB = copy.deepcopy(configA)
@@ -45,7 +47,7 @@ def setup_config(config, gw1_name, gw2_name, gw_group, update_notify, update_int
     configB.config["gateway"]["port"] = str(portB)
     configB.config["spdk"]["rpc_socket_name"] = sock2_name
     if os.cpu_count() >= 4:
-        configB.config["spdk"]["tgt_cmd_extra_args"] = "-m 0x0C"
+        configB.config["spdk"]["tgt_cmd_extra_args"] = "--lcores (2-3)"
     else:
         configB.config["spdk"]["tgt_cmd_extra_args"] = "--disable-cpumask-locks"
 
@@ -90,7 +92,8 @@ def conn_omap_reread(config, request):
     """Sets up and tears down Gateways A and B."""
 
     # Setup GatewayA and GatewayB configs
-    configA, configB = setup_config(config, "GatewayA", "GatewayB", "Group1", False, 300, False, 60,
+    configA, configB = setup_config(config, "GatewayA", "GatewayB", "Group1", False, 300,
+                                    False, False, 60,
                                     "spdk_GatewayA.sock", "spdk_GatewayB.sock", 0)
     addr = configA.get("gateway", "addr")
     portA = configA.getint("gateway", "port")
@@ -108,8 +111,9 @@ def conn_lock_twice(config, request):
     """Sets up and tears down Gateways A and B."""
 
     # Setup GatewayA and GatewayB configs
-    configA, configB = setup_config(config, "GatewayAA", "GatewayBB", "Group2", True, 5, True, 100,
-                                    "spdk_GatewayAA.sock", "spdk_GatewayBB.sock", 2)
+    configA, configB = setup_config(config, "GatewayAA", "GatewayBB", "Group2", True, 5,
+                                    True, False, 100,
+                                    "spdk_GatewayAA.sock", "spdk_GatewayBB.sock", 4)
     addr = configA.get("gateway", "addr")
     portA = configA.getint("gateway", "port")
     portB = configB.getint("gateway", "port")
@@ -127,13 +131,15 @@ def conn_concurrent(config, request):
     update_notify = True
     update_interval_sec = 5
     disable_unlock = False
+    disable_exclusive_unlock = False
     lock_duration = 60
     ceph_utils = CephUtils(config)
 
     # Setup GatewayA and GatewayB configs
     configA, configB = setup_config(config, "GatewayAAA", "GatewayBBB", "Group3", update_notify,
-                                    update_interval_sec, disable_unlock, lock_duration,
-                                    "spdk_GatewayAAA.sock", "spdk_GatewayBBB.sock", 4)
+                                    update_interval_sec, disable_unlock,
+                                    disable_exclusive_unlock, lock_duration,
+                                    "spdk_GatewayAAA.sock", "spdk_GatewayBBB.sock", 8)
 
     addr = configA.get("gateway", "addr")
     portA = configA.getint("gateway", "port")
@@ -142,6 +148,27 @@ def conn_concurrent(config, request):
     with GatewayServer(configA) as gatewayA, GatewayServer(configB) as gatewayB:
         stubA, stubB = start_servers(gatewayA, gatewayB, "Group3", addr, portA, portB, ceph_utils)
         yield gatewayA.gateway_rpc, gatewayB.gateway_rpc, stubA, stubB
+        stop_servers(gatewayA, gatewayB)
+
+
+@pytest.fixture(scope="function")
+def conn_omap_lock_expired(config, request):
+    """Sets up and tears down Gateways A and B."""
+
+    lock_duration = 10
+    disable_exclusive_unlock = True
+    # Setup GatewayA and GatewayB configs
+    configA, configB = setup_config(config, "GatewayAAAA", "GatewayBBBB", "Group4",
+                                    False, 300, False, disable_exclusive_unlock, lock_duration,
+                                    "spdk_GatewayAAAA.sock", "spdk_GatewayBBBB.sock", 12)
+    addr = configA.get("gateway", "addr")
+    portA = configA.getint("gateway", "port")
+    portB = configB.getint("gateway", "port")
+    ceph_utils = CephUtils(config)
+    # Start servers
+    with GatewayServer(configA) as gatewayA, GatewayServer(configB) as gatewayB:
+        stubA, stubB = start_servers(gatewayA, gatewayB, "Group4", addr, portA, portB, ceph_utils)
+        yield stubA, stubB, gatewayA.gateway_rpc, gatewayB.gateway_rpc
         stop_servers(gatewayA, gatewayB)
 
 
@@ -280,9 +307,9 @@ def test_multi_gateway_omap_reread(config, conn_omap_reread, caplog):
     assert "The file is not current, will reload it and try again" not in caplog.text
 
     with gatewayA.rpc_lock:
-        bdevsA = rpc_bdev.bdev_get_bdevs(gatewayA.spdk_rpc_client)
+        bdevsA = gatewayA.spdk_rpc_client.bdev_get_bdevs()
     with gatewayB.rpc_lock:
-        bdevsB = rpc_bdev.bdev_get_bdevs(gatewayB.spdk_rpc_client)
+        bdevsB = gatewayB.spdk_rpc_client.bdev_get_bdevs()
     # GW-B should have the bdev created on GW-A after reading the OMAP file plus
     #      the two we created on it
     # GW-A should only have the bdev created on it as we didn't update it after
@@ -427,3 +454,23 @@ def test_multi_gateway_listener_update(config, image, conn_concurrent, caplog):
            f"{subsystem} at 127.0.0.1:5102" in caplog.text
     assert "create_listener: True" in caplog.text
     assert f"Failure adding {subsystem} listener at 127.0.0.1:5102" not in caplog.text
+
+
+def test_exclusive_lock_expired(config, conn_omap_lock_expired, caplog):
+    _, _, gwA, _ = conn_omap_lock_expired
+
+    port = gwA.config.config["gateway"]["port"]
+    subsystem = f"{subsystem_prefix}WWW"
+    subsystem2 = f"{subsystem_prefix}EEE"
+    caplog.clear()
+    cli(["--server-port", port, "subsystem", "add", "--subsystem", subsystem,
+         "--no-group-append"])
+    assert f"Adding subsystem {subsystem}: Successful" in caplog.text
+    time.sleep(20)
+    caplog.clear()
+    cli(["--server-port", port, "subsystem", "add", "--subsystem", subsystem2,
+         "--no-group-append"])
+    assert "Failure: There is an expired exclusive lock. Executing create_subsystem() might " \
+           "cause an OMAP conflict. Will cancel operation." in caplog.text
+    assert "Changing OMAP might cause a conflict. Will not execute " \
+           "create_subsystem_safe()" in caplog.text

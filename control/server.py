@@ -16,14 +16,11 @@ import grpc
 import json
 import threading
 import time
+import platform
 from concurrent import futures
 from google.protobuf import json_format
 
-import spdk.rpc
 import spdk.rpc.client as rpc_client
-import spdk.rpc.nvmf as rpc_nvmf
-import spdk.rpc.iobuf as rpc_iobuf
-import spdk.rpc.dsa as rpc_dsa
 
 from .proto import gateway_pb2 as pb2
 from .proto import gateway_pb2_grpc as pb2_grpc
@@ -66,11 +63,6 @@ def sigchld_handler(signum, frame):
     raise SystemExit(f"Gateway subprocess terminated {pid=} {exit_code=}")
 
 
-def int_to_bitmask(n):
-    """Converts an integer n to a bitmask string"""
-    return f"0x{hex((1 << n) - 1)[2:].upper()}"
-
-
 def cpumask_set(args):
     """Check if reactor cpu mask is set in command line args"""
 
@@ -81,6 +73,21 @@ def cpumask_set(args):
     # Check for the presence of "--cpumask="
     for arg in args:
         if arg.startswith('--cpumask='):
+            return True
+
+    return False
+
+
+def core_list_set(args):
+    """Check if core list is set in command line args"""
+
+    # Check "--lcores" is in the arguments
+    if "--lcores" in args:
+        return True
+
+    # Check for the presence of "--lcores="
+    for arg in args:
+        if arg.startswith('--lcores='):
             return True
 
     return False
@@ -103,6 +110,8 @@ class GatewayServer:
     """
 
     MAX_TIME_TO_WAIT_FOR_GATEWAY_EXIT = 30
+    SPDK_PING_INTERVAL_DEFAULT = 2.0
+    DSA_SUPPORTED_ARCHITECTURES = ["x86_64", "amd64"]
 
     def __init__(self, config: GatewayConfig):
         self.config = config
@@ -128,6 +137,7 @@ class GatewayServer:
         self.crypto = None
         self.gateway_state = None
         self.exiting = False
+        self.dsa_enabled = None
         enc_key = None
         enc_key_file = self.config.get_with_default("gateway", "encryption_key", "")
         if enc_key_file:
@@ -147,6 +157,9 @@ class GatewayServer:
         self.name = self.config.get("gateway", "name")
         if not self.name:
             self.name = socket.gethostname()
+        self.abort_on_update_error = self.config.getboolean_with_default("gateway",
+                                                                         "abort_on_update_error",
+                                                                         True)
         self.system_exit_message = None
         self.system_exit_message_lock = threading.Lock()
         self.gateway_exit_started = threading.Event()
@@ -319,8 +332,7 @@ class GatewayServer:
         self.omap_lock = OmapLock(self.gateway_state, self.rpc_lock)
         self.gateway_rpc = GatewayService(self.config, self.gateway_state, self.rpc_lock,
                                           self.omap_lock, self.group_id, self.spdk_rpc_client,
-                                          self.spdk_rpc_subsystems_client, self.ceph_utils,
-                                          self.set_gateway_exit_message)
+                                          self.spdk_rpc_subsystems_client, self.ceph_utils)
         self.server = self._grpc_server(self._gateway_address())
         pb2_grpc.add_GatewayServicer_to_server(self.gateway_rpc, self.server)
 
@@ -351,8 +363,6 @@ class GatewayServer:
             "daemon_type": "gateway",          # "nvmeof: 3 <daemon_type> active (3 hosts)"
             "group": self.config.get_with_default("gateway", "group", ""),
         }
-        metadata["id"] = metadata["id"].removeprefix(
-            f"{metadata['pool_name']}.{metadata['group']}.")
         self.ceph_utils.service_daemon_register(conn, metadata)
 
     def _monitor_client_version(self) -> str:
@@ -442,7 +452,7 @@ class GatewayServer:
         assert self.gateway_rpc is None, \
             "A call to SPDK without a lock when the gateway is running"
         try:
-            rpc_nvmf.nvmf_delete_subsystem(self.spdk_rpc_client, GatewayUtils.DISCOVERY_NQN)
+            self.spdk_rpc_client.nvmf_delete_subsystem(nqn=GatewayUtils.DISCOVERY_NQN)
         except Exception:
             self.logger.exception("Delete Discovery subsystem returned with error")
             raise
@@ -490,7 +500,12 @@ class GatewayServer:
         #  This default value preserves at least 5 workers for I/O bound tasks. It utilizes at
         #  most 32 CPU cores for CPU bound tasks which release the GIL. And it avoids using
         #  very large resources implicitly on many-core machines.
-        server = grpc.server(futures.ThreadPoolExecutor())
+        msgsize = self.config.getint_with_default("gateway",
+                                                  "max_message_length_in_mb",
+                                                  GatewayUtils.MAX_MESSAGE_LENGTH_DEFAULT)
+        msgsize *= 1024 * 1024
+        server = grpc.server(futures.ThreadPoolExecutor(),
+                             options=[('grpc.max_send_message_length', msgsize)])
 
         enable_auth = self.config.getboolean("gateway", "enable_auth")
         if enable_auth:
@@ -601,11 +616,11 @@ class GatewayServer:
             self.probe_huge_pages()
 
         # If not provided in configuration,
-        # calculate cpu mask available for spdk reactors
-        if not cpumask_set(cmd):
-            cpu_mask = f"-m {int_to_bitmask(min(4, os.cpu_count()))}"
-            self.logger.info(f"SPDK autodetecting cpu_mask: {cpu_mask}")
-            cmd += shlex.split(cpu_mask)
+        # calculate core list available for spdk reactors, mask and list are mutually exclusive
+        if not cpumask_set(cmd) and not core_list_set(cmd):
+            core_list = f"--lcores (0-{min(4, os.cpu_count()) - 1})"
+            self.logger.info(f"SPDK autodetecting core list: {core_list}")
+            cmd += shlex.split(core_list)
 
         self.spdk_log_file = None
         self.spdk_log_file_path = None
@@ -665,16 +680,21 @@ class GatewayServer:
             if iobuf_options:
                 self._initialize_iobuf_options(iobuf_options)
 
+            # Set SSL tickets for ssl sock implemtation
+            self._set_num_ssl_tickets(0)
+
+            # Initialize RBD CRC32C configuration
+            self._initialize_rbd_crc32c()
+
             # Set config and enable dsa accel module offload.
             self._probe_dsa()
 
-            self.spdk_rpc_ping_client = rpc_client.JSONRPCClient(
-                self.spdk_rpc_socket_path,
-                None,
-                timeout,
-                log_level=protocol_log_level,
-                conn_retries=conn_retries,
-            )
+            # Notice that some SPDK calls can't be made after framework init
+            self._init_framework()
+
+            # Configure the default cnc behavior
+            self.configure_cnc()
+
             self.spdk_rpc_subsystems_client = rpc_client.JSONRPCClient(
                 self.spdk_rpc_socket_path,
                 None,
@@ -701,7 +721,7 @@ class GatewayServer:
             self._create_transport(trtype.lower())
 
         try:
-            return_version = spdk.rpc.spdk_get_version(self.spdk_rpc_client)
+            return_version = self.spdk_rpc_client.spdk_get_version()
             try:
                 version_string = return_version["version"]
                 self.logger.info(f"Started SPDK with version \"{version_string}\"")
@@ -828,7 +848,7 @@ class GatewayServer:
         """Sets SPDK's max subsystems attribute."""
 
         try:
-            rpc_nvmf.nvmf_set_max_subsystems(self.spdk_rpc_client, max_subsystems=max_subsystems)
+            self.spdk_rpc_client.nvmf_set_max_subsystems(max_subsystems=max_subsystems)
         except Exception:
             self.logger.exception(f"Failure setting max subsystems {max_subsystems}")
             pass
@@ -846,30 +866,96 @@ class GatewayServer:
             return
 
         try:
-            rpc_iobuf.iobuf_set_options(self.spdk_rpc_client, **args)
+            self.spdk_rpc_client.iobuf_set_options(**args)
         except Exception:
             self.logger.exception("IObuf set options returned with error")
             pass
 
+    def _set_num_ssl_tickets(self, tickets_number=0):
+        """Set SSL tickets number for ssl socket implementation."""
+
+        try:
+            self.spdk_rpc_client.sock_impl_set_options(impl_name="ssl",
+                                                       ssl_tickets_number=tickets_number)
+        except Exception:
+            self.logger.exception("sock_impl_set_options returned with error")
+            pass
+
+    def _initialize_rbd_crc32c(self):
+        """Initialize RBD CRC32C configuration."""
+
+        rbd_with_crc32c = self.config.getboolean_with_default("spdk", "rbd_with_crc32c", False)
+        self.logger.debug(f"initialize_rbd_crc32c: rbd_with_crc32c: {rbd_with_crc32c}")
+
+        try:
+            self.spdk_rpc_client.bdev_rbd_set_with_crc32c(enable=rbd_with_crc32c)
+            self.logger.info(f"Set RBD CRC32C usage to: {rbd_with_crc32c}")
+        except Exception:
+            self.logger.exception("Failed to set RBD CRC32C configuration")
+            raise
+
     def _accel_config(self):
         # Instantiate DsaUtils and run config
-        if self.config.getboolean_with_default("spdk", "enable_dsa_acceleration", True):
+        self.dsa_enabled = self.config.getboolean_with_default("spdk",
+                                                               "enable_dsa_acceleration",
+                                                               True)
+        if self.dsa_enabled and not GatewayServer._is_dsa_supported_on_machine():
+            self.dsa_enabled = False
+            self.logger.warning("DSA acceleration is not supported on "
+                                "this machine, will disable it")
+        if self.dsa_enabled:
             dsa_utils = DsaUtils(self.logger)
             dsa_utils.config()
         else:
             self.logger.info("DSA acceleration device configuration is disabled")
 
+    @staticmethod
+    def _is_dsa_supported_on_machine() -> bool:
+        try:
+            gw_arch = platform.machine()
+            if gw_arch is not None:
+                if gw_arch.strip().lower() not in GatewayServer.DSA_SUPPORTED_ARCHITECTURES:
+                    return False
+        except Exception:
+            pass
+        return True
+
     def _probe_dsa(self):
         """Initializes dsa accel module offload."""
         try:
-            if self.config.getboolean_with_default("spdk", "enable_dsa_acceleration", True):
-                res = rpc_dsa.dsa_scan_accel_module(self.spdk_rpc_client, config_kernel_mode=True)
+            if self.dsa_enabled:
+                res = self.spdk_rpc_client.dsa_scan_accel_module(config_kernel_mode=True)
                 self.logger.debug(f"dsa_scan_accel_module: {res=}")
             else:
                 self.logger.info("DSA acceleration module scanning is disabled")
-            spdk.rpc.framework_start_init(self.spdk_rpc_client)
         except Exception:
             self.logger.exception("Failed to probe dsa accel module offload")
+            raise
+
+    def _init_framework(self):
+        try:
+            self.spdk_rpc_client.framework_start_init()
+        except Exception:
+            self.logger.exception("Failed to initialize framework")
+            raise
+
+    def configure_cnc(self):
+        cnc_support = self.config.getboolean_with_default("spdk",
+                                                          "cnc_enable",
+                                                          True)
+        cnc_rate_limiter_bytes = self.config.getint_with_default("spdk", "cnc_rate_limiter_bytes",
+                                                                 100000000)
+        cnc_chunk_blocks = self.config.getint_with_default("spdk", "cnc_chunk_blocks", 512)
+
+        cnc_parallel_chunks = self.config.getint_with_default("spdk", "cnc_parallel_chunks", 8)
+
+        try:
+            self.spdk_rpc_client.nvmf_cnc_set_config(host_behav_support_cnc=cnc_support,
+                                                     rate_limit_bytes=cnc_rate_limiter_bytes,
+                                                     max_inflight=cnc_parallel_chunks,
+                                                     chunk_nlb=cnc_chunk_blocks)
+        except Exception:
+            self.logger.exception("Failure setting cnc config")
             raise
 
     def _create_transport(self, trtype):
@@ -888,7 +974,7 @@ class GatewayServer:
                 raise
 
         try:
-            rpc_nvmf.nvmf_create_transport(self.spdk_rpc_client, **args)
+            self.spdk_rpc_client.nvmf_create_transport(**args)
         except Exception:
             self.logger.exception(f"Create Transport {trtype} returned with error")
             raise
@@ -904,6 +990,12 @@ class GatewayServer:
             exit_msg = self.system_exit_message
         if exit_msg is not None:
             self.logger.error(f"System exit message was set to {exit_msg}")
+            if self.gateway_rpc:
+                self.gateway_rpc.up_and_running = False
+            if self.gateway_state:
+                self.gateway_state.up_and_running = False
+                if self.gateway_state.omap:
+                    self.gateway_state.omap.up_and_running = False
             self.gateway_exit_started.set()
             raise SystemExit(exit_msg)
 
@@ -916,7 +1008,7 @@ class GatewayServer:
         spdk_ping_interval_in_seconds = self.config.getfloat_with_default(
             "gateway",
             "spdk_ping_interval_in_seconds",
-            2.0)
+            GatewayServer.SPDK_PING_INTERVAL_DEFAULT)
         if spdk_ping_interval_in_seconds < 0.0:
             self.logger.warning(f"Invalid SPDK ping interval "
                                 f"{spdk_ping_interval_in_seconds}, will reset to 0")
@@ -938,8 +1030,7 @@ class GatewayServer:
             timedout = self.server.wait_for_termination(timeout=1)
             if not timedout:
                 break
-            if spdk_ping_interval_in_seconds > 0.0:
-                time.sleep(spdk_ping_interval_in_seconds)
+            time.sleep(spdk_ping_interval_in_seconds)
             alive = self._ping()
             if not alive:
                 consecutive_ping_failures += 1
@@ -956,10 +1047,10 @@ class GatewayServer:
     def _ping(self):
         """Confirms communication with SPDK process."""
         try:
-            spdk.rpc.spdk_get_version(self.spdk_rpc_ping_client)
-            return True
+            ret = self.gateway_rpc.list_subsystems(pb2.list_subsystems_req())
+            return ret.status == 0
         except Exception:
-            self.logger.exception("spdk_get_version failed")
+            self.logger.exception("Failure in list_subsystems()")
             return False
 
     def probe_huge_pages(self):
@@ -1026,6 +1117,31 @@ class GatewayServer:
 
     def gateway_rpc_caller(self, requests, is_add_req, break_interval):
         """Passes RPC requests to gateway service."""
+
+        def is_a_visibility_change_key(key: str):
+            if key.startswith(GatewayState.NAMESPACE_VISIBILITY_ON_PREFIX):
+                return True
+            elif key.startswith(GatewayState.NAMESPACE_VISIBILITY_OFF_PREFIX):
+                return True
+            return False
+
+        def abort_server_on_update_error(rc: int, msg: str):
+            if rc == 0:
+                return
+            if msg:
+                self.logger.error(msg)
+            if self.abort_on_update_error:
+                exit_msg = f"Got error {rc} while updating gateway {self.name} state, " \
+                           f"aborting gateway"
+                if self.gateway_rpc:
+                    self.gateway_rpc.up_and_running = False
+                self.set_gateway_exit_message(exit_msg)
+                time.sleep(2)
+                assert False, exit_msg
+            else:
+                self.logger.error(f"Got error {rc} while updating gateway {self.name} state, "
+                                  f"will not abort")
+
         start_time = 0
         for key, val in requests.items():
             start_time = self._sleep_if_needed(break_interval, start_time)
@@ -1049,28 +1165,56 @@ class GatewayServer:
                                                 f"{req.subsystem_nqn} would fail")
                             req.dhchap_key = GatewayUtilsCrypto.INVALID_KEY_VALUE
                             req.key_encrypted = False
-                    self.gateway_rpc.create_subsystem(req)
+                    rc = self.gateway_rpc.create_subsystem(req)
                 else:
                     req = json_format.Parse(val,
                                             pb2.delete_subsystem_req(),
                                             ignore_unknown_fields=True)
-                    self.gateway_rpc.delete_subsystem(req)
+                    rc = self.gateway_rpc.delete_subsystem(req)
+                abort_server_on_update_error(rc.status, rc.error_message)
+            elif key.startswith(GatewayState.SUBSYSTEM_NETWORK_MASK):
+                if is_add_req:
+                    req = json_format.Parse(val,
+                                            pb2.create_subsystem_req(),
+                                            ignore_unknown_fields=True)
+                    rc = self.gateway_rpc.create_auto_listeners(req)
+                    abort_server_on_update_error(rc.status, rc.error_message)
             elif key.startswith(GatewayState.NAMESPACE_PREFIX):
                 if is_add_req:
                     req = json_format.Parse(val, pb2.namespace_add_req(),
                                             ignore_unknown_fields=True)
-                    self.gateway_rpc.namespace_add(req)
+                    rc = self.gateway_rpc.namespace_add(req)
                 else:
                     req = json_format.Parse(val,
                                             pb2.namespace_delete_req(),
                                             ignore_unknown_fields=True)
                     req.i_am_sure = True
-                    self.gateway_rpc.namespace_delete(req)
+                    rc = self.gateway_rpc.namespace_delete(req)
+                abort_server_on_update_error(rc.status, rc.error_message)
             elif key.startswith(GatewayState.NAMESPACE_QOS_PREFIX):
                 if is_add_req:
                     req = json_format.Parse(val, pb2.namespace_set_qos_req(),
                                             ignore_unknown_fields=True)
-                    self.gateway_rpc.namespace_set_qos_limits(req)
+                    rc = self.gateway_rpc.namespace_set_qos_limits(req)
+                    abort_server_on_update_error(rc.status, rc.error_message)
+                else:
+                    # Do nothing, this is covered by the delete namespace code
+                    pass
+            elif key.startswith(GatewayState.NAMESPACE_REFRESH_SIZE_PREFIX):
+                if is_add_req:
+                    (ns_nqn, ns_nsid) = self.gateway_state.break_namespace_refresh_size_key(key)
+                    if not ns_nqn or not ns_nsid:
+                        self.logger.error(f"Error parsing key {key} to get subsystem "
+                                          f"NQN and namespace ID")
+                    elif self.gateway_state.is_initialization_over():
+                        req = pb2.namespace_resize_req(subsystem_nqn=ns_nqn,
+                                                       nsid=ns_nsid,
+                                                       new_size=0)
+                        self.gateway_rpc.namespace_resize(req)
+                    else:
+                        # No need to refresh size if the gateway is still coming up
+                        self.logger.info(f"Will not refresh size of namespace {ns_nsid} in "
+                                         f"subsystem {ns_nqn} as the gateway is coming up")
                 else:
                     # Do nothing, this is covered by the delete namespace code
                     pass
@@ -1092,6 +1236,20 @@ class GatewayServer:
                                                 f"DH-HMAC-CHAP key")
                             req.dhchap_key = GatewayUtilsCrypto.INVALID_KEY_VALUE
                             req.key_encrypted = False
+                    if req.ctrlr_key_encrypted and req.dhchap_ctrlr_key:
+                        ctrlr_key_decrypted = None
+                        if self.crypto:
+                            ctrlr_key_decrypted = self.crypto.decrypt_text(req.dhchap_ctrlr_key)
+                            req.ctrlr_key_encrypted = False
+                        if ctrlr_key_decrypted:
+                            req.dhchap_ctrlr_key = ctrlr_key_decrypted
+                        else:
+                            # TODO: raise an alert
+                            self.logger.warning(f"No encryption key or the wrong key was found "
+                                                f"but we need to decrypt host {req.host_nqn} "
+                                                f"controller DH-HMAC-CHAP key")
+                            req.dhchap_ctrlr_key = GatewayUtilsCrypto.INVALID_KEY_VALUE
+                            req.ctrlr_key_encrypted = False
                     if req.psk_encrypted and req.psk:
                         psk_decrypted = None
                         if self.crypto:
@@ -1106,51 +1264,102 @@ class GatewayServer:
                                                 f"PSK key")
                             req.psk = GatewayUtilsCrypto.INVALID_KEY_VALUE
                             req.psk_encrypted = False
-                    self.gateway_rpc.add_host(req)
+                    rc = self.gateway_rpc.add_host(req)
                 else:
                     req = json_format.Parse(val, pb2.remove_host_req(),
                                             ignore_unknown_fields=True)
-                    self.gateway_rpc.remove_host(req)
+                    rc = self.gateway_rpc.remove_host(req)
+                abort_server_on_update_error(rc.status, rc.error_message)
+            elif key.startswith(GatewayState.CONNECTED_HOST_PREFIX):
+                if is_add_req:
+                    # Do nothing for add, we only do that on removal
+                    pass
+                else:
+                    req = json_format.Parse(val, pb2.set_keep_host_connected_req(),
+                                            ignore_unknown_fields=True)
+                    rc = self.gateway_rpc.set_keep_host_connected(req)
+                    abort_server_on_update_error(rc.status, rc.error_message)
             elif key.startswith(GatewayState.LISTENER_PREFIX):
                 if is_add_req:
                     req = json_format.Parse(val, pb2.create_listener_req(),
                                             ignore_unknown_fields=True)
-                    self.gateway_rpc.create_listener(req)
+                    rc = self.gateway_rpc.create_listener(req)
                 else:
                     req = json_format.Parse(val, pb2.delete_listener_req(),
                                             ignore_unknown_fields=True)
-                    self.gateway_rpc.delete_listener(req)
+                    rc = self.gateway_rpc.delete_listener(req)
+                abort_server_on_update_error(rc.status, rc.error_message)
             elif key.startswith(GatewayState.NAMESPACE_LB_GROUP_PREFIX):
                 if is_add_req:
                     req = json_format.Parse(val, pb2.namespace_change_load_balancing_group_req(),
                                             ignore_unknown_fields=True)
-                    self.gateway_rpc.namespace_change_load_balancing_group(req)
-            elif key.startswith(GatewayState.NAMESPACE_VISIBILITY_PREFIX):
+                    rc = self.gateway_rpc.namespace_change_load_balancing_group(req)
+                    abort_server_on_update_error(rc.status, rc.error_message)
+            elif is_a_visibility_change_key(key):
                 if is_add_req:
                     req = json_format.Parse(val, pb2.namespace_change_visibility_req(),
                                             ignore_unknown_fields=True)
-                    self.gateway_rpc.namespace_change_visibility(req)
+                    rc = self.gateway_rpc.namespace_change_visibility(req)
+                    abort_server_on_update_error(rc.status, rc.error_message)
+            elif key.startswith(GatewayState.NAMESPACE_LOCATION_PREFIX):
+                if is_add_req:
+                    req = json_format.Parse(val, pb2.namespace_change_location_req(),
+                                            ignore_unknown_fields=True)
+                    rc = self.gateway_rpc.namespace_change_location(req)
+                    abort_server_on_update_error(rc.status, rc.error_message)
             elif key.startswith(GatewayState.NAMESPACE_TRASH_IMAGE_PREFIX):
                 if is_add_req:
                     req = json_format.Parse(val, pb2.namespace_set_rbd_trash_image_req(),
                                             ignore_unknown_fields=True)
-                    self.gateway_rpc.namespace_set_rbd_trash_image(req)
+                    rc = self.gateway_rpc.namespace_set_rbd_trash_image(req)
+                    abort_server_on_update_error(rc.status, rc.error_message)
+            elif key.startswith(GatewayState.NAMESPACE_AUTO_RESIZE_PREFIX):
+                if is_add_req:
+                    req = json_format.Parse(val, pb2.namespace_set_auto_resize_req(),
+                                            ignore_unknown_fields=True)
+                    rc = self.gateway_rpc.namespace_set_auto_resize(req)
+                    abort_server_on_update_error(rc.status, rc.error_message)
             elif key.startswith(GatewayState.NAMESPACE_HOST_PREFIX):
                 if is_add_req:
                     req = json_format.Parse(val, pb2.namespace_add_host_req(),
                                             ignore_unknown_fields=True)
-                    self.gateway_rpc.namespace_add_host(req)
+                    rc = self.gateway_rpc.namespace_add_host(req)
                 else:
                     req = json_format.Parse(val, pb2.namespace_delete_host_req(),
                                             ignore_unknown_fields=True)
-                    self.gateway_rpc.namespace_delete_host(req)
+                    rc = self.gateway_rpc.namespace_delete_host(req)
+                abort_server_on_update_error(rc.status, rc.error_message)
             elif key.startswith(GatewayState.HOST_KEY_PREFIX):
                 if is_add_req:
                     req = json_format.Parse(val, pb2.change_host_key_req(),
                                             ignore_unknown_fields=True)
-                    self.gateway_rpc.change_host_key(req)
+                    rc = self.gateway_rpc.change_host_key(req)
+                    abort_server_on_update_error(rc.status, rc.error_message)
             elif key.startswith(GatewayState.SUBSYSTEM_KEY_PREFIX):
                 if is_add_req:
                     req = json_format.Parse(val, pb2.change_subsystem_key_req(),
                                             ignore_unknown_fields=True)
-                    self.gateway_rpc.change_subsystem_key(req)
+                    rc = self.gateway_rpc.change_subsystem_key(req)
+                    abort_server_on_update_error(rc.status, rc.error_message)
+            elif key.startswith(GatewayState.SUBSYSTEM_NETWORK_ADD_PREFIX):
+                if not is_add_req:
+                    req = json_format.Parse(val, pb2.add_subsystem_network_req(),
+                                            ignore_unknown_fields=True)
+                    rc = self.gateway_rpc.add_subsystem_network(req)
+                    abort_server_on_update_error(rc.status, rc.error_message)
+            elif key.startswith(GatewayState.SUBSYSTEM_NETWORK_DEL_PREFIX):
+                if not is_add_req:
+                    req = json_format.Parse(val, pb2.del_subsystem_network_req(),
+                                            ignore_unknown_fields=True)
+                    rc = self.gateway_rpc.del_subsystem_network(req)
+                    abort_server_on_update_error(rc.status, rc.error_message)
+            elif key.startswith(GatewayState.KMIP_SERVER_ENDPOINT_PREFIX):
+                if is_add_req:
+                    req = json_format.Parse(val, pb2.add_kmip_server_endpoints_req(),
+                                            ignore_unknown_fields=True)
+                    rc = self.gateway_rpc.add_kmip_server_endpoints(req)
+                else:
+                    req = json_format.Parse(val, pb2.del_kmip_server_endpoints_req(),
+                                            ignore_unknown_fields=True)
+                    rc = self.gateway_rpc.del_kmip_server_endpoints(req)
+                abort_server_on_update_error(rc.status, rc.error_message)

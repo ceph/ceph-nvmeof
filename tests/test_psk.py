@@ -10,6 +10,8 @@ import os
 image = "mytestdevimage"
 pool = "rbd"
 subsystem = "nqn.2016-06.io.spdk:cnode1"
+subsystem2 = "nqn.2016-06.io.spdk:cnode2"
+subsystem3 = "nqn.2016-06.io.spdk:cnode3"
 hostnqn1 = "nqn.2014-08.org.nvmexpress:uuid:22207d09-d8af-4ed2-84ec-a6d80b0cf7eb"
 hostnqn2 = "nqn.2014-08.org.nvmexpress:uuid:22207d09-d8af-4ed2-84ec-a6d80b0cf7ec"
 hostnqn3 = "nqn.2014-08.org.nvmexpress:uuid:22207d09-d8af-4ed2-84ec-a6d80b0cf7ee"
@@ -65,7 +67,7 @@ def gateway(config):
     config.config["gateway-logs"]["log_level"] = "debug"
     config.config["gateway"]["group"] = ""
     if os.cpu_count() >= 4:
-        config.config["spdk"]["tgt_cmd_extra_args"] = "-m 0x03"
+        config.config["spdk"]["tgt_cmd_extra_args"] = "--lcores (0-1)"
     else:
         config.config["spdk"]["tgt_cmd_extra_args"] = "--disable-cpumask-locks"
     ceph_utils = CephUtils(config)
@@ -104,8 +106,9 @@ def gateway_no_encryption_key(config):
     config.config["gateway-logs"]["log_level"] = "debug"
     config.config["gateway"]["group"] = ""
     config.config["gateway"]["encryption_key"] = "/etc/ceph/NOencryption.key"
+    config.config["gateway"]["abort_on_update_error"] = "False"
     if os.cpu_count() >= 4:
-        config.config["spdk"]["tgt_cmd_extra_args"] = "-m 0x0C"
+        config.config["spdk"]["tgt_cmd_extra_args"] = "--lcores (2-3)"
     else:
         config.config["spdk"]["tgt_cmd_extra_args"] = "--disable-cpumask-locks"
     ceph_utils = CephUtils(config)
@@ -131,7 +134,7 @@ def gateway_no_encryption_key(config):
 def test_setup(caplog, gateway):
     caplog.clear()
     cli(["subsystem", "add", "--subsystem", subsystem])
-    assert f"create_subsystem {subsystem}: True" in caplog.text
+    assert f"Adding subsystem {subsystem}: Successful" in caplog.text
     caplog.clear()
     cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool,
          "--rbd-image", image, "--rbd-create-image", "--size", "16MB"])
@@ -202,60 +205,60 @@ def test_create_secure_list(caplog, gateway):
 def test_create_secure_bad_key(caplog, gateway):
     caplog.clear()
     cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn3, "--psk", badhostpsk0])
-    assert f'Failure adding host {hostnqn3} to {subsystem}: Invalid PSK key ' \
-           f'"{badhostpsk0}": key must start with "NVMeTLSkey-1:' in caplog.text
+    assert f'Failure adding host {hostnqn3} to {subsystem}: Invalid PSK key' \
+           f': key must start with "NVMeTLSkey-1:' in caplog.text
     caplog.clear()
     cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn3, "--psk", badhostpsk1])
-    assert f'Failure adding host {hostnqn3} to {subsystem}: Invalid PSK key ' \
-           f'"{badhostpsk1}": key must start with "NVMeTLSkey-1:' in caplog.text
+    assert f'Failure adding host {hostnqn3} to {subsystem}: Invalid PSK key' \
+           f': key must start with "NVMeTLSkey-1:' in caplog.text
     caplog.clear()
     cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn3, "--psk", badhostpsk2])
-    assert f'Failure adding host {hostnqn3} to {subsystem}: Invalid PSK key ' \
-           f'"{badhostpsk2}": should contain a ":" delimiter' in caplog.text
+    assert f'Failure adding host {hostnqn3} to {subsystem}: Invalid PSK key' \
+           f': should contain a ":" delimiter' in caplog.text
     caplog.clear()
     cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn3, "--psk", badhostpsk3])
-    assert f'Failure adding host {hostnqn3} to {subsystem}: Invalid PSK key ' \
-           f'"{badhostpsk3}": invalid key length' in caplog.text
+    assert f'Failure adding host {hostnqn3} to {subsystem}: Invalid PSK key' \
+           f': invalid key length' in caplog.text
     caplog.clear()
     cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn3, "--psk", badhostpsk4])
-    assert f'Failure adding host {hostnqn3} to {subsystem}: Invalid PSK key ' \
-           f'"{badhostpsk4}": missing hash' in caplog.text
+    assert f'Failure adding host {hostnqn3} to {subsystem}: Invalid PSK key' \
+           f': missing hash' in caplog.text
     caplog.clear()
     cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn3, "--psk", badhostpsk5])
-    assert f'Failure adding host {hostnqn3} to {subsystem}: Invalid PSK key ' \
-           f'"{badhostpsk5}": non numeric hash "' in caplog.text
+    assert f'Failure adding host {hostnqn3} to {subsystem}: Invalid PSK key' \
+           f': non numeric hash "' in caplog.text
     caplog.clear()
     cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn3, "--psk", badhostpsk6])
-    assert f'Failure adding host {hostnqn3} to {subsystem}: Invalid PSK key ' \
-           f'"{badhostpsk6}": base64 part is missing' in caplog.text
+    assert f'Failure adding host {hostnqn3} to {subsystem}: Invalid PSK key' \
+           f': base64 part is missing' in caplog.text
     caplog.clear()
     cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn3, "--psk", badhostpsk7])
-    assert f'Failure adding host {hostnqn3} to {subsystem}: Invalid PSK key ' \
-           f'"{badhostpsk7}": invalid key length' in caplog.text
+    assert f'Failure adding host {hostnqn3} to {subsystem}: Invalid PSK key' \
+           f': invalid key length' in caplog.text
     caplog.clear()
     cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn3, "--psk", badhostpsk8])
-    assert f'Failure adding host {hostnqn3} to {subsystem}: Invalid PSK key ' \
-           f'"{badhostpsk8}": key must end with ":"' in caplog.text
+    assert f'Failure adding host {hostnqn3} to {subsystem}: Invalid PSK key' \
+           f': key must end with ":"' in caplog.text
     caplog.clear()
     cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn3, "--psk", badhostpsk9])
-    assert f'Failure adding host {hostnqn3} to {subsystem}: Invalid PSK key ' \
-           f'"{badhostpsk9}": invalid key length' in caplog.text
+    assert f'Failure adding host {hostnqn3} to {subsystem}: Invalid PSK key' \
+           f': invalid key length' in caplog.text
     caplog.clear()
     cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn3, "--psk", badhostpsk10])
-    assert f'Failure adding host {hostnqn3} to {subsystem}: Invalid PSK key ' \
-           f'"{badhostpsk10}": invalid key length' in caplog.text
+    assert f'Failure adding host {hostnqn3} to {subsystem}: Invalid PSK key' \
+           f': invalid key length' in caplog.text
     caplog.clear()
     cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn3, "--psk", badhostpsk11])
-    assert f'Failure adding host {hostnqn3} to {subsystem}: Invalid PSK key ' \
-           f'"{badhostpsk11}": base64 part is invalid' in caplog.text
+    assert f'Failure adding host {hostnqn3} to {subsystem}: Invalid PSK key' \
+           f': base64 part is invalid' in caplog.text
     caplog.clear()
     cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn3, "--psk", badhostpsk12])
-    assert f'Failure adding host {hostnqn3} to {subsystem}: Invalid PSK key ' \
-           f'"{badhostpsk12}": base64 part is invalid' in caplog.text
+    assert f'Failure adding host {hostnqn3} to {subsystem}: Invalid PSK key' \
+           f': base64 part is invalid' in caplog.text
     caplog.clear()
     cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn3, "--psk", badhostpsk13])
-    assert f'Failure adding host {hostnqn3} to {subsystem}: Invalid PSK key ' \
-           f'"{badhostpsk13}": CRC-32 checksums mismatch' in caplog.text
+    assert f'Failure adding host {hostnqn3} to {subsystem}: Invalid PSK key' \
+           f': CRC-32 checksums mismatch' in caplog.text
 
 
 def test_create_secure_no_key(caplog, gateway):
@@ -328,8 +331,9 @@ def test_psk_with_dhchap(caplog, gateway):
     cli(["host", "add", "--subsystem", subsystem, "--host-nqn", hostnqn14,
          "--psk", hostpsk1, "--dhchap-key", hostdhchap1])
     assert f"Adding host {hostnqn14} to {subsystem}: Successful" in caplog.text
-    assert f"Host {hostnqn14} has a DH-HMAC-CHAP key but subsystem {subsystem} " \
-           f"has none, a unidirectional authentication will be used" in caplog.text
+    assert f"Host {hostnqn14} has a DH-HMAC-CHAP key but no controller key, " \
+           f"and subsystem {subsystem} has no key, a unidirectional " \
+           f"authentication will be used" in caplog.text
 
 
 def test_list_listeners(caplog, gateway):
@@ -391,3 +395,39 @@ def test_add_host_with_no_encryption_key(caplog, gateway_no_encryption_key):
          "--host-nqn", hostnqn15, "--psk", hostpsk1])
     assert f"Failure adding host {hostnqn15} to {subsystem}: No encryption key or the wrong " \
            f"key was found but we need to encrypt host {hostnqn15} PSK key" in caplog.text
+
+
+def test_listener_security_clash(caplog, gateway):
+    gw = gateway
+    caplog.clear()
+    cli(["subsystem", "add", "--subsystem", subsystem2])
+    assert f"Adding subsystem {subsystem2}: Successful" in caplog.text
+    caplog.clear()
+    cli(["subsystem", "add", "--subsystem", subsystem3])
+    assert f"Adding subsystem {subsystem3}: Successful" in caplog.text
+    cli(["listener", "add", "--subsystem", subsystem2,
+         "--host-name", gw.gateway_name, "-a", addr, "-s", "5100", "--secure"])
+    assert f"Adding {subsystem2} listener at {addr}:5100: Successful" in caplog.text
+    caplog.clear()
+    cli(["listener", "add", "--subsystem", subsystem3,
+         "--host-name", gw.gateway_name, "-a", addr, "-s", "5100"])
+    assert f'Failure adding {subsystem3} listener at {addr}:5100: The listener clashes with ' \
+           f'the existing secure listener on {subsystem2}, address {addr}:5100, either ' \
+           f'remove that listener or use the "force" parameter' in caplog.text
+    caplog.clear()
+    cli(["listener", "add", "--subsystem", subsystem3,
+         "--host-name", gw.gateway_name, "-a", addr, "-s", "5100", "--force"])
+    assert f"Adding {subsystem3} listener at {addr}:5100: Successful" in caplog.text
+    assert f'The listener clashes with the existing secure listener on {subsystem2}, address ' \
+           f'{addr}:5100, will continue as the "force" parameter was used' in caplog.text
+    caplog.clear()
+    cli(["listener", "del", "--subsystem", subsystem3,
+         "--host-name", gw.gateway_name, "-a", addr, "-s", "5100"])
+    assert f"Deleting listener {addr}:5100 from {subsystem3} " \
+           f"for host {gw.gateway_name}: Successful" in caplog.text
+    caplog.clear()
+    cli(["listener", "add", "--subsystem", subsystem3,
+         "--host-name", gw.gateway_name, "-a", "0.0.0.0", "-s", "5100"])
+    assert f'Failure adding {subsystem3} listener at 0.0.0.0:5100: The listener clashes with ' \
+           f'the existing secure listener on {subsystem2}, address {addr}:5100, either ' \
+           f'remove that listener or use the "force" parameter' in caplog.text

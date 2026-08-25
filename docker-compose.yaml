@@ -61,6 +61,7 @@ services:
       args:
         CEPH_CLUSTER_VERSION:
         CEPH_CLUSTER_CEPH_REPO_BASEURL:
+        CEPH_CLUSTER_CEPH_SHA:
       labels:
         io.ceph.nvmeof:
     environment:
@@ -151,6 +152,7 @@ services:
       - /tmp/coredump:/tmp/coredump # core dump
       - /var/log/ceph:/var/log/ceph
       - ceph-conf:/etc/ceph:ro
+      - /etc/kmip:/src/certs/kmip:ro
     cap_add:
       - SYS_ADMIN # huge-pages
       - CAP_SYS_NICE # RTE

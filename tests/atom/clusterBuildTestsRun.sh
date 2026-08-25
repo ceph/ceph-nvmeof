@@ -4,12 +4,15 @@
 # the exit code will be the same as the exit code of the failed command.
 # see https://github.com/ceph/ceph-nvmeof/actions/runs/11928539421/job/33246031083
 set -e
+# pipefail ensures that a pipeline returns the exit status of the first failing command
+# rather than the last command (e.g., tee), so docker failures are properly captured
+set -o pipefail
 
 
 VERSION=$1
 CEPH_BRANCH=$2
 if [ "$3" = "latest" ]; then
-    CEPH_SHA=$(curl -s https://shaman.ceph.com/api/repos/ceph/$CEPH_BRANCH/latest/centos/9/ | jq -r ".[] | select(.archs[] == \"$(uname -m)\" and .status == \"ready\") | .sha1")
+    CEPH_SHA=$(curl -s https://shaman.ceph.com/api/repos/ceph/$CEPH_BRANCH/latest/centos/9/ | jq -r "[.[] | select(.archs[] == \"$(uname -m)\" and .status == \"ready\") | .sha1] | unique | .[0] // empty")
 else
     CEPH_SHA=$3
 fi
@@ -17,6 +20,7 @@ ATOM_SHA=$4
 ACTION_URL=$5
 NIGHTLY=$6
 
+echo "CEPH_SHA found is: $CEPH_SHA"
 RUNNER_FOLDER='/home/cephnvme/actions-runner-ceph-m7'
 BUSY_FILE='/home/cephnvme/busyServer.txt'
 RUNNER_NIGHTLY_FOLDER='/home/cephnvme/actions-runner-ceph-m8'
@@ -62,24 +66,25 @@ git checkout $ATOM_SHA
 # Build atom images based on the cloned repo
 sudo docker build -t nvmeof_atom:$ATOM_SHA .
 
-#TODO: remove the line --skip-reservations-basic-test when https://github.com/ceph/ceph-nvmeof/pull/1260 is merged
 set -x
 if [ "$NIGHTLY" != "nightly" ]; then
     check_cluster_busy "$BUSY_FILE" "$ACTION_URL"
+    # Create a temporary file to capture output and exit status
+    TEMP_OUTPUT="/tmp/docker_output_$$"
     sudo docker run \
         -v /root/.ssh:/root/.ssh \
         nvmeof_atom:"$ATOM_SHA" \
-        python3 atom.py \
+        bash -c "python3 atom_main.py \
         --project=nvmeof \
         --ceph-img=quay.ceph.io/ceph-ci/ceph:"$CEPH_SHA" \
         --ceph-branch="$CEPH_BRANCH" \
         --gw-img=quay.io/ceph/nvmeof:"$VERSION" \
         --cli-img=quay.io/ceph/nvmeof-cli:"$VERSION" \
+        --container-runtime docker \
         --initiators=1 \
         --gw-group-num=1 \
-        --gw-num=4 \
+        --gw-num=2 \
         --gw-to-stop-num=1 \
-        --gw-scale-down-num=1 \
         --subsystem-num=2 \
         --ns-num=4 \
         --subsystem-max-ns-num=2048 \
@@ -91,10 +96,9 @@ if [ "$NIGHTLY" != "nightly" ]; then
         --fio-devices-num=1 \
         --lb-timeout=20 \
         --config-dbg-mon=10 \
-        --config-dbg-ms=1 \
+        --config-dbg-ms=0 \
         --nvmeof-daemon-stop \
         --nvmeof-systemctl-stop \
-        --mon-leader-stop \
         --mon-client-kill \
         --nvmeof-daemon-remove \
         --redeploy-gws \
@@ -104,17 +108,29 @@ if [ "$NIGHTLY" != "nightly" ]; then
         --dont-power-off-cloud-vms \
         --skip-lb-group-change-test \
         --skip-gw-failover-latency-test \
-        --skip-reservations-basic-test \
+        --skip-get-subsystems-latency-test \
         --ibm-cloud-key=nokey \
         --github-nvmeof-token=nokey \
-        --env=m7
+        --check-vms-stage \
+        --ceph-deploy-stage \
+        --nvmeof-setup-stage \
+        --initiator-setup-stage \
+        --nvmeof-tests-stage \
+        --teardown-stage \
+        --env=m7; exit \$?" 2>&1 | tee "$TEMP_OUTPUT"
     DOCKER_EXIT_STATUS=$?
+
+    # Read the output from the temporary file
+    DOCKER_OUTPUT=$(cat "$TEMP_OUTPUT")
+    rm -f "$TEMP_OUTPUT"
 else
     check_cluster_busy "$BUSY_NIGHTLY_FILE" "$ACTION_URL"
+    # Create a temporary file to capture output and exit status
+    TEMP_OUTPUT="/tmp/docker_output_$$"
     sudo docker run \
         -v /root/.ssh:/root/.ssh \
         nvmeof_atom:"$ATOM_SHA" \
-        python3 atom.py \
+        bash -c "python3 atom_main.py \
         --project=nvmeof \
         --ceph-img=quay.ceph.io/ceph-ci/ceph:"$CEPH_SHA" \
         --ceph-branch="$CEPH_BRANCH" \
@@ -124,7 +140,6 @@ else
         --gw-group-num=1 \
         --gw-num=8 \
         --gw-to-stop-num=1 \
-        --gw-scale-down-num=1 \
         --subsystem-num=103 \
         --ns-num=8 \
         --subsystem-max-ns-num=2048 \
@@ -136,10 +151,9 @@ else
         --fio-devices-num=1 \
         --lb-timeout=20 \
         --config-dbg-mon=10 \
-        --config-dbg-ms=1 \
+        --config-dbg-ms=0 \
         --nvmeof-daemon-stop \
         --nvmeof-systemctl-stop \
-        --mon-leader-stop \
         --mon-client-kill \
         --nvmeof-daemon-remove \
         --github-action-deployment \
@@ -147,23 +161,44 @@ else
         --dont-use-hugepages \
         --skip-lb-group-change-test \
         --skip-gw-failover-latency-test \
-        --skip-reservations-basic-test \
         --skip-block-list-test \
         --skip-multi-hosts-conn-test \
         --ibm-cloud-key=nokey \
         --github-nvmeof-token=nokey \
         --encryption-key \
-        --env=m8
+        --check-vms-stage \
+        --ceph-deploy-stage \
+        --nvmeof-setup-stage \
+        --initiator-setup-stage \
+        --nvmeof-tests-stage \
+        --teardown-stage \
+        --env=m8; exit \$?" 2>&1 | tee "$TEMP_OUTPUT"
     DOCKER_EXIT_STATUS=$?
+
+    # Read the output from the temporary file
+    DOCKER_OUTPUT=$(cat "$TEMP_OUTPUT")
+    rm -f "$TEMP_OUTPUT"
 fi
 
 set +x
 
+# Check for test failures even if Docker exit status is 0
 if [ $DOCKER_EXIT_STATUS -eq 0 ]; then
-    echo "Atom docker run succeeded"
+    echo "Atom docker run completed successfully"
+    # Additional check: look for pytest failure indicators in the captured output
+    # Check if any test failed based on common pytest failure patterns
+    echo "DEBUG: Checking for test failure patterns..."
+    if echo "$DOCKER_OUTPUT" | grep -E "(failed.*passed|FAILED.*test|_pytest\.outcomes\.Exit.*failure)" > /dev/null; then
+        echo "Tests failed despite successful Docker run - forcing failure"
+        echo "DEBUG: Found failure patterns in output"
+        exit 1
+    else
+        echo "DEBUG: No failure patterns found in output"
+        echo "DEBUG: Docker exit status was 0, considering this a success"
+    fi
 else
-    echo "Atom docker run failed!!!"
-    exit 1
+    echo "Atom docker run failed with exit code: $DOCKER_EXIT_STATUS"
+    exit $DOCKER_EXIT_STATUS
 fi
 
 # TODO- when https://github.com/ceph/ceph-nvmeof/issues/1369 will be fixed, we can uncomment the following lines

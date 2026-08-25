@@ -29,6 +29,7 @@ def two_gateways(config):
     config.config["gateway"]["rebalance_period_sec"] = "0"
     config.config["gateway"]["state_update_notify"] = "False"
     config.config["gateway"]["state_update_interval_sec"] = "300"
+    config.config["gateway"]["omap_file_lock_duration"] = "20"
     addr = config.get("gateway", "addr")
     configA = copy.deepcopy(config)
     configB = copy.deepcopy(config)
@@ -36,7 +37,7 @@ def two_gateways(config):
     configA.config["gateway"]["override_hostname"] = nameA
     configA.config["spdk"]["rpc_socket_name"] = sockA
     if os.cpu_count() >= 4:
-        configA.config["spdk"]["tgt_cmd_extra_args"] = "-m 0x02"
+        configA.config["spdk"]["tgt_cmd_extra_args"] = "--lcores 1"
     else:
         configA.config["spdk"]["tgt_cmd_extra_args"] = "--disable-cpumask-locks"
     portA = configA.getint("gateway", "port")
@@ -48,7 +49,7 @@ def two_gateways(config):
     configB.config["gateway"]["port"] = str(portB)
     configB.config["discovery"]["port"] = str(discPortB)
     if os.cpu_count() >= 4:
-        configB.config["spdk"]["tgt_cmd_extra_args"] = "-m 0x0C"
+        configB.config["spdk"]["tgt_cmd_extra_args"] = "--lcores (2-3)"
     else:
         configB.config["spdk"]["tgt_cmd_extra_args"] = "--disable-cpumask-locks"
 
@@ -96,11 +97,12 @@ def test_mixing_locks(caplog, two_gateways):
     assert "The OMAP file is locked, will try again in" in caplog.text
     assert "Succeeded to lock OMAP file (shared) after" in caplog.text
     caplog.clear()
-    with pytest.raises(rados.ObjectNotFound):
-        gwA.omap_lock.unlock_omap()
+    gwA.omap_lock.unlock_omap()
     assert "OMAP was unlocked" not in caplog.text
-    assert "No such lock, the exclusive lock might have expired" in caplog.text
-    OmapLock.reset_lock_markers()
+    assert "No such lock, the exclusive lock has expired" in caplog.text
+    assert OmapLock.exclusive_lock_timestamp == 0
+    assert not OmapLock.locked_by
+    assert not OmapLock.lock_cookie
     time.sleep(25)
     caplog.clear()
     gwA.omap_lock.lock_omap(False, False, 1)
@@ -120,7 +122,9 @@ def test_mixing_locks(caplog, two_gateways):
         gwA.omap_lock.unlock_omap(False, 1)
     assert "OMAP was unlocked" not in caplog.text
     assert "No such lock, the shared lock might have expired" in caplog.text
-    OmapLock.reset_lock_markers()
+    assert OmapLock.exclusive_lock_timestamp == 0
+    assert not OmapLock.locked_by
+    assert not OmapLock.lock_cookie
     time.sleep(25)
     caplog.clear()
     gwA.omap_lock.lock_omap()
@@ -139,7 +143,9 @@ def test_mixing_locks(caplog, two_gateways):
         gwA.omap_lock.unlock_omap()
     assert "OMAP was unlocked" not in caplog.text
     assert "No such lock, the exclusive lock might have expired" in caplog.text
-    OmapLock.reset_lock_markers()
+    assert OmapLock.exclusive_lock_timestamp == 0
+    assert not OmapLock.locked_by
+    assert not OmapLock.lock_cookie
     time.sleep(25)
     caplog.clear()
     gwA.omap_lock.lock_omap()

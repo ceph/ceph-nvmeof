@@ -13,6 +13,8 @@ from .config import GatewayConfig
 from .state import GatewayState, LocalGatewayState, OmapLock, OmapGatewayState, GatewayStateHandler
 from .utils import GatewayLogger
 from .utils import GatewayUtilsCrypto
+from .utils import GatewayEnumUtils
+from .proto import gateway_pb2 as pb2
 
 from typing import Dict
 
@@ -24,8 +26,10 @@ import uuid
 import struct
 import selectors
 import os
+import errno
 from dataclasses import dataclass, field
 from ctypes import LittleEndianStructure, c_ubyte, c_uint8, c_uint16, c_uint32, c_uint64
+from .cephutils import CephUtils
 
 
 # NVMe tcp pdu type
@@ -323,29 +327,45 @@ class DiscoveryService:
         discovery_port: Discovery controller's listening port
     """
 
+    DEFAULT_BIND_RETRIES = 10
+    DEFAULT_BIND_SLEEP_INTERVAL = 0.5
+
     def __init__(self, config):
         self.version = 1
         self.config = config
+        self.ceph_utils = CephUtils(self.config)
         self.lock = threading.Lock()
-        self.abort_on_error = self.config.getboolean_with_default("discovery",
-                                                                  "abort_on_errors",
-                                                                  True)
         self.omap_state = OmapGatewayState(self.config, None, f"discovery-{socket.gethostname()}")
-        self.omap_state.abort_on_error = self.abort_on_error
+        self.omap_state.abort_on_error = False    # No need to crash on OMAP read lock failure
 
         self.gw_logger_object = GatewayLogger(config)
         self.logger = self.gw_logger_object.logger
 
-        gateway_group = self.config.get_with_default("gateway", "group", "")
-        self.omap_name = f"nvmeof.{gateway_group}.state" \
-            if gateway_group else "nvmeof.state"
-        self.logger.info(f"log pages info from omap: {self.omap_name}")
+        self.logger.info(f"log pages info from omap: {self.omap_state.omap_name}")
 
         self.discovery_addr = self.config.get_with_default("discovery", "addr", "0.0.0.0")
         self.discovery_port = self.config.get_with_default("discovery", "port", "8009")
-        if not self.discovery_addr or not self.discovery_port:
-            self.logger.error("discovery addr/port are empty.")
-            assert 0
+        self.bind_retries_limit = self.config.getint_with_default(
+            "discovery",
+            "bind_retries_limit",
+            DiscoveryService.DEFAULT_BIND_RETRIES)
+        if self.bind_retries_limit < 0:
+            self.logger.info("A negative bind retries limit, will not limit the "
+                             "number of bind retries")
+        elif self.bind_retries_limit == 0:
+            self.logger.warning("A zero bind retries limit, will use default value")
+            self.bind_retries_limit = DiscoveryService.DEFAULT_BIND_RETRIES
+
+        self.bind_sleep_interval = self.config.getfloat_with_default(
+            "discovery",
+            "bind_sleep_interval",
+            DiscoveryService.DEFAULT_BIND_SLEEP_INTERVAL)
+        if self.bind_sleep_interval < 0.0:
+            self.logger.warning(f"Negative bind sleep interval {self.bind_sleep_interval}, "
+                                f"will use default value")
+            self.bind_sleep_interval = DiscoveryService.DEFAULT_BIND_SLEEP_INTERVAL
+
+        assert self.discovery_addr and self.discovery_port, "discovery addr/port are empty"
         self.logger.info(f"discovery addr: {self.discovery_addr} port: {self.discovery_port}")
 
         self.omap_lock = None
@@ -400,8 +420,6 @@ class DiscoveryService:
             return omap_dict
         except Exception:
             self.logger.exception("Failure getting OMAP state for discovery")
-            if self.abort_on_error:
-                raise
         return {}
 
     def _get_vals(self, omap_dict, prefix):
@@ -750,7 +768,13 @@ class DiscoveryService:
         self.logger.debug("handle get log page request.")
         self_conn = self.conn_vals[conn.fileno()]
         my_omap_dict = self._read_all()
+        if not my_omap_dict:
+            self.logger.error("Error getting current state.")
+            return -1
         listeners = self._get_vals(my_omap_dict, GatewayState.LISTENER_PREFIX)
+        pool = self.config.get("ceph", "pool")
+        group = self.config.get("gateway", "group")
+        nvmemon_listeners = self.ceph_utils.get_gw_listeners(pool, group)
         hosts = self._get_vals(my_omap_dict, GatewayState.HOST_PREFIX)
         if len(self_conn.nvmeof_connect_data_hostnqn) != 256:
             self.logger.error("error hostnqn.")
@@ -798,14 +822,31 @@ class DiscoveryService:
         if len(allow_listeners) == 0:
             for host in hosts:
                 if host["host_nqn"] == '*' or host["host_nqn"] == hostnqn:
-                    for listener in listeners:
-                        # TODO: It is better to change nqn in the "listener"
-                        # to subsystem_nqn to avoid confusion
-                        if host["subsystem_nqn"] == listener["nqn"]:
+                    subsystem_nqn = host["subsystem_nqn"]
+                    self.logger.debug(f"found subsystem nqn: {subsystem_nqn}")
+                    if nvmemon_listeners and (subsystem_nqn in nvmemon_listeners):
+                        subsystem_listeners = nvmemon_listeners[subsystem_nqn]
+                        for _listener in subsystem_listeners:
+                            listener = {
+                                "adrfam": _listener["address_family"],
+                                "trsvcid": _listener["svcid"],
+                                "nqn": subsystem_nqn,
+                                "traddr": _listener["address"],
+                            }
                             allow_listeners += [listener,]
+                    else:
+                        for listener in listeners:
+                            # TODO: It is better to change nqn in the "listener"
+                            # to subsystem_nqn to avoid confusion
+                            if host["subsystem_nqn"] == listener["nqn"]:
+                                nqn1 = listener["nqn"]
+                                self.logger.debug(f"found subsystem nqn1: {nqn1}")
+                                allow_listeners += [listener,]
             self_conn.allow_listeners = allow_listeners
 
         # Prepare all log page data segments
+        self.logger.info(f"log page len: {self_conn.unsent_log_page_len}"
+                         f"data len: {nvme_data_len}: num listnrs: {len(allow_listeners)}")
         if self_conn.unsent_log_page_len == 0 and nvme_data_len > 16:
             self_conn.unsent_log_page_len = 1024 * (len(allow_listeners) + 1)
             self_conn.log_page = bytearray(self_conn.unsent_log_page_len)
@@ -821,11 +862,18 @@ class DiscoveryService:
                 log_entry = DiscoveryLogEntry()
                 log_entry.trtype = TRANSPORT_TYPES.TCP
                 log_adrfam = allow_listeners[log_entry_counter]["adrfam"]
-                adrfam = ADRFAM_TYPES[log_adrfam.lower()]
+                if isinstance(log_adrfam, int):
+                    adrfam = GatewayEnumUtils.get_key_from_value(pb2.AddressFamily, log_adrfam)
+                else:
+                    adrfam = log_adrfam
                 if adrfam is None:
                     self.logger.error(f"unsupported address family {log_adrfam}")
                 else:
-                    log_entry.adrfam = adrfam
+                    adrfam = ADRFAM_TYPES[adrfam.lower()]
+                    if adrfam is None:
+                        self.logger.error(f"unsupported address family {log_adrfam}")
+                    else:
+                        log_entry.adrfam = adrfam
                 log_entry.subtype = NVMF_SUBTYPE.NVME
                 log_entry.treq = NVMF_TREQ_SECURE_CHANNEL.NOT_REQUIRED
                 log_entry.port_id = log_entry_counter
@@ -838,6 +886,7 @@ class DiscoveryService:
                     [c_ubyte(0x20)] * (32 - len(str_trsvcid))
                 # NVM subsystem qualified name
                 entry = allow_listeners[log_entry_counter]["nqn"]
+                self.logger.debug(f"adding subsystem nqn: {entry}")
                 log_entry.subnqn = (c_ubyte * 256)(*[c_ubyte(x) for x in entry.encode()])
                 log_entry.subnqn[len(allow_listeners[log_entry_counter]["nqn"]):] = \
                     [c_ubyte(0x00)] * (256 - len(allow_listeners[log_entry_counter]["nqn"]))
@@ -871,16 +920,29 @@ class DiscoveryService:
             nvme_get_log_page_reply = NVMeGetLogPage()
             nvme_get_log_page_reply.genctr = self_conn.gen_cnt
             nvme_get_log_page_reply.numrec = len(allow_listeners)
+            self.logger.info("reply based on the received get log page request packet")
+            # need to reset the conn data
+            self_conn.unsent_log_page_len = 0
+            self_conn.log_page = b''
+            self_conn.allow_listeners = []
 
             reply = pdu_reply + nvme_tcp_data_pdu + bytes(nvme_get_log_page_reply)[:nvme_data_len]
         elif nvme_data_len % 1024 == 0:
             # reply log pages
+            if nvme_data_len > self_conn.unsent_log_page_len:
+                self.logger.info(f"trim len {nvme_data_len} to {self_conn.unsent_log_page_len}")
+                nvme_data_len = self_conn.unsent_log_page_len
+                pdu_reply.packet_length = pdu_and_nvme_pdu_len + nvme_data_len
+                nvme_tcp_data_pdu.data_length = nvme_data_len
+
+            self_conn.unsent_log_page_len -= nvme_data_len
             reply = pdu_reply + nvme_tcp_data_pdu + \
                 self_conn.log_page[nvme_logpage_offset:nvme_logpage_offset + nvme_data_len]
-            self_conn.unsent_log_page_len -= nvme_data_len
             if self_conn.unsent_log_page_len == 0:
                 self_conn.log_page = b''
                 self_conn.allow_listeners = []
+            else:
+                self.logger.info(f"sent partial rsp. unset_len {self_conn.unsent_log_page_len}")
         else:
             self.logger.error(f"request log page: invalid length error {nvme_data_len=}")
             return -1
@@ -892,7 +954,7 @@ class DiscoveryService:
         except OSError as ex:
             self.logger.exception(f"got OS error {ex.errno}: {ex.strerror}")
             return -1
-        self.logger.debug("reply get log page request.")
+        self.logger.debug(f"reply get log page  size = {len(reply)} bytes")
         return 0
 
     def reply_keep_alive(self, conn, data, cmd_id):
@@ -986,16 +1048,23 @@ class DiscoveryService:
         for key in update.keys():
             if key.startswith(GatewayState.SUBSYSTEM_PREFIX):
                 should_send_async_event = True
+                self.logger.info(f"handle subsystem changes: {key} ")
                 break
             if key.startswith(GatewayState.LISTENER_PREFIX):
                 should_send_async_event = True
+                self.logger.info(f"handle listener changes: {key} ")
                 break
-
+            if key.startswith(GatewayState.UPDATE_TRIGGER_PREFIX):
+                should_send_async_event = True
+                self.logger.info(f"handle update trigger changes: {key} ")
+                break
         if not should_send_async_event:
             return
 
-        for key in list(self.conn_vals.keys()):
-            if self.conn_vals[key].recv_async is True:
+        with self.lock:
+            for self_conn in self.conn_vals.values():
+                if not self_conn.recv_async:
+                    continue
                 pdu_reply = Pdu()
                 pdu_reply.type = NVME_TCP_PDU.RSP
                 pdu_reply.header_length = 24
@@ -1004,20 +1073,23 @@ class DiscoveryService:
                 async_reply = CqeNVMe()
                 # async_event_type:0x2 async_event_info:0xf0 log_page_identifier:0x70
                 async_reply.dword0 = int.from_bytes(b'\x02\xf0\x70\x00', byteorder='little')
-                async_reply.sq_head_ptr = self.conn_vals[key].sq_head_ptr
-                async_reply.cmd_id = self.conn_vals[key].async_cmd_id
+                async_reply.sq_head_ptr = self_conn.sq_head_ptr
+                async_reply.cmd_id = self_conn.async_cmd_id
 
                 try:
-                    self.conn_vals[key].connection.sendall(pdu_reply + async_reply)
+                    self_conn.connection.sendall(pdu_reply + async_reply)
                 except BrokenPipeError:
-                    self.logger.error("client disconnected unexpectedly.")
-                    return
+                    # let handle_timeout() reap the dead connection, keep
+                    # notifying the other hosts
+                    self.logger.error(f"client {self_conn.connection} "
+                                      f"disconnected unexpectedly.")
+                    continue
                 except OSError as ex:
-                    self.logger.exception(f"got OS error {ex.errno}: {ex.strerror}")
-                    return
+                    self.logger.exception(f"got OS error {ex.errno}: {ex.strerror} "
+                                          f"notifying {self_conn.connection}")
+                    continue
                 self.logger.debug("notify and reply async request.")
-                self.conn_vals[key].recv_async = False
-                return
+                self_conn.recv_async = False
 
     def handle_timeout(self):
         """Handle connection timeout."""
@@ -1073,8 +1145,8 @@ class DiscoveryService:
                     self_conn.recv_buffer += message
                 else:
                     return
-            except BlockingIOError:
-                self.logger.error("recived data failed.")
+            except OSError as ex:
+                self.logger.error(f"Recived data failed. {ex.errno}: {ex.strerror}")
 
             while True:
                 if len(self_conn.recv_buffer) < 8:
@@ -1188,7 +1260,25 @@ class DiscoveryService:
                 family = socket.AF_INET6
 
         self.sock = socket.socket(family, socket.SOCK_STREAM)
-        self.sock.bind((self.discovery_addr, int(self.discovery_port)))
+        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        retries = self.bind_retries_limit
+        # Notice that a negative value means, keep trying until we succeed
+        while retries != 0:
+            try:
+                retries -= 1
+                self.sock.bind((self.discovery_addr, int(self.discovery_port)))
+                self.logger.debug(f"bind of port {self.discovery_port} succesful")
+                break
+            except OSError as ex:
+                if ex.errno != errno.EADDRINUSE:
+                    self.logger.exception("bind failure")
+                    raise ex
+                if retries != 0:
+                    self.logger.warning("Bind failed as the address is in use, will try again")
+                else:
+                    self.logger.error("Bind failed as the address is in use, will abort")
+                    raise
+            time.sleep(self.bind_sleep_interval)
         self.sock.listen(MAX_CONNECTION)
         self.sock.setblocking(False)
         self.selector.register(self.sock, selectors.EVENT_READ, self.nvmeof_accept)

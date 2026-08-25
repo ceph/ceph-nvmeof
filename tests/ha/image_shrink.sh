@@ -18,6 +18,7 @@ nslist=$(cephnvmf_func --output stdio --format json namespace list --subsystem $
 [[ `echo $nslist | jq -r '.status'` == "0" ]]
 [[ `echo $nslist | jq -r '.subsystem_nqn'` == "${NQN}" ]]
 [[ `echo $nslist | jq -r '.namespaces[0].nsid'` == "1" ]]
+[[ `echo $nslist | jq -r '.namespaces[0].rbd_image_size'` == "20971520" ]]
 [[ `echo $nslist | jq -r '.namespaces[0].image_was_shrunk'` == "false" ]]
 [[ `echo $nslist | jq -r '.namespaces[1]'` == "null" ]]
 
@@ -28,6 +29,7 @@ nslist=$(cephnvmf_func --output stdio --format json namespace list --subsystem $
 [[ `echo $nslist | jq -r '.status'` == "0" ]]
 [[ `echo $nslist | jq -r '.subsystem_nqn'` == "${NQN}" ]]
 [[ `echo $nslist | jq -r '.namespaces[0].nsid'` == "1" ]]
+[[ `echo $nslist | jq -r '.namespaces[0].rbd_image_size'` == "19922944" ]]
 [[ `echo $nslist | jq -r '.namespaces[0].image_was_shrunk'` == "true" ]]
 [[ `echo $nslist | jq -r '.namespaces[1]'` == "null" ]]
 
@@ -47,6 +49,16 @@ nslist=$(cephnvmf_func --output stdio --format json namespace list --subsystem $
 [[ `echo $nslist | jq -r '.status'` == "0" ]]
 [[ `echo $nslist | jq -r '.subsystem_nqn'` == "${NQN}" ]]
 [[ `echo $nslist | jq -r '.namespaces[0].nsid'` == "1" ]]
+[[ `echo $nslist | jq -r '.namespaces[0].image_was_shrunk'` == "true" ]]
+[[ `echo $nslist | jq -r '.namespaces[1]'` == "null" ]]
+
+echo "ℹ️  refresh size"
+cephnvmf_func namespace refresh_size --subsystem "${NQN}" --nsid 1
+nslist=$(cephnvmf_func --output stdio --format json namespace list --subsystem $NQN --nsid 1)
+[[ `echo $nslist | jq -r '.status'` == "0" ]]
+[[ `echo $nslist | jq -r '.subsystem_nqn'` == "${NQN}" ]]
+[[ `echo $nslist | jq -r '.namespaces[0].nsid'` == "1" ]]
+[[ `echo $nslist | jq -r '.namespaces[0].rbd_image_size'` == "15728640" ]]
 [[ `echo $nslist | jq -r '.namespaces[0].image_was_shrunk'` == "true" ]]
 [[ `echo $nslist | jq -r '.namespaces[1]'` == "null" ]]
 

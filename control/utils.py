@@ -17,6 +17,7 @@ import logging.handlers
 import gzip
 import shutil
 import netifaces
+import ipaddress
 from typing import Tuple, List
 from cryptography.fernet import Fernet
 import cryptography.exceptions
@@ -24,6 +25,7 @@ import base64
 import json
 import subprocess
 from pathlib import Path
+from binascii import Error, crc32
 
 
 class GatewayEnumUtils:
@@ -62,38 +64,112 @@ class GatewayEnumUtils:
 class GatewayUtils:
     DISCOVERY_NQN = "nqn.2014-08.org.nvmexpress.discovery"
     ALL_SUBSYSTEMS = "*"
+    MAX_HOST_NAME_LENGTH = 253
+    DOMAIN_LABEL_MAX_LEN = 63
+    MAX_MESSAGE_LENGTH_DEFAULT = 4
+    MAX_MODEL_NAME_LENGTH = 40
 
     # We need to enclose IPv6 addresses in brackets before concatenating
     # a colon and port number to it
+    @staticmethod
     def escape_address_if_ipv6(addr: str) -> str:
         ret_addr = addr
         if ":" in addr and not addr.strip().startswith("["):
             ret_addr = f"[{addr}]"
         return ret_addr
 
+    @staticmethod
     def unescape_address(addr: str) -> str:
         ret_addr = addr.strip()
         ret_addr = ret_addr.removeprefix("[").removesuffix("]")
         return ret_addr
 
+    @staticmethod
     def unescape_address_if_ipv6(addr: str, adrfam: str) -> str:
         ret_addr = addr.strip()
         if adrfam.lower() == "ipv6":
             ret_addr = GatewayUtils.unescape_address(addr)
         return ret_addr
 
-    def is_discovery_nqn(nqn) -> bool:
-        return nqn == GatewayUtils.DISCOVERY_NQN
+    @classmethod
+    def is_discovery_nqn(cls, nqn) -> bool:
+        return nqn == cls.DISCOVERY_NQN
 
+    @staticmethod
+    def is_valid_host_name(hostname) -> bool:
+        if not hostname:
+            return False
+
+        if not isinstance(hostname, str):
+            return False
+
+        if len(hostname) > GatewayUtils.MAX_HOST_NAME_LENGTH:
+            return False
+
+        parts = hostname.split(".")
+        for one_part in parts:
+            if not one_part:
+                return False
+
+            if len(one_part) > GatewayUtils.DOMAIN_LABEL_MAX_LEN:
+                return False
+
+            if one_part.startswith("-"):
+                return False
+
+            if one_part.endswith("-"):
+                return False
+
+            if not one_part.replace("-", "").isalnum():
+                return False
+
+        return True
+
+    @staticmethod
+    def get_hostname(ip_addr: str, logger) -> str:
+        try:
+            ret = socket.gethostbyaddr(ip_addr)
+            if ret:
+                return ret[0]
+        except Exception as e:
+            logger.error(f'Failed to resolve hostname for IP {ip_addr}: {e}')
+        return ''
+
+    @staticmethod
+    def is_any_host_address(addr: str, adrfam: str) -> bool:
+        if adrfam.lower() == "ipv4":
+            return addr == "0.0.0.0"
+        elif adrfam.lower() == "ipv6":
+            return addr == "::"
+        return False
+
+    @staticmethod
+    def is_valid_ip_address(addr: str, adrfam: str) -> str:
+        ipaddr = None
+        try:
+            ipaddr = ipaddress.ip_address(addr)
+        except ValueError:
+            ipaddr = None
+        if ipaddr is None:
+            return f'Invalid IP address "{addr}"'
+        if not adrfam or adrfam.lower() == "ipv4":
+            if ipaddr.version != 4:
+                return f"IP address {addr} is not an IPv4 address"
+        elif adrfam.lower() == "ipv6":
+            if ipaddr.version != 6:
+                return f"IP address {addr} is not an IPv6 address"
+        else:
+            return f'Invalid address family "{adrfam}"'
+        return ""
+
+    @staticmethod
     def is_valid_rev_domain(rev_domain):
-        DOMAIN_LABEL_MAX_LEN = 63
-
         domain_parts = rev_domain.split(".")
         for lbl in domain_parts:
             if not lbl:
                 return (errno.EINVAL, "empty domain label doesn't start with a letter")
 
-            if len(lbl) > DOMAIN_LABEL_MAX_LEN:
+            if len(lbl) > GatewayUtils.DOMAIN_LABEL_MAX_LEN:
                 return (errno.EINVAL, f"domain label {lbl} is too long")
 
             if not lbl[0].isalpha():
@@ -107,8 +183,9 @@ class GatewayUtils:
                         f"domain label {lbl} contains a character which is "
                         f"not [a-z,A-Z,0-9,'-','.']")
 
-        return (0, os.strerror(0))
+        return (0, "")
 
+    @staticmethod
     def is_valid_uuid(uuid_val) -> bool:
         UUID_STRING_LENGTH = len(str(uuid.uuid4()))
 
@@ -137,6 +214,7 @@ class GatewayUtils:
 
         return True
 
+    @staticmethod
     def is_valid_nqn(nqn):
         NQN_MIN_LENGTH = 11
         NQN_MAX_LENGTH = 223
@@ -161,7 +239,7 @@ class GatewayUtils:
         if GatewayUtils.is_discovery_nqn(nqn):
             # The NQN is technically valid but we will probably reject it
             # later as being a discovery one
-            return (0, os.strerror(0))
+            return (0, "")
 
         if nqn.startswith(NQN_UUID_PREFIX):
             if len(nqn) != NQN_UUID_PREFIX_LENGTH + UUID_STRING_LENGTH:
@@ -169,7 +247,7 @@ class GatewayUtils:
             uuid_part = nqn[NQN_UUID_PREFIX_LENGTH:]
             if not GatewayUtils.is_valid_uuid(uuid_part):
                 return (errno.EINVAL, f"Invalid NQN \"{nqn}\": UUID is not formatted correctly")
-            return (0, os.strerror(0))
+            return (0, "")
 
         if not nqn.startswith(NQN_PREFIX):
             return (errno.EINVAL, f"Invalid NQN \"{nqn}\", doesn't start with \"{NQN_PREFIX}\"")
@@ -206,14 +284,32 @@ class GatewayUtils:
             return (errno.EINVAL,
                     f"Invalid NQN \"{nqn}\": reverse domain is not formatted correctly: {rc[1]}")
 
-        return (0, os.strerror(0))
+        return (0, "")
+
+    @staticmethod
+    def is_valid_model_name(model_name: str) -> str:
+        if (model_name is None) or (model_name == ""):
+            return ""
+        if not isinstance(model_name, str):
+            return f"Model name \"{model_name}\" must be a string."
+        if not model_name.isascii():
+            return f"Model name \"{model_name}\" must be an ASCII string."
+        if len(model_name) > GatewayUtils.MAX_MODEL_NAME_LENGTH:
+            return f"Model name \"{model_name}\" is too long. Maximum length is " \
+                   f"{GatewayUtils.MAX_MODEL_NAME_LENGTH} characters."
+        for c in model_name:
+            if c < '\x20' or c > '\x7e':
+                return f"Model name \"{model_name}\" contains control characters."
+        return ""
 
 
 class GatewayUtilsCrypto:
     KEY_SIZE = 32
     INVALID_KEY_VALUE = "<invalid>"
-    KEY_START = "-----BEGIN PRIVATE KEY-----"
-    KEY_END = "-----END PRIVATE KEY-----"
+    EXISTING_DHCHAP_KEY = "-"
+    START_MARKER_PREFIX = "-----BEGIN"
+    MARKER_SUFFIX = "-----"
+    END_MARKER_PREFIX = "-----END"
 
     def __init__(self, encryption_key: bytes):
         if encryption_key:
@@ -234,14 +330,34 @@ class GatewayUtilsCrypto:
         except FileNotFoundError:
             return None
 
+        keyval = keyval.strip()
         if not keyval:
             raise RuntimeError("Invalid encryption key, key is empty")
 
-        if not keyval.startswith(cls.KEY_START):
-            raise RuntimeError("Invalid encryption key, doesn't start with start marker")
-        if not keyval.endswith(cls.KEY_END):
-            raise RuntimeError("Invalid encryption key, doesn't end with end marker")
-        keyval = keyval.removeprefix(cls.KEY_START).removesuffix(cls.KEY_END).replace(" ", "")
+        if not keyval.startswith(cls.START_MARKER_PREFIX):
+            raise RuntimeError("Invalid encryption key, doesn't start with a start marker")
+        keyval = keyval.removeprefix(cls.START_MARKER_PREFIX)
+        pos = keyval.find(cls.MARKER_SUFFIX)
+        if pos < 0:
+            raise RuntimeError("Invalid encryption key, start marker is malformed "
+                               "(missing closing dashes)")
+        start_label = keyval[:pos].strip()
+        keyval = keyval[pos + len(cls.MARKER_SUFFIX):]
+        pos = keyval.find(cls.END_MARKER_PREFIX)
+        if pos < 0:
+            raise RuntimeError("Invalid encryption key, doesn't end with an end marker")
+        end_label = keyval[pos:].removeprefix(cls.END_MARKER_PREFIX)
+        keyval = keyval[:pos].replace(" ", "")
+        if not end_label.endswith(cls.MARKER_SUFFIX):
+            raise RuntimeError("Invalid encryption key, end marker is malformed "
+                               "(missing closing dashes)")
+        end_label = end_label.removesuffix(cls.MARKER_SUFFIX).strip()
+
+        if not start_label:
+            raise RuntimeError("Invalid encryption key, start marker label is empty")
+
+        if start_label != end_label:
+            raise RuntimeError("Invalid encryption key, different labels on start and end markers")
 
         keybytes = base64.b64decode(keyval, validate=True)
         if len(keybytes) < cls.KEY_SIZE:
@@ -272,6 +388,168 @@ class GatewayUtilsCrypto:
         else:
             plain = msg
         return plain
+
+
+class GatewayKeyUtils:
+    MAX_PSK_KEY_NAME_LENGTH = 200     # taken from SPDK SPDK_TLS_PSK_MAX_LEN
+    PSK_CRC32_SIZE_BYTES = 4
+    PSK_DELIM = ":"
+    PSK_PREFIX = "NVMeTLSkey-1"
+    PSK_HASH_ALGORITHMS = [0, 1, 2]
+    PSK_HASH_LENGTHS = [-1, 32, 48]
+    MAX_DHCHAP_KEY_NAME_LENGTH = 256
+    DHCHAP_CRC32_SIZE_BYTES = 4
+    DHCHAP_DELIM = ":"
+    DHCHAP_PREFIX = "DHHC-1"
+    DHCHAP_HASH_ALGORITHMS = [0, 1, 2, 3]
+    DHCHAP_HASH_LENGTHS = [-1, 32, 48, 64]
+
+    @classmethod
+    def is_valid_psk(cls, psk: str):
+
+        failure_prefix = "Invalid PSK key"
+        if not psk:
+            return (errno.ENOKEY, f"{failure_prefix}: key can't be empty")
+
+        if not isinstance(psk, str):
+            return (errno.EINVAL, f"{failure_prefix}: key must be a string")
+
+        if not psk.startswith(cls.PSK_PREFIX + cls.PSK_DELIM):
+            return (errno.EINVAL,
+                    f"{failure_prefix}: key must start with \"{cls.PSK_PREFIX}{cls.PSK_DELIM}\"")
+
+        if len(psk) >= cls.MAX_PSK_KEY_NAME_LENGTH:
+            return (errno.E2BIG,
+                    f"{failure_prefix}: key is too long, must be shorter than "
+                    f"{cls.MAX_PSK_KEY_NAME_LENGTH} characters")
+
+        if not psk.endswith(cls.PSK_DELIM):
+            return (errno.EINVAL,
+                    f"{failure_prefix}: key must end with \"{cls.PSK_DELIM}\"")
+
+        psk_parts = psk.removeprefix(
+            cls.PSK_PREFIX + cls.PSK_DELIM).removesuffix(cls.PSK_DELIM).split(cls.PSK_DELIM, 1)
+        if len(psk_parts) != 2:
+            return (errno.EINVAL,
+                    f"{failure_prefix}: should contain a \"{cls.PSK_DELIM}\" delimiter")
+
+        if not len(psk_parts[0]):
+            return (errno.EINVAL,
+                    f"{failure_prefix}: missing hash")
+
+        try:
+            key_hash = int(psk_parts[0])
+        except ValueError:
+            return (errno.EINVAL,
+                    f"{failure_prefix}: non numeric hash \"{psk_parts[0]}\"")
+
+        if key_hash not in cls.PSK_HASH_ALGORITHMS:
+            return (errno.EINVAL,
+                    f"{failure_prefix}: invalid key length")
+
+        if not len(psk_parts[1]):
+            return (errno.EINVAL,
+                    f"{failure_prefix}: base64 part is missing")
+
+        try:
+            decoded = base64.b64decode(psk_parts[1], validate=True)
+        except Error:
+            return (errno.EINVAL,
+                    f"{failure_prefix}: base64 part is invalid")
+
+        if not decoded:
+            return (errno.EINVAL,
+                    f"{failure_prefix}: base64 part is missing")
+
+        if cls.PSK_HASH_LENGTHS[key_hash] >= 0:
+            if len(decoded) != cls.PSK_HASH_LENGTHS[key_hash] + cls.PSK_CRC32_SIZE_BYTES:
+                return (errno.EINVAL,
+                        f"{failure_prefix}: invalid key length")
+
+        crc32_part = decoded[-cls.PSK_CRC32_SIZE_BYTES:]
+        key_part = decoded[:-cls.PSK_CRC32_SIZE_BYTES]
+        computed_crc32 = crc32(key_part)
+        crc32_intval = int.from_bytes(crc32_part, byteorder='little', signed=False)
+        if computed_crc32 != crc32_intval:
+            return (errno.EINVAL,
+                    f"{failure_prefix}: CRC-32 checksums mismatch")
+
+        return (0, "")
+
+    @classmethod
+    def is_valid_dhchap_key(cls, dhchap_key: str, is_ctrlr: bool = False):
+
+        ctrlr_txt = "controller " if is_ctrlr else ""
+        failure_prefix = f"Invalid DH-HMAC-CHAP {ctrlr_txt}key"
+        if not dhchap_key:
+            return (errno.ENOKEY, f"{failure_prefix}: key can't be empty")
+
+        if not isinstance(dhchap_key, str):
+            return (errno.EINVAL, f"{failure_prefix}: key must be a string")
+
+        if not dhchap_key.startswith(cls.DHCHAP_PREFIX + cls.DHCHAP_DELIM):
+            return (errno.EINVAL,
+                    f"{failure_prefix}: key must start with \"{cls.DHCHAP_PREFIX}"
+                    f"{cls.DHCHAP_DELIM}\"")
+
+        if len(dhchap_key) >= cls.MAX_DHCHAP_KEY_NAME_LENGTH:
+            return (errno.E2BIG,
+                    f"{failure_prefix}: key is too long, must be shorter than "
+                    f"{cls.MAX_DHCHAP_KEY_NAME_LENGTH} characters")
+
+        if not dhchap_key.endswith(cls.DHCHAP_DELIM):
+            return (errno.EINVAL,
+                    f"{failure_prefix}: key must end with \"{cls.DHCHAP_DELIM}\"")
+
+        dhchap_parts = dhchap_key.removeprefix(
+            cls.DHCHAP_PREFIX + cls.DHCHAP_DELIM).removesuffix(
+                cls.DHCHAP_DELIM).split(cls.DHCHAP_DELIM, 1)
+        if len(dhchap_parts) != 2:
+            return (errno.EINVAL,
+                    f"{failure_prefix}: should contain a \"{cls.DHCHAP_DELIM}\" delimiter")
+
+        if not len(dhchap_parts[0]):
+            return (errno.EINVAL,
+                    f"{failure_prefix}: missing hash")
+
+        try:
+            key_hash = int(dhchap_parts[0])
+        except ValueError:
+            return (errno.EINVAL,
+                    f"{failure_prefix}: non numeric hash \"{dhchap_parts[0]}\"")
+
+        if key_hash not in cls.DHCHAP_HASH_ALGORITHMS:
+            return (errno.EINVAL,
+                    f"{failure_prefix}: invalid key length")
+
+        if not len(dhchap_parts[1]):
+            return (errno.EINVAL,
+                    f"{failure_prefix}: base64 part is missing")
+
+        try:
+            decoded = base64.b64decode(dhchap_parts[1], validate=True)
+        except Error:
+            return (errno.EINVAL,
+                    f"{failure_prefix}: base64 part is invalid")
+
+        if not decoded:
+            return (errno.EINVAL,
+                    f"{failure_prefix}: base64 part is missing")
+
+        if cls.DHCHAP_HASH_LENGTHS[key_hash] >= 0:
+            if len(decoded) != cls.DHCHAP_HASH_LENGTHS[key_hash] + cls.DHCHAP_CRC32_SIZE_BYTES:
+                return (errno.EINVAL,
+                        f"{failure_prefix}: invalid key length")
+
+        crc32_part = decoded[-cls.DHCHAP_CRC32_SIZE_BYTES:]
+        key_part = decoded[:-cls.DHCHAP_CRC32_SIZE_BYTES]
+        computed_crc32 = crc32(key_part)
+        crc32_intval = int.from_bytes(crc32_part, byteorder='little', signed=False)
+        if computed_crc32 != crc32_intval:
+            return (errno.EINVAL,
+                    f"{failure_prefix}: CRC-32 checksums mismatch")
+
+        return (0, "")
 
 
 class GatewayLogger:
@@ -556,16 +834,10 @@ class NICS:
             self.adapters[device_name] = nic
 
     def verify_ip_address(self, addr: str, family: str) -> bool:
-        family = family.lower()
         # Allow "any host" address
-        if family == "ipv4":
-            if addr == "0.0.0.0":
-                return True
-        elif family == "ipv6":
-            if addr == "::":
-                return True
-        else:
-            assert False, f"Invalid address family {family}"
+        if GatewayUtils.is_any_host_address(addr, family):
+            return True
+        family = family.lower()
         if addr not in self.addresses:
             return False
         dev_name = self.addresses[addr]
@@ -585,6 +857,46 @@ class NICS:
                 if "addr" in v6addr and v6addr["addr"] == addr:
                     return True
         return False
+
+    @staticmethod
+    def is_valid_subnet(subnet: str) -> bool:
+        if not subnet:
+            return False
+        try:
+            ipaddress.ip_network(subnet, strict=False)
+            return True
+        except Exception:
+            return False
+
+    @staticmethod
+    def is_ip_in_network_masks(ip: str, network_masks: list) -> bool:
+        if not ip or not network_masks:
+            return False
+        try:
+            ip_addr = ipaddress.ip_address(ip)
+            for mask in network_masks:
+                subnet = ipaddress.ip_network(mask, strict=False)
+                if ip_addr in subnet:
+                    return True
+            return False
+        except (ValueError, TypeError):
+            return False
+
+    def get_ips_in_subnet(self, subnet):
+        if not subnet:
+            return []
+        subnet_ = ipaddress.ip_network(subnet, strict=False)
+        found_ips = []
+        for dev in self.adapters:
+            nic = self.adapters[dev]
+            if isinstance(subnet_, ipaddress.IPv4Network):
+                host_ips = nic.ipv4_addresses
+            elif isinstance(subnet_, ipaddress.IPv6Network):
+                host_ips = nic.ipv6_addresses
+            for ip in host_ips:
+                if ipaddress.ip_address(ip) in subnet_:
+                    found_ips.append(ip)
+        return found_ips
 
 
 class NIC:
