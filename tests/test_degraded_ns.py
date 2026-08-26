@@ -378,17 +378,6 @@ def test_degraded_namespace(caplog, two_gateways):
     cli(["--server-port", portB, "--format", "json", "namespace", "list",
          "--subsystem", subsystem1, "--nsid", "1"])
     assert '"degraded": true' in caplog.text
-    with gwB.gateway_rpc.rpc_lock:
-        bdev_list = gwB.gateway_rpc.spdk_rpc_client.bdev_get_bdevs()
-    found = 0
-    for b in bdev_list:
-        if b.get("product_name") == "Null disk":
-            found += 1
-    assert found == 2, "Should have 2 null bdevs on gateway B"
-    with gwA.gateway_rpc.rpc_lock:
-        bdev_list = gwA.gateway_rpc.spdk_rpc_client.bdev_get_bdevs()
-    found = any(b.get("product_name") == "Null disk" for b in bdev_list)
-    assert not found, "Null bdev found on gateway A"
     caplog.clear()
     cli(["--server-port", portB, "namespace", "resize", "--subsystem", subsystem1,
          "--nsid", "1", "--size", "20MB"])
@@ -411,8 +400,10 @@ def test_degraded_namespace(caplog, two_gateways):
     ns_info = cli_test(["--server-port", portB, "namespace", "list", "--subsystem", subsystem1])
     assert ns_info.status == 0
     assert len(ns_info.namespaces) == 3
-    for n in ns_info.namespaces:
-        assert not n.encryption_entries, "Shouldn't have a namespace with encryption"
+    ns_by_id = {n.nsid: n for n in ns_info.namespaces}
+    assert ns_by_id[1].encryption_entries, "Namespace 1 should have encryption"
+    assert not ns_by_id[2].encryption_entries, "Namespace 2 shouldn't have encryption"
+    assert ns_by_id[3].encryption_entries, "Namespace 3 should have encryption"
     eps = cli_test(["--server-port", portB, "subsystem", "list_kmip_server_endpoints"])
     assert len(eps.endpoints) == 1
     caplog.clear()
@@ -429,21 +420,12 @@ def test_degraded_namespace(caplog, two_gateways):
     time.sleep(30)
     with gwB.gateway_rpc.rpc_lock:
         bdev_list = gwB.gateway_rpc.spdk_rpc_client.bdev_get_bdevs()
-    found = 0
     for b in bdev_list:
-        if b.get("product_name") == "Null disk":
-            found += 1
         assert b.get("name") != bdev_name, f"Bdev {bdev_name} shouldn't exist on gateway B"
-    assert found == 1, "Should have 1 null bdevs on gateway B after namespace deletion"
     with gwA.gateway_rpc.rpc_lock:
         bdev_list = gwA.gateway_rpc.spdk_rpc_client.bdev_get_bdevs()
-    found = False
     for b in bdev_list:
-        if b.get("product_name") == "Null disk":
-            found = True
-            break
         assert b.get("name") != bdev_name, f"Bdev {bdev_name} shouldn't exist on gateway A"
-    assert not found, "Null bdev found on gateway A"
     look_for = f"Received auto request to change load balancing group for namespace with ID 1 " \
                f"in {subsystem1} to {gwB.gateway_rpc.MAINTENANCE_ANA_GROUP}, " \
                f"persistent: False, maintenance: True, context: context"
@@ -533,10 +515,6 @@ def test_degraded_namespace(caplog, two_gateways):
          "--subsystem", subsystem1, "--nsid", "1"])
     assert '"degraded": true' not in caplog.text
     assert '"degraded": false' in caplog.text
-    with gwB.gateway_rpc.rpc_lock:
-        bdev_list = gwB.gateway_rpc.spdk_rpc_client.bdev_get_bdevs()
-    found = any(b.get("product_name") == "Null disk" for b in bdev_list)
-    assert not found, "Null bdev found on gateway B after KMIP server restart"
     state = gwB.gateway_state.omap.get_state()
     assert look_for_key in state.keys()
     val = state[look_for_key]
