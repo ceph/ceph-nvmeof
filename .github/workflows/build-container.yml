@@ -638,10 +638,14 @@ jobs:
       - name: Download container images
         uses: actions/download-artifact@v8
         with:
-          name: container_images_nvmeof
+          pattern: container_images*
+          merge-multiple: true
 
-      - name: Load container image
-        run: docker load < nvmeof.tar
+      - name: Load container images
+        run: |
+          docker load < nvmeof.tar
+          docker load < ceph.tar
+
 
       - name: Run KMIP test inside container
         run: |
