@@ -70,6 +70,8 @@ jobs:
 
   build-ceph:
     runs-on: ubuntu-latest
+    outputs:
+      ceph_version: ${{ steps.ceph-version.outputs.ceph_version }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -80,8 +82,13 @@ jobs:
         run: make build SVC=ceph
 
       - name: Save container images
+        id: ceph-version
         run: |
           . .env
+          if [ -z "$CEPH_VERSION" ]; then
+            CEPH_VERSION=$(make -s ceph-version)
+          fi
+          echo "ceph_version=$CEPH_VERSION" >> "$GITHUB_OUTPUT"
           docker save $QUAY_CEPH:$CEPH_VERSION > ceph.tar
 
       - name: Upload ceph container image
@@ -100,6 +107,10 @@ jobs:
     runs-on: ubuntu-latest
     env:
       HUGEPAGES: 512  # for multi gateway test, approx 256 per gateway instance
+      CEPH_VERSION: ${{ needs.build-ceph.outputs.ceph_version }}
+      CEPH_CLUSTER_VERSION: ${{ needs.build-ceph.outputs.ceph_version }}
+      NVMEOF_CEPH_VERSION: ${{ needs.build-ceph.outputs.ceph_version }}
+      SPDK_CEPH_VERSION: ${{ needs.build-ceph.outputs.ceph_version }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -217,6 +228,10 @@ jobs:
     runs-on: ubuntu-latest
     env:
       HUGEPAGES: 512
+      CEPH_VERSION: ${{ needs.build-ceph.outputs.ceph_version }}
+      CEPH_CLUSTER_VERSION: ${{ needs.build-ceph.outputs.ceph_version }}
+      NVMEOF_CEPH_VERSION: ${{ needs.build-ceph.outputs.ceph_version }}
+      SPDK_CEPH_VERSION: ${{ needs.build-ceph.outputs.ceph_version }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -322,6 +337,10 @@ jobs:
     runs-on: ubuntu-latest
     env:
       HUGEPAGES: 768  # 3 spdk instances
+      CEPH_VERSION: ${{ needs.build-ceph.outputs.ceph_version }}
+      CEPH_CLUSTER_VERSION: ${{ needs.build-ceph.outputs.ceph_version }}
+      NVMEOF_CEPH_VERSION: ${{ needs.build-ceph.outputs.ceph_version }}
+      SPDK_CEPH_VERSION: ${{ needs.build-ceph.outputs.ceph_version }}
 
     steps:
       - name: Checkout code
@@ -492,6 +511,10 @@ jobs:
     runs-on: ubuntu-latest
     env:
       HUGEPAGES: 1024  # 4 spdk instances
+      CEPH_VERSION: ${{ needs.build-ceph.outputs.ceph_version }}
+      CEPH_CLUSTER_VERSION: ${{ needs.build-ceph.outputs.ceph_version }}
+      NVMEOF_CEPH_VERSION: ${{ needs.build-ceph.outputs.ceph_version }}
+      SPDK_CEPH_VERSION: ${{ needs.build-ceph.outputs.ceph_version }}
 
     steps:
       - name: Checkout code
