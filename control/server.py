@@ -336,11 +336,11 @@ class GatewayServer:
         self.server = self._grpc_server(self._gateway_address())
         pb2_grpc.add_GatewayServicer_to_server(self.gateway_rpc, self.server)
 
-        # Check for existing NVMeoF target state
-        self.gateway_state.start_update()
-
         # Start server
         self.server.start()
+
+        # Check for existing NVMeoF target state
+        self.gateway_state.start_update()
 
         # Set SPDK log level
         log_level = self.config.get_with_default("spdk", "log_level", None)
