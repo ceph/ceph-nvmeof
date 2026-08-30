@@ -511,6 +511,7 @@ message set_gateway_io_stats_mode_req {
 	bool enabled = 1;
 }
 
+
 // From https://nvmexpress.org/wp-content/uploads/NVM-Express-1_4-2019.06.10-Ratified.pdf page 138
 // Asymmetric Namespace Access state for all namespaces in this ANA
 // Group when accessed through this controller.
