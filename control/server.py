@@ -883,13 +883,33 @@ class GatewayServer:
 
     def _initialize_rbd_crc32c(self):
         """Initialize RBD CRC32C configuration."""
-
+        # Read operator-visible configuration. Preserve original default of False
+        # for `rbd_with_crc32c` unless explicitly set. The `skip_rbd_crc_if_transport_digest`
+        # option allows an operator to override and disable RBD-side CRC computation
+        # even if `rbd_with_crc32c` would otherwise be enabled.
         rbd_with_crc32c = self.config.getboolean_with_default("spdk", "rbd_with_crc32c", False)
-        self.logger.debug(f"initialize_rbd_crc32c: rbd_with_crc32c: {rbd_with_crc32c}")
+        skip_if_transport_digest = self.config.getboolean_with_default(
+            "spdk",
+            "skip_rbd_crc_if_transport_digest",
+            False,
+        )
+
+        effective_rbd_crc = bool(rbd_with_crc32c)
+        if skip_if_transport_digest:
+            effective_rbd_crc = False
+
+        self.logger.debug(
+            f"initialize_rbd_crc32c: configured: {rbd_with_crc32c}, "
+            f"skip_if_transport_digest: {skip_if_transport_digest}, effective: {effective_rbd_crc}"
+        )
 
         try:
-            self.spdk_rpc_client.bdev_rbd_set_with_crc32c(enable=rbd_with_crc32c)
-            self.logger.info(f"Set RBD CRC32C usage to: {rbd_with_crc32c}")
+            self.spdk_rpc_client.bdev_rbd_set_with_crc32c(enable=effective_rbd_crc)
+            self.logger.info(f"Set RBD CRC32C usage to: {effective_rbd_crc}")
+            if skip_if_transport_digest:
+                self.logger.info(
+                    "RBD CRC32C computation disabled due to skip_rbd_crc_if_transport_digest option."
+                )
         except Exception:
             self.logger.exception("Failed to set RBD CRC32C configuration")
             raise
