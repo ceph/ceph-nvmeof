@@ -280,20 +280,25 @@ class GatewayServer:
         if self.config.getboolean_with_default("gateway", "enable_prometheus_exporter", True):
             self.logger.info("Prometheus exporter endpoint is enabled")
 
-            def delayed_start():
-                delay = self.config.getint_with_default("gateway", "prometheus_startup_delay", 240)
-                if delay > 0:
-                    self.logger.info(f"Delaying Prometheus exporter startup by {delay} seconds...")
-                    stop_event = threading.Event()
-                    stop_event.wait(timeout=delay)
+            def start_when_init_over():
+                while not self.gateway_state.is_initialization_over():
+                    if not self.gateway_state.up_and_running:
+                        self.logger.warning("Gateway is shutting down; skipping Prometheus "
+                                            "exporter startup")
+                        return
+                    time.sleep(0.5)
+                if not self.gateway_state.up_and_running:
+                    self.logger.warning("Gateway is shutting down; skipping Prometheus "
+                                        "exporter startup")
+                    return
+                self.logger.info("Starting Prometheus exporter")
                 start_exporter(self.spdk_rpc_prometheus_client, self.config,
                                self.gateway_rpc, self.logger)
 
-            threading.Thread(target=delayed_start, daemon=True).start()
-            self.logger.info("Prometheus exporter startup scheduled in background")
+            threading.Thread(target=start_when_init_over, daemon=True).start()
         else:
             self.logger.info("Prometheus exporter endpoint is disabled. To enable, set the config "
-                             "option 'enable_prometheus_exporter = True'")
+                             "option 'enable_prometheus_exporter' to true")
 
     def serve(self):
         """Starts gateway server."""
