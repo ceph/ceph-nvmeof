@@ -1143,24 +1143,27 @@ class OmapGatewayState(GatewayState):
             return self.get_state_internal()
         except Exception:
             self.logger.exception(f"Failure while getting state ({self.id_text})")
-            if self.abort_on_error and allow_abort_on_error:
-                msg = f"Will abort because of an error getting state ({self.id_text})"
-                self.logger.critical(msg)
-                self.up_and_running = False
-                if self.set_gateway_exit_message is not None:
-                    if not self.set_gateway_exit_message(msg):
-                        self.logger.warning(f"Can't get an indication about the gateway aborting."
-                                            f" Will continue after an error "
-                                            f"getting state ({self.id_text})")
+            if self.up_and_running:
+                if self.abort_on_error and allow_abort_on_error:
+                    msg = f"Will abort because of an error getting state ({self.id_text})"
+                    self.logger.critical(msg)
+                    self.up_and_running = False
+                    if self.set_gateway_exit_message is not None:
+                        if not self.set_gateway_exit_message(msg):
+                            self.logger.warning(f"Can't get an indication about the gateway "
+                                                f"aborting. Will continue after an error "
+                                                f"getting state ({self.id_text})")
+                            raise
+                    else:
+                        self.logger.warning(f"No gateway exit function set, will continue after "
+                                            f"an error getting state ({self.id_text})")
                         raise
                 else:
-                    self.logger.warning(f"No gateway exit function set, will continue after "
+                    self.logger.warning(f"Abort on errors is disabled, will continue after "
                                         f"an error getting state ({self.id_text})")
                     raise
             else:
-                self.logger.warning(f"Abort on errors is disabled, will continue after "
-                                    f"an error getting state ({self.id_text})")
-                raise
+                self.logger.info("Gateway is going down, will ignore this error")
         return None
 
     def _add_key(self, key: str, val: str):
