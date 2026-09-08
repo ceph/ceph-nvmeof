@@ -103,6 +103,7 @@ sudo docker run \
     --skip-get-subsystems-latency-test \
     --ibm-cloud-key=nokey \
     --github-nvmeof-token=nokey \
+    --cnc-enable \
     --check-vms-stage \
     --ceph-deploy-stage \
     --nvmeof-setup-stage \
