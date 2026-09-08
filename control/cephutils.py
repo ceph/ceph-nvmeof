@@ -98,7 +98,7 @@ class CephUtils:
             self.logger.debug(f"Gateway failed to get mgr command \"service dump\": {e}")
             return {}
 
-    def get_gw_listeners(self, pool, group) -> list:
+    def get_gw_listeners(self, pool, group) -> dict:
         try:
             str = '{' + f'"prefix":"nvme-gw listeners", "pool":"{pool}", "group":"{group}"' + '}'
             self.logger.debug(f"nvme-listeners string: {str}")
@@ -107,13 +107,13 @@ class CephUtils:
             if rply and rply[0] != 0:
                 self.logger.warning("'nvme-gw listeners' mon command failed. \
                                     It might not be supported in current ceph version.")
-                return []
+                return {}
             conv_str = rply[1].decode()
             data = json.loads(conv_str)
             return data["Created listeners"]
         except Exception as e:
             self.logger.error(f"nvme-gw listeners command failed: {e}")
-            return []
+            return {}
 
     def get_gw_id_owner_ana_group(self, pool, group, anagrp):
         str = '{' + f'"prefix":"nvme-gw show", "pool":"{pool}", "group":"{group}"' + '}'
