@@ -413,6 +413,7 @@ message remove_host_req {
 message set_keep_host_connected_req {
 	string subsystem_nqn = 1;
 	string host_nqn = 2;
+	optional bool keep_connected = 3;
 }
 
 message list_hosts_req {
