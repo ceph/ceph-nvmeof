@@ -6994,8 +6994,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         bucket_list = []
         try:
-            total_num_ios = _get_int_from_dict(ret, "total_num_ios")
-            buckets = ret.get("buckets")
+            statistics = ret.get("statistics") or []
+            ctrl_stats = statistics[0].get("stats", {}) if statistics else ret
+            total_num_ios = _get_int_from_dict(ctrl_stats, "total_num_ios")
+            buckets = ctrl_stats.get("buckets")
             if not buckets:
                 buckets = []
             for bucket in buckets:
