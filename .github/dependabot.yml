@@ -1,0 +1,39 @@
+---
+version: 2
+updates:
+  - package-ecosystem: "gomod"
+    directory: "/lib/go/nvmeof"
+    target-branch: "devel"
+    schedule:
+      interval: "weekly"
+    labels:
+      - bump-go-libs
+    commit-message:
+      prefix: "rebase"
+  - package-ecosystem: "gomod"
+    directory: "/lib/go/nvmeof"
+    target-branch: "tentacle_9.2"
+    schedule:
+      interval: "weekly"
+    labels:
+      - bump-go-libs
+    commit-message:
+      prefix: "rebase"
+  - package-ecosystem: "gomod"
+    directory: "/lib/go/nvmeof"
+    target-branch: "tentacle_9.1"
+    schedule:
+      interval: "weekly"
+    labels:
+      - bump-go-libs
+    commit-message:
+      prefix: "rebase"
+  - package-ecosystem: "gomod"
+    directory: "/lib/go/nvmeof"
+    target-branch: "umbrella"
+    schedule:
+      interval: "weekly"
+    labels:
+      - bump-go-libs
+    commit-message:
+      prefix: "rebase"
