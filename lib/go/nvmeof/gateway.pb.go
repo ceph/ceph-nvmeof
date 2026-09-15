@@ -2610,6 +2610,7 @@ type SetKeepHostConnectedReq struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	SubsystemNqn  string                 `protobuf:"bytes,1,opt,name=subsystem_nqn,json=subsystemNqn,proto3" json:"subsystem_nqn,omitempty"`
 	HostNqn       string                 `protobuf:"bytes,2,opt,name=host_nqn,json=hostNqn,proto3" json:"host_nqn,omitempty"`
+	KeepConnected *bool                  `protobuf:"varint,3,opt,name=keep_connected,json=keepConnected,proto3,oneof" json:"keep_connected,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2656,6 +2657,13 @@ func (x *SetKeepHostConnectedReq) GetHostNqn() string {
 		return x.HostNqn
 	}
 	return ""
+}
+
+func (x *SetKeepHostConnectedReq) GetKeepConnected() bool {
+	if x != nil && x.KeepConnected != nil {
+		return *x.KeepConnected
+	}
+	return false
 }
 
 type ListHostsReq struct {
@@ -7395,10 +7403,12 @@ const file_gateway_proto_rawDesc = "" +
 	"\x05force\x18\x03 \x01(\bH\x00R\x05force\x88\x01\x01\x12.\n" +
 	"\x10keep_connections\x18\x04 \x01(\bH\x01R\x0fkeepConnections\x88\x01\x01B\b\n" +
 	"\x06_forceB\x13\n" +
-	"\x11_keep_connections\"]\n" +
+	"\x11_keep_connections\"\x9c\x01\n" +
 	"\x1bset_keep_host_connected_req\x12#\n" +
 	"\rsubsystem_nqn\x18\x01 \x01(\tR\fsubsystemNqn\x12\x19\n" +
-	"\bhost_nqn\x18\x02 \x01(\tR\ahostNqn\"g\n" +
+	"\bhost_nqn\x18\x02 \x01(\tR\ahostNqn\x12*\n" +
+	"\x0ekeep_connected\x18\x03 \x01(\bH\x00R\rkeepConnected\x88\x01\x01B\x11\n" +
+	"\x0f_keep_connected\"g\n" +
 	"\x0elist_hosts_req\x12\x1c\n" +
 	"\tsubsystem\x18\x01 \x01(\tR\tsubsystem\x12&\n" +
 	"\fclear_alerts\x18\x02 \x01(\bH\x00R\vclearAlerts\x88\x01\x01B\x0f\n" +
@@ -8263,6 +8273,7 @@ func file_gateway_proto_init() {
 	file_gateway_proto_msgTypes[29].OneofWrappers = []any{}
 	file_gateway_proto_msgTypes[30].OneofWrappers = []any{}
 	file_gateway_proto_msgTypes[31].OneofWrappers = []any{}
+	file_gateway_proto_msgTypes[32].OneofWrappers = []any{}
 	file_gateway_proto_msgTypes[33].OneofWrappers = []any{}
 	file_gateway_proto_msgTypes[34].OneofWrappers = []any{}
 	file_gateway_proto_msgTypes[35].OneofWrappers = []any{}
