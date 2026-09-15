@@ -434,21 +434,13 @@ def test_degraded_namespace(caplog, two_gateways):
                f"in {subsystem1} to {gwB.gateway_rpc.MAINTENANCE_ANA_GROUP}, " \
                f"persistent: False, maintenance: False, context: None"
     wait_for_string(caplog, look_for, 300)
-    time.sleep(20)
-    look_for = f"Received auto request to change load balancing group for namespace with ID 1 " \
-               f"in {subsystem1} to 1, " \
-               f"persistent: True, maintenance: False, context: context"
-    wait_for_string(caplog, look_for, 300)
-    look_for = f"Received manual request to change load balancing group for namespace with ID 1 " \
-               f"in {subsystem1} to -1, " \
-               f"persistent: False, maintenance: False, context: None"
-    wait_for_string(caplog, look_for, 300)
     look_for_key = GatewayState.build_namespace_key(subsystem1, "1")
     state = gwB.gateway_state.omap.get_state()
     assert look_for_key in state.keys()
     val = state[look_for_key]
     req = json_format.Parse(val, pb2.namespace_add_req(), ignore_unknown_fields=True)
-    assert req.anagrpid == -1 or req.anagrpid == gwB.gateway_rpc.MAINTENANCE_ANA_GROUP
+    assert req.anagrpid == 1 or req.anagrpid == gwB.gateway_rpc.MAINTENANCE_ANA_GROUP
+
     if req.anagrpid == gwB.gateway_rpc.MAINTENANCE_ANA_GROUP:
         print("Namespace has a maintenance load balancing group ID, will wait for persistent one")
         for _ in range(120):
@@ -456,29 +448,22 @@ def test_degraded_namespace(caplog, two_gateways):
             assert look_for_key in state.keys()
             val = state[look_for_key]
             req = json_format.Parse(val, pb2.namespace_add_req(), ignore_unknown_fields=True)
-            if req.anagrpid == -1:
+            if req.anagrpid == 1:
                 break
             time.sleep(1)
-        assert req.anagrpid == -1
+        assert req.anagrpid == 1
     assert f"Received auto request to change load balancing group for namespace with ID 1 " \
-           f"in {subsystem1} to -1" not in caplog.text
+           f"in {subsystem1} to 1" in caplog.text
     caplog.clear()
     cli(["--format", "json", "--server-port", portA, "namespace", "list",
          "--subsystem", subsystem1, "--nsid", "1"])
     assert '"degraded": false' in caplog.text
-    assert '"pinned": true' in caplog.text
-    caplog.clear()
-    cli(["--server-port", portA, "namespace", "list", "--subsystem", subsystem1, "--nsid", "1"])
-    assert "(Pinned)" in caplog.text
+    assert ('"pinned": false' in caplog.text)
     caplog.clear()
     cli(["--format", "json", "--server-port", portB, "namespace", "list",
          "--subsystem", subsystem1, "--nsid", "1"])
     assert '"degraded": true' in caplog.text
-    assert '"pinned": true' in caplog.text
-    caplog.clear()
-    cli(["--server-port", portB, "namespace", "list", "--subsystem", subsystem1, "--nsid", "1"])
-    assert "Degraded" in caplog.text
-    assert "(Pinned)" in caplog.text
+    assert ('"pinned": false' in caplog.text)
     print("Run the KMIP server again")
     kmip_dir1 = os.path.join(kmip_dir_prefix, kmip_server_name1)
     kmip_procs[(kmip_addr, kmip_port)] = start_kmip_server_endpoint(
@@ -519,83 +504,7 @@ def test_degraded_namespace(caplog, two_gateways):
     assert look_for_key in state.keys()
     val = state[look_for_key]
     req = json_format.Parse(val, pb2.namespace_add_req(), ignore_unknown_fields=True)
-    assert req.anagrpid == -1
-
-
-def test_list_pinned_not_degraded(caplog, two_gateways):
-    gwA, _, _, _ = two_gateways
-    configA = gwA.gateway_rpc.config
-    assert restarted_gw_b is not None
-    configB = restarted_gw_b.gateway_rpc.config
-    portA = configA.config["gateway"]["port"]
-    portB = configB.config["gateway"]["port"]
-    caplog.clear()
-    cli(["--format", "json", "--server-port", portA, "namespace", "list",
-         "--subsystem", subsystem1, "--nsid", "1"])
-    assert '"degraded": false' in caplog.text
-    assert '"pinned": true' in caplog.text
-    caplog.clear()
-    cli(["--server-port", portA, "namespace", "list", "--subsystem", subsystem1, "--nsid", "1"])
-    assert "(Pinned)" in caplog.text
-    caplog.clear()
-    cli(["--format", "json", "--server-port", portB, "namespace", "list",
-         "--subsystem", subsystem1, "--nsid", "1"])
-    assert '"degraded": false' in caplog.text
-    assert '"pinned": true' in caplog.text
-    caplog.clear()
-    cli(["--server-port", portB, "namespace", "list", "--subsystem", subsystem1, "--nsid", "1"])
-    assert "(Pinned)" in caplog.text
-
-
-def test_unpin(caplog, two_gateways):
-    gwA, _, _, _ = two_gateways
-    configA = gwA.gateway_rpc.config
-    assert restarted_gw_b is not None
-    configB = restarted_gw_b.gateway_rpc.config
-    portA = configA.config["gateway"]["port"]
-    portB = configB.config["gateway"]["port"]
-    caplog.clear()
-    cli(["namespace", "unpin", "--subsystem", subsystem1, "--nsid", "1"])
-    assert f"Unpinning load balancing group for namespace 1 in {subsystem1}: " \
-           f"Successful" in caplog.text
-    look_for_key = GatewayState.build_namespace_key(subsystem1, "1")
-    state = restarted_gw_b.gateway_state.omap.get_state()
-    assert look_for_key in state.keys()
-    val = state[look_for_key]
-    req = json_format.Parse(val, pb2.namespace_add_req(), ignore_unknown_fields=True)
     assert req.anagrpid == 1
-    look_for = f"Received manual request to change load balancing group for namespace with " \
-               f"ID 1 in {subsystem1} to 1, persistent: False, maintenance: False, " \
-               f"context: None"
-    wait_for_string(caplog, look_for, 300)
-    assert f"Received request to delete namespace 1 from {subsystem1}" not in caplog.text
-    assert f"Received request to add namespace 1 to {subsystem1}" not in caplog.text
-    ns = cli_test(["--server-port", portA, "namespace", "list",
-                   "--subsystem", subsystem1, "--nsid", "1"])
-    assert ns.status == 0
-    assert len(ns.namespaces) == 1
-    assert ns.namespaces[0].nsid == 1
-    assert ns.namespaces[0].rbd_image_name == image1
-    assert ns.namespaces[0].rbd_pool_name == pool
-    assert not ns.namespaces[0].degraded
-    assert not ns.namespaces[0].pinned
-    ns = cli_test(["--server-port", portB, "namespace", "list",
-                   "--subsystem", subsystem1, "--nsid", "1"])
-    assert ns.status == 0
-    assert len(ns.namespaces) == 1
-    assert ns.namespaces[0].nsid == 1
-    assert ns.namespaces[0].rbd_image_name == image1
-    assert ns.namespaces[0].rbd_pool_name == pool
-    assert not ns.namespaces[0].degraded
-    assert not ns.namespaces[0].pinned
-    caplog.clear()
-    cli(["--server-port", portA, "namespace", "list", "--subsystem", subsystem1, "--nsid", "1"])
-    assert "(Pinned)" not in caplog.text
-    assert "Degraded" not in caplog.text
-    caplog.clear()
-    cli(["--server-port", portB, "namespace", "list", "--subsystem", subsystem1, "--nsid", "1"])
-    assert "(Pinned)" not in caplog.text
-    assert "Degraded" not in caplog.text
 
 
 def test_delete_resources(caplog, two_gateways):

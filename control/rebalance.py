@@ -209,7 +209,9 @@ class Rebalance:
                                          f"{min_ana_grp}, subsystem {chosen_nqn}"
                                          f"location {location} ")
                         # scale down rebalance
-                        self.ns_rebalance(context, ana_grp, min_ana_grp, 1, "0", location)
+                        self.ns_rebalance(context, ana_grp, min_ana_grp, 1, "0",
+                                          location, False, True)
+                        # need to rebalance encrypted namespaces also
                         return 0
                     else:
                         self.logger.info(f"warning: empty group {ana_grp} of Deleting "
@@ -293,7 +295,7 @@ class Rebalance:
                         self.logger.info(f"Start rebalance (deadlock resolving) dest. LB group "
                                          f" {min_ana_grp}, subsystem {chosen_nqn}")
                         self.ns_rebalance(context, invalid_ana_group, min_ana_grp, 1, "0",
-                                          location, force_rebalance)
+                                          location, force_rebalance, True)
                         return 0
                     else:
                         self.logger.warning(f"rebalance (deadlock resolving) is not allowed "
@@ -327,9 +329,7 @@ class Rebalance:
                 # rebalance from degraded ana_grp to ana_id grp with persistent flag
                 self.logger.info(f"Do rebalance of nsid {nsid} nqn {subsys}"
                                  f" to anagrp {ana_id} + timeout afterwards")
-                self.do_rebalance(self.degraded_group, ana_id, subsys, nsid, context, True, False)
-                time.sleep(4)
-                # timeout to state update otherwise persistent indication not stored
+                self.do_rebalance(self.degraded_group, ana_id, subsys, nsid, context, False, False)
                 return 0
         # 2. look for degraded ns in ana_id if found - put to degraded_ana_grp
         ns = self.gw_srv.subsystem_nsid_bdev_and_uuid.get_all_namespaces_by_ana_group_id(ana_id)
@@ -385,7 +385,7 @@ class Rebalance:
         return 0
 
     def ns_rebalance(self, context, ana_id, dest_ana_id, num, subs_nqn, location,
-                     force_rebalance=False) -> int:
+                     force_rebalance=False, force_encrypted_rebalance=False) -> int:
         now = time.time()
         num_rebalanced = 0
         self.logger.info(f"== rebalance started == for subsystem {subs_nqn}, LB grp {ana_id}, "
@@ -396,12 +396,13 @@ class Rebalance:
         for nsid, subsys in ns:
             ns_info = self.gw_srv.subsystem_nsid_bdev_and_uuid.find_namespace(subsys, nsid)
             self.logger.debug(f"nsid {nsid} nqn {subsys} location {ns_info.location} to rebalance:")
-            if self.gw_srv.subsystem_nsid_bdev_and_uuid.is_nsid_in_persistent_ana(subsys, nsid):
-                self.logger.info(f"Cannot rebalance nsid {nsid} nqn {subsys} "
-                                 f"from the persistent anagrp {ana_id}")
-                continue
             if not force_rebalance and ns_info.location != location:
-                self.logger.warning(f"namespace with wrong location: {ns_info.location} in LB "
+                self.logger.warning(f"not allowed rebalance: namespace with wrong location:"
+                                    f" {ns_info.location} in LB "
+                                    f"group {ana_id} nsid {nsid} nqn {subsys} ")
+                continue
+            if not force_encrypted_rebalance and ns_info.is_encrypted():
+                self.logger.warning(f"not allowed rebalance: namespace is encrypted in LB "
                                     f"group {ana_id} nsid {nsid} nqn {subsys} ")
                 continue
             if subsys == subs_nqn or subs_nqn == "0":
