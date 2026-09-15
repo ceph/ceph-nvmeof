@@ -399,6 +399,14 @@ class NamespaceInfo:
     def is_degraded(self) -> bool:
         return self.degraded
 
+    def is_encrypted(self) -> bool:
+        for ent in self.encryption_entries:
+            if ent.format == pb2.EncryptionFormat.none:
+                continue
+            if ent.key_id:
+                return True
+        return False
+
     def is_pinned(self) -> bool:
         return self.anagrpid < 0
 
