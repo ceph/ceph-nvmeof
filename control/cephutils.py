@@ -359,7 +359,9 @@ class CephUtils:
                 return "Missing encryption format"
             elif rbd_enc_format < 0:
                 return f"Invalid encryption format {enc.format}"
-            specs.append((rbd_enc_format, enc.key_id))
+            passphrase = enc.key_id if isinstance(enc.key_id, bytes) else \
+                enc.key_id.encode(encoding="utf-8")
+            specs.append((rbd_enc_format, passphrase))
 
         with rados.Rados(conffile=self.ceph_conf, rados_id=self.rados_id) as cluster:
             with cluster.open_ioctx(pool_name) as ioctx:
@@ -385,7 +387,7 @@ class CephUtils:
 
     def create_image(self, pool_name, data_pool_name, rados_namespace_name, image_name,
                      size, encryption_format=None, encryption_algorithm=None,
-                     passphrase=None) -> bool:
+                     passphrase=None, verify_settings=True) -> bool:
         image_path = f"{pool_name}/{rados_namespace_name}/{image_name}" if rados_namespace_name \
             else f"{pool_name}/{image_name}"
         # Check for pool existence in advance as we don't create it if it's not there
@@ -424,12 +426,13 @@ class CephUtils:
                                       f"a size of {image_size} bytes which differs from the "
                                       f"requested size of {size} bytes",
                                       errno=errno.EEXIST)
-            if rbd_encryption_format is not None and passphrase is not None:
-                enc = pb2.encryption_entry(format=encryption_format, key_id=passphrase)
-                enc_msg = self.verify_image_encryption_settings(
-                    pool_name, rados_namespace_name, image_name, image_path, [enc])
-                if enc_msg:
-                    raise rbd.PermissionError(enc_msg, errno=errno.EPERM)
+            if verify_settings:
+                if rbd_encryption_format is not None and passphrase is not None:
+                    enc = pb2.encryption_entry(format=encryption_format, key_id=passphrase)
+                    enc_msg = self.verify_image_encryption_settings(
+                        pool_name, rados_namespace_name, image_name, image_path, [enc])
+                    if enc_msg:
+                        raise rbd.PermissionError(enc_msg, errno=errno.EPERM)
             return False    # Image exists with an identical size, there is nothing to do here
 
         with rados.Rados(conffile=self.ceph_conf, rados_id=self.rados_id) as cluster:

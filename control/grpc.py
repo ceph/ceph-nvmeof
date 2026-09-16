@@ -1203,6 +1203,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                 f"to {self.max_namespaces}")
             self.max_namespaces_per_subsystem = self.max_namespaces
 
+        self.verify_image_encryption_settings = self.config.getboolean_with_default(
+            "gateway", "verify_image_encryption_settings", True)
         self.kmip_cert_dir = self.config.get_with_default("kmip",
                                                           "cert_dir",
                                                           "./certs/kmip/{server_name}")
@@ -1840,7 +1842,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     rados_namespace_name,
                     rbd_image_name, rbd_image_size,
                     enc_format, encryption_algorithm,
-                    passphrase=passphrase)
+                    passphrase=passphrase,
+                    verify_settings=self.verify_image_encryption_settings)
                 if rc:
                     data_pool_msg = ""
                     if rbd_data_pool_name:
@@ -1897,7 +1900,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 return BdevStatus(status=errno.EIO,
                                   error_message=errmsg)
 
-            if len(encryption_entries) > 0:
+            if len(encryption_entries) > 0 and self.verify_image_encryption_settings:
                 enc_msg = self.ceph_utils.verify_image_encryption_settings(
                     rbd_pool_name,
                     rados_namespace_name,

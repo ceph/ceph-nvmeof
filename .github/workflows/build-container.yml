@@ -246,6 +246,21 @@ jobs:
         run: |
           make protoc
 
+      - name: Create clone image
+        if: ${{ matrix.test == 'rbd_encrypt' }}
+        run: |
+          echo "💁 create clone image"
+          make exec SVC=ceph OPTS="-T" CMD="rbd create rbd/stacked --size 16GB"
+          make exec SVC=ceph OPTS="-T" CMD="/bin/bash -c 'echo -n bla > /tmp/pass1 ; rbd encryption format rbd/stacked luks2 /tmp/pass1'"
+          make exec SVC=ceph OPTS="-T" CMD="rbd snap create rbd/stacked@snap1"
+          make exec SVC=ceph OPTS="-T" CMD="rbd snap protect rbd/stacked@snap1"
+          make exec SVC=ceph OPTS="-T" CMD="rbd clone rbd/stacked@snap1 rbd/stacked_cl"
+          make exec SVC=ceph OPTS="-T" CMD="/bin/bash -c 'echo -n junk > /tmp/pass2 ; rbd encryption format rbd/stacked_cl luks1 /tmp/pass2'"
+          make exec SVC=ceph OPTS="-T" CMD="rbd snap create rbd/stacked_cl@snap2"
+          make exec SVC=ceph OPTS="-T" CMD="rbd snap protect rbd/stacked_cl@snap2"
+          make exec SVC=ceph OPTS="-T" CMD="rbd clone rbd/stacked_cl@snap2 rbd/stacked_cl_cl"
+          make exec SVC=ceph OPTS="-T" CMD="/bin/bash -c 'echo -n stam > /tmp/pass3 ; rbd encryption format rbd/stacked_cl_cl luks2 /tmp/pass3'"
+
       - name: Run ${{ matrix.test }} test
         run: |
           # Run tests code in current dir

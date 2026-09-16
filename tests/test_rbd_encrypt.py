@@ -21,12 +21,18 @@ image3 = "enc_test_image3"
 image4 = "enc_test_image4"
 image5 = "enc_test_image5"
 image6 = "enc_test_image6"
+image7 = "enc_test_image7"
+image8 = "enc_test_image8"
+stacked_image = "stacked"
+cloned_image = "stacked_cl"
+cloned_image2 = "stacked_cl_cl"
 pool = "rbd"
 subsystem1 = "nqn.2016-06.io.spdk:cnode1"
 subsystem2 = "nqn.2016-06.io.spdk:cnode2"
 subsystem3 = "nqn.2016-06.io.spdk:cnode3"
 subsystem4 = "nqn.2016-06.io.spdk:cnode4"
 subsystem5 = "nqn.2016-06.io.spdk:cnode5"
+subsystem6 = "nqn.2016-06.io.spdk:cnode6"
 group_name = "GROUPNAME"
 kmip_dir_prefix = "/tmp/kmip/"
 kmip_dir1 = ""
@@ -1128,6 +1134,17 @@ def test_open_with_encryption_wrong_key_id(caplog, two_gateways):
            f"image {pool}/{image}" in caplog.text
 
 
+def test_open_with_encryption_wrong_format(caplog, two_gateways):
+    key_id = add_key_to_kmip_server_endpoint(kmip_dir1, kmip_addr, kmip_port, "bla")
+    caplog.clear()
+    cli(["namespace", "add", "--subsystem", subsystem1, "--rbd-pool", pool,
+         "--rbd-data-pool", pool, "--rbd-image", image,
+         "--encryption-format", "luks2", "--key-id", key_id])
+    assert f"Failure adding namespace to {subsystem1}: RBD " \
+           f"image {pool}/{image} is not formatted for encryption or " \
+           f"is formatted using the wrong encryption format" in caplog.text
+
+
 def test_open_with_encryption_plain_image(caplog, two_gateways):
     key_id = add_key_to_kmip_server_endpoint(kmip_dir1, kmip_addr, kmip_port, "bla")
     caplog.clear()
@@ -1144,6 +1161,87 @@ def test_open_with_encryption_plain_image(caplog, two_gateways):
          "--encryption-format", "luks1", "--key-id", key_id])
     assert f"Failure adding namespace to {subsystem1}: RBD " \
            f"image {pool}/{image6} is not formatted for encryption" in caplog.text
+
+
+def test_open_cloned_image_triple(caplog, two_gateways):
+    key_id = add_key_to_kmip_server_endpoint(kmip_dir1, kmip_addr, kmip_port, "bla")
+    key_id2 = add_key_to_kmip_server_endpoint(kmip_dir1, kmip_addr, kmip_port, "junk")
+    key_id3 = add_key_to_kmip_server_endpoint(kmip_dir1, kmip_addr, kmip_port, "stam")
+    caplog.clear()
+    cli(["namespace", "add", "--subsystem", subsystem1, "--rbd-pool", pool,
+         "--rbd-data-pool", pool, "--rbd-image", cloned_image2,
+         "--encryption-format", "luks2", "luks1", "luks2",
+         "--key-id", key_id3, key_id2, key_id])
+    wait_for_string(caplog, f"Adding namespace 1 to {subsystem1}: Successful", 5)
+    wait_for_string(caplog, f'encryption_entries: [(format: luks2, key id: {key_id3}), '
+                            f'(format: luks1, key id: {key_id2}), '
+                            f'(format: luks2, key id: {key_id})], '
+                            f'encryption_algorithm: no_algorithm, context: <', 5)
+    wait_for_string(caplog, f'encryption_entries: [(format: luks2, key id: {key_id3}), '
+                            f'(format: luks1, key id: {key_id2}), '
+                            f'(format: luks2, key id: {key_id})], '
+                            f'encryption_algorithm: no_algorithm, context: None', 60)
+    caplog.clear()
+    cli(["--format", "json", "namespace", "list", "--subsystem", subsystem1, "--nsid", "1"])
+    assert f'"encryption_entries":[{{"format":"luks2","key_id":"{key_id3}"}},' \
+           f'{{"format":"luks1","key_id":"{key_id2}"}},' \
+           f'{{"format":"luks2","key_id":"{key_id}"}}]' \
+           in caplog.text.replace(" ", "").replace("\n", "")
+    assert '"encryption_algorithm"' not in caplog.text
+    caplog.clear()
+    cli(["namespace", "del", "--subsystem", subsystem1, "--nsid", "1"])
+    assert f"Deleting namespace 1 from {subsystem1}: Successful" in caplog.text
+    time.sleep(20)
+
+
+def test_open_cloned_image_double(caplog, two_gateways):
+    key_id = add_key_to_kmip_server_endpoint(kmip_dir1, kmip_addr, kmip_port, "bla")
+    key_id2 = add_key_to_kmip_server_endpoint(kmip_dir1, kmip_addr, kmip_port, "junk")
+    caplog.clear()
+    cli(["namespace", "add", "--subsystem", subsystem1, "--rbd-pool", pool,
+         "--rbd-data-pool", pool, "--rbd-image", cloned_image,
+         "--encryption-format", "luks1", "luks2",
+         "--key-id", key_id2, key_id])
+    wait_for_string(caplog, f"Adding namespace 1 to {subsystem1}: Successful", 5)
+    wait_for_string(caplog, f'encryption_entries: [(format: luks1, key id: {key_id2}), '
+                            f'(format: luks2, key id: {key_id})], '
+                            f'encryption_algorithm: no_algorithm, context: <', 5)
+    wait_for_string(caplog, f'encryption_entries: [(format: luks1, key id: {key_id2}), '
+                            f'(format: luks2, key id: {key_id})], '
+                            f'encryption_algorithm: no_algorithm, context: None', 60)
+    caplog.clear()
+    cli(["--format", "json", "namespace", "list", "--subsystem", subsystem1, "--nsid", "1"])
+    assert f'"encryption_entries":[{{"format":"luks1","key_id":"{key_id2}"}},' \
+           f'{{"format":"luks2","key_id":"{key_id}"}}]' \
+           in caplog.text.replace(" ", "").replace("\n", "")
+    assert '"encryption_algorithm"' not in caplog.text
+    caplog.clear()
+    cli(["namespace", "del", "--subsystem", subsystem1, "--nsid", "1"])
+    assert f"Deleting namespace 1 from {subsystem1}: Successful" in caplog.text
+    time.sleep(20)
+
+
+def test_open_cloned_image_parent(caplog, two_gateways):
+    key_id = add_key_to_kmip_server_endpoint(kmip_dir1, kmip_addr, kmip_port, "bla")
+    caplog.clear()
+    cli(["namespace", "add", "--subsystem", subsystem1, "--rbd-pool", pool,
+         "--rbd-data-pool", pool, "--rbd-image", stacked_image,
+         "--encryption-format", "luks2",
+         "--key-id", key_id])
+    wait_for_string(caplog, f"Adding namespace 1 to {subsystem1}: Successful", 5)
+    wait_for_string(caplog, f'encryption_entries: [(format: luks2, key id: {key_id})], '
+                            f'encryption_algorithm: no_algorithm, context: <', 5)
+    wait_for_string(caplog, f'encryption_entries: [(format: luks2, key id: {key_id})], '
+                            f'encryption_algorithm: no_algorithm, context: None', 60)
+    caplog.clear()
+    cli(["--format", "json", "namespace", "list", "--subsystem", subsystem1, "--nsid", "1"])
+    assert f'"encryption_entries":[{{"format":"luks2","key_id":"{key_id}"}}]' \
+           in caplog.text.replace(" ", "").replace("\n", "")
+    assert '"encryption_algorithm"' not in caplog.text
+    caplog.clear()
+    cli(["namespace", "del", "--subsystem", subsystem1, "--nsid", "1"])
+    assert f"Deleting namespace 1 from {subsystem1}: Successful" in caplog.text
+    time.sleep(20)
 
 
 def test_list_namespaces(caplog, two_gateways):
@@ -1422,3 +1520,88 @@ def test_delete_subsystems(caplog, two_gateways):
     state = gw.gateway_state.omap.get_state()
     for key, val in state.items():
         assert not key.startswith(gw.gateway_state.local.KMIP_SERVER_ENDPOINT_PREFIX)
+
+
+def test_wrong_key_id_no_verification(caplog, two_gateways):
+    gwA, _, gwB, _ = two_gateways
+    configA = gwA.gateway_rpc.config
+    configA.config["gateway"]["verify_image_encryption_settings"] = "False"
+
+    caplog.clear()
+    gwA.__exit__(None, None, None)
+    print("Restarting gateway A")
+    time.sleep(90)
+    gwA = GatewayServer(configA)
+    ceph_utils = CephUtils(configA)
+    ceph_utils.execute_ceph_monitor_command(
+        "{" + f'"prefix":"nvme-gw create", "id": "{gwA.name}", "pool": "{pool}", '
+        f'"group": "{group_name}"' + "}"
+    )
+    caplog.clear()
+    gwA.serve()
+    time.sleep(30)
+    assert gwA.gateway_rpc.up_and_running
+    gwB.__exit__(None, None, None)
+    caplog.clear()
+    cli(["subsystem", "add", "--subsystem",
+         subsystem6, "--no-group-append"])
+    assert f"Adding subsystem {subsystem6}: Successful" in caplog.text
+    caplog.clear()
+    cli(["subsystem", "add_kmip_server_endpoint", "--subsystem",
+         subsystem6, "--address", kmip_addr,
+         "--server-name", kmip_server_name1,
+         "--port", str(kmip_port)])
+    assert f"Adding an endpoint, with address {kmip_addr}:{kmip_port}, to KMIP server " \
+           f"{kmip_server_name1} on subsystem {subsystem6}: Successful" in caplog.text
+    key_id = add_key_to_kmip_server_endpoint(kmip_dir1, kmip_addr, kmip_port, "bla")
+    caplog.clear()
+    cli(["namespace", "add", "--subsystem", subsystem6, "--rbd-pool", pool,
+         "--rbd-data-pool", pool, "--rbd-image", image7, "--size", "16MB",
+         "--rbd-create-image", "--encryption-format", "luks1",
+         "--key-id", key_id])
+    wait_for_string(caplog, f"Adding namespace 1 to {subsystem6}: Successful", 5)
+    wait_for_string(caplog, f'encryption_entries: [(format: luks1, key id: {key_id})], '
+                            f'encryption_algorithm: no_algorithm, context: <', 5)
+    caplog.clear()
+    cli(["namespace", "del", "--subsystem", subsystem6, "--nsid", "1"])
+    assert f"Deleting namespace 1 from {subsystem6}: Successful" in caplog.text
+    wrong_key_id = add_key_to_kmip_server_endpoint(kmip_dir1, kmip_addr, kmip_port, "wrong")
+    caplog.clear()
+    cli(["namespace", "add", "--subsystem", subsystem6, "--rbd-pool", pool,
+         "--rbd-data-pool", pool, "--rbd-image", image7,
+         "--encryption-format", "luks1", "--key-id", wrong_key_id])
+    assert f"Failure adding namespace to {subsystem6}: Operation not permitted" in caplog.text
+    assert f"Failure adding namespace to {subsystem6}: Wrong passphrase for RBD " \
+           f"image {pool}/{image7}" not in caplog.text
+
+
+def test_wrong_encryption_format_no_verification(caplog, two_gateways):
+    key_id = add_key_to_kmip_server_endpoint(kmip_dir1, kmip_addr, kmip_port, "bla")
+    caplog.clear()
+    cli(["namespace", "add", "--subsystem", subsystem6, "--rbd-pool", pool,
+         "--rbd-data-pool", pool, "--rbd-image", image7,
+         "--encryption-format", "luks2", "--key-id", key_id])
+    assert f"Failure adding namespace to {subsystem6}: Operation not permitted" in caplog.text
+    assert f"Failure adding namespace to {subsystem6}: RBD " \
+           f"image {pool}/{image7} is not formatted for encryption or " \
+           f"is formatted using the wrong encryption format" not in caplog.text
+
+
+def test_plain_image_no_verification(caplog, two_gateways):
+    key_id = add_key_to_kmip_server_endpoint(kmip_dir1, kmip_addr, kmip_port, "bla")
+    caplog.clear()
+    cli(["namespace", "add", "--subsystem", subsystem6, "--rbd-pool", pool,
+         "--rbd-data-pool", pool, "--rbd-image", image8, "--size", "16MB",
+         "--rbd-create-image"])
+    wait_for_string(caplog, f"Adding namespace 1 to {subsystem6}: Successful", 5)
+    caplog.clear()
+    cli(["namespace", "del", "--subsystem", subsystem6, "--nsid", "1"])
+    assert f"Deleting namespace 1 from {subsystem6}: Successful" in caplog.text
+    caplog.clear()
+    cli(["namespace", "add", "--subsystem", subsystem6, "--rbd-pool", pool,
+         "--rbd-data-pool", pool, "--rbd-image", image8,
+         "--encryption-format", "luks1", "--key-id", key_id])
+    assert f"Failure adding namespace to {subsystem6}: Operation not permitted" in caplog.text
+    assert f"Failure adding namespace to {subsystem6}: RBD " \
+           f"image {pool}/{image8} is not formatted for encryption or " \
+           f"is formatted using the wrong encryption format" not in caplog.text
