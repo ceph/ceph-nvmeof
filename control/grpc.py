@@ -7814,62 +7814,81 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 self.logger.error(errmsg)
                 return pb2.req_status(status=errno.ENOTEMPTY, error_message=errmsg)
 
-        omap_lock = self.omap_lock.get_omap_lock_to_use(context)
-        with omap_lock:
-            try:
-                is_in_local_list = False
-                is_active = False
-                if request.nqn in self.subsystem_listeners:
-                    for secure in [False, True]:
-                        active_lstnr = (adrfam, traddr, request.trsvcid, secure, True)
-                        non_active_lstnr = (adrfam, traddr, request.trsvcid, secure, False)
-                        if active_lstnr in self.subsystem_listeners[request.nqn]:
-                            is_active = True
-                            is_in_local_list = True
-                            break
-                        elif non_active_lstnr in self.subsystem_listeners[request.nqn]:
-                            is_in_local_list = True
+        try:
+            is_in_local_list = False
+            is_active = False
+            if request.nqn in self.subsystem_listeners:
+                for secure in [False, True]:
+                    active_lstnr = (adrfam, traddr, request.trsvcid, secure, True)
+                    non_active_lstnr = (adrfam, traddr, request.trsvcid, secure, False)
+                    if active_lstnr in self.subsystem_listeners[request.nqn]:
+                        is_active = True
+                        is_in_local_list = True
+                        break
+                    elif non_active_lstnr in self.subsystem_listeners[request.nqn]:
+                        is_in_local_list = True
 
-                if not is_in_local_list:
-                    errmsg = "Listener not found in local list, will continue"
-                    self.logger.warning(errmsg)
+            if not is_in_local_list:
+                errmsg = "Listener not found in local list, will continue"
+                self.logger.warning(errmsg)
 
-                if context:
-                    state = self.gateway_state.local.get_state()
-                    listener_prefix = GatewayState.build_partial_listener_key(
-                        request.nqn, None)
-                    is_auto_listener = False
-                    if request.nqn in self.subsystem_auto_listeners:
-                        lsnr = (adrfam, traddr, request.trsvcid)
-                        is_auto_listener = lsnr in self.subsystem_auto_listeners[request.nqn]
-                    if is_auto_listener:
-                        errmsg = f"{delete_listener_error_prefix}: Listener was created " \
-                                 f"automatically as part of the subsystem's network mask. " \
-                                 f"To remove it, modify the network mask."
-                        self.logger.error(errmsg)
-                        return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
-                    is_in_omap = False
-                    for key, val in state.items():
-                        if not key.startswith(listener_prefix):
-                            continue
-                        try:
-                            lstnr = json_format.Parse(val, pb2.create_listener_req(),
-                                                      ignore_unknown_fields=True)
-                            if lstnr.traddr == traddr and lstnr.trsvcid == request.trsvcid:
-                                if request.host_name == "*" or lstnr.host_name == request.host_name:
-                                    is_in_omap = True
-                                    break
-                        except Exception:
-                            self.logger.exception(f"Got exception while parsing {val}")
-                            continue
-                    if not is_in_omap:
-                        if is_in_local_list:
-                            self.remove_listener_from_local_list(request.nqn,
-                                                                 adrfam, traddr, request.trsvcid)
-                        errmsg = f"{delete_listener_error_prefix}: Listener not found"
-                        self.logger.error(errmsg)
-                        return pb2.req_status(status=errno.ENOENT, error_message=errmsg)
+            if context:
+                state = self.gateway_state.local.get_state()
+                listener_prefix = GatewayState.build_partial_listener_key(
+                    request.nqn, None)
+                is_in_omap = False
+                addr_in_omap = False
+                for key, val in state.items():
+                    if not key.startswith(listener_prefix):
+                        continue
+                    try:
+                        lstnr = json_format.Parse(val, pb2.create_listener_req(),
+                                                  ignore_unknown_fields=True)
+                        if lstnr.traddr == traddr and lstnr.trsvcid == request.trsvcid:
+                            addr_in_omap = True
+                            if request.host_name == "*" or lstnr.host_name == request.host_name:
+                                is_in_omap = True
+                                break
+                    except Exception:
+                        self.logger.exception(f"Got exception while parsing {val}")
+                        continue
 
+                is_auto_listener = False
+                lsnr = (adrfam, traddr, request.trsvcid)
+                if lsnr in self.subsystem_auto_listeners.get(request.nqn, set()):
+                    is_auto_listener = True
+                elif not is_in_omap and not addr_in_omap and self.subsys_network.get(request.nqn):
+                    try:
+                        pool = self.config.get("ceph", "pool")
+                        group = self.config.get("gateway", "group")
+                        nvmemon_listeners = self.ceph_utils.get_gw_listeners(pool, group)
+                        for _listener in nvmemon_listeners.get(request.nqn, []):
+                            address = _listener.get("address")
+                            svcid = int(_listener.get("svcid") or 0)
+                            if ((address == traddr) and (svcid == request.trsvcid)):
+                                is_auto_listener = True
+                                break
+                    except Exception:
+                        self.logger.exception(
+                            f"Failed to query 'nvme-gw listeners' for {request.nqn}")
+
+                if is_auto_listener:
+                    errmsg = f"{delete_listener_error_prefix}: Listener was created " \
+                             f"automatically as part of the subsystem's network mask. " \
+                             f"To remove it, modify the network mask."
+                    self.logger.error(errmsg)
+                    return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
+
+                if not is_in_omap:
+                    if is_in_local_list:
+                        self.remove_listener_from_local_list(request.nqn,
+                                                             adrfam, traddr, request.trsvcid)
+                    errmsg = f"{delete_listener_error_prefix}: Listener not found"
+                    self.logger.error(errmsg)
+                    return pb2.req_status(status=errno.ENOENT, error_message=errmsg)
+
+            omap_lock = self.omap_lock.get_omap_lock_to_use(context)
+            with omap_lock:
                 if request.host_name == self.host_name or request.force:
                     if is_in_local_list and is_active:
                         ret = self.spdk_rpc_client.nvmf_subsystem_remove_listener(
@@ -7891,29 +7910,29 @@ class GatewayService(pb2_grpc.GatewayServicer):
                         self.logger.warning(f"Listener not deleted as it belongs to gateway "
                                             f"{request.host_name}, not this gateway "
                                             f"({self.host_name})")
-            except Exception as ex:
-                self.logger.exception(delete_listener_error_prefix)
-                # It's OK for SPDK to fail in case we used a different host name,
-                # just continue to remove from OMAP
-                if request.host_name == self.host_name:
-                    errmsg = f"{delete_listener_error_prefix}:\n{ex}"
-                    resp = self.parse_json_exeption(ex)
-                    status = errno.EINVAL
-                    if resp:
-                        status = resp["code"]
-                        errmsg = f"{delete_listener_error_prefix}: {resp['message']}"
-                    return pb2.req_status(status=status, error_message=errmsg)
-                ret = True
+        except Exception as ex:
+            self.logger.exception(delete_listener_error_prefix)
+            # It's OK for SPDK to fail in case we used a different host name,
+            # just continue to remove from OMAP
+            if request.host_name == self.host_name:
+                errmsg = f"{delete_listener_error_prefix}:\n{ex}"
+                resp = self.parse_json_exeption(ex)
+                status = errno.EINVAL
+                if resp:
+                    status = resp["code"]
+                    errmsg = f"{delete_listener_error_prefix}: {resp['message']}"
+                return pb2.req_status(status=status, error_message=errmsg)
+            ret = True
 
-            # Just in case SPDK failed with no exception
-            if not ret:
-                self.logger.error(delete_listener_error_prefix)
-                return pb2.req_status(status=errno.EINVAL,
-                                      error_message=delete_listener_error_prefix)
+        # Just in case SPDK failed with no exception
+        if not ret:
+            self.logger.error(delete_listener_error_prefix)
+            return pb2.req_status(status=errno.EINVAL,
+                                  error_message=delete_listener_error_prefix)
 
-            return self.remove_listener_from_state_and_local_list(request.nqn, request.host_name,
-                                                                  adrfam, traddr,
-                                                                  request.trsvcid, context)
+        return self.remove_listener_from_state_and_local_list(request.nqn, request.host_name,
+                                                              adrfam, traddr,
+                                                              request.trsvcid, context)
 
     def delete_listener(self, request, context=None):
         err_prefix = f"Failed to delete listener {request.traddr}:" \
