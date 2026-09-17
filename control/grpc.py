@@ -1052,6 +1052,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                 f"to {self.max_namespaces}")
             self.max_namespaces_per_subsystem = self.max_namespaces
 
+        self.verify_image_encryption_settings = self.config.getboolean_with_default(
+            "gateway", "verify_image_encryption_settings", True)
         self.kmip_cert_dir = self.config.get_with_default("kmip",
                                                           "cert_dir",
                                                           "./certs/kmip/{server_name}")
@@ -1725,7 +1727,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     rados_namespace_name,
                     rbd_image_name, rbd_image_size,
                     enc_format, encryption_algorithm,
-                    passphrase=passphrase)
+                    passphrase=passphrase,
+                    verify_settings=self.verify_image_encryption_settings)
                 if rc:
                     data_pool_msg = ""
                     if rbd_data_pool_name:
@@ -1781,7 +1784,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 return BdevStatus(status=errno.EIO,
                                   error_message=errmsg)
 
-            if len(encryption_entries) > 0:
+            if len(encryption_entries) > 0 and self.verify_image_encryption_settings:
                 enc_msg = self.ceph_utils.verify_image_encryption_settings(
                     rbd_pool_name,
                     rados_namespace_name,
@@ -6288,8 +6291,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     self.remove_all_host_keys_from_keyring(request.subsystem_nqn, request.host_nqn)
                     return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
 
-        self.host_info.reset_connected_host_indication(request.subsystem_nqn,
-                                                       request.host_nqn)
+        self.host_info.reset_connected_host_indication(request.subsystem_nqn, request.host_nqn)
 
         return pb2.req_status(status=0, error_message=host_add_warning)
 
@@ -6465,12 +6467,15 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     if request.keep_connections:
                         set_connected_req = pb2.set_keep_host_connected_req(
                             subsystem_nqn=request.subsystem_nqn,
-                            host_nqn=request.host_nqn)
+                            host_nqn=request.host_nqn,
+                            keep_connected=True)
                         json_req = json_format.MessageToJson(
                             set_connected_req, preserving_proto_field_name=True,
                             including_default_value_fields=True)
+                        salt = str(time.time())
                         self.gateway_state.add_connected_host(request.subsystem_nqn,
                                                               request.host_nqn,
+                                                              salt,
                                                               json_req)
                     else:
                         self.gateway_state.remove_connected_host(request.subsystem_nqn,
@@ -6533,9 +6538,14 @@ class GatewayService(pb2_grpc.GatewayServicer):
         self.logger.info(
             f"Received request to set keep host connected indication for "
             f"host {request.host_nqn} "
-            f"on subsystem {request.subsystem_nqn}, context: {context}{peer_msg}")
-        self.host_info.set_connected_host_indication(request.subsystem_nqn,
-                                                     request.host_nqn)
+            f"on subsystem {request.subsystem_nqn}, keep connected: {request.keep_connected}, "
+            f"context: {context}{peer_msg}")
+        if request.keep_connected:
+            self.host_info.set_connected_host_indication(request.subsystem_nqn,
+                                                         request.host_nqn)
+        else:
+            self.host_info.reset_connected_host_indication(request.subsystem_nqn,
+                                                           request.host_nqn)
         return pb2.req_status(status=0, error_message="")
 
     def change_host_key_safe(self, request, context):

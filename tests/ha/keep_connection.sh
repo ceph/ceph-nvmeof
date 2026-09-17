@@ -31,10 +31,8 @@ make exec SVC=bdevperf OPTS=-T CMD="$rpc -v -s $BDEVPERF_SOCKET bdev_nvme_set_op
 echo "ℹ️  Create resources"
 cephnvmf_func1 listener add --subsystem ${NQN} --host-name ${GW1_NAME} --traddr $ip1 --trsvcid 4430
 cephnvmf_func2 listener add --subsystem ${NQN} --host-name ${GW2_NAME} --traddr $ip2 --trsvcid 4430
-/usr/bin/docker compose run --rm nvmeof-cli --server-address ${ip1} --server-port ${NVMEOF_GW_PORT} host del --subsystem ${NQN} --host-nqn "*"
-cephnvmf_func1 namespace del --subsystem ${NQN} --nsid 2
 cephnvmf_func1 host add --subsystem ${NQN} --host-nqn ${NQN}host1
-sleep 20
+sleep 120
 
 echo "ℹ️  Connect"
 devs=`make -s exec SVC=bdevperf OPTS=-T CMD="$rpc -v -s $BDEVPERF_SOCKET bdev_nvme_attach_controller -b Nvme0 -t tcp -a $ip1 -s 4420 -f ipv4 -n $NQN -q ${NQN}host1 -l -1 -o 10"`
@@ -70,7 +68,7 @@ set -e
 
 echo "ℹ️  Delete host and keep connection"
 cephnvmf_func1 host del --subsystem ${NQN} --host-nqn ${NQN}host1 --keep-connections
-sleep 25
+sleep 120
 grep "Received request to remove host ${NQN}host1 access from ${NQN}, force: False, keep connections: True, context: <grpc._server" /var/log/ceph/nvmeof-$GW1_NAME/nvmeof-log
 grep "Received request to remove host ${NQN}host1 access from ${NQN}, force: False, keep connections: True, context: None" /var/log/ceph/nvmeof-$GW2_NAME/nvmeof-log
 
@@ -94,7 +92,7 @@ conns=$(cephnvmf_func1 --output stdio --format json connection list --subsystem 
 [[ `echo $conns | jq -r '.connections[1]'` == "null" ]]
 
 echo "ℹ️  Verify OMAP after host delete"
-make -s exec SVC=ceph OPTS=-T CMD="rados --pool rbd listomapvals nvmeof.state" | grep "connected-del-host"
+make -s exec SVC=ceph OPTS=-T CMD="rados --pool rbd listomapvals nvmeof.state" | grep "connected-del-host_${NQN}_${NQN}host1"
 
 echo "ℹ️  Verify host list is empty after host delete"
 hosts=$(cephnvmf_func1 --output stdio --format json host list --subsystem $NQN)
@@ -131,16 +129,10 @@ conns=$(cephnvmf_func1 --output stdio --format json connection list --subsystem 
 
 echo "ℹ️  Re-add host"
 cephnvmf_func1 host add --subsystem ${NQN} --host-nqn ${NQN}host1
-sleep 20
+sleep 120
 
 echo "ℹ️  Verify OMAP after host re-add"
-set +e
-    make -s exec SVC=ceph OPTS=-T CMD="rados --pool rbd listomapvals nvmeof.state" | grep "connected-del-host"
-    if [[ $? -eq 0 ]]; then
-        echo "Shouldn't have connected host entry in OMAP after we re-add the host"
-        exit 1
-    fi
-set -e
+make -s exec SVC=ceph OPTS=-T CMD="rados --pool rbd listomapvals nvmeof.state" | grep "connected-del-host_${NQN}_${NQN}host1"
 
 echo "ℹ️  Verify host list after host re-add"
 hosts=$(cephnvmf_func1 --output stdio --format json host list --subsystem $NQN)
@@ -186,13 +178,13 @@ conns=$(cephnvmf_func1 --output stdio --format json connection list --subsystem 
 
 echo "ℹ️  Delete host and do not keep connection"
 cephnvmf_func1 host del --subsystem ${NQN} --host-nqn ${NQN}host1
-sleep 25
+sleep 120
 grep "Received request to remove host ${NQN}host1 access from ${NQN}, force: False, keep connections: False, context: <grpc._server" /var/log/ceph/nvmeof-$GW1_NAME/nvmeof-log
 grep "Received request to remove host ${NQN}host1 access from ${NQN}, force: False, keep connections: False, context: None" /var/log/ceph/nvmeof-$GW2_NAME/nvmeof-log
 
 echo "ℹ️  Verify OMAP after second host delete"
 set +e
-    make -s exec SVC=ceph OPTS=-T CMD="rados --pool rbd listomapvals nvmeof.state" | grep "connected-del-host"
+    make -s exec SVC=ceph OPTS=-T CMD="rados --pool rbd listomapvals nvmeof.state" | grep "connected-del-host_${NQN}_${NQN}host1"
     if [[ $? -eq 0 ]]; then
         echo "Shouldn't have connected host entry in OMAP after we deleted the host without keep-connections"
         exit 1
@@ -253,7 +245,7 @@ conns=$(cephnvmf_func1 --output stdio --format json connection list --subsystem 
 
 echo "ℹ️  Delete host, keeping connection"
 cephnvmf_func1 host del --subsystem ${NQN} --host-nqn ${NQN}host2 --keep-connections
-sleep 25
+sleep 120
 
 echo "ℹ️  Verify connection list after host delete"
 conns=$(cephnvmf_func1 --output stdio --format json connection list --subsystem $NQN)
@@ -312,3 +304,77 @@ conns=$(cephnvmf_func1 --output stdio --format json connection list --subsystem 
 
 make exec SVC=bdevperf OPTS=-T CMD="$rpc -v -s $BDEVPERF_SOCKET bdev_nvme_detach_controller Nvme2"
 make exec SVC=bdevperf OPTS=-T CMD="$rpc -v -s $BDEVPERF_SOCKET bdev_nvme_detach_controller Nvme3"
+
+echo "ℹ️  Clear all hosts"
+cephnvmf_func1 host del --subsystem ${NQN} --host-nqn ${NQN}host2
+hosts=$(cephnvmf_func1 --output stdio --format json host list --subsystem $NQN)
+[[ `echo $hosts | jq -r '.status'` == "0" ]]
+[[ `echo $hosts | jq -r '.hosts[0]'` == "null" ]]
+
+echo "ℹ️  Check update, re-adding host right after delete"
+cephnvmf_func1 host add --subsystem ${NQN} --host-nqn ${NQN}host3 --psk ${PSK_KEY1}
+sleep 120
+cephnvmf_func1 host del --subsystem ${NQN} --host-nqn ${NQN}host3 --keep-connections
+cephnvmf_func1 host add --subsystem ${NQN} --host-nqn ${NQN}host3
+sleep 120
+grep "Received request to remove host ${NQN}host3 access from ${NQN}, force: False, keep connections: True, context: <grpc._server" /var/log/ceph/nvmeof-$GW1_NAME/nvmeof-log
+grep "Received request to remove host ${NQN}host3 access from ${NQN}, force: False, keep connections: True, context: None" /var/log/ceph/nvmeof-$GW2_NAME/nvmeof-log
+grep "Received request to set keep host connected indication for host ${NQN}host3 on subsystem ${NQN}, keep connected: True, context: None" /var/log/ceph/nvmeof-$GW2_NAME/nvmeof-log
+make -s exec SVC=ceph OPTS=-T CMD="rados --pool rbd listomapvals nvmeof.state" | grep "connected-del-host_${NQN}_${NQN}host3"
+cephnvmf_func1 host del --subsystem ${NQN} --host-nqn ${NQN}host3
+set +e
+    make -s exec SVC=ceph OPTS=-T CMD="rados --pool rbd listomapvals nvmeof.state" | grep "connected-del-host_${NQN}_${NQN}host3"
+    if [[ $? -eq 0 ]]; then
+        echo "Shouldn't have connected host entry in OMAP after we deleted the host without keep-connections"
+        exit 1
+    fi
+set -e
+sleep 120
+grep "Received request to remove host ${NQN}host3 access from ${NQN}, force: False, keep connections: False, context: <grpc._server" /var/log/ceph/nvmeof-$GW1_NAME/nvmeof-log
+grep "Received request to remove host ${NQN}host3 access from ${NQN}, force: False, keep connections: False, context: None" /var/log/ceph/nvmeof-$GW2_NAME/nvmeof-log
+
+echo "ℹ️  Check update, re-adding host right after delete using same command line"
+cephnvmf_func1 host add --subsystem ${NQN} --host-nqn ${NQN}host4
+sleep 120
+cephnvmf_func1 host del --subsystem ${NQN} --host-nqn ${NQN}host4 --keep-connections
+cephnvmf_func1 host add --subsystem ${NQN} --host-nqn ${NQN}host4
+sleep 120
+grep "Received request to remove host ${NQN}host4 access from ${NQN}, force: False, keep connections: True, context: <grpc._server" /var/log/ceph/nvmeof-$GW1_NAME/nvmeof-log
+set +e
+    grep "Received request to set keep host connected indication for host ${NQN}host4 on subsystem ${NQN}" /var/log/ceph/nvmeof-$GW1_NAME/nvmeof-log
+    if [[ $? -eq 0 ]]; then
+        echo "Shouldn't get a set connected indication when not on update"
+        exit 1
+    fi
+    grep "Received request to set keep host connected indication for host ${NQN}host4 on subsystem ${NQN}" /var/log/ceph/nvmeof-$GW2_NAME/nvmeof-log
+    if [[ $? -eq 0 ]]; then
+        echo "Shouldn't get a set connected indication for host ${NQN}host4"
+        exit 1
+    fi
+    grep "Received request to remove host ${NQN}host4 access from ${NQN}," /var/log/ceph/nvmeof-$GW2_NAME/nvmeof-log | grep "context: None"
+    if [[ $? -eq 0 ]]; then
+        echo "Shouldn't get a remove host request in update for host ${NQN}host4"
+        exit 1
+    fi
+set -e
+make -s exec SVC=ceph OPTS=-T CMD="rados --pool rbd listomapvals nvmeof.state" | grep "connected-del-host_${NQN}_${NQN}host4"
+cephnvmf_func1 host del --subsystem ${NQN} --host-nqn ${NQN}host4
+set +e
+    make -s exec SVC=ceph OPTS=-T CMD="rados --pool rbd listomapvals nvmeof.state" | grep "connected-del-host_${NQN}_${NQN}host4"
+    if [[ $? -eq 0 ]]; then
+        echo "Shouldn't have connected host entry in OMAP after we deleted the host without keep-connections"
+        exit 1
+    fi
+set -e
+sleep 120
+grep "Received request to remove host ${NQN}host4 access from ${NQN}, force: False, keep connections: False, context: <grpc._server" /var/log/ceph/nvmeof-$GW1_NAME/nvmeof-log
+grep "Received request to remove host ${NQN}host4 access from ${NQN}, force: False, keep connections: False, context: None" /var/log/ceph/nvmeof-$GW2_NAME/nvmeof-log
+grep "Received request to set keep host connected indication for host ${NQN}host4 on subsystem ${NQN}, keep connected: False, context: None" /var/log/ceph/nvmeof-$GW2_NAME/nvmeof-log
+
+cephnvmf_func1 host add --subsystem ${NQN} --host-nqn ${NQN}host5
+sleep 120
+cephnvmf_func2 host del --subsystem ${NQN} --host-nqn ${NQN}host5 --keep-connections
+sleep 120
+grep "Received request to remove host ${NQN}host5 access from ${NQN}, force: False, keep connections: True, context: None" /var/log/ceph/nvmeof-$GW1_NAME/nvmeof-log
+grep "Received request to remove host ${NQN}host5 access from ${NQN}, force: False, keep connections: True, context: <grpc._server" /var/log/ceph/nvmeof-$GW2_NAME/nvmeof-log
+grep "Received request to set keep host connected indication for host ${NQN}host5 on subsystem ${NQN}, keep connected: True, context: None" /var/log/ceph/nvmeof-$GW1_NAME/nvmeof-log

@@ -29,8 +29,8 @@ if [ $# -ge 1 ]; then
         exit 1
     fi
 fi
-echo ℹ️  Starting $SCALE nvmeof gateways
-docker compose up -d --remove-orphans --scale nvmeof=$SCALE nvmeof
+echo ℹ️  Starting ceph
+docker compose --progress quiet up --no-build --detach ceph
 
 # Waiting for the ceph container to become healthy
 while true; do
@@ -45,6 +45,9 @@ while true; do
   fi
 done
 echo ✅ ceph is healthy
+
+echo ℹ️  Starting $SCALE nvmeof gateways
+docker compose up -d --remove-orphans --scale nvmeof=$SCALE nvmeof
 
 echo ℹ️  Increase debug logs level
 docker compose exec -T ceph ceph config get mon.a

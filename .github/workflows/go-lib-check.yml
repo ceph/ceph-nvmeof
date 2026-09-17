@@ -1,0 +1,39 @@
+---
+# yamllint disable rule:line-length
+name: Go Lib Check
+on:  # yamllint disable rule:truthy
+  pull_request:
+    paths:
+      - 'lib/go/nvmeof/**'
+      - '.github/workflows/go-lib-check.yml'
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: lib/go/nvmeof
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: lib/go/nvmeof/go.mod
+          cache-dependency-path: lib/go/nvmeof/go.sum
+
+      - name: Verify go.mod/go.sum are tidy
+        run: |
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go build
+        run: go build ./...

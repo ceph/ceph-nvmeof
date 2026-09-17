@@ -143,11 +143,24 @@ class GatewayState(ABC):
             key += host_nqn
         return key
 
-    def build_connected_host_key(subsystem_nqn: str, host_nqn: str) -> str:
+    def build_connected_host_key(subsystem_nqn: str, host_nqn: str, salt: str = None) -> str:
         key = GatewayState.CONNECTED_HOST_PREFIX + subsystem_nqn + GatewayState.OMAP_KEY_DELIMITER
         if host_nqn is not None:
-            key += host_nqn
+            key += host_nqn + GatewayState.OMAP_KEY_DELIMITER
+            if salt:
+                key += salt
         return key
+
+    def convert_connected_host_key_to_host_key(key: str) -> str:
+        if (not key) or (not key.startswith(GatewayState.CONNECTED_HOST_PREFIX)):
+            return None
+        key = key.removeprefix(GatewayState.CONNECTED_HOST_PREFIX)
+        parts = key.split(GatewayState.OMAP_KEY_DELIMITER)
+        if len(parts) == 2:
+            return GatewayState.HOST_PREFIX + key
+        elif len(parts) == 3:
+            return GatewayState.HOST_PREFIX + GatewayState.OMAP_KEY_DELIMITER.join(parts[:2])
+        return None
 
     def build_host_key_key(subsystem_nqn: str, host_nqn: str) -> str:
         key = GatewayState.HOST_KEY_PREFIX + subsystem_nqn + GatewayState.OMAP_KEY_DELIMITER
@@ -303,6 +316,8 @@ class GatewayState(ABC):
                 self._remove_key(key)
             elif key.startswith(GatewayState.build_host_key(subsystem_nqn, None)):
                 self._remove_key(key)
+            elif key.startswith(GatewayState.build_connected_host_key(subsystem_nqn, None, None)):
+                self._remove_key(key)
             elif key.startswith(GatewayState.build_partial_listener_key(subsystem_nqn, None)):
                 self._remove_key(key)
             elif key.startswith(GatewayState.build_kmip_server_endpoint_key(subsystem_nqn,
@@ -313,12 +328,6 @@ class GatewayState(ABC):
         """Adds a host to the state data store."""
         key = GatewayState.build_host_key(subsystem_nqn, host_nqn)
         self._add_key(key, val)
-
-        # No need for a connected-host indication for this host
-        state = self.get_state()
-        key = GatewayState.build_connected_host_key(subsystem_nqn, host_nqn)
-        if key in state:
-            self._remove_key(key)
 
     def remove_host(self, subsystem_nqn: str, host_nqn: str):
         """Removes a host from the state data store."""
@@ -333,17 +342,22 @@ class GatewayState(ABC):
             if key.startswith(GatewayState.build_host_key_key(subsystem_nqn, host_nqn)):
                 self._remove_key(key)
 
-    def add_connected_host(self, subsystem_nqn: str, host_nqn: str, val: str):
+    def add_connected_host(self, subsystem_nqn: str, host_nqn: str, salt: str, val: str):
         """Adds a connected host indication to the state data store."""
-        key = GatewayState.build_connected_host_key(subsystem_nqn, host_nqn)
+        # As we add salt to the key, the add wouldn't override existing keys, so do it here
+        self.remove_connected_host(subsystem_nqn, host_nqn)
+        key = GatewayState.build_connected_host_key(subsystem_nqn, host_nqn, salt)
         self._add_key(key, val)
 
     def remove_connected_host(self, subsystem_nqn: str, host_nqn: str):
         """Removes a connected host indication from the state data store."""
         state = self.get_state()
-        key = GatewayState.build_connected_host_key(subsystem_nqn, host_nqn)
-        if key in state:
-            self._remove_key(key)
+        key_prefix = GatewayState.build_connected_host_key(subsystem_nqn, host_nqn, None)
+        for key in list(state.keys()):
+            if key.startswith(key_prefix):
+                self._remove_key(key)
+            elif (key + GatewayState.OMAP_KEY_DELIMITER) == key_prefix:
+                self._remove_key(key)
 
     def add_kmip_server_endpoint(self,
                                  subsystem_nqn: str,
@@ -1392,10 +1406,10 @@ class GatewayStateHandler:
         self.omap.remove_host(subsystem_nqn, host_nqn)
         self.local.remove_host(subsystem_nqn, host_nqn)
 
-    def add_connected_host(self, subsystem_nqn: str, host_nqn: str, val: str):
+    def add_connected_host(self, subsystem_nqn: str, host_nqn: str, salt: str, val: str):
         """Adds a connected host indication to the state data store."""
-        self.omap.add_connected_host(subsystem_nqn, host_nqn, val)
-        self.local.add_connected_host(subsystem_nqn, host_nqn, val)
+        self.omap.add_connected_host(subsystem_nqn, host_nqn, salt, val)
+        self.local.add_connected_host(subsystem_nqn, host_nqn, salt, val)
 
     def remove_connected_host(self, subsystem_nqn: str, host_nqn: str):
         """Removes a connected host indication from the state data store."""
@@ -2232,6 +2246,43 @@ class GatewayStateHandler:
                            for key in removed_keys
                            if not key.startswith(GatewayState.CONNECTED_HOST_PREFIX)
                            }
+                for key in list(keep_connection.keys()):
+                    host_key = GatewayState.convert_connected_host_key_to_host_key(key)
+                    if (host_key not in removed) and (host_key not in changed):
+                        self.logger.debug(f"host {host_key} not in removed list, delete it "
+                                          f"from keep connection list")
+                        keep_connection.pop(key, None)
+                removed_host_keys = [key for key in removed.keys()
+                                     if key.startswith(GatewayState.HOST_PREFIX)
+                                     ]
+                changed_host_keys = [key for key in changed.keys()
+                                     if key.startswith(GatewayState.HOST_PREFIX)
+                                     ]
+                for key in (removed_host_keys + changed_host_keys):
+                    [subsys, hnqn] = self.break_host_key(key)
+                    if (subsys is None) or (hnqn is None):
+                        continue
+                    conn_key = GatewayState.build_connected_host_key(subsys, hnqn, None)
+                    found = False
+                    for k in keep_connection:
+                        if k.startswith(conn_key):
+                            found = True
+                            break
+                        elif (k + GatewayState.OMAP_KEY_DELIMITER) == conn_key:
+                            found = True
+                            break
+                    if not found:
+                        self.logger.debug(f"Found removed host {key} which is not in the keep "
+                                          f"connection list")
+                        set_connected_req = pb2.set_keep_host_connected_req(
+                            subsystem_nqn=subsys,
+                            host_nqn=hnqn,
+                            keep_connected=False)
+                        json_req = json_format.MessageToJson(
+                            set_connected_req, preserving_proto_field_name=True,
+                            including_default_value_fields=True)
+                        keep_connection[conn_key] = json_req
+
                 removed.update(keep_connection)
                 grouped_removed = self._group_by_prefix(removed, prefix_list)
 
