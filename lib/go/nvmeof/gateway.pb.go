@@ -2538,6 +2538,74 @@ func (x *GetConnectionIoStatisticsReq) GetReset_() bool {
 	return false
 }
 
+type GetConnectionExtendedIoStatisticsReq struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SubsystemNqn  string                 `protobuf:"bytes,1,opt,name=subsystem_nqn,json=subsystemNqn,proto3" json:"subsystem_nqn,omitempty"`
+	HostNqn       string                 `protobuf:"bytes,2,opt,name=host_nqn,json=hostNqn,proto3" json:"host_nqn,omitempty"`
+	Reset_        *bool                  `protobuf:"varint,3,opt,name=reset,proto3,oneof" json:"reset,omitempty"`
+	Verbose       *bool                  `protobuf:"varint,4,opt,name=verbose,proto3,oneof" json:"verbose,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetConnectionExtendedIoStatisticsReq) Reset() {
+	*x = GetConnectionExtendedIoStatisticsReq{}
+	mi := &file_gateway_proto_msgTypes[31]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetConnectionExtendedIoStatisticsReq) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetConnectionExtendedIoStatisticsReq) ProtoMessage() {}
+
+func (x *GetConnectionExtendedIoStatisticsReq) ProtoReflect() protoreflect.Message {
+	mi := &file_gateway_proto_msgTypes[31]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetConnectionExtendedIoStatisticsReq.ProtoReflect.Descriptor instead.
+func (*GetConnectionExtendedIoStatisticsReq) Descriptor() ([]byte, []int) {
+	return file_gateway_proto_rawDescGZIP(), []int{31}
+}
+
+func (x *GetConnectionExtendedIoStatisticsReq) GetSubsystemNqn() string {
+	if x != nil {
+		return x.SubsystemNqn
+	}
+	return ""
+}
+
+func (x *GetConnectionExtendedIoStatisticsReq) GetHostNqn() string {
+	if x != nil {
+		return x.HostNqn
+	}
+	return ""
+}
+
+func (x *GetConnectionExtendedIoStatisticsReq) GetReset_() bool {
+	if x != nil && x.Reset_ != nil {
+		return *x.Reset_
+	}
+	return false
+}
+
+func (x *GetConnectionExtendedIoStatisticsReq) GetVerbose() bool {
+	if x != nil && x.Verbose != nil {
+		return *x.Verbose
+	}
+	return false
+}
+
 type RemoveHostReq struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
 	SubsystemNqn    string                 `protobuf:"bytes,1,opt,name=subsystem_nqn,json=subsystemNqn,proto3" json:"subsystem_nqn,omitempty"`
@@ -2550,7 +2618,7 @@ type RemoveHostReq struct {
 
 func (x *RemoveHostReq) Reset() {
 	*x = RemoveHostReq{}
-	mi := &file_gateway_proto_msgTypes[31]
+	mi := &file_gateway_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2562,7 +2630,7 @@ func (x *RemoveHostReq) String() string {
 func (*RemoveHostReq) ProtoMessage() {}
 
 func (x *RemoveHostReq) ProtoReflect() protoreflect.Message {
-	mi := &file_gateway_proto_msgTypes[31]
+	mi := &file_gateway_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2575,7 +2643,7 @@ func (x *RemoveHostReq) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RemoveHostReq.ProtoReflect.Descriptor instead.
 func (*RemoveHostReq) Descriptor() ([]byte, []int) {
-	return file_gateway_proto_rawDescGZIP(), []int{31}
+	return file_gateway_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *RemoveHostReq) GetSubsystemNqn() string {
@@ -2617,7 +2685,7 @@ type SetKeepHostConnectedReq struct {
 
 func (x *SetKeepHostConnectedReq) Reset() {
 	*x = SetKeepHostConnectedReq{}
-	mi := &file_gateway_proto_msgTypes[32]
+	mi := &file_gateway_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2629,7 +2697,7 @@ func (x *SetKeepHostConnectedReq) String() string {
 func (*SetKeepHostConnectedReq) ProtoMessage() {}
 
 func (x *SetKeepHostConnectedReq) ProtoReflect() protoreflect.Message {
-	mi := &file_gateway_proto_msgTypes[32]
+	mi := &file_gateway_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2642,7 +2710,7 @@ func (x *SetKeepHostConnectedReq) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetKeepHostConnectedReq.ProtoReflect.Descriptor instead.
 func (*SetKeepHostConnectedReq) Descriptor() ([]byte, []int) {
-	return file_gateway_proto_rawDescGZIP(), []int{32}
+	return file_gateway_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *SetKeepHostConnectedReq) GetSubsystemNqn() string {
@@ -2676,7 +2744,7 @@ type ListHostsReq struct {
 
 func (x *ListHostsReq) Reset() {
 	*x = ListHostsReq{}
-	mi := &file_gateway_proto_msgTypes[33]
+	mi := &file_gateway_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2688,7 +2756,7 @@ func (x *ListHostsReq) String() string {
 func (*ListHostsReq) ProtoMessage() {}
 
 func (x *ListHostsReq) ProtoReflect() protoreflect.Message {
-	mi := &file_gateway_proto_msgTypes[33]
+	mi := &file_gateway_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2701,7 +2769,7 @@ func (x *ListHostsReq) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListHostsReq.ProtoReflect.Descriptor instead.
 func (*ListHostsReq) Descriptor() ([]byte, []int) {
-	return file_gateway_proto_rawDescGZIP(), []int{33}
+	return file_gateway_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *ListHostsReq) GetSubsystem() string {
@@ -2728,7 +2796,7 @@ type ListConnectionsReq struct {
 
 func (x *ListConnectionsReq) Reset() {
 	*x = ListConnectionsReq{}
-	mi := &file_gateway_proto_msgTypes[34]
+	mi := &file_gateway_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2740,7 +2808,7 @@ func (x *ListConnectionsReq) String() string {
 func (*ListConnectionsReq) ProtoMessage() {}
 
 func (x *ListConnectionsReq) ProtoReflect() protoreflect.Message {
-	mi := &file_gateway_proto_msgTypes[34]
+	mi := &file_gateway_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2753,7 +2821,7 @@ func (x *ListConnectionsReq) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListConnectionsReq.ProtoReflect.Descriptor instead.
 func (*ListConnectionsReq) Descriptor() ([]byte, []int) {
-	return file_gateway_proto_rawDescGZIP(), []int{34}
+	return file_gateway_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *ListConnectionsReq) GetSubsystem() string {
@@ -2786,7 +2854,7 @@ type CreateListenerReq struct {
 
 func (x *CreateListenerReq) Reset() {
 	*x = CreateListenerReq{}
-	mi := &file_gateway_proto_msgTypes[35]
+	mi := &file_gateway_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2798,7 +2866,7 @@ func (x *CreateListenerReq) String() string {
 func (*CreateListenerReq) ProtoMessage() {}
 
 func (x *CreateListenerReq) ProtoReflect() protoreflect.Message {
-	mi := &file_gateway_proto_msgTypes[35]
+	mi := &file_gateway_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2811,7 +2879,7 @@ func (x *CreateListenerReq) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateListenerReq.ProtoReflect.Descriptor instead.
 func (*CreateListenerReq) Descriptor() ([]byte, []int) {
-	return file_gateway_proto_rawDescGZIP(), []int{35}
+	return file_gateway_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *CreateListenerReq) GetNqn() string {
@@ -2884,7 +2952,7 @@ type DeleteListenerReq struct {
 
 func (x *DeleteListenerReq) Reset() {
 	*x = DeleteListenerReq{}
-	mi := &file_gateway_proto_msgTypes[36]
+	mi := &file_gateway_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2896,7 +2964,7 @@ func (x *DeleteListenerReq) String() string {
 func (*DeleteListenerReq) ProtoMessage() {}
 
 func (x *DeleteListenerReq) ProtoReflect() protoreflect.Message {
-	mi := &file_gateway_proto_msgTypes[36]
+	mi := &file_gateway_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2909,7 +2977,7 @@ func (x *DeleteListenerReq) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteListenerReq.ProtoReflect.Descriptor instead.
 func (*DeleteListenerReq) Descriptor() ([]byte, []int) {
-	return file_gateway_proto_rawDescGZIP(), []int{36}
+	return file_gateway_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *DeleteListenerReq) GetNqn() string {
@@ -2963,7 +3031,7 @@ type ListListenersReq struct {
 
 func (x *ListListenersReq) Reset() {
 	*x = ListListenersReq{}
-	mi := &file_gateway_proto_msgTypes[37]
+	mi := &file_gateway_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2975,7 +3043,7 @@ func (x *ListListenersReq) String() string {
 func (*ListListenersReq) ProtoMessage() {}
 
 func (x *ListListenersReq) ProtoReflect() protoreflect.Message {
-	mi := &file_gateway_proto_msgTypes[37]
+	mi := &file_gateway_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2988,7 +3056,7 @@ func (x *ListListenersReq) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListListenersReq.ProtoReflect.Descriptor instead.
 func (*ListListenersReq) Descriptor() ([]byte, []int) {
-	return file_gateway_proto_rawDescGZIP(), []int{37}
+	return file_gateway_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *ListListenersReq) GetSubsystem() string {
@@ -3008,7 +3076,7 @@ type ListSubsystemsReq struct {
 
 func (x *ListSubsystemsReq) Reset() {
 	*x = ListSubsystemsReq{}
-	mi := &file_gateway_proto_msgTypes[38]
+	mi := &file_gateway_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3020,7 +3088,7 @@ func (x *ListSubsystemsReq) String() string {
 func (*ListSubsystemsReq) ProtoMessage() {}
 
 func (x *ListSubsystemsReq) ProtoReflect() protoreflect.Message {
-	mi := &file_gateway_proto_msgTypes[38]
+	mi := &file_gateway_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3033,7 +3101,7 @@ func (x *ListSubsystemsReq) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListSubsystemsReq.ProtoReflect.Descriptor instead.
 func (*ListSubsystemsReq) Descriptor() ([]byte, []int) {
-	return file_gateway_proto_rawDescGZIP(), []int{38}
+	return file_gateway_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *ListSubsystemsReq) GetSubsystemNqn() string {
@@ -3058,7 +3126,7 @@ type GetSubsystemsReq struct {
 
 func (x *GetSubsystemsReq) Reset() {
 	*x = GetSubsystemsReq{}
-	mi := &file_gateway_proto_msgTypes[39]
+	mi := &file_gateway_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3070,7 +3138,7 @@ func (x *GetSubsystemsReq) String() string {
 func (*GetSubsystemsReq) ProtoMessage() {}
 
 func (x *GetSubsystemsReq) ProtoReflect() protoreflect.Message {
-	mi := &file_gateway_proto_msgTypes[39]
+	mi := &file_gateway_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3083,7 +3151,7 @@ func (x *GetSubsystemsReq) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSubsystemsReq.ProtoReflect.Descriptor instead.
 func (*GetSubsystemsReq) Descriptor() ([]byte, []int) {
-	return file_gateway_proto_rawDescGZIP(), []int{39}
+	return file_gateway_proto_rawDescGZIP(), []int{40}
 }
 
 type GetSpdkNvmfLogFlagsAndLevelReq struct {
@@ -3095,7 +3163,7 @@ type GetSpdkNvmfLogFlagsAndLevelReq struct {
 
 func (x *GetSpdkNvmfLogFlagsAndLevelReq) Reset() {
 	*x = GetSpdkNvmfLogFlagsAndLevelReq{}
-	mi := &file_gateway_proto_msgTypes[40]
+	mi := &file_gateway_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3107,7 +3175,7 @@ func (x *GetSpdkNvmfLogFlagsAndLevelReq) String() string {
 func (*GetSpdkNvmfLogFlagsAndLevelReq) ProtoMessage() {}
 
 func (x *GetSpdkNvmfLogFlagsAndLevelReq) ProtoReflect() protoreflect.Message {
-	mi := &file_gateway_proto_msgTypes[40]
+	mi := &file_gateway_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3120,7 +3188,7 @@ func (x *GetSpdkNvmfLogFlagsAndLevelReq) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSpdkNvmfLogFlagsAndLevelReq.ProtoReflect.Descriptor instead.
 func (*GetSpdkNvmfLogFlagsAndLevelReq) Descriptor() ([]byte, []int) {
-	return file_gateway_proto_rawDescGZIP(), []int{40}
+	return file_gateway_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *GetSpdkNvmfLogFlagsAndLevelReq) GetAllLogFlags() bool {
@@ -3139,7 +3207,7 @@ type DisableSpdkNvmfLogsReq struct {
 
 func (x *DisableSpdkNvmfLogsReq) Reset() {
 	*x = DisableSpdkNvmfLogsReq{}
-	mi := &file_gateway_proto_msgTypes[41]
+	mi := &file_gateway_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3151,7 +3219,7 @@ func (x *DisableSpdkNvmfLogsReq) String() string {
 func (*DisableSpdkNvmfLogsReq) ProtoMessage() {}
 
 func (x *DisableSpdkNvmfLogsReq) ProtoReflect() protoreflect.Message {
-	mi := &file_gateway_proto_msgTypes[41]
+	mi := &file_gateway_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3164,7 +3232,7 @@ func (x *DisableSpdkNvmfLogsReq) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DisableSpdkNvmfLogsReq.ProtoReflect.Descriptor instead.
 func (*DisableSpdkNvmfLogsReq) Descriptor() ([]byte, []int) {
-	return file_gateway_proto_rawDescGZIP(), []int{41}
+	return file_gateway_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *DisableSpdkNvmfLogsReq) GetExtraLogFlags() []string {
@@ -3185,7 +3253,7 @@ type SetSpdkNvmfLogsReq struct {
 
 func (x *SetSpdkNvmfLogsReq) Reset() {
 	*x = SetSpdkNvmfLogsReq{}
-	mi := &file_gateway_proto_msgTypes[42]
+	mi := &file_gateway_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3197,7 +3265,7 @@ func (x *SetSpdkNvmfLogsReq) String() string {
 func (*SetSpdkNvmfLogsReq) ProtoMessage() {}
 
 func (x *SetSpdkNvmfLogsReq) ProtoReflect() protoreflect.Message {
-	mi := &file_gateway_proto_msgTypes[42]
+	mi := &file_gateway_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3210,7 +3278,7 @@ func (x *SetSpdkNvmfLogsReq) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetSpdkNvmfLogsReq.ProtoReflect.Descriptor instead.
 func (*SetSpdkNvmfLogsReq) Descriptor() ([]byte, []int) {
-	return file_gateway_proto_rawDescGZIP(), []int{42}
+	return file_gateway_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *SetSpdkNvmfLogsReq) GetLogLevel() LogLevel {
@@ -3243,7 +3311,7 @@ type GetGatewayInfoReq struct {
 
 func (x *GetGatewayInfoReq) Reset() {
 	*x = GetGatewayInfoReq{}
-	mi := &file_gateway_proto_msgTypes[43]
+	mi := &file_gateway_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3255,7 +3323,7 @@ func (x *GetGatewayInfoReq) String() string {
 func (*GetGatewayInfoReq) ProtoMessage() {}
 
 func (x *GetGatewayInfoReq) ProtoReflect() protoreflect.Message {
-	mi := &file_gateway_proto_msgTypes[43]
+	mi := &file_gateway_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3268,7 +3336,7 @@ func (x *GetGatewayInfoReq) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetGatewayInfoReq.ProtoReflect.Descriptor instead.
 func (*GetGatewayInfoReq) Descriptor() ([]byte, []int) {
-	return file_gateway_proto_rawDescGZIP(), []int{43}
+	return file_gateway_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *GetGatewayInfoReq) GetCliVersion() string {
@@ -3286,7 +3354,7 @@ type GetGatewayLogLevelReq struct {
 
 func (x *GetGatewayLogLevelReq) Reset() {
 	*x = GetGatewayLogLevelReq{}
-	mi := &file_gateway_proto_msgTypes[44]
+	mi := &file_gateway_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3298,7 +3366,7 @@ func (x *GetGatewayLogLevelReq) String() string {
 func (*GetGatewayLogLevelReq) ProtoMessage() {}
 
 func (x *GetGatewayLogLevelReq) ProtoReflect() protoreflect.Message {
-	mi := &file_gateway_proto_msgTypes[44]
+	mi := &file_gateway_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3311,7 +3379,7 @@ func (x *GetGatewayLogLevelReq) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetGatewayLogLevelReq.ProtoReflect.Descriptor instead.
 func (*GetGatewayLogLevelReq) Descriptor() ([]byte, []int) {
-	return file_gateway_proto_rawDescGZIP(), []int{44}
+	return file_gateway_proto_rawDescGZIP(), []int{45}
 }
 
 type SetGatewayLogLevelReq struct {
@@ -3323,7 +3391,7 @@ type SetGatewayLogLevelReq struct {
 
 func (x *SetGatewayLogLevelReq) Reset() {
 	*x = SetGatewayLogLevelReq{}
-	mi := &file_gateway_proto_msgTypes[45]
+	mi := &file_gateway_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3335,7 +3403,7 @@ func (x *SetGatewayLogLevelReq) String() string {
 func (*SetGatewayLogLevelReq) ProtoMessage() {}
 
 func (x *SetGatewayLogLevelReq) ProtoReflect() protoreflect.Message {
-	mi := &file_gateway_proto_msgTypes[45]
+	mi := &file_gateway_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3348,7 +3416,7 @@ func (x *SetGatewayLogLevelReq) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetGatewayLogLevelReq.ProtoReflect.Descriptor instead.
 func (*SetGatewayLogLevelReq) Descriptor() ([]byte, []int) {
-	return file_gateway_proto_rawDescGZIP(), []int{45}
+	return file_gateway_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *SetGatewayLogLevelReq) GetLogLevel() GwLogLevel {
@@ -3367,7 +3435,7 @@ type ShowGatewayListenersInfoReq struct {
 
 func (x *ShowGatewayListenersInfoReq) Reset() {
 	*x = ShowGatewayListenersInfoReq{}
-	mi := &file_gateway_proto_msgTypes[46]
+	mi := &file_gateway_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3379,7 +3447,7 @@ func (x *ShowGatewayListenersInfoReq) String() string {
 func (*ShowGatewayListenersInfoReq) ProtoMessage() {}
 
 func (x *ShowGatewayListenersInfoReq) ProtoReflect() protoreflect.Message {
-	mi := &file_gateway_proto_msgTypes[46]
+	mi := &file_gateway_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3392,7 +3460,7 @@ func (x *ShowGatewayListenersInfoReq) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ShowGatewayListenersInfoReq.ProtoReflect.Descriptor instead.
 func (*ShowGatewayListenersInfoReq) Descriptor() ([]byte, []int) {
-	return file_gateway_proto_rawDescGZIP(), []int{46}
+	return file_gateway_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *ShowGatewayListenersInfoReq) GetSubsystemNqn() string {
@@ -3410,7 +3478,7 @@ type GetGatewayStatsReq struct {
 
 func (x *GetGatewayStatsReq) Reset() {
 	*x = GetGatewayStatsReq{}
-	mi := &file_gateway_proto_msgTypes[47]
+	mi := &file_gateway_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3422,7 +3490,7 @@ func (x *GetGatewayStatsReq) String() string {
 func (*GetGatewayStatsReq) ProtoMessage() {}
 
 func (x *GetGatewayStatsReq) ProtoReflect() protoreflect.Message {
-	mi := &file_gateway_proto_msgTypes[47]
+	mi := &file_gateway_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3435,7 +3503,7 @@ func (x *GetGatewayStatsReq) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetGatewayStatsReq.ProtoReflect.Descriptor instead.
 func (*GetGatewayStatsReq) Descriptor() ([]byte, []int) {
-	return file_gateway_proto_rawDescGZIP(), []int{47}
+	return file_gateway_proto_rawDescGZIP(), []int{48}
 }
 
 type GetThreadStatsReq struct {
@@ -3446,7 +3514,7 @@ type GetThreadStatsReq struct {
 
 func (x *GetThreadStatsReq) Reset() {
 	*x = GetThreadStatsReq{}
-	mi := &file_gateway_proto_msgTypes[48]
+	mi := &file_gateway_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3458,7 +3526,7 @@ func (x *GetThreadStatsReq) String() string {
 func (*GetThreadStatsReq) ProtoMessage() {}
 
 func (x *GetThreadStatsReq) ProtoReflect() protoreflect.Message {
-	mi := &file_gateway_proto_msgTypes[48]
+	mi := &file_gateway_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3471,7 +3539,7 @@ func (x *GetThreadStatsReq) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetThreadStatsReq.ProtoReflect.Descriptor instead.
 func (*GetThreadStatsReq) Descriptor() ([]byte, []int) {
-	return file_gateway_proto_rawDescGZIP(), []int{48}
+	return file_gateway_proto_rawDescGZIP(), []int{49}
 }
 
 type SetGatewayIoStatsModeReq struct {
@@ -3483,7 +3551,7 @@ type SetGatewayIoStatsModeReq struct {
 
 func (x *SetGatewayIoStatsModeReq) Reset() {
 	*x = SetGatewayIoStatsModeReq{}
-	mi := &file_gateway_proto_msgTypes[49]
+	mi := &file_gateway_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3495,7 +3563,7 @@ func (x *SetGatewayIoStatsModeReq) String() string {
 func (*SetGatewayIoStatsModeReq) ProtoMessage() {}
 
 func (x *SetGatewayIoStatsModeReq) ProtoReflect() protoreflect.Message {
-	mi := &file_gateway_proto_msgTypes[49]
+	mi := &file_gateway_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3508,7 +3576,7 @@ func (x *SetGatewayIoStatsModeReq) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetGatewayIoStatsModeReq.ProtoReflect.Descriptor instead.
 func (*SetGatewayIoStatsModeReq) Descriptor() ([]byte, []int) {
-	return file_gateway_proto_rawDescGZIP(), []int{49}
+	return file_gateway_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *SetGatewayIoStatsModeReq) GetEnabled() bool {
@@ -3528,7 +3596,7 @@ type AnaGroupState struct {
 
 func (x *AnaGroupState) Reset() {
 	*x = AnaGroupState{}
-	mi := &file_gateway_proto_msgTypes[50]
+	mi := &file_gateway_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3540,7 +3608,7 @@ func (x *AnaGroupState) String() string {
 func (*AnaGroupState) ProtoMessage() {}
 
 func (x *AnaGroupState) ProtoReflect() protoreflect.Message {
-	mi := &file_gateway_proto_msgTypes[50]
+	mi := &file_gateway_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3553,7 +3621,7 @@ func (x *AnaGroupState) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AnaGroupState.ProtoReflect.Descriptor instead.
 func (*AnaGroupState) Descriptor() ([]byte, []int) {
-	return file_gateway_proto_rawDescGZIP(), []int{50}
+	return file_gateway_proto_rawDescGZIP(), []int{51}
 }
 
 func (x *AnaGroupState) GetGrpId() uint32 {
@@ -3580,7 +3648,7 @@ type NqnAnaStates struct {
 
 func (x *NqnAnaStates) Reset() {
 	*x = NqnAnaStates{}
-	mi := &file_gateway_proto_msgTypes[51]
+	mi := &file_gateway_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3592,7 +3660,7 @@ func (x *NqnAnaStates) String() string {
 func (*NqnAnaStates) ProtoMessage() {}
 
 func (x *NqnAnaStates) ProtoReflect() protoreflect.Message {
-	mi := &file_gateway_proto_msgTypes[51]
+	mi := &file_gateway_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3605,7 +3673,7 @@ func (x *NqnAnaStates) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NqnAnaStates.ProtoReflect.Descriptor instead.
 func (*NqnAnaStates) Descriptor() ([]byte, []int) {
-	return file_gateway_proto_rawDescGZIP(), []int{51}
+	return file_gateway_proto_rawDescGZIP(), []int{52}
 }
 
 func (x *NqnAnaStates) GetNqn() string {
@@ -3631,7 +3699,7 @@ type AnaInfo struct {
 
 func (x *AnaInfo) Reset() {
 	*x = AnaInfo{}
-	mi := &file_gateway_proto_msgTypes[52]
+	mi := &file_gateway_proto_msgTypes[53]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3643,7 +3711,7 @@ func (x *AnaInfo) String() string {
 func (*AnaInfo) ProtoMessage() {}
 
 func (x *AnaInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_gateway_proto_msgTypes[52]
+	mi := &file_gateway_proto_msgTypes[53]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3656,7 +3724,7 @@ func (x *AnaInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AnaInfo.ProtoReflect.Descriptor instead.
 func (*AnaInfo) Descriptor() ([]byte, []int) {
-	return file_gateway_proto_rawDescGZIP(), []int{52}
+	return file_gateway_proto_rawDescGZIP(), []int{53}
 }
 
 func (x *AnaInfo) GetStates() []*NqnAnaStates {
@@ -3676,7 +3744,7 @@ type ReqStatus struct {
 
 func (x *ReqStatus) Reset() {
 	*x = ReqStatus{}
-	mi := &file_gateway_proto_msgTypes[53]
+	mi := &file_gateway_proto_msgTypes[54]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3688,7 +3756,7 @@ func (x *ReqStatus) String() string {
 func (*ReqStatus) ProtoMessage() {}
 
 func (x *ReqStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_gateway_proto_msgTypes[53]
+	mi := &file_gateway_proto_msgTypes[54]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3701,7 +3769,7 @@ func (x *ReqStatus) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReqStatus.ProtoReflect.Descriptor instead.
 func (*ReqStatus) Descriptor() ([]byte, []int) {
-	return file_gateway_proto_rawDescGZIP(), []int{53}
+	return file_gateway_proto_rawDescGZIP(), []int{54}
 }
 
 func (x *ReqStatus) GetStatus() int32 {
@@ -3729,7 +3797,7 @@ type SubsysStatus struct {
 
 func (x *SubsysStatus) Reset() {
 	*x = SubsysStatus{}
-	mi := &file_gateway_proto_msgTypes[54]
+	mi := &file_gateway_proto_msgTypes[55]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3741,7 +3809,7 @@ func (x *SubsysStatus) String() string {
 func (*SubsysStatus) ProtoMessage() {}
 
 func (x *SubsysStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_gateway_proto_msgTypes[54]
+	mi := &file_gateway_proto_msgTypes[55]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3754,7 +3822,7 @@ func (x *SubsysStatus) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SubsysStatus.ProtoReflect.Descriptor instead.
 func (*SubsysStatus) Descriptor() ([]byte, []int) {
-	return file_gateway_proto_rawDescGZIP(), []int{54}
+	return file_gateway_proto_rawDescGZIP(), []int{55}
 }
 
 func (x *SubsysStatus) GetStatus() int32 {
@@ -3789,7 +3857,7 @@ type NsidStatus struct {
 
 func (x *NsidStatus) Reset() {
 	*x = NsidStatus{}
-	mi := &file_gateway_proto_msgTypes[55]
+	mi := &file_gateway_proto_msgTypes[56]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3801,7 +3869,7 @@ func (x *NsidStatus) String() string {
 func (*NsidStatus) ProtoMessage() {}
 
 func (x *NsidStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_gateway_proto_msgTypes[55]
+	mi := &file_gateway_proto_msgTypes[56]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3814,7 +3882,7 @@ func (x *NsidStatus) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NsidStatus.ProtoReflect.Descriptor instead.
 func (*NsidStatus) Descriptor() ([]byte, []int) {
-	return file_gateway_proto_rawDescGZIP(), []int{55}
+	return file_gateway_proto_rawDescGZIP(), []int{56}
 }
 
 func (x *NsidStatus) GetStatus() int32 {
@@ -3847,7 +3915,7 @@ type SubsystemsInfo struct {
 
 func (x *SubsystemsInfo) Reset() {
 	*x = SubsystemsInfo{}
-	mi := &file_gateway_proto_msgTypes[56]
+	mi := &file_gateway_proto_msgTypes[57]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3859,7 +3927,7 @@ func (x *SubsystemsInfo) String() string {
 func (*SubsystemsInfo) ProtoMessage() {}
 
 func (x *SubsystemsInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_gateway_proto_msgTypes[56]
+	mi := &file_gateway_proto_msgTypes[57]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3872,7 +3940,7 @@ func (x *SubsystemsInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SubsystemsInfo.ProtoReflect.Descriptor instead.
 func (*SubsystemsInfo) Descriptor() ([]byte, []int) {
-	return file_gateway_proto_rawDescGZIP(), []int{56}
+	return file_gateway_proto_rawDescGZIP(), []int{57}
 }
 
 func (x *SubsystemsInfo) GetSubsystems() []*Subsystem {
@@ -3903,7 +3971,7 @@ type Subsystem struct {
 
 func (x *Subsystem) Reset() {
 	*x = Subsystem{}
-	mi := &file_gateway_proto_msgTypes[57]
+	mi := &file_gateway_proto_msgTypes[58]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3915,7 +3983,7 @@ func (x *Subsystem) String() string {
 func (*Subsystem) ProtoMessage() {}
 
 func (x *Subsystem) ProtoReflect() protoreflect.Message {
-	mi := &file_gateway_proto_msgTypes[57]
+	mi := &file_gateway_proto_msgTypes[58]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3928,7 +3996,7 @@ func (x *Subsystem) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Subsystem.ProtoReflect.Descriptor instead.
 func (*Subsystem) Descriptor() ([]byte, []int) {
-	return file_gateway_proto_rawDescGZIP(), []int{57}
+	return file_gateway_proto_rawDescGZIP(), []int{58}
 }
 
 func (x *Subsystem) GetNqn() string {
@@ -4036,7 +4104,7 @@ type ListenAddress struct {
 
 func (x *ListenAddress) Reset() {
 	*x = ListenAddress{}
-	mi := &file_gateway_proto_msgTypes[58]
+	mi := &file_gateway_proto_msgTypes[59]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4048,7 +4116,7 @@ func (x *ListenAddress) String() string {
 func (*ListenAddress) ProtoMessage() {}
 
 func (x *ListenAddress) ProtoReflect() protoreflect.Message {
-	mi := &file_gateway_proto_msgTypes[58]
+	mi := &file_gateway_proto_msgTypes[59]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4061,7 +4129,7 @@ func (x *ListenAddress) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListenAddress.ProtoReflect.Descriptor instead.
 func (*ListenAddress) Descriptor() ([]byte, []int) {
-	return file_gateway_proto_rawDescGZIP(), []int{58}
+	return file_gateway_proto_rawDescGZIP(), []int{59}
 }
 
 func (x *ListenAddress) GetTrtype() string {
@@ -4124,7 +4192,7 @@ type Namespace struct {
 
 func (x *Namespace) Reset() {
 	*x = Namespace{}
-	mi := &file_gateway_proto_msgTypes[59]
+	mi := &file_gateway_proto_msgTypes[60]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4136,7 +4204,7 @@ func (x *Namespace) String() string {
 func (*Namespace) ProtoMessage() {}
 
 func (x *Namespace) ProtoReflect() protoreflect.Message {
-	mi := &file_gateway_proto_msgTypes[59]
+	mi := &file_gateway_proto_msgTypes[60]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4149,7 +4217,7 @@ func (x *Namespace) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Namespace.ProtoReflect.Descriptor instead.
 func (*Namespace) Descriptor() ([]byte, []int) {
-	return file_gateway_proto_rawDescGZIP(), []int{59}
+	return file_gateway_proto_rawDescGZIP(), []int{60}
 }
 
 func (x *Namespace) GetNsid() uint32 {
@@ -4233,7 +4301,7 @@ type SubsystemsInfoCli struct {
 
 func (x *SubsystemsInfoCli) Reset() {
 	*x = SubsystemsInfoCli{}
-	mi := &file_gateway_proto_msgTypes[60]
+	mi := &file_gateway_proto_msgTypes[61]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4245,7 +4313,7 @@ func (x *SubsystemsInfoCli) String() string {
 func (*SubsystemsInfoCli) ProtoMessage() {}
 
 func (x *SubsystemsInfoCli) ProtoReflect() protoreflect.Message {
-	mi := &file_gateway_proto_msgTypes[60]
+	mi := &file_gateway_proto_msgTypes[61]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4258,7 +4326,7 @@ func (x *SubsystemsInfoCli) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SubsystemsInfoCli.ProtoReflect.Descriptor instead.
 func (*SubsystemsInfoCli) Descriptor() ([]byte, []int) {
-	return file_gateway_proto_rawDescGZIP(), []int{60}
+	return file_gateway_proto_rawDescGZIP(), []int{61}
 }
 
 func (x *SubsystemsInfoCli) GetStatus() int32 {
@@ -4303,7 +4371,7 @@ type SubsystemCli struct {
 
 func (x *SubsystemCli) Reset() {
 	*x = SubsystemCli{}
-	mi := &file_gateway_proto_msgTypes[61]
+	mi := &file_gateway_proto_msgTypes[62]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4315,7 +4383,7 @@ func (x *SubsystemCli) String() string {
 func (*SubsystemCli) ProtoMessage() {}
 
 func (x *SubsystemCli) ProtoReflect() protoreflect.Message {
-	mi := &file_gateway_proto_msgTypes[61]
+	mi := &file_gateway_proto_msgTypes[62]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4328,7 +4396,7 @@ func (x *SubsystemCli) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SubsystemCli.ProtoReflect.Descriptor instead.
 func (*SubsystemCli) Descriptor() ([]byte, []int) {
-	return file_gateway_proto_rawDescGZIP(), []int{61}
+	return file_gateway_proto_rawDescGZIP(), []int{62}
 }
 
 func (x *SubsystemCli) GetNqn() string {
@@ -4450,7 +4518,7 @@ type GatewayInfo struct {
 
 func (x *GatewayInfo) Reset() {
 	*x = GatewayInfo{}
-	mi := &file_gateway_proto_msgTypes[62]
+	mi := &file_gateway_proto_msgTypes[63]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4462,7 +4530,7 @@ func (x *GatewayInfo) String() string {
 func (*GatewayInfo) ProtoMessage() {}
 
 func (x *GatewayInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_gateway_proto_msgTypes[62]
+	mi := &file_gateway_proto_msgTypes[63]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4475,7 +4543,7 @@ func (x *GatewayInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GatewayInfo.ProtoReflect.Descriptor instead.
 func (*GatewayInfo) Descriptor() ([]byte, []int) {
-	return file_gateway_proto_rawDescGZIP(), []int{62}
+	return file_gateway_proto_rawDescGZIP(), []int{63}
 }
 
 func (x *GatewayInfo) GetCliVersion() string {
@@ -4629,7 +4697,7 @@ type CliVersion struct {
 
 func (x *CliVersion) Reset() {
 	*x = CliVersion{}
-	mi := &file_gateway_proto_msgTypes[63]
+	mi := &file_gateway_proto_msgTypes[64]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4641,7 +4709,7 @@ func (x *CliVersion) String() string {
 func (*CliVersion) ProtoMessage() {}
 
 func (x *CliVersion) ProtoReflect() protoreflect.Message {
-	mi := &file_gateway_proto_msgTypes[63]
+	mi := &file_gateway_proto_msgTypes[64]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4654,7 +4722,7 @@ func (x *CliVersion) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CliVersion.ProtoReflect.Descriptor instead.
 func (*CliVersion) Descriptor() ([]byte, []int) {
-	return file_gateway_proto_rawDescGZIP(), []int{63}
+	return file_gateway_proto_rawDescGZIP(), []int{64}
 }
 
 func (x *CliVersion) GetStatus() int32 {
@@ -4689,7 +4757,7 @@ type GwVersion struct {
 
 func (x *GwVersion) Reset() {
 	*x = GwVersion{}
-	mi := &file_gateway_proto_msgTypes[64]
+	mi := &file_gateway_proto_msgTypes[65]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4701,7 +4769,7 @@ func (x *GwVersion) String() string {
 func (*GwVersion) ProtoMessage() {}
 
 func (x *GwVersion) ProtoReflect() protoreflect.Message {
-	mi := &file_gateway_proto_msgTypes[64]
+	mi := &file_gateway_proto_msgTypes[65]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4714,7 +4782,7 @@ func (x *GwVersion) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GwVersion.ProtoReflect.Descriptor instead.
 func (*GwVersion) Descriptor() ([]byte, []int) {
-	return file_gateway_proto_rawDescGZIP(), []int{64}
+	return file_gateway_proto_rawDescGZIP(), []int{65}
 }
 
 func (x *GwVersion) GetStatus() int32 {
@@ -4747,7 +4815,7 @@ type PollGroupTransportInfo struct {
 
 func (x *PollGroupTransportInfo) Reset() {
 	*x = PollGroupTransportInfo{}
-	mi := &file_gateway_proto_msgTypes[65]
+	mi := &file_gateway_proto_msgTypes[66]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4759,7 +4827,7 @@ func (x *PollGroupTransportInfo) String() string {
 func (*PollGroupTransportInfo) ProtoMessage() {}
 
 func (x *PollGroupTransportInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_gateway_proto_msgTypes[65]
+	mi := &file_gateway_proto_msgTypes[66]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4772,7 +4840,7 @@ func (x *PollGroupTransportInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PollGroupTransportInfo.ProtoReflect.Descriptor instead.
 func (*PollGroupTransportInfo) Descriptor() ([]byte, []int) {
-	return file_gateway_proto_rawDescGZIP(), []int{65}
+	return file_gateway_proto_rawDescGZIP(), []int{66}
 }
 
 func (x *PollGroupTransportInfo) GetTrtype() string {
@@ -4798,7 +4866,7 @@ type PollGroupInfo struct {
 
 func (x *PollGroupInfo) Reset() {
 	*x = PollGroupInfo{}
-	mi := &file_gateway_proto_msgTypes[66]
+	mi := &file_gateway_proto_msgTypes[67]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4810,7 +4878,7 @@ func (x *PollGroupInfo) String() string {
 func (*PollGroupInfo) ProtoMessage() {}
 
 func (x *PollGroupInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_gateway_proto_msgTypes[66]
+	mi := &file_gateway_proto_msgTypes[67]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4823,7 +4891,7 @@ func (x *PollGroupInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PollGroupInfo.ProtoReflect.Descriptor instead.
 func (*PollGroupInfo) Descriptor() ([]byte, []int) {
-	return file_gateway_proto_rawDescGZIP(), []int{66}
+	return file_gateway_proto_rawDescGZIP(), []int{67}
 }
 
 func (x *PollGroupInfo) GetName() string {
@@ -4894,7 +4962,7 @@ type GatewayStatsInfo struct {
 
 func (x *GatewayStatsInfo) Reset() {
 	*x = GatewayStatsInfo{}
-	mi := &file_gateway_proto_msgTypes[67]
+	mi := &file_gateway_proto_msgTypes[68]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4906,7 +4974,7 @@ func (x *GatewayStatsInfo) String() string {
 func (*GatewayStatsInfo) ProtoMessage() {}
 
 func (x *GatewayStatsInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_gateway_proto_msgTypes[67]
+	mi := &file_gateway_proto_msgTypes[68]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4919,7 +4987,7 @@ func (x *GatewayStatsInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GatewayStatsInfo.ProtoReflect.Descriptor instead.
 func (*GatewayStatsInfo) Descriptor() ([]byte, []int) {
-	return file_gateway_proto_rawDescGZIP(), []int{67}
+	return file_gateway_proto_rawDescGZIP(), []int{68}
 }
 
 func (x *GatewayStatsInfo) GetStatus() int32 {
@@ -4962,7 +5030,7 @@ type ThreadStatsInfo struct {
 
 func (x *ThreadStatsInfo) Reset() {
 	*x = ThreadStatsInfo{}
-	mi := &file_gateway_proto_msgTypes[68]
+	mi := &file_gateway_proto_msgTypes[69]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4974,7 +5042,7 @@ func (x *ThreadStatsInfo) String() string {
 func (*ThreadStatsInfo) ProtoMessage() {}
 
 func (x *ThreadStatsInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_gateway_proto_msgTypes[68]
+	mi := &file_gateway_proto_msgTypes[69]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4987,7 +5055,7 @@ func (x *ThreadStatsInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ThreadStatsInfo.ProtoReflect.Descriptor instead.
 func (*ThreadStatsInfo) Descriptor() ([]byte, []int) {
-	return file_gateway_proto_rawDescGZIP(), []int{68}
+	return file_gateway_proto_rawDescGZIP(), []int{69}
 }
 
 func (x *ThreadStatsInfo) GetStatus() int32 {
@@ -5029,7 +5097,7 @@ type SpdkThreadInfo struct {
 
 func (x *SpdkThreadInfo) Reset() {
 	*x = SpdkThreadInfo{}
-	mi := &file_gateway_proto_msgTypes[69]
+	mi := &file_gateway_proto_msgTypes[70]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5041,7 +5109,7 @@ func (x *SpdkThreadInfo) String() string {
 func (*SpdkThreadInfo) ProtoMessage() {}
 
 func (x *SpdkThreadInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_gateway_proto_msgTypes[69]
+	mi := &file_gateway_proto_msgTypes[70]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5054,7 +5122,7 @@ func (x *SpdkThreadInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SpdkThreadInfo.ProtoReflect.Descriptor instead.
 func (*SpdkThreadInfo) Descriptor() ([]byte, []int) {
-	return file_gateway_proto_rawDescGZIP(), []int{69}
+	return file_gateway_proto_rawDescGZIP(), []int{70}
 }
 
 func (x *SpdkThreadInfo) GetName() string {
@@ -5094,7 +5162,7 @@ type ListenerInfo struct {
 
 func (x *ListenerInfo) Reset() {
 	*x = ListenerInfo{}
-	mi := &file_gateway_proto_msgTypes[70]
+	mi := &file_gateway_proto_msgTypes[71]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5106,7 +5174,7 @@ func (x *ListenerInfo) String() string {
 func (*ListenerInfo) ProtoMessage() {}
 
 func (x *ListenerInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_gateway_proto_msgTypes[70]
+	mi := &file_gateway_proto_msgTypes[71]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5119,7 +5187,7 @@ func (x *ListenerInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListenerInfo.ProtoReflect.Descriptor instead.
 func (*ListenerInfo) Descriptor() ([]byte, []int) {
-	return file_gateway_proto_rawDescGZIP(), []int{70}
+	return file_gateway_proto_rawDescGZIP(), []int{71}
 }
 
 func (x *ListenerInfo) GetHostName() string {
@@ -5189,7 +5257,7 @@ type ListenersInfo struct {
 
 func (x *ListenersInfo) Reset() {
 	*x = ListenersInfo{}
-	mi := &file_gateway_proto_msgTypes[71]
+	mi := &file_gateway_proto_msgTypes[72]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5201,7 +5269,7 @@ func (x *ListenersInfo) String() string {
 func (*ListenersInfo) ProtoMessage() {}
 
 func (x *ListenersInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_gateway_proto_msgTypes[71]
+	mi := &file_gateway_proto_msgTypes[72]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5214,7 +5282,7 @@ func (x *ListenersInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListenersInfo.ProtoReflect.Descriptor instead.
 func (*ListenersInfo) Descriptor() ([]byte, []int) {
-	return file_gateway_proto_rawDescGZIP(), []int{71}
+	return file_gateway_proto_rawDescGZIP(), []int{72}
 }
 
 func (x *ListenersInfo) GetStatus() int32 {
@@ -5248,7 +5316,7 @@ type GatewayListenerInfo struct {
 
 func (x *GatewayListenerInfo) Reset() {
 	*x = GatewayListenerInfo{}
-	mi := &file_gateway_proto_msgTypes[72]
+	mi := &file_gateway_proto_msgTypes[73]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5260,7 +5328,7 @@ func (x *GatewayListenerInfo) String() string {
 func (*GatewayListenerInfo) ProtoMessage() {}
 
 func (x *GatewayListenerInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_gateway_proto_msgTypes[72]
+	mi := &file_gateway_proto_msgTypes[73]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5273,7 +5341,7 @@ func (x *GatewayListenerInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GatewayListenerInfo.ProtoReflect.Descriptor instead.
 func (*GatewayListenerInfo) Descriptor() ([]byte, []int) {
-	return file_gateway_proto_rawDescGZIP(), []int{72}
+	return file_gateway_proto_rawDescGZIP(), []int{73}
 }
 
 func (x *GatewayListenerInfo) GetListener() *ListenerInfo {
@@ -5301,7 +5369,7 @@ type GatewayListenersInfo struct {
 
 func (x *GatewayListenersInfo) Reset() {
 	*x = GatewayListenersInfo{}
-	mi := &file_gateway_proto_msgTypes[73]
+	mi := &file_gateway_proto_msgTypes[74]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5313,7 +5381,7 @@ func (x *GatewayListenersInfo) String() string {
 func (*GatewayListenersInfo) ProtoMessage() {}
 
 func (x *GatewayListenersInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_gateway_proto_msgTypes[73]
+	mi := &file_gateway_proto_msgTypes[74]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5326,7 +5394,7 @@ func (x *GatewayListenersInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GatewayListenersInfo.ProtoReflect.Descriptor instead.
 func (*GatewayListenersInfo) Descriptor() ([]byte, []int) {
-	return file_gateway_proto_rawDescGZIP(), []int{73}
+	return file_gateway_proto_rawDescGZIP(), []int{74}
 }
 
 func (x *GatewayListenersInfo) GetStatus() int32 {
@@ -5363,7 +5431,7 @@ type Host struct {
 
 func (x *Host) Reset() {
 	*x = Host{}
-	mi := &file_gateway_proto_msgTypes[74]
+	mi := &file_gateway_proto_msgTypes[75]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5375,7 +5443,7 @@ func (x *Host) String() string {
 func (*Host) ProtoMessage() {}
 
 func (x *Host) ProtoReflect() protoreflect.Message {
-	mi := &file_gateway_proto_msgTypes[74]
+	mi := &file_gateway_proto_msgTypes[75]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5388,7 +5456,7 @@ func (x *Host) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Host.ProtoReflect.Descriptor instead.
 func (*Host) Descriptor() ([]byte, []int) {
-	return file_gateway_proto_rawDescGZIP(), []int{74}
+	return file_gateway_proto_rawDescGZIP(), []int{75}
 }
 
 func (x *Host) GetNqn() string {
@@ -5437,7 +5505,7 @@ type LatencyStats struct {
 
 func (x *LatencyStats) Reset() {
 	*x = LatencyStats{}
-	mi := &file_gateway_proto_msgTypes[75]
+	mi := &file_gateway_proto_msgTypes[76]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5449,7 +5517,7 @@ func (x *LatencyStats) String() string {
 func (*LatencyStats) ProtoMessage() {}
 
 func (x *LatencyStats) ProtoReflect() protoreflect.Message {
-	mi := &file_gateway_proto_msgTypes[75]
+	mi := &file_gateway_proto_msgTypes[76]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5462,7 +5530,7 @@ func (x *LatencyStats) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LatencyStats.ProtoReflect.Descriptor instead.
 func (*LatencyStats) Descriptor() ([]byte, []int) {
-	return file_gateway_proto_rawDescGZIP(), []int{75}
+	return file_gateway_proto_rawDescGZIP(), []int{76}
 }
 
 func (x *LatencyStats) GetMin() uint64 {
@@ -5499,7 +5567,7 @@ type LatencyGroup struct {
 
 func (x *LatencyGroup) Reset() {
 	*x = LatencyGroup{}
-	mi := &file_gateway_proto_msgTypes[76]
+	mi := &file_gateway_proto_msgTypes[77]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5511,7 +5579,7 @@ func (x *LatencyGroup) String() string {
 func (*LatencyGroup) ProtoMessage() {}
 
 func (x *LatencyGroup) ProtoReflect() protoreflect.Message {
-	mi := &file_gateway_proto_msgTypes[76]
+	mi := &file_gateway_proto_msgTypes[77]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5524,7 +5592,7 @@ func (x *LatencyGroup) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LatencyGroup.ProtoReflect.Descriptor instead.
 func (*LatencyGroup) Descriptor() ([]byte, []int) {
-	return file_gateway_proto_rawDescGZIP(), []int{76}
+	return file_gateway_proto_rawDescGZIP(), []int{77}
 }
 
 func (x *LatencyGroup) GetIoCount() uint64 {
@@ -5573,7 +5641,7 @@ type BucketInfo struct {
 
 func (x *BucketInfo) Reset() {
 	*x = BucketInfo{}
-	mi := &file_gateway_proto_msgTypes[77]
+	mi := &file_gateway_proto_msgTypes[78]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5585,7 +5653,7 @@ func (x *BucketInfo) String() string {
 func (*BucketInfo) ProtoMessage() {}
 
 func (x *BucketInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_gateway_proto_msgTypes[77]
+	mi := &file_gateway_proto_msgTypes[78]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5598,7 +5666,7 @@ func (x *BucketInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BucketInfo.ProtoReflect.Descriptor instead.
 func (*BucketInfo) Descriptor() ([]byte, []int) {
-	return file_gateway_proto_rawDescGZIP(), []int{77}
+	return file_gateway_proto_rawDescGZIP(), []int{78}
 }
 
 func (x *BucketInfo) GetSize() uint32 {
@@ -5636,7 +5704,7 @@ type ConnectionIoStatistics struct {
 
 func (x *ConnectionIoStatistics) Reset() {
 	*x = ConnectionIoStatistics{}
-	mi := &file_gateway_proto_msgTypes[78]
+	mi := &file_gateway_proto_msgTypes[79]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5648,7 +5716,7 @@ func (x *ConnectionIoStatistics) String() string {
 func (*ConnectionIoStatistics) ProtoMessage() {}
 
 func (x *ConnectionIoStatistics) ProtoReflect() protoreflect.Message {
-	mi := &file_gateway_proto_msgTypes[78]
+	mi := &file_gateway_proto_msgTypes[79]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5661,7 +5729,7 @@ func (x *ConnectionIoStatistics) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConnectionIoStatistics.ProtoReflect.Descriptor instead.
 func (*ConnectionIoStatistics) Descriptor() ([]byte, []int) {
-	return file_gateway_proto_rawDescGZIP(), []int{78}
+	return file_gateway_proto_rawDescGZIP(), []int{79}
 }
 
 func (x *ConnectionIoStatistics) GetStatus() int32 {
@@ -5706,6 +5774,142 @@ func (x *ConnectionIoStatistics) GetBuckets() []*BucketInfo {
 	return nil
 }
 
+type StatisticsEntry struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SubsystemNqn  *string                `protobuf:"bytes,1,opt,name=subsystem_nqn,json=subsystemNqn,proto3,oneof" json:"subsystem_nqn,omitempty"`
+	HostNqn       *string                `protobuf:"bytes,2,opt,name=host_nqn,json=hostNqn,proto3,oneof" json:"host_nqn,omitempty"`
+	TotalNumIos   uint64                 `protobuf:"varint,3,opt,name=total_num_ios,json=totalNumIos,proto3" json:"total_num_ios,omitempty"`
+	Buckets       []*BucketInfo          `protobuf:"bytes,4,rep,name=buckets,proto3" json:"buckets,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StatisticsEntry) Reset() {
+	*x = StatisticsEntry{}
+	mi := &file_gateway_proto_msgTypes[80]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StatisticsEntry) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StatisticsEntry) ProtoMessage() {}
+
+func (x *StatisticsEntry) ProtoReflect() protoreflect.Message {
+	mi := &file_gateway_proto_msgTypes[80]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StatisticsEntry.ProtoReflect.Descriptor instead.
+func (*StatisticsEntry) Descriptor() ([]byte, []int) {
+	return file_gateway_proto_rawDescGZIP(), []int{80}
+}
+
+func (x *StatisticsEntry) GetSubsystemNqn() string {
+	if x != nil && x.SubsystemNqn != nil {
+		return *x.SubsystemNqn
+	}
+	return ""
+}
+
+func (x *StatisticsEntry) GetHostNqn() string {
+	if x != nil && x.HostNqn != nil {
+		return *x.HostNqn
+	}
+	return ""
+}
+
+func (x *StatisticsEntry) GetTotalNumIos() uint64 {
+	if x != nil {
+		return x.TotalNumIos
+	}
+	return 0
+}
+
+func (x *StatisticsEntry) GetBuckets() []*BucketInfo {
+	if x != nil {
+		return x.Buckets
+	}
+	return nil
+}
+
+type ConnectionExtendedIoStatistics struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	Status            int32                  `protobuf:"varint,1,opt,name=status,proto3" json:"status,omitempty"`
+	ErrorMessage      string                 `protobuf:"bytes,2,opt,name=error_message,json=errorMessage,proto3" json:"error_message,omitempty"`
+	Category          *string                `protobuf:"bytes,3,opt,name=category,proto3,oneof" json:"category,omitempty"`
+	StatisticsEntries []*StatisticsEntry     `protobuf:"bytes,4,rep,name=statistics_entries,json=statisticsEntries,proto3" json:"statistics_entries,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *ConnectionExtendedIoStatistics) Reset() {
+	*x = ConnectionExtendedIoStatistics{}
+	mi := &file_gateway_proto_msgTypes[81]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ConnectionExtendedIoStatistics) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ConnectionExtendedIoStatistics) ProtoMessage() {}
+
+func (x *ConnectionExtendedIoStatistics) ProtoReflect() protoreflect.Message {
+	mi := &file_gateway_proto_msgTypes[81]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ConnectionExtendedIoStatistics.ProtoReflect.Descriptor instead.
+func (*ConnectionExtendedIoStatistics) Descriptor() ([]byte, []int) {
+	return file_gateway_proto_rawDescGZIP(), []int{81}
+}
+
+func (x *ConnectionExtendedIoStatistics) GetStatus() int32 {
+	if x != nil {
+		return x.Status
+	}
+	return 0
+}
+
+func (x *ConnectionExtendedIoStatistics) GetErrorMessage() string {
+	if x != nil {
+		return x.ErrorMessage
+	}
+	return ""
+}
+
+func (x *ConnectionExtendedIoStatistics) GetCategory() string {
+	if x != nil && x.Category != nil {
+		return *x.Category
+	}
+	return ""
+}
+
+func (x *ConnectionExtendedIoStatistics) GetStatisticsEntries() []*StatisticsEntry {
+	if x != nil {
+		return x.StatisticsEntries
+	}
+	return nil
+}
+
 type HostsInfo struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Status        int32                  `protobuf:"varint,1,opt,name=status,proto3" json:"status,omitempty"`
@@ -5719,7 +5923,7 @@ type HostsInfo struct {
 
 func (x *HostsInfo) Reset() {
 	*x = HostsInfo{}
-	mi := &file_gateway_proto_msgTypes[79]
+	mi := &file_gateway_proto_msgTypes[82]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5731,7 +5935,7 @@ func (x *HostsInfo) String() string {
 func (*HostsInfo) ProtoMessage() {}
 
 func (x *HostsInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_gateway_proto_msgTypes[79]
+	mi := &file_gateway_proto_msgTypes[82]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5744,7 +5948,7 @@ func (x *HostsInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HostsInfo.ProtoReflect.Descriptor instead.
 func (*HostsInfo) Descriptor() ([]byte, []int) {
-	return file_gateway_proto_rawDescGZIP(), []int{79}
+	return file_gateway_proto_rawDescGZIP(), []int{82}
 }
 
 func (x *HostsInfo) GetStatus() int32 {
@@ -5805,7 +6009,7 @@ type Connection struct {
 
 func (x *Connection) Reset() {
 	*x = Connection{}
-	mi := &file_gateway_proto_msgTypes[80]
+	mi := &file_gateway_proto_msgTypes[83]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5817,7 +6021,7 @@ func (x *Connection) String() string {
 func (*Connection) ProtoMessage() {}
 
 func (x *Connection) ProtoReflect() protoreflect.Message {
-	mi := &file_gateway_proto_msgTypes[80]
+	mi := &file_gateway_proto_msgTypes[83]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5830,7 +6034,7 @@ func (x *Connection) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Connection.ProtoReflect.Descriptor instead.
 func (*Connection) Descriptor() ([]byte, []int) {
-	return file_gateway_proto_rawDescGZIP(), []int{80}
+	return file_gateway_proto_rawDescGZIP(), []int{83}
 }
 
 func (x *Connection) GetNqn() string {
@@ -5950,7 +6154,7 @@ type ConnectionsInfo struct {
 
 func (x *ConnectionsInfo) Reset() {
 	*x = ConnectionsInfo{}
-	mi := &file_gateway_proto_msgTypes[81]
+	mi := &file_gateway_proto_msgTypes[84]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5962,7 +6166,7 @@ func (x *ConnectionsInfo) String() string {
 func (*ConnectionsInfo) ProtoMessage() {}
 
 func (x *ConnectionsInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_gateway_proto_msgTypes[81]
+	mi := &file_gateway_proto_msgTypes[84]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5975,7 +6179,7 @@ func (x *ConnectionsInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConnectionsInfo.ProtoReflect.Descriptor instead.
 func (*ConnectionsInfo) Descriptor() ([]byte, []int) {
-	return file_gateway_proto_rawDescGZIP(), []int{81}
+	return file_gateway_proto_rawDescGZIP(), []int{84}
 }
 
 func (x *ConnectionsInfo) GetStatus() int32 {
@@ -6041,7 +6245,7 @@ type NamespaceCli struct {
 
 func (x *NamespaceCli) Reset() {
 	*x = NamespaceCli{}
-	mi := &file_gateway_proto_msgTypes[82]
+	mi := &file_gateway_proto_msgTypes[85]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6053,7 +6257,7 @@ func (x *NamespaceCli) String() string {
 func (*NamespaceCli) ProtoMessage() {}
 
 func (x *NamespaceCli) ProtoReflect() protoreflect.Message {
-	mi := &file_gateway_proto_msgTypes[82]
+	mi := &file_gateway_proto_msgTypes[85]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6066,7 +6270,7 @@ func (x *NamespaceCli) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NamespaceCli.ProtoReflect.Descriptor instead.
 func (*NamespaceCli) Descriptor() ([]byte, []int) {
-	return file_gateway_proto_rawDescGZIP(), []int{82}
+	return file_gateway_proto_rawDescGZIP(), []int{85}
 }
 
 func (x *NamespaceCli) GetNsid() uint32 {
@@ -6270,7 +6474,7 @@ type NamespacesInfo struct {
 
 func (x *NamespacesInfo) Reset() {
 	*x = NamespacesInfo{}
-	mi := &file_gateway_proto_msgTypes[83]
+	mi := &file_gateway_proto_msgTypes[86]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6282,7 +6486,7 @@ func (x *NamespacesInfo) String() string {
 func (*NamespacesInfo) ProtoMessage() {}
 
 func (x *NamespacesInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_gateway_proto_msgTypes[83]
+	mi := &file_gateway_proto_msgTypes[86]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6295,7 +6499,7 @@ func (x *NamespacesInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NamespacesInfo.ProtoReflect.Descriptor instead.
 func (*NamespacesInfo) Descriptor() ([]byte, []int) {
-	return file_gateway_proto_rawDescGZIP(), []int{83}
+	return file_gateway_proto_rawDescGZIP(), []int{86}
 }
 
 func (x *NamespacesInfo) GetStatus() int32 {
@@ -6336,7 +6540,7 @@ type NamespaceIoError struct {
 
 func (x *NamespaceIoError) Reset() {
 	*x = NamespaceIoError{}
-	mi := &file_gateway_proto_msgTypes[84]
+	mi := &file_gateway_proto_msgTypes[87]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6348,7 +6552,7 @@ func (x *NamespaceIoError) String() string {
 func (*NamespaceIoError) ProtoMessage() {}
 
 func (x *NamespaceIoError) ProtoReflect() protoreflect.Message {
-	mi := &file_gateway_proto_msgTypes[84]
+	mi := &file_gateway_proto_msgTypes[87]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6361,7 +6565,7 @@ func (x *NamespaceIoError) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NamespaceIoError.ProtoReflect.Descriptor instead.
 func (*NamespaceIoError) Descriptor() ([]byte, []int) {
-	return file_gateway_proto_rawDescGZIP(), []int{84}
+	return file_gateway_proto_rawDescGZIP(), []int{87}
 }
 
 func (x *NamespaceIoError) GetName() string {
@@ -6391,7 +6595,7 @@ type ListNamespacesIoStatsInfo struct {
 
 func (x *ListNamespacesIoStatsInfo) Reset() {
 	*x = ListNamespacesIoStatsInfo{}
-	mi := &file_gateway_proto_msgTypes[85]
+	mi := &file_gateway_proto_msgTypes[88]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6403,7 +6607,7 @@ func (x *ListNamespacesIoStatsInfo) String() string {
 func (*ListNamespacesIoStatsInfo) ProtoMessage() {}
 
 func (x *ListNamespacesIoStatsInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_gateway_proto_msgTypes[85]
+	mi := &file_gateway_proto_msgTypes[88]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6416,7 +6620,7 @@ func (x *ListNamespacesIoStatsInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListNamespacesIoStatsInfo.ProtoReflect.Descriptor instead.
 func (*ListNamespacesIoStatsInfo) Descriptor() ([]byte, []int) {
-	return file_gateway_proto_rawDescGZIP(), []int{85}
+	return file_gateway_proto_rawDescGZIP(), []int{88}
 }
 
 func (x *ListNamespacesIoStatsInfo) GetStatus() int32 {
@@ -6484,7 +6688,7 @@ type BdevIoStatsInfo struct {
 
 func (x *BdevIoStatsInfo) Reset() {
 	*x = BdevIoStatsInfo{}
-	mi := &file_gateway_proto_msgTypes[86]
+	mi := &file_gateway_proto_msgTypes[89]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6496,7 +6700,7 @@ func (x *BdevIoStatsInfo) String() string {
 func (*BdevIoStatsInfo) ProtoMessage() {}
 
 func (x *BdevIoStatsInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_gateway_proto_msgTypes[86]
+	mi := &file_gateway_proto_msgTypes[89]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6509,7 +6713,7 @@ func (x *BdevIoStatsInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BdevIoStatsInfo.ProtoReflect.Descriptor instead.
 func (*BdevIoStatsInfo) Descriptor() ([]byte, []int) {
-	return file_gateway_proto_rawDescGZIP(), []int{86}
+	return file_gateway_proto_rawDescGZIP(), []int{89}
 }
 
 func (x *BdevIoStatsInfo) GetBdevName() string {
@@ -6701,7 +6905,7 @@ type NamespaceIoStatsInfo struct {
 
 func (x *NamespaceIoStatsInfo) Reset() {
 	*x = NamespaceIoStatsInfo{}
-	mi := &file_gateway_proto_msgTypes[87]
+	mi := &file_gateway_proto_msgTypes[90]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6713,7 +6917,7 @@ func (x *NamespaceIoStatsInfo) String() string {
 func (*NamespaceIoStatsInfo) ProtoMessage() {}
 
 func (x *NamespaceIoStatsInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_gateway_proto_msgTypes[87]
+	mi := &file_gateway_proto_msgTypes[90]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6726,7 +6930,7 @@ func (x *NamespaceIoStatsInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NamespaceIoStatsInfo.ProtoReflect.Descriptor instead.
 func (*NamespaceIoStatsInfo) Descriptor() ([]byte, []int) {
-	return file_gateway_proto_rawDescGZIP(), []int{87}
+	return file_gateway_proto_rawDescGZIP(), []int{90}
 }
 
 func (x *NamespaceIoStatsInfo) GetStatus() int32 {
@@ -6928,7 +7132,7 @@ type SpdkLogFlagInfo struct {
 
 func (x *SpdkLogFlagInfo) Reset() {
 	*x = SpdkLogFlagInfo{}
-	mi := &file_gateway_proto_msgTypes[88]
+	mi := &file_gateway_proto_msgTypes[91]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6940,7 +7144,7 @@ func (x *SpdkLogFlagInfo) String() string {
 func (*SpdkLogFlagInfo) ProtoMessage() {}
 
 func (x *SpdkLogFlagInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_gateway_proto_msgTypes[88]
+	mi := &file_gateway_proto_msgTypes[91]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6953,7 +7157,7 @@ func (x *SpdkLogFlagInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SpdkLogFlagInfo.ProtoReflect.Descriptor instead.
 func (*SpdkLogFlagInfo) Descriptor() ([]byte, []int) {
-	return file_gateway_proto_rawDescGZIP(), []int{88}
+	return file_gateway_proto_rawDescGZIP(), []int{91}
 }
 
 func (x *SpdkLogFlagInfo) GetName() string {
@@ -6983,7 +7187,7 @@ type SpdkNvmfLogFlagsAndLevelInfo struct {
 
 func (x *SpdkNvmfLogFlagsAndLevelInfo) Reset() {
 	*x = SpdkNvmfLogFlagsAndLevelInfo{}
-	mi := &file_gateway_proto_msgTypes[89]
+	mi := &file_gateway_proto_msgTypes[92]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6995,7 +7199,7 @@ func (x *SpdkNvmfLogFlagsAndLevelInfo) String() string {
 func (*SpdkNvmfLogFlagsAndLevelInfo) ProtoMessage() {}
 
 func (x *SpdkNvmfLogFlagsAndLevelInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_gateway_proto_msgTypes[89]
+	mi := &file_gateway_proto_msgTypes[92]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7008,7 +7212,7 @@ func (x *SpdkNvmfLogFlagsAndLevelInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SpdkNvmfLogFlagsAndLevelInfo.ProtoReflect.Descriptor instead.
 func (*SpdkNvmfLogFlagsAndLevelInfo) Descriptor() ([]byte, []int) {
-	return file_gateway_proto_rawDescGZIP(), []int{89}
+	return file_gateway_proto_rawDescGZIP(), []int{92}
 }
 
 func (x *SpdkNvmfLogFlagsAndLevelInfo) GetStatus() int32 {
@@ -7057,7 +7261,7 @@ type GatewayLogLevelInfo struct {
 
 func (x *GatewayLogLevelInfo) Reset() {
 	*x = GatewayLogLevelInfo{}
-	mi := &file_gateway_proto_msgTypes[90]
+	mi := &file_gateway_proto_msgTypes[93]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7069,7 +7273,7 @@ func (x *GatewayLogLevelInfo) String() string {
 func (*GatewayLogLevelInfo) ProtoMessage() {}
 
 func (x *GatewayLogLevelInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_gateway_proto_msgTypes[90]
+	mi := &file_gateway_proto_msgTypes[93]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7082,7 +7286,7 @@ func (x *GatewayLogLevelInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GatewayLogLevelInfo.ProtoReflect.Descriptor instead.
 func (*GatewayLogLevelInfo) Descriptor() ([]byte, []int) {
-	return file_gateway_proto_rawDescGZIP(), []int{90}
+	return file_gateway_proto_rawDescGZIP(), []int{93}
 }
 
 func (x *GatewayLogLevelInfo) GetStatus() int32 {
@@ -7116,7 +7320,7 @@ type EncryptionEntry struct {
 
 func (x *EncryptionEntry) Reset() {
 	*x = EncryptionEntry{}
-	mi := &file_gateway_proto_msgTypes[91]
+	mi := &file_gateway_proto_msgTypes[94]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7128,7 +7332,7 @@ func (x *EncryptionEntry) String() string {
 func (*EncryptionEntry) ProtoMessage() {}
 
 func (x *EncryptionEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_gateway_proto_msgTypes[91]
+	mi := &file_gateway_proto_msgTypes[94]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7141,7 +7345,7 @@ func (x *EncryptionEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EncryptionEntry.ProtoReflect.Descriptor instead.
 func (*EncryptionEntry) Descriptor() ([]byte, []int) {
-	return file_gateway_proto_rawDescGZIP(), []int{91}
+	return file_gateway_proto_rawDescGZIP(), []int{94}
 }
 
 func (x *EncryptionEntry) GetFormat() EncryptionFormat {
@@ -7397,6 +7601,14 @@ const file_gateway_proto_rawDesc = "" +
 	"\bhost_nqn\x18\x02 \x01(\tR\ahostNqn\x12\x19\n" +
 	"\x05reset\x18\x03 \x01(\bH\x00R\x05reset\x88\x01\x01B\b\n" +
 	"\x06_reset\"\xbb\x01\n" +
+	")get_connection_extended_io_statistics_req\x12#\n" +
+	"\rsubsystem_nqn\x18\x01 \x01(\tR\fsubsystemNqn\x12\x19\n" +
+	"\bhost_nqn\x18\x02 \x01(\tR\ahostNqn\x12\x19\n" +
+	"\x05reset\x18\x03 \x01(\bH\x00R\x05reset\x88\x01\x01\x12\x1d\n" +
+	"\averbose\x18\x04 \x01(\bH\x01R\averbose\x88\x01\x01B\b\n" +
+	"\x06_resetB\n" +
+	"\n" +
+	"\b_verbose\"\xbb\x01\n" +
 	"\x0fremove_host_req\x12#\n" +
 	"\rsubsystem_nqn\x18\x01 \x01(\tR\fsubsystemNqn\x12\x19\n" +
 	"\bhost_nqn\x18\x02 \x01(\tR\ahostNqn\x12\x19\n" +
@@ -7712,7 +7924,20 @@ const file_gateway_proto_rawDesc = "" +
 	"\bhost_nqn\x18\x04 \x01(\tR\ahostNqn\x12'\n" +
 	"\rtotal_num_ios\x18\x05 \x01(\x04H\x00R\vtotalNumIos\x88\x01\x01\x12&\n" +
 	"\abuckets\x18\x06 \x03(\v2\f.bucket_infoR\abucketsB\x10\n" +
-	"\x0e_total_num_ios\"\xb1\x01\n" +
+	"\x0e_total_num_ios\"\xc7\x01\n" +
+	"\x10statistics_entry\x12(\n" +
+	"\rsubsystem_nqn\x18\x01 \x01(\tH\x00R\fsubsystemNqn\x88\x01\x01\x12\x1e\n" +
+	"\bhost_nqn\x18\x02 \x01(\tH\x01R\ahostNqn\x88\x01\x01\x12\"\n" +
+	"\rtotal_num_ios\x18\x03 \x01(\x04R\vtotalNumIos\x12&\n" +
+	"\abuckets\x18\x04 \x03(\v2\f.bucket_infoR\abucketsB\x10\n" +
+	"\x0e_subsystem_nqnB\v\n" +
+	"\t_host_nqn\"\xd0\x01\n" +
+	"!connection_extended_io_statistics\x12\x16\n" +
+	"\x06status\x18\x01 \x01(\x05R\x06status\x12#\n" +
+	"\rerror_message\x18\x02 \x01(\tR\ferrorMessage\x12\x1f\n" +
+	"\bcategory\x18\x03 \x01(\tH\x00R\bcategory\x88\x01\x01\x12@\n" +
+	"\x12statistics_entries\x18\x04 \x03(\v2\x11.statistics_entryR\x11statisticsEntriesB\v\n" +
+	"\t_category\"\xb1\x01\n" +
 	"\n" +
 	"hosts_info\x12\x16\n" +
 	"\x06status\x18\x01 \x01(\x05R\x06status\x12#\n" +
@@ -7931,7 +8156,7 @@ const file_gateway_proto_rawDesc = "" +
 	"\x05UNSET\x10\x00\x12\r\n" +
 	"\tOPTIMIZED\x10\x01\x12\x11\n" +
 	"\rNON_OPTIMIZED\x10\x02\x12\x10\n" +
-	"\fINACCESSIBLE\x10\x032\xae\x19\n" +
+	"\fINACCESSIBLE\x10\x032\xa9\x1a\n" +
 	"\aGateway\x123\n" +
 	"\rnamespace_add\x12\x12.namespace_add_req\x1a\f.nsid_status\"\x00\x12;\n" +
 	"\x10create_subsystem\x12\x15.create_subsystem_req\x1a\x0e.subsys_status\"\x00\x128\n" +
@@ -7964,7 +8189,8 @@ const file_gateway_proto_rawDesc = "" +
 	"\n" +
 	"list_hosts\x12\x0f.list_hosts_req\x1a\v.hosts_info\"\x00\x12>\n" +
 	"\x10list_connections\x12\x15.list_connections_req\x1a\x11.connections_info\"\x00\x12^\n" +
-	"\x1cget_connection_io_statistics\x12!.get_connection_io_statistics_req\x1a\x19.connection_io_statistics\"\x00\x126\n" +
+	"\x1cget_connection_io_statistics\x12!.get_connection_io_statistics_req\x1a\x19.connection_io_statistics\"\x00\x12y\n" +
+	"%get_connection_extended_io_statistics\x12*.get_connection_extended_io_statistics_req\x1a\".connection_extended_io_statistics\"\x00\x126\n" +
 	"\x0fcreate_listener\x12\x14.create_listener_req\x1a\v.req_status\"\x00\x126\n" +
 	"\x0fdelete_listener\x12\x14.delete_listener_req\x1a\v.req_status\"\x00\x128\n" +
 	"\x0elist_listeners\x12\x13.list_listeners_req\x1a\x0f.listeners_info\"\x00\x12?\n" +
@@ -7995,7 +8221,7 @@ func file_gateway_proto_rawDescGZIP() []byte {
 }
 
 var file_gateway_proto_enumTypes = make([]protoimpl.EnumInfo, 7)
-var file_gateway_proto_msgTypes = make([]protoimpl.MessageInfo, 92)
+var file_gateway_proto_msgTypes = make([]protoimpl.MessageInfo, 95)
 var file_gateway_proto_goTypes = []any{
 	(AddressFamily)(0),                           // 0: AddressFamily
 	(LogLevel)(0),                                // 1: LogLevel
@@ -8035,216 +8261,223 @@ var file_gateway_proto_goTypes = []any{
 	(*AddHostReq)(nil),                           // 35: add_host_req
 	(*ChangeHostKeyReq)(nil),                     // 36: change_host_key_req
 	(*GetConnectionIoStatisticsReq)(nil),         // 37: get_connection_io_statistics_req
-	(*RemoveHostReq)(nil),                        // 38: remove_host_req
-	(*SetKeepHostConnectedReq)(nil),              // 39: set_keep_host_connected_req
-	(*ListHostsReq)(nil),                         // 40: list_hosts_req
-	(*ListConnectionsReq)(nil),                   // 41: list_connections_req
-	(*CreateListenerReq)(nil),                    // 42: create_listener_req
-	(*DeleteListenerReq)(nil),                    // 43: delete_listener_req
-	(*ListListenersReq)(nil),                     // 44: list_listeners_req
-	(*ListSubsystemsReq)(nil),                    // 45: list_subsystems_req
-	(*GetSubsystemsReq)(nil),                     // 46: get_subsystems_req
-	(*GetSpdkNvmfLogFlagsAndLevelReq)(nil),       // 47: get_spdk_nvmf_log_flags_and_level_req
-	(*DisableSpdkNvmfLogsReq)(nil),               // 48: disable_spdk_nvmf_logs_req
-	(*SetSpdkNvmfLogsReq)(nil),                   // 49: set_spdk_nvmf_logs_req
-	(*GetGatewayInfoReq)(nil),                    // 50: get_gateway_info_req
-	(*GetGatewayLogLevelReq)(nil),                // 51: get_gateway_log_level_req
-	(*SetGatewayLogLevelReq)(nil),                // 52: set_gateway_log_level_req
-	(*ShowGatewayListenersInfoReq)(nil),          // 53: show_gateway_listeners_info_req
-	(*GetGatewayStatsReq)(nil),                   // 54: get_gateway_stats_req
-	(*GetThreadStatsReq)(nil),                    // 55: get_thread_stats_req
-	(*SetGatewayIoStatsModeReq)(nil),             // 56: set_gateway_io_stats_mode_req
-	(*AnaGroupState)(nil),                        // 57: ana_group_state
-	(*NqnAnaStates)(nil),                         // 58: nqn_ana_states
-	(*AnaInfo)(nil),                              // 59: ana_info
-	(*ReqStatus)(nil),                            // 60: req_status
-	(*SubsysStatus)(nil),                         // 61: subsys_status
-	(*NsidStatus)(nil),                           // 62: nsid_status
-	(*SubsystemsInfo)(nil),                       // 63: subsystems_info
-	(*Subsystem)(nil),                            // 64: subsystem
-	(*ListenAddress)(nil),                        // 65: listen_address
-	(*Namespace)(nil),                            // 66: namespace
-	(*SubsystemsInfoCli)(nil),                    // 67: subsystems_info_cli
-	(*SubsystemCli)(nil),                         // 68: subsystem_cli
-	(*GatewayInfo)(nil),                          // 69: gateway_info
-	(*CliVersion)(nil),                           // 70: cli_version
-	(*GwVersion)(nil),                            // 71: gw_version
-	(*PollGroupTransportInfo)(nil),               // 72: poll_group_transport_info
-	(*PollGroupInfo)(nil),                        // 73: poll_group_info
-	(*GatewayStatsInfo)(nil),                     // 74: gateway_stats_info
-	(*ThreadStatsInfo)(nil),                      // 75: thread_stats_info
-	(*SpdkThreadInfo)(nil),                       // 76: spdk_thread_info
-	(*ListenerInfo)(nil),                         // 77: listener_info
-	(*ListenersInfo)(nil),                        // 78: listeners_info
-	(*GatewayListenerInfo)(nil),                  // 79: gateway_listener_info
-	(*GatewayListenersInfo)(nil),                 // 80: gateway_listeners_info
-	(*Host)(nil),                                 // 81: host
-	(*LatencyStats)(nil),                         // 82: latency_stats
-	(*LatencyGroup)(nil),                         // 83: latency_group
-	(*BucketInfo)(nil),                           // 84: bucket_info
-	(*ConnectionIoStatistics)(nil),               // 85: connection_io_statistics
-	(*HostsInfo)(nil),                            // 86: hosts_info
-	(*Connection)(nil),                           // 87: connection
-	(*ConnectionsInfo)(nil),                      // 88: connections_info
-	(*NamespaceCli)(nil),                         // 89: namespace_cli
-	(*NamespacesInfo)(nil),                       // 90: namespaces_info
-	(*NamespaceIoError)(nil),                     // 91: namespace_io_error
-	(*ListNamespacesIoStatsInfo)(nil),            // 92: list_namespaces_io_stats_info
-	(*BdevIoStatsInfo)(nil),                      // 93: bdev_io_stats_info
-	(*NamespaceIoStatsInfo)(nil),                 // 94: namespace_io_stats_info
-	(*SpdkLogFlagInfo)(nil),                      // 95: spdk_log_flag_info
-	(*SpdkNvmfLogFlagsAndLevelInfo)(nil),         // 96: spdk_nvmf_log_flags_and_level_info
-	(*GatewayLogLevelInfo)(nil),                  // 97: gateway_log_level_info
-	(*EncryptionEntry)(nil),                      // 98: encryption_entry
+	(*GetConnectionExtendedIoStatisticsReq)(nil), // 38: get_connection_extended_io_statistics_req
+	(*RemoveHostReq)(nil),                        // 39: remove_host_req
+	(*SetKeepHostConnectedReq)(nil),              // 40: set_keep_host_connected_req
+	(*ListHostsReq)(nil),                         // 41: list_hosts_req
+	(*ListConnectionsReq)(nil),                   // 42: list_connections_req
+	(*CreateListenerReq)(nil),                    // 43: create_listener_req
+	(*DeleteListenerReq)(nil),                    // 44: delete_listener_req
+	(*ListListenersReq)(nil),                     // 45: list_listeners_req
+	(*ListSubsystemsReq)(nil),                    // 46: list_subsystems_req
+	(*GetSubsystemsReq)(nil),                     // 47: get_subsystems_req
+	(*GetSpdkNvmfLogFlagsAndLevelReq)(nil),       // 48: get_spdk_nvmf_log_flags_and_level_req
+	(*DisableSpdkNvmfLogsReq)(nil),               // 49: disable_spdk_nvmf_logs_req
+	(*SetSpdkNvmfLogsReq)(nil),                   // 50: set_spdk_nvmf_logs_req
+	(*GetGatewayInfoReq)(nil),                    // 51: get_gateway_info_req
+	(*GetGatewayLogLevelReq)(nil),                // 52: get_gateway_log_level_req
+	(*SetGatewayLogLevelReq)(nil),                // 53: set_gateway_log_level_req
+	(*ShowGatewayListenersInfoReq)(nil),          // 54: show_gateway_listeners_info_req
+	(*GetGatewayStatsReq)(nil),                   // 55: get_gateway_stats_req
+	(*GetThreadStatsReq)(nil),                    // 56: get_thread_stats_req
+	(*SetGatewayIoStatsModeReq)(nil),             // 57: set_gateway_io_stats_mode_req
+	(*AnaGroupState)(nil),                        // 58: ana_group_state
+	(*NqnAnaStates)(nil),                         // 59: nqn_ana_states
+	(*AnaInfo)(nil),                              // 60: ana_info
+	(*ReqStatus)(nil),                            // 61: req_status
+	(*SubsysStatus)(nil),                         // 62: subsys_status
+	(*NsidStatus)(nil),                           // 63: nsid_status
+	(*SubsystemsInfo)(nil),                       // 64: subsystems_info
+	(*Subsystem)(nil),                            // 65: subsystem
+	(*ListenAddress)(nil),                        // 66: listen_address
+	(*Namespace)(nil),                            // 67: namespace
+	(*SubsystemsInfoCli)(nil),                    // 68: subsystems_info_cli
+	(*SubsystemCli)(nil),                         // 69: subsystem_cli
+	(*GatewayInfo)(nil),                          // 70: gateway_info
+	(*CliVersion)(nil),                           // 71: cli_version
+	(*GwVersion)(nil),                            // 72: gw_version
+	(*PollGroupTransportInfo)(nil),               // 73: poll_group_transport_info
+	(*PollGroupInfo)(nil),                        // 74: poll_group_info
+	(*GatewayStatsInfo)(nil),                     // 75: gateway_stats_info
+	(*ThreadStatsInfo)(nil),                      // 76: thread_stats_info
+	(*SpdkThreadInfo)(nil),                       // 77: spdk_thread_info
+	(*ListenerInfo)(nil),                         // 78: listener_info
+	(*ListenersInfo)(nil),                        // 79: listeners_info
+	(*GatewayListenerInfo)(nil),                  // 80: gateway_listener_info
+	(*GatewayListenersInfo)(nil),                 // 81: gateway_listeners_info
+	(*Host)(nil),                                 // 82: host
+	(*LatencyStats)(nil),                         // 83: latency_stats
+	(*LatencyGroup)(nil),                         // 84: latency_group
+	(*BucketInfo)(nil),                           // 85: bucket_info
+	(*ConnectionIoStatistics)(nil),               // 86: connection_io_statistics
+	(*StatisticsEntry)(nil),                      // 87: statistics_entry
+	(*ConnectionExtendedIoStatistics)(nil),       // 88: connection_extended_io_statistics
+	(*HostsInfo)(nil),                            // 89: hosts_info
+	(*Connection)(nil),                           // 90: connection
+	(*ConnectionsInfo)(nil),                      // 91: connections_info
+	(*NamespaceCli)(nil),                         // 92: namespace_cli
+	(*NamespacesInfo)(nil),                       // 93: namespaces_info
+	(*NamespaceIoError)(nil),                     // 94: namespace_io_error
+	(*ListNamespacesIoStatsInfo)(nil),            // 95: list_namespaces_io_stats_info
+	(*BdevIoStatsInfo)(nil),                      // 96: bdev_io_stats_info
+	(*NamespaceIoStatsInfo)(nil),                 // 97: namespace_io_stats_info
+	(*SpdkLogFlagInfo)(nil),                      // 98: spdk_log_flag_info
+	(*SpdkNvmfLogFlagsAndLevelInfo)(nil),         // 99: spdk_nvmf_log_flags_and_level_info
+	(*GatewayLogLevelInfo)(nil),                  // 100: gateway_log_level_info
+	(*EncryptionEntry)(nil),                      // 101: encryption_entry
 }
 var file_gateway_proto_depIdxs = []int32{
-	98, // 0: namespace_add_req.encryption_entries:type_name -> encryption_entry
-	4,  // 1: namespace_add_req.encryption_algorithm:type_name -> EncryptionAlgorithm
-	28, // 2: add_kmip_server_endpoints_req.endpoints:type_name -> kmip_server_endpoint
-	28, // 3: del_kmip_server_endpoints_req.endpoints:type_name -> kmip_server_endpoint
-	29, // 4: kmip_server_endpoints_info.endpoints:type_name -> kmip_server_endpoint_cli
-	0,  // 5: create_listener_req.adrfam:type_name -> AddressFamily
-	0,  // 6: delete_listener_req.adrfam:type_name -> AddressFamily
-	1,  // 7: set_spdk_nvmf_logs_req.log_level:type_name -> LogLevel
-	1,  // 8: set_spdk_nvmf_logs_req.print_level:type_name -> LogLevel
-	2,  // 9: set_gateway_log_level_req.log_level:type_name -> GwLogLevel
-	6,  // 10: ana_group_state.state:type_name -> ana_state
-	57, // 11: nqn_ana_states.states:type_name -> ana_group_state
-	58, // 12: ana_info.states:type_name -> nqn_ana_states
-	64, // 13: subsystems_info.subsystems:type_name -> subsystem
-	65, // 14: subsystem.listen_addresses:type_name -> listen_address
-	81, // 15: subsystem.hosts:type_name -> host
-	66, // 16: subsystem.namespaces:type_name -> namespace
-	68, // 17: subsystems_info_cli.subsystems:type_name -> subsystem_cli
-	72, // 18: poll_group_info.transports:type_name -> poll_group_transport_info
-	73, // 19: gateway_stats_info.poll_groups:type_name -> poll_group_info
-	76, // 20: thread_stats_info.threads:type_name -> spdk_thread_info
-	0,  // 21: listener_info.adrfam:type_name -> AddressFamily
-	77, // 22: listeners_info.listeners:type_name -> listener_info
-	77, // 23: gateway_listener_info.listener:type_name -> listener_info
-	57, // 24: gateway_listener_info.lb_states:type_name -> ana_group_state
-	79, // 25: gateway_listeners_info.gw_listeners:type_name -> gateway_listener_info
-	5,  // 26: host.dhchap_controller_origin:type_name -> DHCHAPControllerKeyOrigin
-	82, // 27: latency_group.total:type_name -> latency_stats
-	82, // 28: latency_group.bdev:type_name -> latency_stats
-	82, // 29: latency_group.net:type_name -> latency_stats
-	82, // 30: latency_group.qos:type_name -> latency_stats
-	83, // 31: bucket_info.read:type_name -> latency_group
-	83, // 32: bucket_info.write:type_name -> latency_group
-	84, // 33: connection_io_statistics.buckets:type_name -> bucket_info
-	81, // 34: hosts_info.hosts:type_name -> host
-	0,  // 35: connection.adrfam:type_name -> AddressFamily
-	5,  // 36: connection.dhchap_controller_origin:type_name -> DHCHAPControllerKeyOrigin
-	87, // 37: connections_info.connections:type_name -> connection
-	98, // 38: namespace_cli.encryption_entries:type_name -> encryption_entry
-	89, // 39: namespaces_info.namespaces:type_name -> namespace_cli
-	93, // 40: list_namespaces_io_stats_info.namespaces:type_name -> bdev_io_stats_info
-	91, // 41: bdev_io_stats_info.io_error:type_name -> namespace_io_error
-	91, // 42: namespace_io_stats_info.io_error:type_name -> namespace_io_error
-	95, // 43: spdk_nvmf_log_flags_and_level_info.nvmf_log_flags:type_name -> spdk_log_flag_info
-	1,  // 44: spdk_nvmf_log_flags_and_level_info.log_level:type_name -> LogLevel
-	1,  // 45: spdk_nvmf_log_flags_and_level_info.log_print_level:type_name -> LogLevel
-	2,  // 46: gateway_log_level_info.log_level:type_name -> GwLogLevel
-	3,  // 47: encryption_entry.format:type_name -> EncryptionFormat
-	7,  // 48: Gateway.namespace_add:input_type -> namespace_add_req
-	21, // 49: Gateway.create_subsystem:input_type -> create_subsystem_req
-	22, // 50: Gateway.delete_subsystem:input_type -> delete_subsystem_req
-	23, // 51: Gateway.change_subsystem_key:input_type -> change_subsystem_key_req
-	24, // 52: Gateway.add_subsystem_network:input_type -> add_subsystem_network_req
-	25, // 53: Gateway.del_subsystem_network:input_type -> del_subsystem_network_req
-	26, // 54: Gateway.gw_refresh_network:input_type -> gw_refresh_network_req
-	30, // 55: Gateway.add_kmip_server_endpoints:input_type -> add_kmip_server_endpoints_req
-	31, // 56: Gateway.del_kmip_server_endpoints:input_type -> del_kmip_server_endpoints_req
-	32, // 57: Gateway.list_kmip_server_endpoints:input_type -> list_kmip_server_endpoints_req
-	34, // 58: Gateway.list_namespaces:input_type -> list_namespaces_req
-	8,  // 59: Gateway.namespace_resize:input_type -> namespace_resize_req
-	9,  // 60: Gateway.namespace_get_io_stats:input_type -> namespace_get_io_stats_req
-	10, // 61: Gateway.list_namespaces_io_stats:input_type -> list_namespaces_io_stats_req
-	11, // 62: Gateway.namespace_set_qos_limits:input_type -> namespace_set_qos_req
-	12, // 63: Gateway.namespace_change_load_balancing_group:input_type -> namespace_change_load_balancing_group_req
-	13, // 64: Gateway.namespace_change_visibility:input_type -> namespace_change_visibility_req
-	14, // 65: Gateway.namespace_change_location:input_type -> namespace_change_location_req
-	15, // 66: Gateway.namespace_set_rbd_trash_image:input_type -> namespace_set_rbd_trash_image_req
-	16, // 67: Gateway.namespace_set_auto_resize:input_type -> namespace_set_auto_resize_req
-	17, // 68: Gateway.namespace_delete:input_type -> namespace_delete_req
-	18, // 69: Gateway.namespace_add_host:input_type -> namespace_add_host_req
-	19, // 70: Gateway.namespace_delete_host:input_type -> namespace_delete_host_req
-	20, // 71: Gateway.namespace_unpin:input_type -> namespace_unpin_req
-	35, // 72: Gateway.add_host:input_type -> add_host_req
-	38, // 73: Gateway.remove_host:input_type -> remove_host_req
-	39, // 74: Gateway.set_keep_host_connected:input_type -> set_keep_host_connected_req
-	36, // 75: Gateway.change_host_key:input_type -> change_host_key_req
-	40, // 76: Gateway.list_hosts:input_type -> list_hosts_req
-	41, // 77: Gateway.list_connections:input_type -> list_connections_req
-	37, // 78: Gateway.get_connection_io_statistics:input_type -> get_connection_io_statistics_req
-	42, // 79: Gateway.create_listener:input_type -> create_listener_req
-	43, // 80: Gateway.delete_listener:input_type -> delete_listener_req
-	44, // 81: Gateway.list_listeners:input_type -> list_listeners_req
-	45, // 82: Gateway.list_subsystems:input_type -> list_subsystems_req
-	46, // 83: Gateway.get_subsystems:input_type -> get_subsystems_req
-	59, // 84: Gateway.set_ana_state:input_type -> ana_info
-	47, // 85: Gateway.get_spdk_nvmf_log_flags_and_level:input_type -> get_spdk_nvmf_log_flags_and_level_req
-	48, // 86: Gateway.disable_spdk_nvmf_logs:input_type -> disable_spdk_nvmf_logs_req
-	49, // 87: Gateway.set_spdk_nvmf_logs:input_type -> set_spdk_nvmf_logs_req
-	50, // 88: Gateway.get_gateway_info:input_type -> get_gateway_info_req
-	51, // 89: Gateway.get_gateway_log_level:input_type -> get_gateway_log_level_req
-	52, // 90: Gateway.set_gateway_log_level:input_type -> set_gateway_log_level_req
-	53, // 91: Gateway.show_gateway_listeners_info:input_type -> show_gateway_listeners_info_req
-	54, // 92: Gateway.get_gateway_stats:input_type -> get_gateway_stats_req
-	55, // 93: Gateway.get_thread_stats:input_type -> get_thread_stats_req
-	56, // 94: Gateway.set_gateway_io_stats_mode:input_type -> set_gateway_io_stats_mode_req
-	62, // 95: Gateway.namespace_add:output_type -> nsid_status
-	61, // 96: Gateway.create_subsystem:output_type -> subsys_status
-	60, // 97: Gateway.delete_subsystem:output_type -> req_status
-	60, // 98: Gateway.change_subsystem_key:output_type -> req_status
-	60, // 99: Gateway.add_subsystem_network:output_type -> req_status
-	60, // 100: Gateway.del_subsystem_network:output_type -> req_status
-	27, // 101: Gateway.gw_refresh_network:output_type -> gw_refresh_network_status
-	60, // 102: Gateway.add_kmip_server_endpoints:output_type -> req_status
-	60, // 103: Gateway.del_kmip_server_endpoints:output_type -> req_status
-	33, // 104: Gateway.list_kmip_server_endpoints:output_type -> kmip_server_endpoints_info
-	90, // 105: Gateway.list_namespaces:output_type -> namespaces_info
-	60, // 106: Gateway.namespace_resize:output_type -> req_status
-	94, // 107: Gateway.namespace_get_io_stats:output_type -> namespace_io_stats_info
-	92, // 108: Gateway.list_namespaces_io_stats:output_type -> list_namespaces_io_stats_info
-	60, // 109: Gateway.namespace_set_qos_limits:output_type -> req_status
-	60, // 110: Gateway.namespace_change_load_balancing_group:output_type -> req_status
-	60, // 111: Gateway.namespace_change_visibility:output_type -> req_status
-	60, // 112: Gateway.namespace_change_location:output_type -> req_status
-	60, // 113: Gateway.namespace_set_rbd_trash_image:output_type -> req_status
-	60, // 114: Gateway.namespace_set_auto_resize:output_type -> req_status
-	60, // 115: Gateway.namespace_delete:output_type -> req_status
-	60, // 116: Gateway.namespace_add_host:output_type -> req_status
-	60, // 117: Gateway.namespace_delete_host:output_type -> req_status
-	60, // 118: Gateway.namespace_unpin:output_type -> req_status
-	60, // 119: Gateway.add_host:output_type -> req_status
-	60, // 120: Gateway.remove_host:output_type -> req_status
-	60, // 121: Gateway.set_keep_host_connected:output_type -> req_status
-	60, // 122: Gateway.change_host_key:output_type -> req_status
-	86, // 123: Gateway.list_hosts:output_type -> hosts_info
-	88, // 124: Gateway.list_connections:output_type -> connections_info
-	85, // 125: Gateway.get_connection_io_statistics:output_type -> connection_io_statistics
-	60, // 126: Gateway.create_listener:output_type -> req_status
-	60, // 127: Gateway.delete_listener:output_type -> req_status
-	78, // 128: Gateway.list_listeners:output_type -> listeners_info
-	67, // 129: Gateway.list_subsystems:output_type -> subsystems_info_cli
-	63, // 130: Gateway.get_subsystems:output_type -> subsystems_info
-	60, // 131: Gateway.set_ana_state:output_type -> req_status
-	96, // 132: Gateway.get_spdk_nvmf_log_flags_and_level:output_type -> spdk_nvmf_log_flags_and_level_info
-	60, // 133: Gateway.disable_spdk_nvmf_logs:output_type -> req_status
-	60, // 134: Gateway.set_spdk_nvmf_logs:output_type -> req_status
-	69, // 135: Gateway.get_gateway_info:output_type -> gateway_info
-	97, // 136: Gateway.get_gateway_log_level:output_type -> gateway_log_level_info
-	60, // 137: Gateway.set_gateway_log_level:output_type -> req_status
-	80, // 138: Gateway.show_gateway_listeners_info:output_type -> gateway_listeners_info
-	74, // 139: Gateway.get_gateway_stats:output_type -> gateway_stats_info
-	75, // 140: Gateway.get_thread_stats:output_type -> thread_stats_info
-	60, // 141: Gateway.set_gateway_io_stats_mode:output_type -> req_status
-	95, // [95:142] is the sub-list for method output_type
-	48, // [48:95] is the sub-list for method input_type
-	48, // [48:48] is the sub-list for extension type_name
-	48, // [48:48] is the sub-list for extension extendee
-	0,  // [0:48] is the sub-list for field type_name
+	101, // 0: namespace_add_req.encryption_entries:type_name -> encryption_entry
+	4,   // 1: namespace_add_req.encryption_algorithm:type_name -> EncryptionAlgorithm
+	28,  // 2: add_kmip_server_endpoints_req.endpoints:type_name -> kmip_server_endpoint
+	28,  // 3: del_kmip_server_endpoints_req.endpoints:type_name -> kmip_server_endpoint
+	29,  // 4: kmip_server_endpoints_info.endpoints:type_name -> kmip_server_endpoint_cli
+	0,   // 5: create_listener_req.adrfam:type_name -> AddressFamily
+	0,   // 6: delete_listener_req.adrfam:type_name -> AddressFamily
+	1,   // 7: set_spdk_nvmf_logs_req.log_level:type_name -> LogLevel
+	1,   // 8: set_spdk_nvmf_logs_req.print_level:type_name -> LogLevel
+	2,   // 9: set_gateway_log_level_req.log_level:type_name -> GwLogLevel
+	6,   // 10: ana_group_state.state:type_name -> ana_state
+	58,  // 11: nqn_ana_states.states:type_name -> ana_group_state
+	59,  // 12: ana_info.states:type_name -> nqn_ana_states
+	65,  // 13: subsystems_info.subsystems:type_name -> subsystem
+	66,  // 14: subsystem.listen_addresses:type_name -> listen_address
+	82,  // 15: subsystem.hosts:type_name -> host
+	67,  // 16: subsystem.namespaces:type_name -> namespace
+	69,  // 17: subsystems_info_cli.subsystems:type_name -> subsystem_cli
+	73,  // 18: poll_group_info.transports:type_name -> poll_group_transport_info
+	74,  // 19: gateway_stats_info.poll_groups:type_name -> poll_group_info
+	77,  // 20: thread_stats_info.threads:type_name -> spdk_thread_info
+	0,   // 21: listener_info.adrfam:type_name -> AddressFamily
+	78,  // 22: listeners_info.listeners:type_name -> listener_info
+	78,  // 23: gateway_listener_info.listener:type_name -> listener_info
+	58,  // 24: gateway_listener_info.lb_states:type_name -> ana_group_state
+	80,  // 25: gateway_listeners_info.gw_listeners:type_name -> gateway_listener_info
+	5,   // 26: host.dhchap_controller_origin:type_name -> DHCHAPControllerKeyOrigin
+	83,  // 27: latency_group.total:type_name -> latency_stats
+	83,  // 28: latency_group.bdev:type_name -> latency_stats
+	83,  // 29: latency_group.net:type_name -> latency_stats
+	83,  // 30: latency_group.qos:type_name -> latency_stats
+	84,  // 31: bucket_info.read:type_name -> latency_group
+	84,  // 32: bucket_info.write:type_name -> latency_group
+	85,  // 33: connection_io_statistics.buckets:type_name -> bucket_info
+	85,  // 34: statistics_entry.buckets:type_name -> bucket_info
+	87,  // 35: connection_extended_io_statistics.statistics_entries:type_name -> statistics_entry
+	82,  // 36: hosts_info.hosts:type_name -> host
+	0,   // 37: connection.adrfam:type_name -> AddressFamily
+	5,   // 38: connection.dhchap_controller_origin:type_name -> DHCHAPControllerKeyOrigin
+	90,  // 39: connections_info.connections:type_name -> connection
+	101, // 40: namespace_cli.encryption_entries:type_name -> encryption_entry
+	92,  // 41: namespaces_info.namespaces:type_name -> namespace_cli
+	96,  // 42: list_namespaces_io_stats_info.namespaces:type_name -> bdev_io_stats_info
+	94,  // 43: bdev_io_stats_info.io_error:type_name -> namespace_io_error
+	94,  // 44: namespace_io_stats_info.io_error:type_name -> namespace_io_error
+	98,  // 45: spdk_nvmf_log_flags_and_level_info.nvmf_log_flags:type_name -> spdk_log_flag_info
+	1,   // 46: spdk_nvmf_log_flags_and_level_info.log_level:type_name -> LogLevel
+	1,   // 47: spdk_nvmf_log_flags_and_level_info.log_print_level:type_name -> LogLevel
+	2,   // 48: gateway_log_level_info.log_level:type_name -> GwLogLevel
+	3,   // 49: encryption_entry.format:type_name -> EncryptionFormat
+	7,   // 50: Gateway.namespace_add:input_type -> namespace_add_req
+	21,  // 51: Gateway.create_subsystem:input_type -> create_subsystem_req
+	22,  // 52: Gateway.delete_subsystem:input_type -> delete_subsystem_req
+	23,  // 53: Gateway.change_subsystem_key:input_type -> change_subsystem_key_req
+	24,  // 54: Gateway.add_subsystem_network:input_type -> add_subsystem_network_req
+	25,  // 55: Gateway.del_subsystem_network:input_type -> del_subsystem_network_req
+	26,  // 56: Gateway.gw_refresh_network:input_type -> gw_refresh_network_req
+	30,  // 57: Gateway.add_kmip_server_endpoints:input_type -> add_kmip_server_endpoints_req
+	31,  // 58: Gateway.del_kmip_server_endpoints:input_type -> del_kmip_server_endpoints_req
+	32,  // 59: Gateway.list_kmip_server_endpoints:input_type -> list_kmip_server_endpoints_req
+	34,  // 60: Gateway.list_namespaces:input_type -> list_namespaces_req
+	8,   // 61: Gateway.namespace_resize:input_type -> namespace_resize_req
+	9,   // 62: Gateway.namespace_get_io_stats:input_type -> namespace_get_io_stats_req
+	10,  // 63: Gateway.list_namespaces_io_stats:input_type -> list_namespaces_io_stats_req
+	11,  // 64: Gateway.namespace_set_qos_limits:input_type -> namespace_set_qos_req
+	12,  // 65: Gateway.namespace_change_load_balancing_group:input_type -> namespace_change_load_balancing_group_req
+	13,  // 66: Gateway.namespace_change_visibility:input_type -> namespace_change_visibility_req
+	14,  // 67: Gateway.namespace_change_location:input_type -> namespace_change_location_req
+	15,  // 68: Gateway.namespace_set_rbd_trash_image:input_type -> namespace_set_rbd_trash_image_req
+	16,  // 69: Gateway.namespace_set_auto_resize:input_type -> namespace_set_auto_resize_req
+	17,  // 70: Gateway.namespace_delete:input_type -> namespace_delete_req
+	18,  // 71: Gateway.namespace_add_host:input_type -> namespace_add_host_req
+	19,  // 72: Gateway.namespace_delete_host:input_type -> namespace_delete_host_req
+	20,  // 73: Gateway.namespace_unpin:input_type -> namespace_unpin_req
+	35,  // 74: Gateway.add_host:input_type -> add_host_req
+	39,  // 75: Gateway.remove_host:input_type -> remove_host_req
+	40,  // 76: Gateway.set_keep_host_connected:input_type -> set_keep_host_connected_req
+	36,  // 77: Gateway.change_host_key:input_type -> change_host_key_req
+	41,  // 78: Gateway.list_hosts:input_type -> list_hosts_req
+	42,  // 79: Gateway.list_connections:input_type -> list_connections_req
+	37,  // 80: Gateway.get_connection_io_statistics:input_type -> get_connection_io_statistics_req
+	38,  // 81: Gateway.get_connection_extended_io_statistics:input_type -> get_connection_extended_io_statistics_req
+	43,  // 82: Gateway.create_listener:input_type -> create_listener_req
+	44,  // 83: Gateway.delete_listener:input_type -> delete_listener_req
+	45,  // 84: Gateway.list_listeners:input_type -> list_listeners_req
+	46,  // 85: Gateway.list_subsystems:input_type -> list_subsystems_req
+	47,  // 86: Gateway.get_subsystems:input_type -> get_subsystems_req
+	60,  // 87: Gateway.set_ana_state:input_type -> ana_info
+	48,  // 88: Gateway.get_spdk_nvmf_log_flags_and_level:input_type -> get_spdk_nvmf_log_flags_and_level_req
+	49,  // 89: Gateway.disable_spdk_nvmf_logs:input_type -> disable_spdk_nvmf_logs_req
+	50,  // 90: Gateway.set_spdk_nvmf_logs:input_type -> set_spdk_nvmf_logs_req
+	51,  // 91: Gateway.get_gateway_info:input_type -> get_gateway_info_req
+	52,  // 92: Gateway.get_gateway_log_level:input_type -> get_gateway_log_level_req
+	53,  // 93: Gateway.set_gateway_log_level:input_type -> set_gateway_log_level_req
+	54,  // 94: Gateway.show_gateway_listeners_info:input_type -> show_gateway_listeners_info_req
+	55,  // 95: Gateway.get_gateway_stats:input_type -> get_gateway_stats_req
+	56,  // 96: Gateway.get_thread_stats:input_type -> get_thread_stats_req
+	57,  // 97: Gateway.set_gateway_io_stats_mode:input_type -> set_gateway_io_stats_mode_req
+	63,  // 98: Gateway.namespace_add:output_type -> nsid_status
+	62,  // 99: Gateway.create_subsystem:output_type -> subsys_status
+	61,  // 100: Gateway.delete_subsystem:output_type -> req_status
+	61,  // 101: Gateway.change_subsystem_key:output_type -> req_status
+	61,  // 102: Gateway.add_subsystem_network:output_type -> req_status
+	61,  // 103: Gateway.del_subsystem_network:output_type -> req_status
+	27,  // 104: Gateway.gw_refresh_network:output_type -> gw_refresh_network_status
+	61,  // 105: Gateway.add_kmip_server_endpoints:output_type -> req_status
+	61,  // 106: Gateway.del_kmip_server_endpoints:output_type -> req_status
+	33,  // 107: Gateway.list_kmip_server_endpoints:output_type -> kmip_server_endpoints_info
+	93,  // 108: Gateway.list_namespaces:output_type -> namespaces_info
+	61,  // 109: Gateway.namespace_resize:output_type -> req_status
+	97,  // 110: Gateway.namespace_get_io_stats:output_type -> namespace_io_stats_info
+	95,  // 111: Gateway.list_namespaces_io_stats:output_type -> list_namespaces_io_stats_info
+	61,  // 112: Gateway.namespace_set_qos_limits:output_type -> req_status
+	61,  // 113: Gateway.namespace_change_load_balancing_group:output_type -> req_status
+	61,  // 114: Gateway.namespace_change_visibility:output_type -> req_status
+	61,  // 115: Gateway.namespace_change_location:output_type -> req_status
+	61,  // 116: Gateway.namespace_set_rbd_trash_image:output_type -> req_status
+	61,  // 117: Gateway.namespace_set_auto_resize:output_type -> req_status
+	61,  // 118: Gateway.namespace_delete:output_type -> req_status
+	61,  // 119: Gateway.namespace_add_host:output_type -> req_status
+	61,  // 120: Gateway.namespace_delete_host:output_type -> req_status
+	61,  // 121: Gateway.namespace_unpin:output_type -> req_status
+	61,  // 122: Gateway.add_host:output_type -> req_status
+	61,  // 123: Gateway.remove_host:output_type -> req_status
+	61,  // 124: Gateway.set_keep_host_connected:output_type -> req_status
+	61,  // 125: Gateway.change_host_key:output_type -> req_status
+	89,  // 126: Gateway.list_hosts:output_type -> hosts_info
+	91,  // 127: Gateway.list_connections:output_type -> connections_info
+	86,  // 128: Gateway.get_connection_io_statistics:output_type -> connection_io_statistics
+	88,  // 129: Gateway.get_connection_extended_io_statistics:output_type -> connection_extended_io_statistics
+	61,  // 130: Gateway.create_listener:output_type -> req_status
+	61,  // 131: Gateway.delete_listener:output_type -> req_status
+	79,  // 132: Gateway.list_listeners:output_type -> listeners_info
+	68,  // 133: Gateway.list_subsystems:output_type -> subsystems_info_cli
+	64,  // 134: Gateway.get_subsystems:output_type -> subsystems_info
+	61,  // 135: Gateway.set_ana_state:output_type -> req_status
+	99,  // 136: Gateway.get_spdk_nvmf_log_flags_and_level:output_type -> spdk_nvmf_log_flags_and_level_info
+	61,  // 137: Gateway.disable_spdk_nvmf_logs:output_type -> req_status
+	61,  // 138: Gateway.set_spdk_nvmf_logs:output_type -> req_status
+	70,  // 139: Gateway.get_gateway_info:output_type -> gateway_info
+	100, // 140: Gateway.get_gateway_log_level:output_type -> gateway_log_level_info
+	61,  // 141: Gateway.set_gateway_log_level:output_type -> req_status
+	81,  // 142: Gateway.show_gateway_listeners_info:output_type -> gateway_listeners_info
+	75,  // 143: Gateway.get_gateway_stats:output_type -> gateway_stats_info
+	76,  // 144: Gateway.get_thread_stats:output_type -> thread_stats_info
+	61,  // 145: Gateway.set_gateway_io_stats_mode:output_type -> req_status
+	98,  // [98:146] is the sub-list for method output_type
+	50,  // [50:98] is the sub-list for method input_type
+	50,  // [50:50] is the sub-list for extension type_name
+	50,  // [50:50] is the sub-list for extension extendee
+	0,   // [0:50] is the sub-list for field type_name
 }
 
 func init() { file_gateway_proto_init() }
@@ -8278,28 +8511,31 @@ func file_gateway_proto_init() {
 	file_gateway_proto_msgTypes[34].OneofWrappers = []any{}
 	file_gateway_proto_msgTypes[35].OneofWrappers = []any{}
 	file_gateway_proto_msgTypes[36].OneofWrappers = []any{}
-	file_gateway_proto_msgTypes[38].OneofWrappers = []any{}
-	file_gateway_proto_msgTypes[40].OneofWrappers = []any{}
-	file_gateway_proto_msgTypes[42].OneofWrappers = []any{}
+	file_gateway_proto_msgTypes[37].OneofWrappers = []any{}
+	file_gateway_proto_msgTypes[39].OneofWrappers = []any{}
+	file_gateway_proto_msgTypes[41].OneofWrappers = []any{}
 	file_gateway_proto_msgTypes[43].OneofWrappers = []any{}
-	file_gateway_proto_msgTypes[57].OneofWrappers = []any{}
+	file_gateway_proto_msgTypes[44].OneofWrappers = []any{}
 	file_gateway_proto_msgTypes[58].OneofWrappers = []any{}
 	file_gateway_proto_msgTypes[59].OneofWrappers = []any{}
-	file_gateway_proto_msgTypes[61].OneofWrappers = []any{}
+	file_gateway_proto_msgTypes[60].OneofWrappers = []any{}
 	file_gateway_proto_msgTypes[62].OneofWrappers = []any{}
-	file_gateway_proto_msgTypes[70].OneofWrappers = []any{}
-	file_gateway_proto_msgTypes[74].OneofWrappers = []any{}
-	file_gateway_proto_msgTypes[78].OneofWrappers = []any{}
+	file_gateway_proto_msgTypes[63].OneofWrappers = []any{}
+	file_gateway_proto_msgTypes[71].OneofWrappers = []any{}
+	file_gateway_proto_msgTypes[75].OneofWrappers = []any{}
+	file_gateway_proto_msgTypes[79].OneofWrappers = []any{}
 	file_gateway_proto_msgTypes[80].OneofWrappers = []any{}
-	file_gateway_proto_msgTypes[82].OneofWrappers = []any{}
-	file_gateway_proto_msgTypes[87].OneofWrappers = []any{}
+	file_gateway_proto_msgTypes[81].OneofWrappers = []any{}
+	file_gateway_proto_msgTypes[83].OneofWrappers = []any{}
+	file_gateway_proto_msgTypes[85].OneofWrappers = []any{}
+	file_gateway_proto_msgTypes[90].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_gateway_proto_rawDesc), len(file_gateway_proto_rawDesc)),
 			NumEnums:      7,
-			NumMessages:   92,
+			NumMessages:   95,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

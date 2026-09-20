@@ -122,6 +122,24 @@ def test_get_stats_wrong_host(caplog, two_gateways):
     assert rc == 2
 
 
+def test_reset_stats_all_subsys_all_hosts(caplog, two_gateways):
+    caplog.clear()
+    cli(["connection", "reset_io_statistics"])
+    assert "Resetting IO statistics for all hosts on all subsystems" in caplog.text
+
+
+def test_reset_stats_all_hosts(caplog, two_gateways):
+    caplog.clear()
+    cli(["connection", "reset_io_statistics", "--subsystem", subsystem1])
+    assert f"Resetting IO statistics for all hosts on subsystem {subsystem1}" in caplog.text
+
+
+def test_reset_stats_all_subsys(caplog, two_gateways):
+    caplog.clear()
+    cli(["connection", "reset_io_statistics", "--host-nqn", hostnqn1])
+    assert f"Resetting IO statistics for host {hostnqn1} on all subsystems" in caplog.text
+
+
 def test_reset_stats_wrong_subsystem(caplog, two_gateways):
     caplog.clear()
     cli(["connection", "reset_io_statistics", "--subsystem", subsystem2, "--host-nqn", hostnqn1])
@@ -198,7 +216,7 @@ def test_get_stats_host_when_disabled(caplog, two_gateways):
     caplog.clear()
     cli(["--server-port", "5502", "connection", "get_io_statistics", "--subsystem", subsystem1,
          "--host-nqn", hostnqn1])
-    assert f"Received request to get IO statistics for host {hostnqn1} on " \
+    assert f"Received request to get IO statistics for host {hostnqn1} on subsystem " \
            f"{subsystem1}" in caplog.text
     assert f"Failure getting IO statistics for host {hostnqn1} on subsystem {subsystem1}: " \
            f"IO statistics is disabled or not supported" in caplog.text
@@ -208,7 +226,7 @@ def test_reset_stats_host_when_disabled(caplog, two_gateways):
     caplog.clear()
     cli(["--server-port", "5502", "connection", "reset_io_statistics", "--subsystem", subsystem1,
          "--host-nqn", hostnqn1])
-    assert f"Received request to reset IO statistics for host {hostnqn1} on " \
+    assert f"Received request to reset IO statistics for host {hostnqn1} on subsystem " \
            f"{subsystem1}" in caplog.text
     assert f"Failure resetting IO statistics for host {hostnqn1} on subsystem {subsystem1}: " \
            f"IO statistics is disabled or not supported" in caplog.text

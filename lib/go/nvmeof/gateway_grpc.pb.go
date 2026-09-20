@@ -59,6 +59,7 @@ const (
 	Gateway_ListHosts_FullMethodName                         = "/Gateway/list_hosts"
 	Gateway_ListConnections_FullMethodName                   = "/Gateway/list_connections"
 	Gateway_GetConnectionIoStatistics_FullMethodName         = "/Gateway/get_connection_io_statistics"
+	Gateway_GetConnectionExtendedIoStatistics_FullMethodName = "/Gateway/get_connection_extended_io_statistics"
 	Gateway_CreateListener_FullMethodName                    = "/Gateway/create_listener"
 	Gateway_DeleteListener_FullMethodName                    = "/Gateway/delete_listener"
 	Gateway_ListListeners_FullMethodName                     = "/Gateway/list_listeners"
@@ -143,6 +144,8 @@ type GatewayClient interface {
 	ListConnections(ctx context.Context, in *ListConnectionsReq, opts ...grpc.CallOption) (*ConnectionsInfo, error)
 	// Gets connection's IO statistics
 	GetConnectionIoStatistics(ctx context.Context, in *GetConnectionIoStatisticsReq, opts ...grpc.CallOption) (*ConnectionIoStatistics, error)
+	// Gets connection's extended IO statistics
+	GetConnectionExtendedIoStatistics(ctx context.Context, in *GetConnectionExtendedIoStatisticsReq, opts ...grpc.CallOption) (*ConnectionExtendedIoStatistics, error)
 	// Creates a listener for a subsystem at a given IP/Port
 	CreateListener(ctx context.Context, in *CreateListenerReq, opts ...grpc.CallOption) (*ReqStatus, error)
 	// Deletes a listener from a subsystem at a given IP/Port
@@ -495,6 +498,16 @@ func (c *gatewayClient) GetConnectionIoStatistics(ctx context.Context, in *GetCo
 	return out, nil
 }
 
+func (c *gatewayClient) GetConnectionExtendedIoStatistics(ctx context.Context, in *GetConnectionExtendedIoStatisticsReq, opts ...grpc.CallOption) (*ConnectionExtendedIoStatistics, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ConnectionExtendedIoStatistics)
+	err := c.cc.Invoke(ctx, Gateway_GetConnectionExtendedIoStatistics_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *gatewayClient) CreateListener(ctx context.Context, in *CreateListenerReq, opts ...grpc.CallOption) (*ReqStatus, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ReqStatus)
@@ -721,6 +734,8 @@ type GatewayServer interface {
 	ListConnections(context.Context, *ListConnectionsReq) (*ConnectionsInfo, error)
 	// Gets connection's IO statistics
 	GetConnectionIoStatistics(context.Context, *GetConnectionIoStatisticsReq) (*ConnectionIoStatistics, error)
+	// Gets connection's extended IO statistics
+	GetConnectionExtendedIoStatistics(context.Context, *GetConnectionExtendedIoStatisticsReq) (*ConnectionExtendedIoStatistics, error)
 	// Creates a listener for a subsystem at a given IP/Port
 	CreateListener(context.Context, *CreateListenerReq) (*ReqStatus, error)
 	// Deletes a listener from a subsystem at a given IP/Port
@@ -855,6 +870,9 @@ func (UnimplementedGatewayServer) ListConnections(context.Context, *ListConnecti
 }
 func (UnimplementedGatewayServer) GetConnectionIoStatistics(context.Context, *GetConnectionIoStatisticsReq) (*ConnectionIoStatistics, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetConnectionIoStatistics not implemented")
+}
+func (UnimplementedGatewayServer) GetConnectionExtendedIoStatistics(context.Context, *GetConnectionExtendedIoStatisticsReq) (*ConnectionExtendedIoStatistics, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetConnectionExtendedIoStatistics not implemented")
 }
 func (UnimplementedGatewayServer) CreateListener(context.Context, *CreateListenerReq) (*ReqStatus, error) {
 	return nil, status.Error(codes.Unimplemented, "method CreateListener not implemented")
@@ -1483,6 +1501,24 @@ func _Gateway_GetConnectionIoStatistics_Handler(srv interface{}, ctx context.Con
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Gateway_GetConnectionExtendedIoStatistics_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetConnectionExtendedIoStatisticsReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GatewayServer).GetConnectionExtendedIoStatistics(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Gateway_GetConnectionExtendedIoStatistics_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GatewayServer).GetConnectionExtendedIoStatistics(ctx, req.(*GetConnectionExtendedIoStatisticsReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _Gateway_CreateListener_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(CreateListenerReq)
 	if err := dec(in); err != nil {
@@ -1901,6 +1937,10 @@ var Gateway_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "get_connection_io_statistics",
 			Handler:    _Gateway_GetConnectionIoStatistics_Handler,
+		},
+		{
+			MethodName: "get_connection_extended_io_statistics",
+			Handler:    _Gateway_GetConnectionExtendedIoStatistics_Handler,
 		},
 		{
 			MethodName: "create_listener",
