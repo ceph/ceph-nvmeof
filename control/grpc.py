@@ -7972,17 +7972,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     state = self.gateway_state.local.get_state()
                     listener_prefix = GatewayState.build_partial_listener_key(
                         request.nqn, None)
-                    is_auto_listener = False
-                    if request.nqn in self.subsystem_auto_listeners:
-                        lsnr = (adrfam, traddr, request.trsvcid)
-                        is_auto_listener = lsnr in self.subsystem_auto_listeners[request.nqn]
-                    if is_auto_listener:
-                        errmsg = f"{delete_listener_error_prefix}: Listener was created " \
-                                 f"automatically as part of the subsystem's network mask. " \
-                                 f"To remove it, modify the network mask."
-                        self.logger.error(errmsg)
-                        return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
                     is_in_omap = False
+                    addr_in_omap = False
                     for key, val in state.items():
                         if not key.startswith(listener_prefix):
                             continue
@@ -7990,12 +7981,41 @@ class GatewayService(pb2_grpc.GatewayServicer):
                             lstnr = json_format.Parse(val, pb2.create_listener_req(),
                                                       ignore_unknown_fields=True)
                             if lstnr.traddr == traddr and lstnr.trsvcid == request.trsvcid:
+                                addr_in_omap = True
                                 if request.host_name == "*" or lstnr.host_name == request.host_name:
                                     is_in_omap = True
                                     break
                         except Exception:
                             self.logger.exception(f"Got exception while parsing {val}")
                             continue
+
+                    is_auto_listener = False
+                    lsnr = (adrfam, traddr, request.trsvcid)
+                    has_network_mask = self.subsys_network.get(request.nqn)
+                    if lsnr in self.subsystem_auto_listeners.get(request.nqn, set()):
+                        is_auto_listener = True
+                    elif not is_in_omap and not addr_in_omap and has_network_mask:
+                        try:
+                            pool = self.config.get("ceph", "pool")
+                            group = self.config.get("gateway", "group")
+                            nvmemon_listeners = self.ceph_utils.get_gw_listeners(pool, group)
+                            for _listener in nvmemon_listeners.get(request.nqn, []):
+                                address = _listener.get("address")
+                                svcid = int(_listener.get("svcid") or 0)
+                                if (address == traddr) and (svcid == request.trsvcid):
+                                    is_auto_listener = True
+                                    break
+                        except Exception:
+                            self.logger.exception(
+                                f"Failed to query 'nvme-gw listeners' for {request.nqn}")
+
+                    if is_auto_listener:
+                        errmsg = f"{delete_listener_error_prefix}: Listener was created " \
+                                 f"automatically as part of the subsystem's network mask. " \
+                                 f"To remove it, modify the network mask."
+                        self.logger.error(errmsg)
+                        return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
+
                     if not is_in_omap:
                         if is_in_local_list:
                             self.remove_listener_from_local_list(request.nqn,
