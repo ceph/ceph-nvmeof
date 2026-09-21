@@ -381,6 +381,61 @@ class TestAutoListener:
                f"Listener was created automatically as part of the subsystem's " \
                f"network mask. To remove it, modify the network mask." in caplog.text
 
+    def test_fail_delete_auto_listener_via_mon_fallback(self, caplog, gateway):
+        gateway_rpc, _ = gateway
+        remote_addr = "127.0.0.5"
+        remote_trsvcid = 4420
+
+        def mock_get_gw_listeners(pool, group):
+            return {
+                subsystem: [{
+                    "gw_id": "client.nvmeof.mypool.mygroup.other-host.abcd",
+                    "address": remote_addr,
+                    "address_family": "ipv4",
+                    "svcid": str(remote_trsvcid),
+                }]
+            }
+
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr(gateway_rpc.ceph_utils, "get_gw_listeners", mock_get_gw_listeners)
+            caplog.clear()
+            cli(["listener", "del", "--subsystem", subsystem, "--host-name", host_name,
+                 "--traddr", remote_addr, "--trsvcid", str(remote_trsvcid)])
+        assert f"Failed to delete listener {remote_addr}:{remote_trsvcid} from {subsystem}: " \
+               f"Listener was created automatically as part of the subsystem's " \
+               f"network mask. To remove it, modify the network mask." in caplog.text
+
+    def test_delete_listener_not_found_via_mon_fallback(self, caplog, gateway):
+        gateway_rpc, _ = gateway
+        never_added_addr = "127.0.0.9"
+
+        def mock_get_gw_listeners(pool, group):
+            return {}
+
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr(gateway_rpc.ceph_utils, "get_gw_listeners", mock_get_gw_listeners)
+            caplog.clear()
+            cli(["listener", "del", "--subsystem", subsystem, "--host-name", host_name,
+                 "--traddr", never_added_addr, "--trsvcid", "4420"])
+        assert f"Failed to delete listener {never_added_addr}:4420 from {subsystem}: " \
+               f"Listener not found" in caplog.text
+
+    def test_delete_listener_mon_query_exception_falls_back(self, caplog, gateway):
+        gateway_rpc, _ = gateway
+        never_added_addr = "127.0.0.9"
+
+        def mock_get_gw_listeners(pool, group):
+            raise RuntimeError("nvme-gw listeners mon command failure")
+
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr(gateway_rpc.ceph_utils, "get_gw_listeners", mock_get_gw_listeners)
+            caplog.clear()
+            cli(["listener", "del", "--subsystem", subsystem, "--host-name", host_name,
+                 "--traddr", never_added_addr, "--trsvcid", "4420"])
+        assert f"Failed to delete listener {never_added_addr}:4420 from {subsystem}: " \
+               f"Listener not found" in caplog.text
+        assert "Failed to query 'nvme-gw listeners'" in caplog.text
+
     def test_subsystem_with_networks_and_port(self, caplog, gateway):
         cli(["subsystem", "list"])
         caplog.clear()
