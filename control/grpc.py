@@ -2291,6 +2291,20 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 self.logger.info(f'Skip to create auto-listener at {ip} for {subsystem_nqn}: '
                                  f'Address not available as {adrfam} address')
                 continue
+
+            ip_ = GatewayUtils.escape_address_if_ipv6(ip)
+            lsnr_key = (adrfam, ip, port)
+            existing_lstnrs = self.subsystem_listeners.get(subsystem_nqn, set())
+            already_exists = any(
+                (adrfam, ip, port, _secure, _active) in existing_lstnrs
+                for _secure in [False, True] for _active in [False, True])
+            if already_exists:
+                if lsnr_key not in self.subsystem_auto_listeners.get(subsystem_nqn, set()):
+                    self.logger.warning(f"Skip auto-listener at {ip_}:{port} for "
+                                        f"{subsystem_nqn}: address already in use by an "
+                                        f"existing listener")
+                continue
+
             lstnr_req = pb2.create_listener_req(
                 nqn=subsystem_nqn,
                 host_name=hostname,
@@ -2301,7 +2315,6 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 verify_host_name=False)
             rt = self.create_listener_safe(lstnr_req, None)
             status = rt.status
-            ip_ = GatewayUtils.escape_address_if_ipv6(ip)
             if status == 0:
                 self.logger.info(f'Automatically created listener at {ip_}:{port} for '
                                  f'{subsystem_nqn}')
