@@ -26,6 +26,7 @@ env:
   WAIT_INTERVAL_SECS: 1
 jobs:
   build:
+    if: github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -82,6 +83,7 @@ jobs:
             spdk.tar
 
   build-ceph:
+    if: github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     outputs:
       ceph_version: ${{ steps.ceph-version.outputs.ceph_version }}
@@ -108,6 +110,7 @@ jobs:
             ceph.tar
 
   build-kmip:
+    if: github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
