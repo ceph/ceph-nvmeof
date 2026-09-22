@@ -7567,7 +7567,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                      f"{traddr} is not available as an " \
                                      f"{adrfam.upper()} address"
                             self.logger.error(errmsg)
-                            return pb2.req_status(status=errno.EADDRNOTAVAIL, error_message=errmsg)
+                            rc = errno.EADDRNOTAVAIL if context else 0
+                            return pb2.req_status(status=rc, error_message=errmsg)
 
                     ret = self.spdk_rpc_client.nvmf_subsystem_add_listener(**add_listener_args)
                     self.logger.debug(f"create_listener: {ret}")
