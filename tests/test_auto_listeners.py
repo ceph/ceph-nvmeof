@@ -16,6 +16,7 @@ subsystem2 = "nqn.2016-06.io.spdk:cnode2"
 subsystem3 = "nqn.2016-06.io.spdk:cnode3"
 subsystem4 = "nqn.2016-06.io.spdk:cnode4"
 subsystem5 = "nqn.2016-06.io.spdk:cnode5"
+subsystem6 = "nqn.2016-06.io.spdk:cnode6"
 
 host_name = socket.gethostname()
 addr = "127.0.0.1"
@@ -380,6 +381,33 @@ class TestAutoListener:
         assert f"Failed to delete listener {addr}:4420 from {subsystem}: " \
                f"Listener was created automatically as part of the subsystem's " \
                f"network mask. To remove it, modify the network mask." in caplog.text
+
+    def test_add_listeners_skips_existing_manual_listener(self, caplog, gateway):
+        # tests https://github.com/ceph/ceph-nvmeof/issues/2164
+        gateway_rpc, _ = gateway
+
+        cli(["subsystem", "add", "--subsystem", subsystem6, "--no-group-append"])
+        cli(["listener", "add", "--subsystem", subsystem6, "--host-name", host_name,
+             "-a", addr, "-s", "4420", "-f", "ipv4"])
+
+        caplog.clear()
+        with gateway_rpc.rpc_lock:
+            # subsystem with both auto-listeners and manual listeners
+            err_msg, succeeded = gateway_rpc._add_auto_listeners(
+                subsystem6, [addr], False, 4420)
+        assert succeeded == []
+        assert f"Skip auto-listener at {addr}:4420 for " \
+               f"{subsystem6}: address already in use by an " \
+               f"existing listener" in caplog.text
+
+        lsnr = ("ipv4", addr, 4420)
+        assert lsnr not in gateway_rpc.subsystem_auto_listeners.get(subsystem6, set())
+
+        listeners = cli_test(["listener", "list", "--subsystem", subsystem6])
+        matched = [listener for listener in listeners.listeners
+                   if listener.traddr == addr]
+        assert len(matched) == 1
+        assert matched[0].manual
 
     def test_fail_delete_auto_listener_via_mon_fallback(self, caplog, gateway):
         gateway_rpc, _ = gateway
