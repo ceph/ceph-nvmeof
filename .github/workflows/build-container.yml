@@ -22,6 +22,7 @@ env:
   WAIT_INTERVAL_SECS: 1
 jobs:
   build:
+    if: github.event.pull_request.user.login != 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -78,6 +79,7 @@ jobs:
             spdk.tar
 
   build-ceph:
+    if: github.event.pull_request.user.login != 'dependabot[bot]'  
     runs-on: ubuntu-latest
     outputs:
       ceph_version: ${{ steps.ceph-version.outputs.ceph_version }}
@@ -104,6 +106,7 @@ jobs:
             ceph.tar
 
   build-arm64:
+    if: github.event.pull_request.user.login != 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
