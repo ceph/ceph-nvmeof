@@ -1221,7 +1221,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         self.kmip_server_endpoints = KMIPServerEndpointList()
         self.kmip_clients = KMIPClientList(self.config)
         self.fail_io_for_degraded_namespace = self.config.getboolean_with_default(
-            "gateway", "fail_io_for_degraded_namespace", True)
+            "gateway", "fail_io_for_degraded_namespace", False)
 
         for i in range(self.max_ana_grps + 1):
             self.ana_grp_ns_load[i] = 0
