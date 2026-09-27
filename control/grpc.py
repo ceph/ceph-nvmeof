@@ -1063,6 +1063,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
         self.kmip_clients = KMIPClientList(self.config)
         self.fail_io_for_degraded_namespace = self.config.getboolean_with_default(
             "gateway", "fail_io_for_degraded_namespace", True)
+        self.resize_degraded_namespace = self.config.getboolean_with_default(
+            "gateway", "resize_degraded_namespace", True)
 
         for i in range(self.max_ana_grps + 1):
             self.ana_grp_ns_load[i] = 0
@@ -1592,6 +1594,12 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         enc_formats_str = ""
         enc_algo_str = None
+        image_size_delta = 0
+        if degraded and self.resize_degraded_namespace:
+            if encryption_entries and len(encryption_entries) > 0:
+                image_size_delta = CephUtils.encryption_format_to_table_size(
+                    encryption_entries[0].format)
+
         if degraded or (encryption_entries is None):
             encryption_entries = []
         if degraded or (encryption_algorithm is None):
@@ -1827,6 +1835,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 uuid=uuid,
                 read_only=read_only or degraded,
                 fail_io=degraded and self.fail_io_for_degraded_namespace,
+                size_delta=image_size_delta,
                 encryption_format=enc_format_list,
                 passphrase=passphrase_list,
             )

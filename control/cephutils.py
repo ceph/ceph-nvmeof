@@ -36,6 +36,9 @@ class CephUtils:
     METADATA_KEY_AUTO_RESIZE = "NVME_GATEWAY_AUTO_RESIZE"
     METADATA_VALUE_NO_AUTO_RESIZE = "no"
     METADATA_KEY_IMAGE_ID = "NVME_IMAGE_IDENTIFICATION"
+    MB = 1024 * 1024
+    encryption_table_sizes = {pb2.EncryptionFormat.luks1: 4 * MB,
+                              pb2.EncryptionFormat.luks2: 16 * MB}
 
     def __init__(self, config):
         self.logger = GatewayLogger(config).logger
@@ -380,6 +383,10 @@ class CephUtils:
                 cluster.service_daemon_update(status_buffer)
         except Exception:
             self.logger.exception("Can't update daemon status to service_map!")
+
+    @staticmethod
+    def encryption_format_to_table_size(enc_format: pb2.EncryptionFormat) -> int:
+        return CephUtils.encryption_table_sizes.get(enc_format, 0)
 
     @staticmethod
     def gateway_encryption_format_to_rbd(gw_format: pb2.EncryptionFormat) -> int:
