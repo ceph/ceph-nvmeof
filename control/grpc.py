@@ -3452,15 +3452,19 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         inaccessible_ana_groups = {}
         awaited_cluster_contexts = set()
+        # Bound before the try block: the exception handler below formats them, and any
+        # failure raised before PHASE 4 would otherwise leave them unbound
+        ana_grpids = []
+        ana_states = []
         try:
             # =====================================================================
-            # PHASE 1: Update local tracking state dictionaries
+            # PHASE 1: Collect the new ANA states, don't publish them locally yet
             # =====================================================================
+            new_ana_states = []
             for nas in ana_info.states:
                 nqn = nas.nqn
                 for gs in nas.states:
-                    self.ana_map[nqn][gs.grp_id] = gs.state
-                    self.ana_grp_state[gs.grp_id] = gs.state
+                    new_ana_states.append((nqn, gs.grp_id, gs.state))
             # =====================================================================
             # PHASE 2: Wait for latest OSD map across ALL required cluster contexts
             # =====================================================================
@@ -3543,12 +3547,22 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         except Exception:
             self.logger.exception("Error during set_ana_state_safe execution")
+            if set_ana_status == 0:
+                # Not one of the explicit raises above, don't report a failure as success
+                set_ana_status = errno.EINVAL
             errmsg = f"Failure set_ana_states_all to " \
                      f" {ana_grpids=}, {ana_states=}"
             self.logger.error(errmsg)
-            return pb2.nsid_status(status=set_ana_status, error_message=errmsg)
+            return pb2.req_status(status=set_ana_status, error_message=errmsg)
 
-        return pb2.req_status(status=True)
+        # Only now that SPDK holds the new states (or there was nothing to apply) may we
+        # publish them locally. Recording them earlier makes this gateway, the rebalance
+        # logic and create_listener() act on an ownership SPDK was never told about.
+        for nqn, grp_id, state in new_ana_states:
+            self.ana_map[nqn][grp_id] = state
+            self.ana_grp_state[grp_id] = state
+
+        return pb2.req_status(status=0, error_message="")
 
     def namespace_add_safe(self, request, context):
         """Adds a namespace to a subsystem."""
