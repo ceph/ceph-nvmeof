@@ -8,6 +8,8 @@ from control.cephutils import CephUtils
 import grpc
 from control.proto import gateway_pb2 as pb2
 from control.proto import gateway_pb2_grpc as pb2_grpc
+from control.state import GatewayState
+from google.protobuf import json_format
 import time
 
 pool = "rbd"
@@ -16,6 +18,10 @@ subsystem2 = "nqn.2016-06.io.spdk:cnode2"
 subsystem3 = "nqn.2016-06.io.spdk:cnode3"
 subsystem4 = "nqn.2016-06.io.spdk:cnode4"
 subsystem5 = "nqn.2016-06.io.spdk:cnode5"
+subsystem6 = "nqn.2016-06.io.spdk:cnode6"
+subsystem7 = "nqn.2016-06.io.spdk:cnode7"
+subsystem8 = "nqn.2016-06.io.spdk:cnode8"
+subsystem9 = "nqn.2016-06.io.spdk:cnode9"
 
 host_name = socket.gethostname()
 addr = "127.0.0.1"
@@ -381,6 +387,157 @@ class TestAutoListener:
                f"Listener was created automatically as part of the subsystem's " \
                f"network mask. To remove it, modify the network mask." in caplog.text
 
+    def test_add_listeners_skips_existing_manual_listener(self, caplog, gateway):
+        # tests https://github.com/ceph/ceph-nvmeof/issues/2164
+        gateway_rpc, _ = gateway
+
+        cli(["subsystem", "add", "--subsystem", subsystem6, "--no-group-append"])
+        cli(["listener", "add", "--subsystem", subsystem6, "--host-name", host_name,
+             "-a", addr, "-s", "4420", "-f", "ipv4"])
+
+        caplog.clear()
+        with gateway_rpc.rpc_lock:
+            # subsystem with both auto-listeners and manual listeners
+            err_msg, succeeded = gateway_rpc._add_auto_listeners(
+                subsystem6, [addr], False, 4420)
+        assert succeeded == []
+        assert f"Skip auto-listener at {addr}:4420 for " \
+               f"{subsystem6}: address already in use by an " \
+               f"existing listener" in caplog.text
+
+        lsnr = ("ipv4", addr, 4420)
+        assert lsnr not in gateway_rpc.subsystem_auto_listeners.get(subsystem6, set())
+
+        listeners = cli_test(["listener", "list", "--subsystem", subsystem6])
+        matched = [listener for listener in listeners.listeners
+                   if listener.traddr == addr]
+        assert len(matched) == 1
+        assert matched[0].manual
+
+    def test_fail_delete_auto_listener_via_mon_fallback(self, caplog, gateway):
+        gateway_rpc, _ = gateway
+        remote_addr = "127.0.0.5"
+        remote_trsvcid = 4420
+
+        def mock_get_gw_listeners(pool, group):
+            return {
+                subsystem: [{
+                    "gw_id": "client.nvmeof.mypool.mygroup.other-host.abcd",
+                    "address": remote_addr,
+                    "address_family": "ipv4",
+                    "svcid": str(remote_trsvcid),
+                }]
+            }
+
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr(gateway_rpc.ceph_utils, "get_gw_listeners", mock_get_gw_listeners)
+            caplog.clear()
+            cli(["listener", "del", "--subsystem", subsystem, "--host-name", host_name,
+                 "--traddr", remote_addr, "--trsvcid", str(remote_trsvcid)])
+        assert f"Failed to delete listener {remote_addr}:{remote_trsvcid} from {subsystem}: " \
+               f"Listener was created automatically as part of the subsystem's " \
+               f"network mask. To remove it, modify the network mask." in caplog.text
+
+    def test_delete_listener_not_found_via_mon_fallback(self, caplog, gateway):
+        gateway_rpc, _ = gateway
+        never_added_addr = "127.0.0.9"
+
+        def mock_get_gw_listeners(pool, group):
+            return {}
+
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr(gateway_rpc.ceph_utils, "get_gw_listeners", mock_get_gw_listeners)
+            caplog.clear()
+            cli(["listener", "del", "--subsystem", subsystem, "--host-name", host_name,
+                 "--traddr", never_added_addr, "--trsvcid", "4420"])
+        assert f"Failed to delete listener {never_added_addr}:4420 from {subsystem}: " \
+               f"Listener not found" in caplog.text
+
+    def test_delete_listener_mon_query_exception_falls_back(self, caplog, gateway):
+        gateway_rpc, _ = gateway
+        never_added_addr = "127.0.0.9"
+
+        def mock_get_gw_listeners(pool, group):
+            raise RuntimeError("nvme-gw listeners mon command failure")
+
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr(gateway_rpc.ceph_utils, "get_gw_listeners", mock_get_gw_listeners)
+            caplog.clear()
+            cli(["listener", "del", "--subsystem", subsystem, "--host-name", host_name,
+                 "--traddr", never_added_addr, "--trsvcid", "4420"])
+        assert f"Failed to delete listener {never_added_addr}:4420 from {subsystem}: " \
+               f"Listener not found" in caplog.text
+        assert "Failed to query 'nvme-gw listeners'" in caplog.text
+
+    def test_add_manual_listener_blocked_on_masked_subsystem(self, caplog, gateway):
+        fresh_addr = "127.0.0.8"
+        cli(["subsystem", "add", "--subsystem", subsystem7, "--no-group-append",
+             "--network-mask", addr_subnet])
+        caplog.clear()
+        ret = cli_test(["listener", "add", "--subsystem", subsystem7, "--host-name", host_name,
+                        "-a", fresh_addr, "-s", "4420", "-f", "ipv4"])
+        assert ret.status != 0
+        assert "has a network mask configured" in caplog.text
+        assert "can only use manual listeners or network mask" in caplog.text
+
+        listeners = cli_test(["listener", "list", "--subsystem", subsystem7])
+        matched = [listener for listener in listeners.listeners
+                   if listener.traddr == fresh_addr]
+        assert len(matched) == 0
+
+    def test_add_network_blocked_with_existing_manual_listener(self, caplog, gateway):
+        cli(["subsystem", "add", "--subsystem", subsystem8, "--no-group-append"])
+        cli(["listener", "add", "--subsystem", subsystem8, "--host-name",
+             host_name, "-a", addr, "-s", "4420", "-f", "ipv4"])
+
+        caplog.clear()
+        ret = cli_test(["subsystem", "add_network", "--subsystem",
+                        subsystem8, "--network-mask", addr_subnet])
+        assert ret.status != 0
+        assert f"Subsystem {subsystem8} has manual listener(s)" in caplog.text
+        assert "can only use manual listeners or network mask" in caplog.text
+
+        subsystems = cli_test(["subsystem", "list", "--subsystem", subsystem8])
+        assert len(subsystems.subsystems[0].network_mask) == 0
+
+    def test_del_network_does_not_delete_manual_listener(self, caplog, gateway):
+        # test https://github.com/ceph/ceph-nvmeof/issues/2154#issuecomment-5791083404
+        gateway_rpc, _ = gateway
+
+        cli(["subsystem", "add", "--subsystem", subsystem9, "--no-group-append"])
+        cli(["listener", "add", "--subsystem", subsystem9, "--host-name", host_name,
+             "-a", addr, "-s", "4420", "-f", "ipv4"])
+
+        mask_req = pb2.add_subsystem_network_req(subsystem_nqn=subsystem9,
+                                                 network_mask=addr_subnet)
+        with gateway_rpc.rpc_lock:
+            # setting subsystem with both network_mask and manual listeners
+            ret = gateway_rpc.add_subsystem_network_safe(mask_req, None)
+        assert ret.status == 0
+
+        # add netmaks to subsystem omap (simulate old config of mix of auto/manual listeners)
+        state = gateway_rpc.gateway_state.local.get_state()
+        subsys_key = GatewayState.build_subsystem_key(subsystem9)
+        subsys_entry = json_format.Parse(state[subsys_key], pb2.create_subsystem_req(),
+                                         ignore_unknown_fields=True)
+        subsys_entry.network_mask[:] = [addr_subnet]
+        json_req = json_format.MessageToJson(subsys_entry, preserving_proto_field_name=True,
+                                             including_default_value_fields=True)
+        gateway_rpc.gateway_state.add_subsystem(subsystem9, json_req)
+
+        caplog.clear()
+        ret2 = cli_test(["subsystem", "del_network", "--subsystem", subsystem9,
+                         "--network-mask", addr_subnet])
+        assert ret2.status == 0
+        assert f"Skip deleting listener at {addr}:4420 for " \
+               f"{subsystem9}: not a tracked auto-listener" in caplog.text
+
+        listener_info = cli_test(["gw", "listener_info", "--subsystem", subsystem9])
+        matched = [lstnr for lstnr in listener_info.gw_listeners
+                   if lstnr.listener.traddr == addr]
+        assert len(matched) == 1
+        assert matched[0].listener.active
+
     def test_subsystem_with_networks_and_port(self, caplog, gateway):
         cli(["subsystem", "list"])
         caplog.clear()
@@ -561,7 +718,7 @@ class TestAutoListener:
         # simulate a new IP in netmask subnet by
         # removing auto-listener without removing network_mask from subsystem
         with gw.rpc_lock:
-            gw.del_listeners(subsystem, [addr], False, 4420)
+            gw._del_auto_listeners(subsystem, [addr], False, 4420)
         caplog.clear()
         req = pb2.gw_refresh_network_req(subsystem_nqn=subsystem)
         ret = stub.gw_refresh_network(req)

@@ -36,6 +36,9 @@ class CephUtils:
     METADATA_KEY_AUTO_RESIZE = "NVME_GATEWAY_AUTO_RESIZE"
     METADATA_VALUE_NO_AUTO_RESIZE = "no"
     METADATA_KEY_IMAGE_ID = "NVME_IMAGE_IDENTIFICATION"
+    MB = 1024 * 1024
+    encryption_table_sizes = {pb2.EncryptionFormat.luks1: 4 * MB,
+                              pb2.EncryptionFormat.luks2: 16 * MB}
 
     def __init__(self, config):
         self.logger = GatewayLogger(config).logger
@@ -98,7 +101,7 @@ class CephUtils:
             self.logger.debug(f"Gateway failed to get mgr command \"service dump\": {e}")
             return {}
 
-    def get_gw_listeners(self, pool, group) -> list:
+    def get_gw_listeners(self, pool, group) -> dict:
         try:
             str = '{' + f'"prefix":"nvme-gw listeners", "pool":"{pool}", "group":"{group}"' + '}'
             self.logger.debug(f"nvme-listeners string: {str}")
@@ -107,13 +110,13 @@ class CephUtils:
             if rply and rply[0] != 0:
                 self.logger.warning("'nvme-gw listeners' mon command failed. \
                                     It might not be supported in current ceph version.")
-                return []
+                return {}
             conv_str = rply[1].decode()
             data = json.loads(conv_str)
             return data["Created listeners"]
         except Exception as e:
             self.logger.error(f"nvme-gw listeners command failed: {e}")
-            return []
+            return {}
 
     def get_gw_id_owner_ana_group(self, pool, group, anagrp):
         str = '{' + f'"prefix":"nvme-gw show", "pool":"{pool}", "group":"{group}"' + '}'
@@ -380,6 +383,10 @@ class CephUtils:
                 cluster.service_daemon_update(status_buffer)
         except Exception:
             self.logger.exception("Can't update daemon status to service_map!")
+
+    @staticmethod
+    def encryption_format_to_table_size(enc_format: pb2.EncryptionFormat) -> int:
+        return CephUtils.encryption_table_sizes.get(enc_format, 0)
 
     @staticmethod
     def gateway_encryption_format_to_rbd(gw_format: pb2.EncryptionFormat) -> int:
