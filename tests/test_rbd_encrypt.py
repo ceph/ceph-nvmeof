@@ -1254,22 +1254,30 @@ def test_open_cloned_image_triple(caplog, two_gateways):
     caplog.clear()
     cli(["namespace", "add", "--subsystem", subsystem1, "--rbd-pool", pool,
          "--rbd-data-pool", pool, "--rbd-image", cloned_image2,
-         "--encryption-format", "luks2", "luks1", "luks2",
+         "--encryption-format", "luks1", "luks1", "luks2",
+         "--key-id", key_id3, key_id2, key_id])
+    assert f"Failure adding namespace to {subsystem1}: " \
+           f"RBD image {pool}/{cloned_image2} is not formatted for encryption or " \
+           f"is formatted using the wrong encryption format" in caplog.text
+    caplog.clear()
+    cli(["namespace", "add", "--subsystem", subsystem1, "--rbd-pool", pool,
+         "--rbd-data-pool", pool, "--rbd-image", cloned_image2,
+         "--encryption-format", "luks2", "luks1", "luks1",
          "--key-id", key_id3, key_id2, key_id])
     wait_for_string(caplog, f"Adding namespace 1 to {subsystem1}: Successful", 5)
     wait_for_string(caplog, f'encryption_entries: [(format: luks2, key id: {key_id3}), '
                             f'(format: luks1, key id: {key_id2}), '
-                            f'(format: luks2, key id: {key_id})], '
+                            f'(format: luks1, key id: {key_id})], '
                             f'encryption_algorithm: no_algorithm, context: <', 5)
     wait_for_string(caplog, f'encryption_entries: [(format: luks2, key id: {key_id3}), '
                             f'(format: luks1, key id: {key_id2}), '
-                            f'(format: luks2, key id: {key_id})], '
+                            f'(format: luks1, key id: {key_id})], '
                             f'encryption_algorithm: no_algorithm, context: None', 60)
     caplog.clear()
     cli(["--format", "json", "namespace", "list", "--subsystem", subsystem1, "--nsid", "1"])
     assert f'"encryption_entries":[{{"format":"luks2","key_id":"{key_id3}"}},' \
            f'{{"format":"luks1","key_id":"{key_id2}"}},' \
-           f'{{"format":"luks2","key_id":"{key_id}"}}]' \
+           f'{{"format":"luks1","key_id":"{key_id}"}}]' \
            in caplog.text.replace(" ", "").replace("\n", "")
     assert '"encryption_algorithm"' not in caplog.text
     caplog.clear()
@@ -1284,19 +1292,19 @@ def test_open_cloned_image_double(caplog, two_gateways):
     caplog.clear()
     cli(["namespace", "add", "--subsystem", subsystem1, "--rbd-pool", pool,
          "--rbd-data-pool", pool, "--rbd-image", cloned_image,
-         "--encryption-format", "luks1", "luks2",
+         "--encryption-format", "luks1", "luks1",
          "--key-id", key_id2, key_id])
     wait_for_string(caplog, f"Adding namespace 1 to {subsystem1}: Successful", 5)
     wait_for_string(caplog, f'encryption_entries: [(format: luks1, key id: {key_id2}), '
-                            f'(format: luks2, key id: {key_id})], '
+                            f'(format: luks1, key id: {key_id})], '
                             f'encryption_algorithm: no_algorithm, context: <', 5)
     wait_for_string(caplog, f'encryption_entries: [(format: luks1, key id: {key_id2}), '
-                            f'(format: luks2, key id: {key_id})], '
+                            f'(format: luks1, key id: {key_id})], '
                             f'encryption_algorithm: no_algorithm, context: None', 60)
     caplog.clear()
     cli(["--format", "json", "namespace", "list", "--subsystem", subsystem1, "--nsid", "1"])
     assert f'"encryption_entries":[{{"format":"luks1","key_id":"{key_id2}"}},' \
-           f'{{"format":"luks2","key_id":"{key_id}"}}]' \
+           f'{{"format":"luks1","key_id":"{key_id}"}}]' \
            in caplog.text.replace(" ", "").replace("\n", "")
     assert '"encryption_algorithm"' not in caplog.text
     caplog.clear()
@@ -1310,16 +1318,16 @@ def test_open_cloned_image_parent(caplog, two_gateways):
     caplog.clear()
     cli(["namespace", "add", "--subsystem", subsystem1, "--rbd-pool", pool,
          "--rbd-data-pool", pool, "--rbd-image", stacked_image,
-         "--encryption-format", "luks2",
+         "--encryption-format", "luks1",
          "--key-id", key_id])
     wait_for_string(caplog, f"Adding namespace 1 to {subsystem1}: Successful", 5)
-    wait_for_string(caplog, f'encryption_entries: [(format: luks2, key id: {key_id})], '
+    wait_for_string(caplog, f'encryption_entries: [(format: luks1, key id: {key_id})], '
                             f'encryption_algorithm: no_algorithm, context: <', 5)
-    wait_for_string(caplog, f'encryption_entries: [(format: luks2, key id: {key_id})], '
+    wait_for_string(caplog, f'encryption_entries: [(format: luks1, key id: {key_id})], '
                             f'encryption_algorithm: no_algorithm, context: None', 60)
     caplog.clear()
     cli(["--format", "json", "namespace", "list", "--subsystem", subsystem1, "--nsid", "1"])
-    assert f'"encryption_entries":[{{"format":"luks2","key_id":"{key_id}"}}]' \
+    assert f'"encryption_entries":[{{"format":"luks1","key_id":"{key_id}"}}]' \
            in caplog.text.replace(" ", "").replace("\n", "")
     assert '"encryption_algorithm"' not in caplog.text
     caplog.clear()
