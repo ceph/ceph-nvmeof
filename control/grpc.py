@@ -7828,7 +7828,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                      f"{traddr}:{request.trsvcid}")
                     rc = self.spdk_rpc_client.nvmf_subsystem_listener_set_ana_state(
                         nqn=request.nqn,
-                        ana_state="inaccessible",
+                        ana_state="non_optimized",
                         listen_address={"trtype": "TCP",
                                         "traddr": traddr,
                                         "trsvcid": str(request.trsvcid),
