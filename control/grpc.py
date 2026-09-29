@@ -3618,6 +3618,12 @@ class GatewayService(pb2_grpc.GatewayServicer):
             self.logger.error(errmsg)
             return pb2.nsid_status(status=errno.EINVAL, error_message=errmsg)
 
+        if 4096 % request.block_size > 0:
+            errmsg = f"Failure adding namespace {nsid_msg}to {request.subsystem_nqn}: " \
+                     f"block size {request.block_size} must be a divisor of 4096"
+            self.logger.error(errmsg)
+            return pb2.nsid_status(status=errno.EINVAL, error_message=errmsg)
+
         if context and (not request.HasField("create_image") or not request.create_image):
             if request.HasField("size"):
                 errmsg = f"Failure adding namespace {nsid_msg}to {request.subsystem_nqn}: " \
