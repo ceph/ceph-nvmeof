@@ -1100,3 +1100,9 @@ class DsaUtils:
                 # ENOENT is fine
                 if e.errno != errno.ENOENT:
                     self.logger.exception(f"Error removing DSA config file {conf_file}")
+
+
+class AnaState:
+    OPTIMIZED = "optimized"
+    NON_OPTIMIZED = "non_optimized"
+    INACCESSIBLE = "inaccessible"
