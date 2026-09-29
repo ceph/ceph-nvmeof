@@ -2880,6 +2880,8 @@ class GatewayClient:
             args.block_size = 512
         if args.block_size <= 0:
             self.cli.parser.error("block-size value must be positive")
+        if 4096 % args.block_size > 0:
+            self.cli.parser.error("block-size must be a divisor of 4096")
 
         if args.load_balancing_group < 0:
             self.cli.parser.error("load-balancing-group value must be positive")

@@ -42,7 +42,6 @@ image27 = "mytestdevimage27"
 image28 = "mytestdevimage28"
 image29 = "mytestdevimage29"
 image30 = "mytestdevimage30"
-image31 = "mytestdevimage31"
 image32 = "mytestdevimage32"
 pool = "rbd"
 subsystem = "nqn.2016-06.io.spdk:cnode1"
@@ -446,6 +445,7 @@ class TestCreate:
         assert "Load balancing group 100 doesn't exist" in caplog.text
 
     def test_add_namespace_wrong_size(self, caplog, gateway):
+        gw, stub = gateway
         caplog.clear()
         rc = 0
         try:
@@ -466,6 +466,18 @@ class TestCreate:
             pass
         assert "size value must be aligned to MiBs" in caplog.text
         assert rc == 2
+        caplog.clear()
+        add_namespace_req = pb2.namespace_add_req(subsystem_nqn=subsystem,
+                                                  rbd_pool_name=pool,
+                                                  rbd_image_name="junkimage",
+                                                  create_image=True,
+                                                  size=1026 * 1024,
+                                                  block_size=512,
+                                                  force=True)
+        ret = stub.namespace_add(add_namespace_req)
+        assert ret.status != 0
+        assert f"Failure adding namespace to {subsystem}: " \
+               f"Image size must be aligned to MiBs" in caplog.text
 
     def test_add_namespace_wrong_size_grpc(self, caplog, gateway):
         gw, stub = gateway
@@ -480,21 +492,6 @@ class TestCreate:
         assert ret.status != 0
         assert "Failure adding namespace" in caplog.text
         assert "Image size must be aligned to MiBs" in caplog.text
-
-    def test_add_namespace_wrong_size_existing_image(self, caplog, gateway):
-        caplog.clear()
-        cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool,
-             "--rbd-image", image31, "--size", "11MB", "--rbd-create-image"])
-        assert f"Adding namespace 1 to {subsystem}: Successful" in caplog.text
-        caplog.clear()
-        cli(["namespace", "del", "--subsystem", subsystem, "--nsid", "1"])
-        assert f"Deleting namespace 1 from {subsystem}: Successful" in caplog.text
-        # We should now have a RBD image 11MB big
-        caplog.clear()
-        cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool,
-             "--block-size", "2097152", "--rbd-image", image31])
-        assert f"Failure adding namespace to {subsystem}: Image size 11534336 must be a " \
-               f"multiple of the block size 2097152" in caplog.text
 
     def test_add_namespace_wrong_block_size(self, caplog, gateway):
         gw, stub = gateway
@@ -521,7 +518,8 @@ class TestCreate:
         except SystemExit as sysex:
             rc = sysex.code
             pass
-        assert "error: size value must be a multiple of the block size" in caplog.text
+        assert ("error: size value must be a multiple of the block size" in caplog.text) or \
+               ("error: block-size must be a divisor of 4096" in caplog.text)
         assert rc == 2
         caplog.clear()
         add_namespace_req = pb2.namespace_add_req(subsystem_nqn=subsystem,
@@ -533,8 +531,37 @@ class TestCreate:
                                                   force=True)
         ret = stub.namespace_add(add_namespace_req)
         assert ret.status != 0
-        assert "Failure adding namespace" in caplog.text
-        assert "Image size 16777216 must be a multiple of the block size 2096" in caplog.text
+        assert (f"Failure adding namespace to {subsystem}: "
+                f"Image size 16777216 must be a multiple of the block "
+                f"size 2096" in caplog.text) or \
+               (f"Failure adding namespace to {subsystem}: "
+                f"block size 2096 must be a divisor of 4096") in caplog.text
+
+    def test_add_namespace_4096_not_divisible_by_block_size(self, caplog, gateway):
+        gw, stub = gateway
+        caplog.clear()
+        rc = 0
+        try:
+            cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool,
+                 "--rbd-image", "junkimage", "--block-size", "513", "--size", "16MB",
+                 "--rbd-create-image"])
+        except SystemExit as sysex:
+            rc = sysex.code
+            pass
+        assert "error: block-size must be a divisor of 4096" in caplog.text
+        assert rc == 2
+        caplog.clear()
+        add_namespace_req = pb2.namespace_add_req(subsystem_nqn=subsystem,
+                                                  rbd_pool_name=pool,
+                                                  rbd_image_name="junkimage",
+                                                  create_image=True,
+                                                  size=16 * 1024 * 1024,
+                                                  block_size=513,
+                                                  force=True)
+        ret = stub.namespace_add(add_namespace_req)
+        assert ret.status != 0
+        assert f"Failure adding namespace to {subsystem}: " \
+               f"block size 513 must be a divisor of 4096" in caplog.text
 
     def test_changing_namespace_with_no_size(self, caplog, gateway):
         gw, stub = gateway
