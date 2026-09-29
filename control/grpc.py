@@ -41,6 +41,7 @@ from .utils import GatewayUtilsCrypto
 from .utils import GatewayKeyUtils
 from .utils import GatewayLogger
 from .utils import NICS
+from .utils import AnaState
 from .state import GatewayState, GatewayStateHandler, OmapLock
 from .cephutils import CephUtils
 from .rebalance import Rebalance
@@ -3477,9 +3478,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     # see nvmf_subsystem_listener_set_ana_state
                     # method https://spdk.io/doc/jsonrpc.html
                     if gs.state == pb2.ana_state.OPTIMIZED:
-                        ana_state = "optimized"
+                        ana_state = AnaState.OPTIMIZED
                     else:
-                        ana_state = "inaccessible"
+                        ana_state = AnaState.INACCESSIBLE
                     try:
                         # Need to wait for the latest OSD map, for each RADOS
                         # cluster context before becoming optimized,
@@ -3522,7 +3523,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                             "adrfam": adrfam},
                             ana_state=ana_state,
                             anagrpid=grp_id)
-                        if ana_state == "inaccessible":
+                        if ana_state == AnaState.INACCESSIBLE:
                             inaccessible_ana_groups[grp_id] = True
                         self.logger.debug(f"set_ana_state nvmf_subsystem_listener_set_ana_state "
                                           f"response {ret=}")
@@ -7761,7 +7762,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 try:
                     self.logger.debug(f"create_listener nvmf_subsystem_listener_set_ana_state "
                                       f"{request=} set inaccessible for all ana groups")
-                    _ana_state = "inaccessible"
+                    _ana_state = AnaState.INACCESSIBLE
                     ret = self.spdk_rpc_client.nvmf_subsystem_listener_set_ana_state(
                         nqn=request.nqn,
                         ana_state=_ana_state,
@@ -7779,7 +7780,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                             ana_grp = x + 1
                             if ana_grp in self.ana_map[request.nqn]:
                                 if self.ana_map[request.nqn][ana_grp] == pb2.ana_state.OPTIMIZED:
-                                    _ana_state = "optimized"
+                                    _ana_state = AnaState.OPTIMIZED
                                     self.logger.debug(f"using ana_map: set listener on nqn: "
                                                       f"{request.nqn} "
                                                       f"ana state: {_ana_state} for "
@@ -7802,7 +7803,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                      f"{traddr}:{request.trsvcid}")
                     rc = self.spdk_rpc_client.nvmf_subsystem_listener_set_ana_state(
                         nqn=request.nqn,
-                        ana_state="non_optimized",
+                        ana_state=AnaState.NON_OPTIMIZED,
                         listen_address={"trtype": "TCP",
                                         "traddr": traddr,
                                         "trsvcid": str(request.trsvcid),
