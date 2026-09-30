@@ -84,6 +84,40 @@ timeout = 15
             [_Entry("gateway", "not_a_key", True, "1")])
         self.assertEqual(len(rejects), 2)
 
+    def test_listener_failure_keeps_the_previous_value(self):
+        def fail(section, key, value):
+            raise RuntimeError("cannot apply")
+
+        self.registry.set_listener(fail)
+        rejects = self.registry.apply(
+            [], [_Entry("gateway", "max_namespaces", True, "50")])
+        self.assertEqual(len(rejects), 1)
+        self.assertEqual(self.registry.get("gateway", "max_namespaces"), 100)
+
+        seen = {}
+
+        def ok(section, key, value):
+            seen[(section, key)] = value
+
+        self.registry.set_listener(ok)
+        rejects = self.registry.apply(
+            [], [_Entry("gateway", "max_namespaces", True, "50")])
+        self.assertEqual(rejects, [])
+        self.assertEqual(seen[("gateway", "max_namespaces")], 50)
+        self.assertEqual(self.registry.get("gateway", "max_namespaces"), 50)
+
+    def test_present_false_notifies_the_listener(self):
+        seen = []
+
+        def record(section, key, value):
+            seen.append((section, key, value))
+
+        self.registry.set_listener(record)
+        self.registry.apply([], [_Entry("gateway", "max_namespaces", True, "80")])
+        seen.clear()
+        self.registry.apply([], [_Entry("gateway", "max_namespaces", False, "")])
+        self.assertEqual(seen, [("gateway", "max_namespaces", 100)])
+
     def test_group_reject_blocks_require_until_a_later_apply(self):
         self.registry.apply([], [_Entry("gateway", "max_namespaces", True, "bad")])
         with self.assertRaises(ConfigRejected):

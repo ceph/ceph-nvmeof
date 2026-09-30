@@ -157,6 +157,7 @@ class GatewayServer:
             self.logger.warning("No valid encryption key file was set. Any attempt to "
                                 "encrypt or decrypt keys would fail")
 
+        self.config.registry.set_listener(self._apply_config_value)
         self.name = self.config.get("gateway", "name")
         if not self.name:
             self.name = socket.gethostname()
@@ -280,6 +281,23 @@ class GatewayServer:
             self.logger.warning(f"Rejected config {section}/{key}: {error}")
         self.config_applied.set()
         return reply
+
+    def _apply_config_value(self, section, key, value):
+        """Push one accepted value into objects that cached it."""
+        if self.gateway_rpc is not None:
+            self.gateway_rpc.apply_runtime_config(section, key, value)
+        if self.omap_lock is not None:
+            self.omap_lock.apply_runtime_config(section, key, value)
+        if self.gateway_state is not None:
+            self.gateway_state.apply_runtime_config(section, key, value)
+        if section == "gateway-logs" and self.gw_logger_object is not None:
+            self.gw_logger_object.apply_runtime_config(key, value)
+        if section == "spdk" and key == "timeout":
+            for name in ("spdk_rpc_client", "spdk_rpc_ping_client",
+                         "spdk_rpc_subsystems_client", "spdk_rpc_prometheus_client"):
+                client = getattr(self, name, None)
+                if client is not None:
+                    client.timeout = value
 
     def _wait_for_group_id(self):
         """Waits for the group id and the first config snapshot.
@@ -1033,27 +1051,26 @@ class GatewayServer:
 
     def keep_alive(self):
         """Continuously confirms communication with SPDK process."""
-        allowed_consecutive_spdk_ping_failures = self.config.getint_with_default(
-            "gateway",
-            "allowed_consecutive_spdk_ping_failures",
-            1)
-        spdk_ping_interval_in_seconds = self.config.getfloat_with_default(
-            "gateway",
-            "spdk_ping_interval_in_seconds",
-            GatewayServer.SPDK_PING_INTERVAL_DEFAULT)
-        if spdk_ping_interval_in_seconds < 0.0:
-            self.logger.warning(f"Invalid SPDK ping interval "
-                                f"{spdk_ping_interval_in_seconds}, will reset to 0")
-            spdk_ping_interval_in_seconds = 0.0
-
         consecutive_ping_failures = 0
-        # we spend 1 second waiting for server termination so subtract it from ping interval
-        if spdk_ping_interval_in_seconds >= 1.0:
-            spdk_ping_interval_in_seconds -= 1.0
-        else:
-            spdk_ping_interval_in_seconds = 0.0
 
         while True:
+            allowed_consecutive_spdk_ping_failures = self.config.getint_with_default(
+                "gateway",
+                "allowed_consecutive_spdk_ping_failures",
+                1)
+            spdk_ping_interval_in_seconds = self.config.getfloat_with_default(
+                "gateway",
+                "spdk_ping_interval_in_seconds",
+                GatewayServer.SPDK_PING_INTERVAL_DEFAULT)
+            ping_under_lock = self.config.getboolean_with_default(
+                "gateway",
+                "ping_spdk_under_lock",
+                False)
+            if spdk_ping_interval_in_seconds < 0.0:
+                self.logger.warning(f"Invalid SPDK ping interval "
+                                    f"{spdk_ping_interval_in_seconds}, will reset to 0")
+                spdk_ping_interval_in_seconds = 0.0
+
             self.exit_gateway_if_needed()
             if self.gateway_rpc:
                 if self.gateway_rpc.rebalance.rebalance_event.is_set():
@@ -1063,7 +1080,11 @@ class GatewayServer:
             if not timedout:
                 break
             time.sleep(spdk_ping_interval_in_seconds)
-            alive = self._ping()
+            if ping_under_lock:
+                with self.rpc_lock:
+                    alive = self._ping()
+            else:
+                alive = self._ping()
             if not alive:
                 consecutive_ping_failures += 1
                 if consecutive_ping_failures >= allowed_consecutive_spdk_ping_failures:

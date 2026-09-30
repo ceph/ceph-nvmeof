@@ -1106,26 +1106,51 @@ class GatewayService(pb2_grpc.GatewayServicer):
             self.logger.info("Gateway's IO statistics is disabled")
 
         self.fsid = None
-        spdk_notifications_interval = self.config.getint_with_default("spdk",
-                                                                      "notifications_interval",
-                                                                      60)
-        self.spdk_notifications_thread = None
-        if spdk_notifications_interval > 0:
-            self.spdk_notifications_thread = threading.Thread(target=self.read_spdk_notifications,
-                                                              name="SPDK Notifications",
-                                                              daemon=True,
-                                                              args=(spdk_notifications_interval,))
-            self.spdk_notifications_thread.start()
+        self.spdk_notifications_thread = threading.Thread(
+            target=self.read_spdk_notifications,
+            name="SPDK Notifications",
+            daemon=True)
+        self.spdk_notifications_thread.start()
         # Keep towards the end of init as we use fields like gateway_state in the rebalance thread
         self.rebalance = Rebalance(self)
 
-    def read_spdk_notifications(self, read_interval):
-        if read_interval <= 0:
-            return
+    def apply_runtime_config(self, section, key, value):
+        if section == "gateway" and key == "max_namespaces":
+            floor = GatewayService.MIN_VALUE_FOR_MAX_NAMESPACES_PER_SUBSYSTEM
+            if value < floor:
+                raise ValueError(f"max_namespaces can't be less than {floor}")
+        if section == "gateway" and key == "max_namespaces_per_subsystem":
+            floor = GatewayService.MIN_VALUE_FOR_MAX_NAMESPACES_PER_SUBSYSTEM
+            ceiling = GatewayService.MAX_VALUE_FOR_MAX_NAMESPACES_PER_SUBSYSTEM
+            if value < floor or value > ceiling:
+                raise ValueError(
+                    f"max_namespaces_per_subsystem must be between {floor} and {ceiling}")
+        attrs = {
+            ("gateway", "verify_nqns"): "verify_nqns",
+            ("gateway", "verify_keys"): "verify_keys",
+            ("gateway", "verify_listener_ip"): "verify_listener_ip",
+            ("gateway", "force_tls"): "force_tls",
+            ("gateway", "max_hosts_per_namespace"): "max_hosts_per_namespace",
+            ("gateway", "max_namespaces_with_netmask"): "max_namespaces_with_netmask",
+            ("gateway", "max_subsystems"): "max_subsystems",
+            ("gateway", "max_namespaces"): "max_namespaces",
+            ("gateway", "max_namespaces_per_subsystem"): "max_namespaces_per_subsystem",
+            ("gateway", "max_hosts_per_subsystem"): "max_hosts_per_subsystem",
+            ("gateway", "max_hosts"): "max_hosts",
+        }
+        attr = attrs.get((section, key))
+        if attr is not None:
+            setattr(self, attr, value)
 
+    def read_spdk_notifications(self):
         spdk_notification_last_id_read = -1
 
         while self.up_and_running:
+            read_interval = self.config.getint_with_default(
+                "spdk", "notifications_interval", 60)
+            if read_interval <= 0:
+                time.sleep(1)
+                continue
             with self.rpc_lock:
                 notifications = self.spdk_rpc_client.notify_get_notifications(
                     id=spdk_notification_last_id_read + 1)

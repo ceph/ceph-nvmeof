@@ -565,6 +565,7 @@ class GatewayLogger:
     init_executed = False
 
     def __init__(self, config=None):
+        self._config = config
         if config:
             self.log_directory = config.get_with_default(
                 "gateway-logs",
@@ -581,6 +582,29 @@ class GatewayLogger:
         if not gateway_name:
             gateway_name = socket.gethostname()
         self.log_directory = self.log_directory + GatewayLogger.NVME_LOG_DIR_PREFIX + gateway_name
+
+        if config:
+            log_files_rotation_enabled = config.getboolean_with_default(
+                "gateway-logs",
+                "log_files_rotation_enabled",
+                True)
+            max_log_file_size = config.getint_with_default(
+                "gateway-logs",
+                "max_log_file_size_in_mb",
+                GatewayLogger.MAX_LOG_FILE_SIZE_DEFAULT)
+            max_log_files_count = config.getint_with_default(
+                "gateway-logs",
+                "max_log_files_count",
+                GatewayLogger.MAX_LOG_FILES_COUNT_DEFAULT)
+        else:
+            log_files_rotation_enabled = False
+            max_log_file_size = GatewayLogger.MAX_LOG_FILE_SIZE_DEFAULT
+            max_log_files_count = GatewayLogger.MAX_LOG_FILES_COUNT_DEFAULT
+        # The server keeps the second GatewayLogger. That instance returns
+        # below, so the rotation fields have to exist before the return.
+        self.log_files_rotation_enabled = bool(log_files_rotation_enabled)
+        self.max_log_file_size_in_mb = max_log_file_size
+        self.max_log_files_count = max_log_files_count
 
         if GatewayLogger.logger:
             assert self.logger == GatewayLogger.logger
@@ -602,18 +626,6 @@ class GatewayLogger:
                 "gateway-logs",
                 "log_files_enabled",
                 True)
-            log_files_rotation_enabled = config.getboolean_with_default(
-                "gateway-logs",
-                "log_files_rotation_enabled",
-                True)
-            max_log_file_size = config.getint_with_default(
-                "gateway-logs",
-                "max_log_file_size_in_mb",
-                GatewayLogger.MAX_LOG_FILE_SIZE_DEFAULT)
-            max_log_files_count = config.getint_with_default(
-                "gateway-logs",
-                "max_log_files_count",
-                GatewayLogger.MAX_LOG_FILES_COUNT_DEFAULT)
             max_log_directory_backups = config.getint_with_default(
                 "gateway-logs",
                 "max_log_directory_backups",
@@ -622,9 +634,6 @@ class GatewayLogger:
         else:
             verbose = True
             log_files_enabled = False
-            log_files_rotation_enabled = False
-            max_log_file_size = GatewayLogger.MAX_LOG_FILE_SIZE_DEFAULT
-            max_log_files_count = GatewayLogger.MAX_LOG_FILES_COUNT_DEFAULT
             max_log_directory_backups = GatewayLogger.MAX_LOG_DIRECTORY_BACKUPS_DEFAULT
             log_level = "INFO"
 
@@ -699,6 +708,52 @@ class GatewayLogger:
             shutil.rmtree(dirname, ignore_errors=True)
         except Exception:
             pass
+
+    def _set_verbose_formatter(self, verbose):
+        if verbose:
+            fmt = ("[%(asctime)s] %(levelname)s %(filename)s:%(lineno)d "
+                   "(%(process)d): %(message)s")
+        else:
+            fmt = None
+        formatter = logging.Formatter(fmt=fmt, datefmt="%d-%b-%Y %H:%M:%S")
+        seen = set()
+        for logger in (self.logger, logging.getLogger()):
+            for handler in logger.handlers:
+                if id(handler) in seen:
+                    continue
+                seen.add(id(handler))
+                handler.setFormatter(formatter)
+
+    def _apply_rotation_thresholds(self):
+        if self.handler is None:
+            return
+        if self.log_files_rotation_enabled:
+            self.handler.maxBytes = int(self.max_log_file_size_in_mb) * 1024 * 1024
+            self.handler.backupCount = int(self.max_log_files_count)
+            self.handler.rotator = GatewayLogger.log_file_rotate
+        else:
+            self.handler.maxBytes = 0
+            self.handler.backupCount = 0
+            self.handler.rotator = None
+
+    def apply_runtime_config(self, key, value):
+        if self._config is None or self.logger is None:
+            return
+        if key == "log_level":
+            self.set_log_level(str(value))
+            return
+        if key == "verbose_log_messages":
+            self._set_verbose_formatter(value)
+            return
+        if key == "max_log_file_size_in_mb":
+            self.max_log_file_size_in_mb = int(value)
+        elif key == "max_log_files_count":
+            self.max_log_files_count = int(value)
+        elif key == "log_files_rotation_enabled":
+            self.log_files_rotation_enabled = bool(value)
+        else:
+            return
+        self._apply_rotation_thresholds()
 
     def set_log_level(self, log_level):
         if isinstance(log_level, str):

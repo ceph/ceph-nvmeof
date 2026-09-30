@@ -551,6 +551,20 @@ class OmapLock:
 
         return omap_lock_cookie
 
+    def apply_runtime_config(self, section, key, value):
+        if section != "gateway":
+            return
+        if key == "omap_file_lock_duration":
+            self.omap_file_lock_duration = value
+        elif key == "omap_file_update_reloads":
+            self.omap_file_update_reloads = value
+        elif key == "omap_file_lock_retries":
+            self.omap_file_lock_retries = value
+        elif key == "omap_file_lock_retry_sleep_interval":
+            self.omap_file_lock_retry_sleep_interval = value
+        elif key == "omap_file_update_attempts":
+            self.omap_file_update_attempts = value
+
     #
     # We pass the context from the different functions here. It should point to a real object
     # in case we come from a real resource changing function, resulting from a CLI command. It
@@ -1466,12 +1480,28 @@ class GatewayStateHandler:
         else:
             self.logger.info("Update timer already set.")
 
+    def apply_runtime_config(self, section, key, value):
+        if section != "gateway":
+            return
+        if key == "state_update_interval_sec":
+            self.update_interval = value if value >= 1 else 1
+        elif key == "state_update_notify":
+            self.use_notify = value
+        elif key == "break_update_interval_sec":
+            self.break_update_interval = value
+
     def _update_caller(self, notify_event):
         """Periodically calls for update."""
         while True:
             if not self.up_and_running:
                 self.logger.warning("Server is going down, stop updates")
                 break
+            self.update_interval = self.config.getint("gateway", "state_update_interval_sec")
+            if self.update_interval < 1:
+                self.update_interval = 1
+            self.use_notify = self.config.getboolean("gateway", "state_update_notify")
+            self.break_update_interval = self.config.getint_with_default(
+                "gateway", "break_update_interval_sec", 25)
             update_time = time.time() + self.update_interval
             self.update()
             notify_event.wait(max(update_time - time.time(), 0))

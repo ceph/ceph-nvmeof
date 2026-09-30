@@ -110,6 +110,7 @@ class ConfigRegistry:
         self._group = set()
         self._rejected = set()
         self._overridden = set()
+        self._listener = None
         self._parser = config.config
         parser = self._parser
         for section, key, kind, default in _DAEMON_KEYS:
@@ -145,6 +146,10 @@ class ConfigRegistry:
                 raise KeyError(f"{section}/{key}")
             return default
         return self._values[ident]
+
+    def set_listener(self, listener):
+        """Called with (section, key, value) before the registry stores a new value."""
+        self._listener = listener
 
     def require(self, section, key):
         """Fail a management call that depends on a rejected group key."""
@@ -198,4 +203,5 @@ class ConfigRegistry:
 
     def _on_value(self, section, key, value):
         """Hook for live readers. The registry value changes only if this returns."""
-        return None
+        if self._listener is not None:
+            self._listener(section, key, value)

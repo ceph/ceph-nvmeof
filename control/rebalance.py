@@ -51,7 +51,14 @@ class Rebalance:
                     return
                 time.sleep(0.5)
 
-        while (self.rebalance_period_sec > 0):
+        while True:
+            self.rebalance_period_sec = self.gw_srv.config.getint_with_default(
+                "gateway", "rebalance_period_sec", 7)
+            self.rebalance_max_ns_to_change_lb_grp = self.gw_srv.config.getint_with_default(
+                "gateway", "max_ns_to_change_lb_grp", 8)
+            if self.rebalance_period_sec <= 0:
+                time.sleep(1)
+                continue
             while self.gw_srv.gateway_state.update_is_active_lock.locked():
                 time.sleep(0.5)         # wait until update is over
 
