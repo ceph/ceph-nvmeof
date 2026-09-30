@@ -24,6 +24,7 @@ import spdk.rpc.client as rpc_client
 
 from .proto import gateway_pb2 as pb2
 from .proto import gateway_pb2_grpc as pb2_grpc
+from .proto import monitor_pb2
 from .proto import monitor_pb2_grpc
 from .state import GatewayState, LocalGatewayState, OmapLock, OmapGatewayState, GatewayStateHandler
 from .grpc import GatewayService, MonitorGroupService
@@ -125,6 +126,8 @@ class GatewayServer:
         self.discovery_pid = None
         self.spdk_rpc_socket_path = None
         self.monitor_event = threading.Event()
+        self.config_applied = threading.Event()
+        self.monitor_server = None
         self.monitor_client_process = None
         self.ceph_utils = None
         self.rpc_lock = threading.Lock()
@@ -237,6 +240,12 @@ class GatewayServer:
             self.server.stop(None)
             self.server = None
 
+        if self.monitor_server:
+            if logger:
+                logger.info("Stopping the MonitorGroup server...")
+            self.monitor_server.stop(None)
+            self.monitor_server = None
+
         if self.discovery_pid:
             self._stop_discovery()
 
@@ -258,21 +267,39 @@ class GatewayServer:
         self.group_id = id
         self.monitor_event.set()
 
+    def apply_config(self, request):
+        """Apply one daemon and group snapshot. Each key is independent."""
+        with self.rpc_lock:
+            rejects = self.config.registry.apply(request.daemon, request.group)
+        reply = monitor_pb2.config_apply_reply()
+        for section, key, error in rejects:
+            rejected = reply.rejects.add()
+            rejected.section = section
+            rejected.key = key
+            rejected.error = error
+            self.logger.warning(f"Rejected config {section}/{key}: {error}")
+        self.config_applied.set()
+        return reply
+
     def _wait_for_group_id(self):
-        """Waits for the monitor notification of this gatway's group id"""
+        """Waits for the group id and the first config snapshot.
+
+        The MonitorGroup server stays up so later snapshots can be applied.
+        A group id injected before this server exists has no snapshot to
+        wait for; the conf-file seed is the running config.
+        """
+        group_already_set = self.monitor_event.is_set()
         self.monitor_server = self._grpc_server(self._monitor_address())
-        monitor_pb2_grpc.add_MonitorGroupServicer_to_server(MonitorGroupService(self.set_group_id),
+        monitor_pb2_grpc.add_MonitorGroupServicer_to_server(MonitorGroupService(self),
                                                             self.monitor_server)
         self.monitor_server.start()
         self.logger.info(f"MonitorGroup server is listening on "
-                         f"{self._monitor_address()} for group id")
+                         f"{self._monitor_address()}")
         self.monitor_event.wait()
-        self.monitor_event = None
-        self.logger.info("Stopping the MonitorGroup server...")
-        grace = self.config.getfloat_with_default("gateway", "monitor_stop_grace", 1 / 1000)
-        self.monitor_server.stop(grace).wait()
-        self.logger.info("The MonitorGroup gRPC server has stopped...")
-        self.monitor_server = None
+        if group_already_set:
+            self.config_applied.set()
+        self.config_applied.wait()
+        self.logger.info("Gateway config snapshot applied")
 
     def start_prometheus(self):
         """Starts the prometheus endpoint if enabled by the config."""

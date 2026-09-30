@@ -10,6 +10,9 @@
 import configparser
 import os
 
+from .config_registry import ConfigRegistry
+from .config_registry import _MISSING
+
 
 class GatewayConfig:
     """Loads and returns config file settings.
@@ -27,6 +30,13 @@ class GatewayConfig:
         with open(conffile) as f:
             self.config = configparser.ConfigParser()
             self.config.read_file(f)
+        self.registry = ConfigRegistry(self)
+
+    def _registry_get(self, section, param):
+        registry = self.registry
+        if registry is None or not registry.overridden(section, param):
+            return _MISSING
+        return registry.get(section, param)
 
     def is_param_defined(self, section, param):
         if self.config.has_section(section):
@@ -34,27 +44,51 @@ class GatewayConfig:
         return False
 
     def get(self, section, param):
+        got = self._registry_get(section, param)
+        if got is not _MISSING:
+            return str(got)
         return self.config.get(section, param)
 
     def getboolean(self, section, param):
+        got = self._registry_get(section, param)
+        if got is not _MISSING:
+            return bool(got)
         return self.config.getboolean(section, param)
 
     def getint(self, section, param):
+        got = self._registry_get(section, param)
+        if got is not _MISSING:
+            return int(got)
         return self.config.getint(section, param)
 
     def getfloat(self, section, param):
+        got = self._registry_get(section, param)
+        if got is not _MISSING:
+            return float(got)
         return self.config.getfloat(section, param)
 
     def get_with_default(self, section, param, value):
+        got = self._registry_get(section, param)
+        if got is not _MISSING:
+            return str(got)
         return self.config.get(section, param, fallback=value)
 
     def getboolean_with_default(self, section, param, value):
+        got = self._registry_get(section, param)
+        if got is not _MISSING:
+            return bool(got)
         return self.config.getboolean(section, param, fallback=value)
 
     def getint_with_default(self, section, param, value):
+        got = self._registry_get(section, param)
+        if got is not _MISSING:
+            return int(got)
         return self.config.getint(section, param, fallback=value)
 
     def getfloat_with_default(self, section, param, value):
+        got = self._registry_get(section, param)
+        if got is not _MISSING:
+            return float(got)
         return self.config.getfloat(section, param, fallback=value)
 
     def dump_config_file(self, logger):

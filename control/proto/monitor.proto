@@ -11,9 +11,33 @@ import "google/protobuf/empty.proto";
 service MonitorGroup {
 	// Called by the monitor client to set the gateway's group id
 	rpc group_id(group_id_req) returns (google.protobuf.Empty) {}
+	// One snapshot of the daemon and group piles.
+	rpc apply_config(config_snapshot) returns (config_apply_reply) {}
 }
 
 // Request messages
 message group_id_req {
 	uint32 id = 1;
+}
+
+message config_entry {
+	string section = 1;
+	string key = 2;
+	bool present = 3;
+	string value = 4;
+}
+
+message config_snapshot {
+	repeated config_entry daemon = 1;
+	repeated config_entry group = 2;
+}
+
+message config_reject {
+	string section = 1;
+	string key = 2;
+	string error = 3;
+}
+
+message config_apply_reply {
+	repeated config_reject rejects = 1;
 }

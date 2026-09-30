@@ -20,7 +20,7 @@ import time
 import rbd
 from ipaddress import ip_address
 from pathlib import Path
-from typing import Iterator, Callable, Optional
+from typing import Iterator, Optional
 from collections import defaultdict
 from copy import deepcopy
 import logging
@@ -94,12 +94,15 @@ class BdevStatus:
 
 
 class MonitorGroupService(monitor_pb2_grpc.MonitorGroupServicer):
-    def __init__(self, set_group_id: Callable[[int], None]) -> None:
-        self.set_group_id = set_group_id
+    def __init__(self, gateway) -> None:
+        self.gateway = gateway
 
     def group_id(self, request: monitor_pb2.group_id_req, context=None) -> Empty:
-        self.set_group_id(request.id)
+        self.gateway.set_group_id(request.id)
         return Empty()
+
+    def apply_config(self, request, context=None):
+        return self.gateway.apply_config(request)
 
 
 class SubsystemHostAuth:
