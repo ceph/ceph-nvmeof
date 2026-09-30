@@ -374,10 +374,14 @@ def test_degraded_namespace(caplog, two_gateways):
     cli(["--server-port", portA, "--format", "json", "namespace", "list",
          "--subsystem", subsystem1, "--nsid", "1"])
     assert '"degraded": false' in caplog.text
+    assert '"read_only": false' in caplog.text
     caplog.clear()
     cli(["--server-port", portB, "--format", "json", "namespace", "list",
          "--subsystem", subsystem1, "--nsid", "1"])
     assert '"degraded": true' in caplog.text
+    assert '"read_only": true' in caplog.text
+    assert f'"rbd_image_name": "{image1}"' in caplog.text
+    assert '"rbd_image_size": "12582912"' in caplog.text
     caplog.clear()
     cli(["--server-port", portB, "namespace", "resize", "--subsystem", subsystem1,
          "--nsid", "1", "--size", "20MB"])
@@ -458,11 +462,13 @@ def test_degraded_namespace(caplog, two_gateways):
     cli(["--format", "json", "--server-port", portA, "namespace", "list",
          "--subsystem", subsystem1, "--nsid", "1"])
     assert '"degraded": false' in caplog.text
+    assert '"read_only": false' in caplog.text
     assert ('"pinned": false' in caplog.text)
     caplog.clear()
     cli(["--format", "json", "--server-port", portB, "namespace", "list",
          "--subsystem", subsystem1, "--nsid", "1"])
     assert '"degraded": true' in caplog.text
+    assert '"read_only": true' in caplog.text
     assert ('"pinned": false' in caplog.text)
     print("Run the KMIP server again")
     kmip_dir1 = os.path.join(kmip_dir_prefix, kmip_server_name1)
@@ -499,7 +505,9 @@ def test_degraded_namespace(caplog, two_gateways):
     cli(["--server-port", portB, "--format", "json", "namespace", "list",
          "--subsystem", subsystem1, "--nsid", "1"])
     assert '"degraded": true' not in caplog.text
+    assert '"read_only": true' not in caplog.text
     assert '"degraded": false' in caplog.text
+    assert '"read_only": false' in caplog.text
     state = gwB.gateway_state.omap.get_state()
     assert look_for_key in state.keys()
     val = state[look_for_key]
