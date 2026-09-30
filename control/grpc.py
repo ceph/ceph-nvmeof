@@ -1579,7 +1579,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         if trash_image:
             trsh_msg = "will trash the image on namespace delete, "
 
-        if read_only or degraded:
+        if read_only:
             ro_msg = "read only"
         else:
             ro_msg = "read write"
@@ -1814,7 +1814,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 rbd_name=rbd_image_name,
                 block_size=block_size,
                 uuid=uuid,
-                read_only=read_only or degraded,
+                read_only=read_only,
                 fail_io=degraded and self.fail_io_for_degraded_namespace,
                 size_delta=image_size_delta,
                 encryption_format=enc_format_list,
@@ -3312,8 +3312,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 "uuid": uuid,
                 "no_auto_visible": not auto_visible,
             }
-            if not degraded:
-                namespace_param["ptpl_file"] = "PTPL"
+            namespace_param["ptpl_file"] = "PTPL"
             nsid = self.spdk_rpc_client.nvmf_subsystem_add_ns(
                 nqn=subsystem_nqn,
                 namespace=namespace_param,
@@ -3716,6 +3715,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                  f"the \"namespace list\" CLI command on subsystem {ns_nqn}"
                         self.logger.error(errmsg)
                         return pb2.nsid_status(status=errno.EEXIST, error_message=errmsg)
+
+            if create_degraded:
+                request.read_only = True
 
             ret_bdev = self.create_rbd_bdev(abs(anagrp), bdev_name, request.uuid,
                                             request.rbd_pool_name,
@@ -4759,8 +4761,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                             f"will not list bdev's information")
                     else:
                         one_ns.block_size = ns_bdev.get("block_size", 0)
-                        if not find_ret.is_degraded():
-                            one_ns.rbd_image_size = one_ns.block_size * ns_bdev.get("num_blocks", 0)
+                        one_ns.rbd_image_size = one_ns.block_size * ns_bdev.get("num_blocks", 0)
 
                         assigned_limits = ns_bdev.get("assigned_rate_limits", None)
                         if assigned_limits is not None:
@@ -4771,35 +4772,34 @@ class GatewayService(pb2_grpc.GatewayServicer):
                             one_ns.r_mbytes_per_second = assigned_limits.get("r_mbytes_per_sec", 0)
                             one_ns.w_mbytes_per_second = assigned_limits.get("w_mbytes_per_sec", 0)
 
-                        if not find_ret.is_degraded():
-                            try:
-                                drv_specific_info = ns_bdev["driver_specific"]
-                                rbd_info = drv_specific_info["rbd"]
-                                one_ns.rbd_image_name = rbd_info["rbd_name"]
-                                one_ns.rbd_pool_name = rbd_info["pool_name"]
-                                one_ns.rados_namespace_name = rbd_info["namespace_name"]
-                            except KeyError as err:
-                                self.logger.warning(f"Key {err} is not found, will not list "
-                                                    f"bdev's information")
-                            except Exception:
-                                self.logger.exception(f"{ns_bdev=} parse error")
+                        try:
+                            drv_specific_info = ns_bdev["driver_specific"]
+                            rbd_info = drv_specific_info["rbd"]
+                            one_ns.rbd_image_name = rbd_info["rbd_name"]
+                            one_ns.rbd_pool_name = rbd_info["pool_name"]
+                            one_ns.rados_namespace_name = rbd_info["namespace_name"]
+                        except KeyError as err:
+                            self.logger.warning(f"Key {err} is not found, will not list "
+                                                f"bdev's information")
+                        except Exception:
+                            self.logger.exception(f"{ns_bdev=} parse error")
 
-                            if was_image_shrunk and one_ns.rbd_pool_name and one_ns.rbd_image_name:
-                                shrunk_image_size = None
-                                try:
-                                    shrunk_image_size = self.ceph_utils.get_image_size(
-                                        one_ns.rbd_pool_name, one_ns.rbd_image_name,
-                                        one_ns.rados_namespace_name)
-                                except Exception:
-                                    self.logger.exception(f"error getting size of "
-                                                          f"{one_ns.rbd_pool_name}/"
-                                                          f"{one_ns.rbd_image_name}")
-                                    pass
-                                if shrunk_image_size is not None:
-                                    one_ns.rbd_image_size = shrunk_image_size
-                            one_ns.disable_auto_resize = self._is_auto_resize_disabled_for_image(
-                                one_ns.rbd_pool_name, one_ns.rbd_image_name,
-                                one_ns.rados_namespace_name)
+                        if was_image_shrunk and one_ns.rbd_pool_name and one_ns.rbd_image_name:
+                            shrunk_image_size = None
+                            try:
+                                shrunk_image_size = self.ceph_utils.get_image_size(
+                                    one_ns.rbd_pool_name, one_ns.rbd_image_name,
+                                    one_ns.rados_namespace_name)
+                            except Exception:
+                                self.logger.exception(f"error getting size of "
+                                                      f"{one_ns.rbd_pool_name}/"
+                                                      f"{one_ns.rbd_image_name}")
+                                pass
+                            if shrunk_image_size is not None:
+                                one_ns.rbd_image_size = shrunk_image_size
+                        one_ns.disable_auto_resize = self._is_auto_resize_disabled_for_image(
+                            one_ns.rbd_pool_name, one_ns.rbd_image_name,
+                            one_ns.rados_namespace_name)
                     namespaces.append(one_ns)
                 if request.subsystem != GatewayUtils.ALL_SUBSYSTEMS:
                     break
