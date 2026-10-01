@@ -22,6 +22,11 @@ subsystem6 = "nqn.2016-06.io.spdk:cnode6"
 subsystem7 = "nqn.2016-06.io.spdk:cnode7"
 subsystem8 = "nqn.2016-06.io.spdk:cnode8"
 subsystem9 = "nqn.2016-06.io.spdk:cnode9"
+subsystem10 = "nqn.2016-06.io.spdk:cnode10"
+subsystem11 = "nqn.2016-06.io.spdk:cnode11"
+subsystem12 = "nqn.2016-06.io.spdk:cnode12"
+subsystem13 = "nqn.2016-06.io.spdk:cnode13"
+subsystem14 = "nqn.2016-06.io.spdk:cnode14"
 
 host_name = socket.gethostname()
 addr = "127.0.0.1"
@@ -748,3 +753,148 @@ class TestAutoListener:
         assert len(ret.removed) == 0
         assert (f"Failure refreshing network for subsystem {subsystem5}: subsystem {subsystem5}"
                 f" has no network masks configured") in ret.error_message
+
+    def test_use_group_config_network_masks_enable(self, caplog, gateway):
+        gateway_rpc, _ = gateway
+        # simulate nvmeof orch spec's listener_network_masks
+        gateway_rpc.listener_network_masks = [addr_subnet]
+
+        cli_test(["subsystem", "add", "--subsystem", subsystem10, "--no-group-append"])
+        caplog.clear()
+        ret = cli_test(["subsystem", "set_use_group_config_network_masks",
+                        "--subsystem", subsystem10,
+                        "--use-group-config-network-masks", "true"])
+        assert ret.status == 0
+        assert f"Automatically created listener at {addr}:4420 for {subsystem10}" in caplog.text
+        assert f"Set use_group_config_network_masks=True for subsystem {subsystem10}" \
+               in caplog.text
+
+        cli(["subsystem", "list"])
+        assert wait_for_listener_count(subsystem10, 1)
+        listeners = cli_test(["listener", "list", "--subsystem", subsystem10])
+        assert len(listeners.listeners) == 1
+        assert listeners.listeners[0].traddr == addr
+        assert listeners.listeners[0].trsvcid == 4420
+        assert listeners.listeners[0].active
+        assert not listeners.listeners[0].manual
+
+        subsystems = cli_test(["subsystem", "list", "--subsystem", subsystem10])
+        assert subsystems.subsystems[0].use_group_config_network_masks
+        assert set(subsystems.subsystems[0].network_mask) == {addr_subnet}
+
+    def test_use_group_config_network_masks_already_enabled_warns(self, caplog, gateway):
+        caplog.clear()
+        ret = cli_test(["subsystem", "set_use_group_config_network_masks",
+                        "--subsystem", subsystem10,
+                        "--use-group-config-network-masks", "true"])
+        assert ret.status == 0
+        assert "use_group_config_network_masks is already enabled for subsystem " \
+               f"{subsystem10}" in caplog.text
+
+    def test_use_group_config_network_masks_disable(self, caplog, gateway):
+        caplog.clear()
+        ret = cli_test(["subsystem", "set_use_group_config_network_masks",
+                        "--subsystem", subsystem10,
+                        "--use-group-config-network-masks", "false"])
+        assert ret.status == 0
+        assert f"Automatically deleted listener at {addr}:4420 for {subsystem10}" in caplog.text
+        assert f"Set use_group_config_network_masks=False for subsystem {subsystem10}" \
+               in caplog.text
+
+        assert wait_for_listener_count(subsystem10, 0)
+        subsystems = cli_test(["subsystem", "list", "--subsystem", subsystem10])
+        assert not subsystems.subsystems[0].use_group_config_network_masks
+        assert len(subsystems.subsystems[0].network_mask) == 0
+
+    def test_use_group_config_network_masks_blocked_with_network_mask(self, caplog, gateway):
+        cli_test(["subsystem", "add", "--subsystem", subsystem11, "--no-group-append",
+                 "--network-mask", addr_subnet])
+        caplog.clear()
+        ret = cli_test(["subsystem", "set_use_group_config_network_masks",
+                        "--subsystem", subsystem11,
+                        "--use-group-config-network-masks", "true"])
+        assert ret.status != 0
+        assert f"subsystem {subsystem11} already has an explicit network mask " \
+               f"configured, delete it first" in caplog.text
+
+    def test_use_group_config_network_masks_blocked_with_manual_listener(self, caplog, gateway):
+        cli_test(["subsystem", "add", "--subsystem", subsystem12, "--no-group-append"])
+        cli_test(["listener", "add", "--subsystem", subsystem12, "--host-name", host_name,
+                 "-a", addr, "-s", "4420", "-f", "ipv4"])
+        caplog.clear()
+        ret = cli_test(["subsystem", "set_use_group_config_network_masks",
+                        "--subsystem", subsystem12,
+                        "--use-group-config-network-masks", "true"])
+        assert ret.status != 0
+        assert f"subsystem {subsystem12} has manual listener(s)" in caplog.text
+        assert "Remove the manual listener(s) first" in caplog.text
+
+    def test_add_network_blocked_when_using_group_config_masks(self, caplog, gateway):
+        cli_test(["subsystem", "add", "--subsystem", subsystem13, "--no-group-append"])
+        cli_test(["subsystem", "set_use_group_config_network_masks",
+                 "--subsystem", subsystem13, "--use-group-config-network-masks", "true"])
+        caplog.clear()
+        ret = cli_test(["subsystem", "add_network", "--subsystem", subsystem13,
+                        "--network-mask", addr_subnet])
+        assert ret.status != 0
+        assert f"subsystem {subsystem13} is using the gateway group config's listener " \
+               f"network masks, disable that first" in caplog.text
+
+    def test_del_network_blocked_when_using_group_config_masks(self, caplog, gateway):
+        caplog.clear()
+        ret = cli_test(["subsystem", "del_network", "--subsystem", subsystem13,
+                        "--network-mask", addr_subnet])
+        assert ret.status != 0
+        assert f"subsystem {subsystem13} is using the gateway group config's listener " \
+               f"network masks, there is no explicit network mask to delete" in caplog.text
+
+    def test_create_subsystem_with_use_group_config_network_masks(self, caplog, gateway):
+        caplog.clear()
+        ret = cli_test(["subsystem", "add", "--subsystem", subsystem14, "--no-group-append",
+                        "--use-group-config-network-masks"])
+        assert ret.status == 0
+        assert f"Automatically created listener at {addr}:4420 for {subsystem14}" in caplog.text
+
+        subsystems = cli_test(["subsystem", "list", "--subsystem", subsystem14])
+        assert subsystems.subsystems[0].use_group_config_network_masks
+        assert set(subsystems.subsystems[0].network_mask) == {addr_subnet}
+
+    def test_delete_listener_error_for_group_config_mask_listener(self, caplog, gateway):
+        caplog.clear()
+        cli(["listener", "del", "--subsystem", subsystem14, "--host-name", host_name,
+             "--traddr", addr, "--trsvcid", "4420"])
+        assert f"Failed to delete listener {addr}:4420 from {subsystem14}: " \
+               f"Listener was created automatically from the gateway group config's " \
+               f"listener network masks. To remove it, disable " \
+               f"use_group_config_network_masks on the subsystem." in caplog.text
+
+    def test_cli_network_mask_and_use_group_config_masks_mutually_exclusive(self, caplog, gateway):
+        caplog.clear()
+        rc = 0
+        try:
+            cli(["subsystem", "add", "--subsystem", subsystem14,
+                 "--network-mask", addr_subnet, "--use-group-config-network-masks"])
+        except SystemExit as sysex:
+            rc = sysex.code
+        assert rc == 2
+        assert "--network-mask and --use-group-config-network-masks can't be used " \
+               "together" in caplog.text
+
+    def test_cli_port_and_secure_allowed_with_use_group_config_network_masks(self, caplog, gateway):
+        caplog.clear()
+        new_subsystem = "nqn.2016-06.io.spdk:cnode15"
+        ret = cli_test(["subsystem", "add", "--subsystem", new_subsystem, "--no-group-append",
+                        "--use-group-config-network-masks", "--secure-listeners",
+                        "--port", "4421"])
+        assert ret.status == 0
+        assert f"Automatically created listener at {addr}:4421 for {new_subsystem}" \
+               in caplog.text
+
+        cli(["subsystem", "list"])
+        assert wait_for_listener_count(new_subsystem, 1)
+        listeners = cli_test(["listener", "list", "--subsystem", new_subsystem])
+        assert len(listeners.listeners) == 1
+        assert listeners.listeners[0].traddr == addr
+        assert listeners.listeners[0].trsvcid == 4421
+        assert listeners.listeners[0].secure
+        assert not listeners.listeners[0].manual
