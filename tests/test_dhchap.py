@@ -1002,13 +1002,15 @@ def test_encryption_disabled(caplog, gateway_encryption_disabled):
     cli(["subsystem", "add", "--subsystem", subsystem3, "--dhchap-key", hostdhchap9,
          "--no-group-append"])
     assert f"Received request to create subsystem {subsystem3}, enable_ha: True, " \
-           f"max_namespaces: 0, no group append: True, network mask: [], port: 0, " \
+           f"max_namespaces: 0, no group append: True, network mask: [], " \
+           f"use group config network masks: False, port: 0, " \
            "secure listeners: False, model name: , context: <grpc._server" in caplog.text
     assert f"create_subsystem {subsystem3}: True" in caplog.text
     time.sleep(15)
     lookfor = f"Received request to create subsystem {subsystem3}, enable_ha: True, " \
               f"max_namespaces: {gw_encryption_disabled.MAX_NAMESPACES_PER_SUBSYSTEM_DEFAULT}" \
-              f", no group append: True, network mask: [], port: 0, secure listeners: False, " \
+              f", no group append: True, network mask: [], " \
+              f"use group config network masks: False, port: 0, secure listeners: False, " \
               f"model name: , context: None"
     assert lookfor in caplog.text
     pos = caplog.text.find(lookfor)
