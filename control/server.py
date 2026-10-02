@@ -1292,6 +1292,7 @@ class GatewayServer:
                 else:
                     req = json_format.Parse(val, pb2.delete_listener_req(),
                                             ignore_unknown_fields=True)
+                    req.force = True
                     rc = self.gateway_rpc.delete_listener(req)
                 abort_server_on_update_error(rc.status, rc.error_message)
             elif key.startswith(GatewayState.NAMESPACE_LB_GROUP_PREFIX):
