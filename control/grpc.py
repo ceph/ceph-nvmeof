@@ -7596,6 +7596,14 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     return (nqn, addr, port, secure)
         return None
 
+    def set_listener_request_address_family(self, request):
+        """Sets the address family of a listener request according to its address"""
+        adrfam = GatewayUtils.get_address_family(request.traddr)
+        if adrfam:
+            request.adrfam = pb2.AddressFamily.Value(adrfam)
+            self.logger.debug(f"Address family was set to {adrfam} according to "
+                              f"address {request.traddr}")
+
     def create_listener_safe(self, request, context):
         """Creates a listener for a subsystem at a given IP/Port."""
 
@@ -7610,6 +7618,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
         create_listener_error_prefix = f"Failure adding {request.nqn} listener at " \
                                        f"{request.traddr}:{request.trsvcid}"
 
+        if not request.HasField("adrfam"):
+            self.set_listener_request_address_family(request)
         adrfam = GatewayEnumUtils.get_key_from_value(pb2.AddressFamily, request.adrfam)
         if adrfam is None:
             errmsg = f"{create_listener_error_prefix}: Unknown address family {request.adrfam}"
@@ -7971,6 +7981,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
         delete_listener_error_prefix = f"Failed to delete listener {request.traddr}:" \
                                        f"{request.trsvcid} from {request.nqn}"
 
+        if not request.HasField("adrfam"):
+            self.set_listener_request_address_family(request)
         adrfam = GatewayEnumUtils.get_key_from_value(pb2.AddressFamily, request.adrfam)
         if adrfam is None:
             errmsg = f"{delete_listener_error_prefix}: Unknown address family {request.adrfam}"
