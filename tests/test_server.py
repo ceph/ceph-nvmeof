@@ -4,6 +4,7 @@ import time
 import re
 import signal
 import os
+import threading
 import unittest
 from control.server import GatewayServer
 
@@ -70,8 +71,9 @@ class TestServer(unittest.TestCase):
         self.assert_no_core_files(self.core_dir)
 
     def test_discovery_exit(self):
-        """Tests discovery service sub process exiting."""
+        """Tests discovery service sub process exiting when restarting it is disabled."""
         test_config = copy.deepcopy(self.config)
+        test_config.config["discovery"]["restart_attempts_limit"] = "0"
         signals = [signal.SIGABRT, signal.SIGTERM, signal.SIGKILL, signal.SIGINT]
 
         for sig in signals:
@@ -95,6 +97,42 @@ class TestServer(unittest.TestCase):
 
             # Clean up cores
             self.remove_core_files(self.core_dir)
+
+    def test_discovery_restart(self):
+        """Tests discovery service sub process is restarted, until there are too many failures."""
+        test_config = copy.deepcopy(self.config)
+        test_config.config["discovery"]["restart_attempts_limit"] = "1"
+        test_config.config["discovery"]["restart_interval"] = "1"
+
+        with GatewayServer(test_config) as gateway:
+            gateway.set_group_id(0)
+            gateway.serve()
+
+            # Give the gateway some time to start
+            time.sleep(17)
+
+            first_pid = gateway.discovery_pid
+            assert first_pid
+            os.kill(first_pid, signal.SIGKILL)
+
+            # Run keep alive for a while, it should restart the discovery service
+            stop_timer = threading.Timer(15, gateway.server.stop, args=(None,))
+            stop_timer.start()
+            gateway.keep_alive()
+            stop_timer.join()
+
+            second_pid = gateway.discovery_pid
+            assert second_pid
+            assert second_pid != first_pid
+            assert gateway.discovery_consecutive_failures == 1
+
+            # A second consecutive failure is above the limit, the gateway should quit
+            with self.assertRaises(SystemExit) as cm:
+                os.kill(second_pid, signal.SIGKILL)
+                time.sleep(10)
+            self.validate_exception(cm.exception)
+
+        self.remove_core_files(self.core_dir)
 
     def test_monc_exit(self):
         """Tests monitor client sub process abort."""
