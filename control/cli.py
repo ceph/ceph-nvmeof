@@ -1788,7 +1788,7 @@ class GatewayClient:
             elif args.trsvcid > 0xffff:
                 self.cli.parser.error("trsvcid value must be smaller than 65536")
         if not args.adrfam:
-            args.adrfam = "IPV4"
+            args.adrfam = GatewayUtils.get_address_family(args.traddr) or "ipv4"
 
         if not GatewayUtils.is_valid_host_name(args.host_name):
             self.cli.parser.error(f"invalid host name {args.host_name}")
@@ -1853,7 +1853,7 @@ class GatewayClient:
             elif args.trsvcid > 0xffff:
                 self.cli.parser.error("trsvcid value must be smaller than 65536")
         if not args.adrfam:
-            args.adrfam = "IPV4"
+            args.adrfam = GatewayUtils.get_address_family(args.traddr) or "ipv4"
 
         self.validate_ip_address(args.traddr, args.adrfam)
         if args.host_name == "*" and not args.force:
