@@ -1472,7 +1472,18 @@ class GatewayStateHandler:
             if not self.up_and_running:
                 self.logger.warning("Server is going down, stop updates")
                 break
-            update_time = time.time() + self.update_interval
+            interval = self.config.getint_with_default(
+                "gateway",
+                "state_update_interval_sec",
+                5)
+            if interval < 1:
+                interval = 1
+            self.update_interval = interval
+            self.break_update_interval = self.config.getint_with_default(
+                "gateway",
+                "break_update_interval_sec",
+                25)
+            update_time = time.time() + interval
             self.update()
             notify_event.wait(max(update_time - time.time(), 0))
             notify_event.clear()
