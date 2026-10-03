@@ -231,6 +231,11 @@ class GatewayServer:
                                         f"{self.monitor_client_log_file_path}.gz")
             self.monitor_client_log_file_path = None
 
+        if getattr(self, "monitor_server", None):
+            if logger:
+                logger.info("Stopping the MonitorGroup server...")
+            self._stop_monitor_server()
+
         if self.server:
             if logger:
                 logger.info("Stopping the server...")
@@ -256,23 +261,69 @@ class GatewayServer:
         self.logger.info(f"Gateway {self.name} group {id=}")
         assert id >= 0
         self.group_id = id
+        # A lost response is retried against this same server.
         self.monitor_event.set()
 
     def _wait_for_group_id(self):
-        """Waits for the monitor notification of this gatway's group id"""
-        self.monitor_server = self._grpc_server(self._monitor_address())
-        monitor_pb2_grpc.add_MonitorGroupServicer_to_server(MonitorGroupService(self.set_group_id),
-                                                            self.monitor_server)
-        self.monitor_server.start()
+        """Waits for the monitor notification of this gateway's group id.
+
+        The MonitorGroup server stays up so a later config snapshot can be applied.
+        It is stopped across the discovery fork and started again afterwards.
+        """
+        self._start_monitor_server()
         self.logger.info(f"MonitorGroup server is listening on "
                          f"{self._monitor_address()} for group id")
         self.monitor_event.wait()
-        self.monitor_event = None
-        self.logger.info("Stopping the MonitorGroup server...")
-        grace = self.config.getfloat_with_default("gateway", "monitor_stop_grace", 1 / 1000)
-        self.monitor_server.stop(grace).wait()
-        self.logger.info("The MonitorGroup gRPC server has stopped...")
+        self.logger.info("MonitorGroup server stays up for config updates")
+
+    def _start_monitor_server(self):
+        """Starts a new MonitorGroup server. A stopped server cannot be reused."""
+        self.monitor_server = self._grpc_server(self._monitor_address())
+        monitor_pb2_grpc.add_MonitorGroupServicer_to_server(MonitorGroupService(self),
+                                                            self.monitor_server)
+        self.monitor_server.start()
+
+    def _stop_monitor_server(self):
+        """Stops the MonitorGroup server and waits until its threads exit."""
+        server = getattr(self, "monitor_server", None)
+        if not server:
+            return
+        # grace None blocks until active RPCs finish and the thread pool joins.
+        server.stop(None)
         self.monitor_server = None
+
+    def apply_config(self, request):
+        with self.rpc_lock:
+            return self.config.apply_snapshot(request.entries, self._apply_config_value)
+
+    def _apply_config_value(self, section, key, value):
+        if section == "gateway-logs":
+            self.gw_logger_object.apply_runtime_config(key, value)
+            return
+        if section == "spdk" and key == "timeout":
+            if value <= 0:
+                raise ValueError("timeout")
+            self._assign_spdk_timeout(value)
+
+    def _assign_spdk_timeout(self, timeout):
+        for name in ("spdk_rpc_client",
+                     "spdk_rpc_subsystems_client",
+                     "spdk_rpc_prometheus_client"):
+            client = getattr(self, name, None)
+            if client is not None:
+                client.timeout = timeout
+
+    def _sync_spdk_client_timeouts(self):
+        """Re-read spdk timeout onto every RPC client.
+
+        Clients are created one at a time, outside rpc_lock. A snapshot in
+        that window updates only the clients that already exist, then stores
+        the override. Reading again under the same lock apply_config holds
+        copies that override onto every client.
+        """
+        with self.rpc_lock:
+            self._assign_spdk_timeout(
+                self.config.getfloat_with_default("spdk", "timeout", 60.0))
 
     def start_prometheus(self):
         """Starts the prometheus endpoint if enabled by the config."""
@@ -464,7 +515,18 @@ class GatewayServer:
 
         # run ceph nvmeof discovery service in sub-process
         assert self.discovery_pid is None
-        self.discovery_pid = os.fork()
+        # MonitorGroup threads are still running when the monitor client is
+        # enabled. os.fork() would copy a held logging lock into the child,
+        # which then blocks on its first log line and never binds the
+        # discovery port. Restart the server only when one was running.
+        monitor_was_running = getattr(self, "monitor_server", None) is not None
+        self._stop_monitor_server()
+        try:
+            self.discovery_pid = os.fork()
+        except Exception:
+            if monitor_was_running:
+                self._start_monitor_server()
+            raise
         if self.discovery_pid == 0:
             self.logger.info("Starting ceph nvmeof discovery service")
             # disable inherited from gateway signal handlers
@@ -478,6 +540,8 @@ class GatewayServer:
             finally:
                 os._exit(0)
         else:
+            if monitor_was_running:
+                self._start_monitor_server()
             self.logger.info(f"Discovery service process id: {self.discovery_pid}")
 
     def _gateway_address(self):
@@ -676,6 +740,9 @@ class GatewayServer:
                 log_level=protocol_log_level,
                 conn_retries=conn_retries,
             )
+            # Setup RPCs below use this client. Pick up a snapshot that
+            # landed while it was created, before the first call.
+            self._sync_spdk_client_timeouts()
 
             # Set max subsystems
             if max_subsystems > 0:
@@ -714,6 +781,7 @@ class GatewayServer:
                 log_level=protocol_log_level,
                 conn_retries=conn_retries,
             )
+            self._sync_spdk_client_timeouts()
 
         except Exception:
             self.logger.exception("Unable to initialize SPDK")
@@ -1006,25 +1074,8 @@ class GatewayServer:
 
     def keep_alive(self):
         """Continuously confirms communication with SPDK process."""
-        allowed_consecutive_spdk_ping_failures = self.config.getint_with_default(
-            "gateway",
-            "allowed_consecutive_spdk_ping_failures",
-            1)
-        spdk_ping_interval_in_seconds = self.config.getfloat_with_default(
-            "gateway",
-            "spdk_ping_interval_in_seconds",
-            GatewayServer.SPDK_PING_INTERVAL_DEFAULT)
-        if spdk_ping_interval_in_seconds < 0.0:
-            self.logger.warning(f"Invalid SPDK ping interval "
-                                f"{spdk_ping_interval_in_seconds}, will reset to 0")
-            spdk_ping_interval_in_seconds = 0.0
-
         consecutive_ping_failures = 0
-        # we spend 1 second waiting for server termination so subtract it from ping interval
-        if spdk_ping_interval_in_seconds >= 1.0:
-            spdk_ping_interval_in_seconds -= 1.0
-        else:
-            spdk_ping_interval_in_seconds = 0.0
+        warned_ping_interval = None
 
         while True:
             self.exit_gateway_if_needed()
@@ -1032,11 +1083,38 @@ class GatewayServer:
                 if self.gateway_rpc.rebalance.rebalance_event.is_set():
                     self.logger.critical("Failure in rebalance, aborting")
                     raise SystemExit("Failure in rebalance, quitting gateway")
+            allowed_consecutive_spdk_ping_failures = self.config.getint_with_default(
+                "gateway",
+                "allowed_consecutive_spdk_ping_failures",
+                1)
+            spdk_ping_interval_in_seconds = self.config.getfloat_with_default(
+                "gateway",
+                "spdk_ping_interval_in_seconds",
+                GatewayServer.SPDK_PING_INTERVAL_DEFAULT)
+            ping_spdk_under_lock = self.config.getboolean_with_default(
+                "gateway",
+                "ping_spdk_under_lock",
+                False)
+            if spdk_ping_interval_in_seconds < 0.0:
+                if warned_ping_interval != spdk_ping_interval_in_seconds:
+                    self.logger.warning(f"Invalid SPDK ping interval "
+                                        f"{spdk_ping_interval_in_seconds}, will reset to 0")
+                    warned_ping_interval = spdk_ping_interval_in_seconds
+                spdk_ping_interval_in_seconds = 0.0
+            # we spend 1 second waiting for server termination so subtract it from ping interval
+            if spdk_ping_interval_in_seconds >= 1.0:
+                sleep_interval = spdk_ping_interval_in_seconds - 1.0
+            else:
+                sleep_interval = 0.0
             timedout = self.server.wait_for_termination(timeout=1)
             if not timedout:
                 break
-            time.sleep(spdk_ping_interval_in_seconds)
-            alive = self._ping()
+            time.sleep(sleep_interval)
+            if ping_spdk_under_lock:
+                with self.rpc_lock:
+                    alive = self._ping()
+            else:
+                alive = self._ping()
             if not alive:
                 consecutive_ping_failures += 1
                 if consecutive_ping_failures >= allowed_consecutive_spdk_ping_failures:
