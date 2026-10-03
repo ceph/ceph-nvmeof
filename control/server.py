@@ -44,10 +44,11 @@ def sigterm_handler(signum, frame):
     raise SystemExit(0)
 
 
-def sigchld_handler(signum, frame):
-    """Handle SIGCHLD, runs when a child process, like the spdk, terminates."""
+def reap_child_process():
+    """Reaps a terminated child process, returns its PID and exit code."""
     logger = GatewayLogger().logger
-    logger.error(f"GatewayServer: SIGCHLD received {signum=}")
+    pid = 0
+    wait_status = 0
 
     try:
         pid, wait_status = os.waitpid(-1, os.WNOHANG)
@@ -57,10 +58,7 @@ def sigchld_handler(signum, frame):
         # eat the exception, in signal handler context
         pass
 
-    exit_code = os.waitstatus_to_exitcode(wait_status)
-
-    # GW process should exit now
-    raise SystemExit(f"Gateway subprocess terminated {pid=} {exit_code=}")
+    return (pid, os.waitstatus_to_exitcode(wait_status))
 
 
 def cpumask_set(args):
@@ -111,6 +109,11 @@ class GatewayServer:
 
     MAX_TIME_TO_WAIT_FOR_GATEWAY_EXIT = 30
     SPDK_PING_INTERVAL_DEFAULT = 2.0
+    DISCOVERY_RESTART_ATTEMPTS_LIMIT_DEFAULT = 3
+    DISCOVERY_RESTART_INTERVAL_DEFAULT = 5.0
+    # A discovery service which ran for that long is considered stable, so if it terminates
+    # afterwards we restart counting the consecutive failures
+    DISCOVERY_STABLE_RUN_SECONDS = 60.0
     DSA_SUPPORTED_ARCHITECTURES = ["x86_64", "amd64"]
 
     def __init__(self, config: GatewayConfig):
@@ -123,6 +126,25 @@ class GatewayServer:
         self.gateway_rpc = None
         self.server = None
         self.discovery_pid = None
+        self.discovery_start_time = None
+        self.discovery_restart_time = None
+        self.discovery_consecutive_failures = 0
+        self.discovery_restart_attempts_limit = self.config.getint_with_default(
+            "discovery",
+            "restart_attempts_limit",
+            GatewayServer.DISCOVERY_RESTART_ATTEMPTS_LIMIT_DEFAULT)
+        if self.discovery_restart_attempts_limit < 0:
+            self.logger.warning(f"Invalid discovery restart attempts limit "
+                                f"{self.discovery_restart_attempts_limit}, will reset to 0")
+            self.discovery_restart_attempts_limit = 0
+        self.discovery_restart_interval = self.config.getfloat_with_default(
+            "discovery",
+            "restart_interval",
+            GatewayServer.DISCOVERY_RESTART_INTERVAL_DEFAULT)
+        if self.discovery_restart_interval < 0.0:
+            self.logger.warning(f"Invalid discovery restart interval "
+                                f"{self.discovery_restart_interval}, will reset to 0")
+            self.discovery_restart_interval = 0.0
         self.spdk_rpc_socket_path = None
         self.monitor_event = threading.Event()
         self.monitor_client_process = None
@@ -314,7 +336,7 @@ class GatewayServer:
         self._accel_config()
 
         # install SIGCHLD handler
-        signal.signal(signal.SIGCHLD, sigchld_handler)
+        signal.signal(signal.SIGCHLD, self._sigchld_handler)
 
         # install SIGTERM handler
         signal.signal(signal.SIGTERM, sigterm_handler)
@@ -462,8 +484,12 @@ class GatewayServer:
             self.logger.exception("Delete Discovery subsystem returned with error")
             raise
 
-        # run ceph nvmeof discovery service in sub-process
+        self._fork_discovery_service()
+
+    def _fork_discovery_service(self):
+        """Runs ceph nvmeof discovery service in a sub-process."""
         assert self.discovery_pid is None
+        self.discovery_start_time = time.monotonic()
         self.discovery_pid = os.fork()
         if self.discovery_pid == 0:
             self.logger.info("Starting ceph nvmeof discovery service")
@@ -849,6 +875,53 @@ class GatewayServer:
 
         self.discovery_pid = None
 
+    def _sigchld_handler(self, signum, frame):
+        """Handle SIGCHLD, runs when a child process, like the spdk, terminates.
+
+        The gateway exits, unless it was the discovery service which terminated. In that
+        case we restart it, and only exit after too many consecutive failures.
+        """
+        self.logger.error(f"GatewayServer: SIGCHLD received {signum=}")
+
+        pid, exit_code = reap_child_process()
+        if pid and pid == self.discovery_pid:
+            self._handle_discovery_termination(pid, exit_code)
+            return
+
+        # GW process should exit now
+        raise SystemExit(f"Gateway subprocess terminated {pid=} {exit_code=}")
+
+    def _handle_discovery_termination(self, pid, exit_code):
+        """Schedules a discovery service restart, quits after too many consecutive failures."""
+        self.discovery_pid = None
+        run_time = time.monotonic() - self.discovery_start_time
+        if run_time >= GatewayServer.DISCOVERY_STABLE_RUN_SECONDS:
+            self.discovery_consecutive_failures = 0
+        self.discovery_consecutive_failures += 1
+
+        if self.discovery_consecutive_failures > self.discovery_restart_attempts_limit:
+            self.logger.critical(f"Discovery service process {pid} terminated with exit code "
+                                 f"{exit_code}, failed {self.discovery_consecutive_failures} "
+                                 f"consecutive times, aborting")
+            raise SystemExit(f"Gateway subprocess terminated {pid=} {exit_code=}")
+
+        self.logger.error(f"Discovery service process {pid} terminated with exit code "
+                          f"{exit_code}, will restart it in {self.discovery_restart_interval} "
+                          f"seconds (attempt {self.discovery_consecutive_failures} of "
+                          f"{self.discovery_restart_attempts_limit})")
+        self.discovery_restart_time = time.monotonic() + self.discovery_restart_interval
+
+    def _restart_discovery_if_needed(self):
+        """Restarts the discovery service if it terminated and its restart time has come."""
+        if self.discovery_restart_time is None:
+            return
+        if time.monotonic() < self.discovery_restart_time:
+            return
+
+        self.discovery_restart_time = None
+        self.logger.info("Restarting discovery service")
+        self._fork_discovery_service()
+
     def _set_max_subsystems(self, max_subsystems):
         """Sets SPDK's max subsystems attribute."""
 
@@ -1028,6 +1101,7 @@ class GatewayServer:
 
         while True:
             self.exit_gateway_if_needed()
+            self._restart_discovery_if_needed()
             if self.gateway_rpc:
                 if self.gateway_rpc.rebalance.rebalance_event.is_set():
                     self.logger.critical("Failure in rebalance, aborting")
