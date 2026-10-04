@@ -3548,12 +3548,13 @@ class GatewayService(pb2_grpc.GatewayServicer):
         except Exception:
             self.logger.exception("Error during set_ana_state_safe execution")
             if set_ana_status == 0:
-                # Not one of the explicit raises above, don't report a failure as success
                 set_ana_status = errno.EINVAL
             errmsg = f"Failure set_ana_states_all to " \
-                     f" {ana_grpids=}, {ana_states=}"
+                     f" {ana_grpids=}, {ana_states=}, error {set_ana_status}"
             self.logger.error(errmsg)
-            return pb2.req_status(status=set_ana_status, error_message=errmsg)
+            # The Ceph monitor client treats a non-zero status as success and retries
+            # set_ana_state until it gets one, so a failure must be reported as zero
+            return pb2.req_status(status=False, error_message=errmsg)
 
         # Only now that SPDK holds the new states (or there was nothing to apply) may we
         # publish them locally. Recording them earlier makes this gateway, the rebalance
@@ -3562,7 +3563,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
             self.ana_map[nqn][grp_id] = state
             self.ana_grp_state[grp_id] = state
 
-        return pb2.req_status(status=0, error_message="")
+        # A non-zero status means success to the Ceph monitor client, see above
+        return pb2.req_status(status=True)
 
     def namespace_add_safe(self, request, context):
         """Adds a namespace to a subsystem."""
