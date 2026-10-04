@@ -3456,11 +3456,11 @@ class GatewayService(pb2_grpc.GatewayServicer):
         # failure raised before PHASE 4 would otherwise leave them unbound
         ana_grpids = []
         ana_states = []
+        new_ana_states = []
         try:
             # =====================================================================
             # PHASE 1: Collect the new ANA states, don't publish them locally yet
             # =====================================================================
-            new_ana_states = []
             for nas in ana_info.states:
                 nqn = nas.nqn
                 for gs in nas.states:
@@ -3550,7 +3550,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
             if set_ana_status == 0:
                 set_ana_status = errno.EINVAL
             errmsg = f"Failure set_ana_states_all to " \
-                     f" {ana_grpids=}, {ana_states=}, error {set_ana_status}"
+                     f" {ana_grpids=}, {ana_states=}, requested {new_ana_states}," \
+                     f" error {set_ana_status}"
             self.logger.error(errmsg)
             # The Ceph monitor client treats a non-zero status as success and retries
             # set_ana_state until it gets one, so a failure must be reported as zero
