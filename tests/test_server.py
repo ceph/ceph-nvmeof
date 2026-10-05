@@ -4,6 +4,7 @@ import time
 import re
 import signal
 import os
+import socket
 import threading
 import unittest
 from control.server import GatewayServer
@@ -98,33 +99,64 @@ class TestServer(unittest.TestCase):
             # Clean up cores
             self.remove_core_files(self.core_dir)
 
+    def connect_to_discovery(self, config, timeout):
+        """Waits until we can open a connection to the discovery service."""
+        addr = config.get("discovery", "addr")
+        if addr == "0.0.0.0":
+            addr = "127.0.0.1"
+        elif addr == "::":
+            addr = "::1"
+        port = config.getint("discovery", "port")
+        end_time = time.monotonic() + timeout
+        while True:
+            try:
+                with socket.create_connection((addr, port), timeout=1):
+                    return
+            except OSError:
+                if time.monotonic() >= end_time:
+                    raise
+                time.sleep(0.5)
+
     def test_discovery_restart(self):
         """Tests discovery service sub process is restarted, until there are too many failures."""
         test_config = copy.deepcopy(self.config)
         test_config.config["discovery"]["restart_attempts_limit"] = "1"
         test_config.config["discovery"]["restart_interval"] = "1"
 
+        # As the gateway isn't defined in the monitor, the monitor client aborts after about
+        # 30 seconds, so the whole test should take less than that
         with GatewayServer(test_config) as gateway:
             gateway.set_group_id(0)
             gateway.serve()
 
-            # Give the gateway some time to start
-            time.sleep(17)
-
+            self.connect_to_discovery(test_config, 10)
             first_pid = gateway.discovery_pid
             assert first_pid
             os.kill(first_pid, signal.SIGKILL)
 
-            # Run keep alive for a while, it should restart the discovery service
-            stop_timer = threading.Timer(15, gateway.server.stop, args=(None,))
-            stop_timer.start()
+            # Run keep alive until the discovery service is restarted
+            def stop_server_after_restart():
+                end_time = time.monotonic() + 8
+                while time.monotonic() < end_time:
+                    if gateway.discovery_pid not in (None, first_pid):
+                        break
+                    time.sleep(0.2)
+                gateway.server.stop(None)
+
+            stopper = threading.Thread(target=stop_server_after_restart)
+            stopper.start()
             gateway.keep_alive()
-            stop_timer.join()
+            stopper.join()
 
             second_pid = gateway.discovery_pid
             assert second_pid
             assert second_pid != first_pid
             assert gateway.discovery_consecutive_failures == 1
+
+            # The restarted discovery service should accept connections. The restart forks
+            # the gateway while its other threads are running, so a new PID is not enough.
+            self.connect_to_discovery(test_config, 5)
+            assert gateway.discovery_pid == second_pid
 
             # A second consecutive failure is above the limit, the gateway should quit
             with self.assertRaises(SystemExit) as cm:

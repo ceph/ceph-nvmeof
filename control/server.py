@@ -44,21 +44,29 @@ def sigterm_handler(signum, frame):
     raise SystemExit(0)
 
 
-def reap_child_process():
-    """Reaps a terminated child process, returns its PID and exit code."""
+def reap_child_processes():
+    """Reaps all terminated child processes, returns a list of their PIDs and exit codes.
+
+    SIGCHLD is not queued, so a single signal might stand for several terminated children.
+    """
     logger = GatewayLogger().logger
-    pid = 0
-    wait_status = 0
+    children = []
 
-    try:
-        pid, wait_status = os.waitpid(-1, os.WNOHANG)
+    while True:
+        try:
+            pid, wait_status = os.waitpid(-1, os.WNOHANG)
+        except ChildProcessError:
+            break
+        except OSError:
+            logger.exception("waitpid error")
+            # eat the exception, in signal handler context
+            break
+        if pid == 0:
+            break
         logger.error(f"PID of terminated child process is {pid}")
-    except OSError:
-        logger.exception("waitpid error")
-        # eat the exception, in signal handler context
-        pass
+        children.append((pid, os.waitstatus_to_exitcode(wait_status)))
 
-    return (pid, os.waitstatus_to_exitcode(wait_status))
+    return children
 
 
 def cpumask_set(args):
@@ -126,6 +134,7 @@ class GatewayServer:
         self.gateway_rpc = None
         self.server = None
         self.discovery_pid = None
+        self.sigchld_deferred_children = None
         self.discovery_start_time = None
         self.discovery_restart_time = None
         self.discovery_consecutive_failures = 0
@@ -490,7 +499,20 @@ class GatewayServer:
         """Runs ceph nvmeof discovery service in a sub-process."""
         assert self.discovery_pid is None
         self.discovery_start_time = time.monotonic()
-        self.discovery_pid = os.fork()
+        # The SIGCHLD handler might run after fork() returns but before the PID is stored, so
+        # it couldn't tell the terminated child is the discovery service. Blocking SIGCHLD with
+        # pthread_sigmask() isn't enough as it only applies to the calling thread. Another
+        # thread can get the signal and Python would still run the handler in the main thread.
+        # So, until the PID is stored, the handler only collects the terminated children.
+        self.sigchld_deferred_children = []
+        try:
+            self.discovery_pid = os.fork()
+        finally:
+            if self.discovery_pid != 0:
+                deferred_children = self.sigchld_deferred_children
+                self.sigchld_deferred_children = None
+                if deferred_children:
+                    self._handle_terminated_children(deferred_children)
         if self.discovery_pid == 0:
             self.logger.info("Starting ceph nvmeof discovery service")
             # disable inherited from gateway signal handlers
@@ -878,15 +900,36 @@ class GatewayServer:
     def _sigchld_handler(self, signum, frame):
         """Handle SIGCHLD, runs when a child process, like the spdk, terminates.
 
-        The gateway exits, unless it was the discovery service which terminated. In that
-        case we restart it, and only exit after too many consecutive failures.
+        The gateway exits, unless only the discovery service terminated. In that case we
+        restart it, and only exit after too many consecutive failures.
         """
         self.logger.error(f"GatewayServer: SIGCHLD received {signum=}")
 
-        pid, exit_code = reap_child_process()
-        if pid and pid == self.discovery_pid:
+        children = reap_child_processes()
+        if self.sigchld_deferred_children is not None:
+            # We're in the middle of forking the discovery service and don't know its PID yet
+            self.sigchld_deferred_children += children
+            return
+
+        self._handle_terminated_children(children)
+
+    def _handle_terminated_children(self, children):
+        """Restarts the discovery service if it was the only child which terminated.
+
+        Otherwise the gateway exits.
+        """
+        discovery = [child for child in children if child[0] == self.discovery_pid]
+        others = [child for child in children if child[0] != self.discovery_pid]
+        if discovery and not others:
+            pid, exit_code = discovery[0]
             self._handle_discovery_termination(pid, exit_code)
             return
+
+        if discovery:
+            # Already reaped, no need to stop it on exit
+            self.discovery_pid = None
+
+        pid, exit_code = others[0] if others else (0, 0)
 
         # GW process should exit now
         raise SystemExit(f"Gateway subprocess terminated {pid=} {exit_code=}")
