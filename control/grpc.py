@@ -3452,15 +3452,20 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         inaccessible_ana_groups = {}
         awaited_cluster_contexts = set()
+        ana_grpids = []
+        ana_states = []
         try:
             # =====================================================================
-            # PHASE 1: Update local tracking state dictionaries
+            # PHASE 1: Collect new ANA states for tracked subsystems
             # =====================================================================
+            new_ana_states = []
             for nas in ana_info.states:
                 nqn = nas.nqn
+                if nqn not in self.subsys_serial:
+                    continue
                 for gs in nas.states:
-                    self.ana_map[nqn][gs.grp_id] = gs.state
-                    self.ana_grp_state[gs.grp_id] = gs.state
+                    new_ana_states.append((nqn, gs.grp_id, gs.state))
+
             # =====================================================================
             # PHASE 2: Wait for latest OSD map across ALL required cluster contexts
             # =====================================================================
@@ -3470,7 +3475,6 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     continue
 
                 for gs in nas.states:
-                    # Wait for OSD map for any group moving to accessible/optimized states
                     if gs.state in (pb2.ana_state.NON_OPTIMIZED, pb2.ana_state.OPTIMIZED):
                         ns_list = self.subsystem_nsid_bdev_and_uuid.\
                             get_namespace_infos_for_anagrpid(nqn, gs.grp_id)
@@ -3524,7 +3528,6 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 ana_grpids = list(grp_to_state.keys())
                 ana_states = list(grp_to_state.values())
                 tgt_name = getattr(self, "tgt_name", "nvmf_tgt")
-                # Adjust variable name to match target name attribute
 
                 self.logger.info(f"nvmf_subsystem_set_ana_states_all {tgt_name=} {ana_grpids=}"
                                  f" {ana_states=}")
@@ -3541,14 +3544,22 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     raise Exception(f"nvmf_subsystem_set_ana_states_all({tgt_name=},"
                                     f" {ana_grpids=}, {ana_states=}) error")
 
+            # =====================================================================
+            # PHASE 5: Publish local states safely inside try block
+            # =====================================================================
+            for nqn, grp_id, state in new_ana_states:
+                self.ana_map.setdefault(nqn, {})[grp_id] = state
+                self.ana_grp_state[grp_id] = state
+
         except Exception:
             self.logger.exception("Error during set_ana_state_safe execution")
-            errmsg = f"Failure set_ana_states_all to " \
-                     f" {ana_grpids=}, {ana_states=}"
+            if set_ana_status == 0:
+                set_ana_status = errno.EINVAL
+            errmsg = f"Failure set_ana_states_all to {ana_grpids=}, {ana_states=}"
             self.logger.error(errmsg)
-            return pb2.nsid_status(status=set_ana_status, error_message=errmsg)
+            return pb2.req_status(status=set_ana_status, error_message=errmsg)
 
-        return pb2.req_status(status=True)
+        return pb2.req_status(status=0, error_message="")
 
     def namespace_add_safe(self, request, context):
         """Adds a namespace to a subsystem."""
