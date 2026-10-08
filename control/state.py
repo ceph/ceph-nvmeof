@@ -2287,13 +2287,13 @@ class GatewayStateHandler:
                 grouped_removed = self._group_by_prefix(removed, prefix_list)
 
                 # Handle OMAP removals and remove outdated changed components
-                grouped_removed.update(grouped_changed)
+                self._merge_grouped_updates(grouped_removed, grouped_changed)
                 if grouped_removed:
                     prefix_list_copy = prefix_list.copy()
                     self._adjust_prefix_list_for_removal(prefix_list_copy)
                     self._update_call_rpc(grouped_removed, False, prefix_list_copy)
                 # Handle OMAP additions and add updated changed components
-                grouped_added.update(grouped_changed)
+                self._merge_grouped_updates(grouped_added, grouped_changed)
                 if grouped_added:
                     self._update_call_rpc(grouped_added, True, prefix_list)
 
@@ -2326,6 +2326,11 @@ class GatewayStateHandler:
                 if key.startswith(prefix):
                     grouped_state_update[prefix][key] = val
         return grouped_state_update
+
+    def _merge_grouped_updates(self, target, source):
+        """Merges grouped state updates per prefix, keeping existing keys."""
+        for prefix, updates in source.items():
+            target[prefix].update(updates)
 
     def _update_call_rpc(self, grouped_state_update, is_add_req, prefix_list):
         """Calls to initiate gateway RPCs in necessary component order."""
