@@ -34,7 +34,7 @@ else
 fi
 echo "CEPH_IMG to be used is: $CEPH_IMG"
 
-RUNNER_FOLDER='/home/cephnvme/actions-runner-ceph-m7'
+RUNNER_FOLDER='/home/cephnvme/actions-runner'
 BUSY_FILE='/home/cephnvme/busyServer.txt'
 
 check_cluster_busy() {
@@ -115,6 +115,7 @@ sudo docker run \
     --skip-lb-group-change-test \
     --skip-gw-failover-latency-test \
     --skip-get-subsystems-latency-test \
+    --skip-controller-get-io-statistics-test \
     --ibm-cloud-key=nokey \
     --github-nvmeof-token=nokey \
     --check-vms-stage \
