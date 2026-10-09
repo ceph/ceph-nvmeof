@@ -1082,30 +1082,36 @@ class GatewayClient:
             self.cli.parser.error("Can't add a discovery subsystem")
         if args.dhchap_key == "":
             self.cli.parser.error("DH-HMAC-CHAP key can't be empty")
+        has_network_mask_source = args.network_mask or args.use_group_config_network_masks
         if args.port is not None:
-            if not args.network_mask:
+            if not has_network_mask_source:
                 self.cli.parser.error("Port cannot be set without a network mask")
             if args.port <= 0:
                 self.cli.parser.error("Port value must be positive")
             elif args.port > 0xffff:
                 self.cli.parser.error("Port value must be smaller than 65536")
-        if args.secure_listeners and not args.network_mask:
+        if args.secure_listeners and not has_network_mask_source:
             self.cli.parser.error("Secure listeners cannot be set without a network mask")
+        if args.network_mask and args.use_group_config_network_masks:
+            self.cli.parser.error("--network-mask and --use-group-config-network-masks "
+                                  "can't be used together")
 
         model_check = GatewayUtils.is_valid_model_name(args.model_name)
         if model_check:
             self.cli.parser.error(f"Invalid model name: {model_check}")
 
-        req = pb2.create_subsystem_req(subsystem_nqn=args.subsystem,
-                                       serial_number=args.serial_number,
-                                       max_namespaces=args.max_namespaces,
-                                       enable_ha=True,
-                                       no_group_append=args.no_group_append,
-                                       dhchap_key=args.dhchap_key,
-                                       network_mask=args.network_mask,
-                                       port=args.port,
-                                       secure_listeners=args.secure_listeners,
-                                       model_name=args.model_name)
+        req = pb2.create_subsystem_req(
+            subsystem_nqn=args.subsystem,
+            serial_number=args.serial_number,
+            max_namespaces=args.max_namespaces,
+            enable_ha=True,
+            no_group_append=args.no_group_append,
+            dhchap_key=args.dhchap_key,
+            network_mask=args.network_mask,
+            use_group_config_network_masks=args.use_group_config_network_masks,
+            port=args.port,
+            secure_listeners=args.secure_listeners,
+            model_name=args.model_name)
         try:
             ret = self.stub.create_subsystem(req)
         except Exception as ex:
@@ -1399,6 +1405,52 @@ class GatewayClient:
 
         return ret.status
 
+    def set_subsystem_use_group_config_network_masks(self, args):
+        """Enable or disable the group config network mask for the subsystem"""
+
+        out_func, err_func, wrn_func = self.get_output_functions(args)
+
+        use_conf = GatewayClient.parse_boolean(args.use_group_config_network_masks)
+        req = pb2.set_subsystem_use_group_config_network_masks_req(
+            subsystem_nqn=args.subsystem,
+            use_group_config_network_masks=use_conf)
+        try:
+            ret = self.stub.set_subsystem_use_group_config_network_masks(req)
+        except Exception as ex:
+            errmsg = f"Failure setting use_group_config_network_masks for subsystem " \
+                     f"{args.subsystem}"
+            ret = pb2.set_subsystem_use_group_config_network_masks_status(
+                status=errno.EINVAL,
+                error_message=f"{errmsg}:\n{ex}")
+
+        if args.format == "text" or args.format == "plain":
+            if ret.status == 0:
+                out_func(f"Setting use_group_config_network_masks to {use_conf} for "
+                         f"subsystem {args.subsystem}: Successful")
+                if ret.added:
+                    out_func(f"Added: {', '.join(ret.added)}")
+                if ret.removed:
+                    out_func(f"Removed: {', '.join(ret.removed)}")
+                if ret.error_message:
+                    wrn_func(ret.error_message)
+            else:
+                err_func(ret.error_message)
+        elif args.format == "json" or args.format == "yaml":
+            ret_str = json_format.MessageToJson(ret, indent=4,
+                                                including_default_value_fields=True,
+                                                preserving_proto_field_name=True)
+            if args.format == "json":
+                out_func(ret_str)
+            elif args.format == "yaml":
+                obj = json.loads(ret_str)
+                out_func(yaml.dump(obj))
+        elif args.format == "python":
+            return ret
+        else:
+            assert False
+
+        return ret.status
+
     def subsystem_add_kmip_server_endpoint(self, args):
         """Add a KMIP server endpoint to the subsystem"""
 
@@ -1593,6 +1645,11 @@ class GatewayClient:
                  help="For this subnet, automatically create listeners for this subsystem",
                  nargs='+',
                  required=False),
+        argument("--use-group-config-network-masks",
+                 help="Automatically create listeners for this subsystem using the gateway "
+                      "group config's listener network masks",
+                 action='store_true',
+                 required=False),
         argument("--port",
                  "-p",
                  help="Port to use for the created listeners",
@@ -1662,6 +1719,17 @@ class GatewayClient:
                  required=True),
         argument("--network-mask",
                  help="New network mask to add",
+                 required=True),
+    ]
+    subsys_set_use_group_config_network_masks_args = [
+        argument("--subsystem",
+                 "-n",
+                 help="Subsystem NQN",
+                 required=True),
+        argument("--use-group-config-network-masks",
+                 help="Enable or disable the group config network mask for the subsystem",
+                 type=str.lower,
+                 choices=["yes", "no", "true", "false", "1", "0"],
                  required=True),
     ]
     subsys_del_kmip_server_endpoint_args = [
@@ -1738,6 +1806,10 @@ class GatewayClient:
     subsystem_actions.append({"name": "del_network",
                               "args": subsys_del_network_args,
                               "help": "Delete a network mask in the subsystem"})
+    subsystem_actions.append({"name": "set_use_group_config_network_masks",
+                              "args": subsys_set_use_group_config_network_masks_args,
+                              "help": "Enable or disable the group config network mask "
+                                      "for the subsystem"})
     subsystem_actions.append({"name": "add_kmip_server_endpoint",
                               "args": subsys_add_kmip_server_endpoint_args,
                               "help": "Add a KMIP server endpoint to the subsystem"})
@@ -1767,6 +1839,8 @@ class GatewayClient:
             return self.subsystem_add_network_mask(args)
         elif args.action == "del_network":
             return self.subsystem_del_network_mask(args)
+        elif args.action == "set_use_group_config_network_masks":
+            return self.set_subsystem_use_group_config_network_masks(args)
         elif args.action == "add_kmip_server_endpoint":
             return self.subsystem_add_kmip_server_endpoint(args)
         elif args.action == "del_kmip_server_endpoint":
