@@ -11,6 +11,7 @@ image = "mytestdevimage"
 image2 = "image2"
 image3 = "image3"
 image4 = "image4"
+image5 = "image5"
 pool = "rbd"
 subsystem = "nqn.2016-06.io.spdk:cnode1"
 config = "ceph-nvmeof.conf"
@@ -252,3 +253,29 @@ def test_change_rbd_image_trash(caplog, two_gateways):
     assert ceph_utils.does_image_exist(pool, image4)
     ceph_utils.delete_image(pool, image4)
     assert not ceph_utils.does_image_exist(pool, image4)
+
+
+def test_existing_image_not_trashed_by_other_gateway(caplog, two_gateways):
+    gatewayA, stubA, gatewayB, stubB, ceph_utils = two_gateways
+    if not ceph_utils.does_image_exist(pool, image5):
+        ceph_utils.create_image(pool, None, None, image5, 16777216)
+    caplog.clear()
+    cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool,
+         "--rbd-image", image5, "--size", "16MB", "--rbd-create-image",
+         "--rbd-trash-image-on-delete"])
+    assert f"Adding namespace 1 to {subsystem}: Successful" in caplog.text
+    assert f"Notice that as image {pool}/{image5} was created outside the gateway " \
+           f"it won't get trashed on namespace deletion" in caplog.text
+    time.sleep(30)
+    caplog.clear()
+    cli(["--server-port", "5502", "--format", "json", "namespace", "list"])
+    assert f'"rbd_image_name": "{image5}"' in caplog.text
+    assert '"trash_image": false' in caplog.text
+    assert '"trash_image": true' not in caplog.text
+    caplog.clear()
+    cli(["namespace", "del", "--subsystem", subsystem, "--nsid", "1"])
+    assert f"Deleting namespace 1 from {subsystem}: Successful" in caplog.text
+    time.sleep(30)    # wait for second gateway to delete the namespace too
+    assert ceph_utils.does_image_exist(pool, image5)
+    ceph_utils.delete_image(pool, image5)
+    assert not ceph_utils.does_image_exist(pool, image5)
