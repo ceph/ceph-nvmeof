@@ -3914,6 +3914,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
             if context:
                 # Update gateway state
                 request.nsid = ret_ns.nsid
+                # An image which already existed is never trashed, persist the reset flag
+                request.trash_image = ret_bdev.trash_image
                 try:
                     json_req = json_format.MessageToJson(
                         request, preserving_proto_field_name=True,
