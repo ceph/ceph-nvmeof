@@ -20,7 +20,7 @@ import time
 import rbd
 from ipaddress import ip_address
 from pathlib import Path
-from typing import Iterator, Callable, Optional
+from typing import Iterator, Optional
 from collections import defaultdict
 from copy import deepcopy
 import logging
@@ -94,12 +94,22 @@ class BdevStatus:
 
 
 class MonitorGroupService(monitor_pb2_grpc.MonitorGroupServicer):
-    def __init__(self, set_group_id: Callable[[int], None]) -> None:
-        self.set_group_id = set_group_id
+    def __init__(self, gateway) -> None:
+        self.gateway = gateway
 
     def group_id(self, request: monitor_pb2.group_id_req, context=None) -> Empty:
-        self.set_group_id(request.id)
+        self.gateway.set_group_id(request.id)
         return Empty()
+
+    def apply_config(self, request, context=None):
+        rejects = self.gateway.apply_config(request)
+        reply = monitor_pb2.config_apply_reply()
+        for section, key, error in rejects:
+            item = reply.rejects.add()
+            item.section = section
+            item.key = key
+            item.error = error
+        return reply
 
 
 class SubsystemHostAuth:
@@ -1103,26 +1113,23 @@ class GatewayService(pb2_grpc.GatewayServicer):
             self.logger.info("Gateway's IO statistics is disabled")
 
         self.fsid = None
-        spdk_notifications_interval = self.config.getint_with_default("spdk",
-                                                                      "notifications_interval",
-                                                                      60)
-        self.spdk_notifications_thread = None
-        if spdk_notifications_interval > 0:
-            self.spdk_notifications_thread = threading.Thread(target=self.read_spdk_notifications,
-                                                              name="SPDK Notifications",
-                                                              daemon=True,
-                                                              args=(spdk_notifications_interval,))
-            self.spdk_notifications_thread.start()
+        self.spdk_notifications_thread = threading.Thread(target=self.read_spdk_notifications,
+                                                          name="SPDK Notifications",
+                                                          daemon=True)
+        self.spdk_notifications_thread.start()
         # Keep towards the end of init as we use fields like gateway_state in the rebalance thread
         self.rebalance = Rebalance(self)
 
-    def read_spdk_notifications(self, read_interval):
-        if read_interval <= 0:
-            return
-
+    def read_spdk_notifications(self):
         spdk_notification_last_id_read = -1
 
         while self.up_and_running:
+            read_interval = self.config.getint_with_default("spdk",
+                                                            "notifications_interval",
+                                                            60)
+            if read_interval <= 0:
+                time.sleep(1)
+                continue
             with self.rpc_lock:
                 notifications = self.spdk_rpc_client.notify_get_notifications(
                     id=spdk_notification_last_id_read + 1)

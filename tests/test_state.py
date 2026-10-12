@@ -75,6 +75,7 @@ def test_state_polling_update(config, ioctx, local_state, omap_state):
 
     version = 1
     update_interval_sec = 1
+    config.config.set("gateway", "state_update_interval_sec", str(update_interval_sec))
     state = GatewayStateHandler(config, local_state, omap_state,
                                 _state_polling_update, "test")
     state.update_interval = update_interval_sec
@@ -138,6 +139,7 @@ def test_state_notify_update(config, ioctx, local_state, omap_state):
 
     version = 1
     update_interval_sec = 10
+    config.config.set("gateway", "state_update_interval_sec", str(update_interval_sec))
     state = GatewayStateHandler(config, local_state, omap_state,
                                 _state_notify_update, None, "test")
     key = "namespace_test"
