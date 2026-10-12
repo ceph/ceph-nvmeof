@@ -7596,7 +7596,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                                       f"nvmf_subsystem_listener_set_ana_state "
                                                       f"response {rc=}")
 
-                    self.logger.info(f"Set ana group state to inaccessible for group "
+                    self.logger.info(f"Set ana group state to non-optimized for group "
                                      f"{GatewayService.MAINTENANCE_ANA_GROUP}, subsystem "
                                      f"{request.nqn}, listen address "
                                      f"{traddr}:{request.trsvcid}")
