@@ -1054,6 +1054,27 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         self.verify_image_encryption_settings = self.config.getboolean_with_default(
             "gateway", "verify_image_encryption_settings", True)
+        self.verify_pool_applications = self.config.getboolean_with_default(
+            "gateway", "verify_pool_applications", True)
+        self.allowed_pool_apps = []
+        allowed_pool_apps = self.config.get_with_default(
+            "gateway", "allowed_pool_applications", None)
+        if allowed_pool_apps:
+            self.allowed_pool_apps = [app.strip() for app in allowed_pool_apps.split(",")
+                                      if app.strip()]
+        if not self.allowed_pool_apps:
+            self.allowed_pool_apps = CephUtils.ALLOWED_POOL_APPLICATIONS
+        if not self.allowed_pool_apps:
+            self.allowed_pool_apps = []
+        self.allowed_pool_apps_msg = ""
+        if self.allowed_pool_apps:
+            if len(self.allowed_pool_apps) == 1:
+                self.allowed_pool_apps_msg = \
+                    "\nAllowed application is: " + self.allowed_pool_apps[0]
+            else:
+                _apps = ", ".join(self.allowed_pool_apps)
+                self.allowed_pool_apps_msg = "\nAllowed applications are: " + _apps
+
         self.kmip_cert_dir = self.config.get_with_default("kmip",
                                                           "cert_dir",
                                                           "./certs/kmip/{server_name}")
@@ -1560,6 +1581,30 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 self.logger.exception(f"Error setting image identification {img_id_value} for "
                                       f"{image_path}")
 
+    def check_pool_applications(self, pool_name, image_path, cmd, pool_type) -> BdevStatus:
+        pool_apps = self.ceph_utils.pool_applications(pool_name)
+        self.logger.debug(f"{pool_type} {pool_name} applications: {pool_apps}")
+        if pool_apps is None:
+            msg = f"Can't get enabled application list for {pool_type} \"{pool_name}\""
+            status = errno.EINVAL if self.verify_pool_applications else 0
+            return BdevStatus(status=status, error_message=msg)
+        if pool_apps:
+            for app in pool_apps:
+                if app.strip() in self.allowed_pool_apps:
+                    continue
+                if self.verify_pool_applications:
+                    errmsg = f"RBD {pool_type} \"{pool_name}\" has application \"{app}\" " \
+                             f"enabled, can't {cmd} image {image_path}." \
+                             f"{self.allowed_pool_apps_msg}"
+                    return BdevStatus(status=errno.EINVAL, error_message=errmsg)
+                else:
+                    wrn_msg = f"RBD {pool_type} \"{pool_name}\" has application \"{app}\" " \
+                              f"enabled, will {cmd} image {image_path} " \
+                              f"anyway as pool application verification is disabled." \
+                              f"{self.allowed_pool_apps_msg}"
+                    return BdevStatus(status=0, error_message=wrn_msg)
+        return BdevStatus(status=0, error_message="")
+
     def create_rbd_bdev(self, anagrp: int, name, uuid, rbd_pool_name, rbd_data_pool_name,
                         rbd_image_name,
                         block_size, create_image, trash_image, rbd_image_size, disable_auto_resize,
@@ -1570,6 +1615,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         assert self.rpc_lock.locked(), "RPC is unlocked when calling create_rbd_bdev()"
 
+        wrn_msg = ""
         if context and create_image:
             cr_img_msg = "will create image if doesn't exist"
         else:
@@ -1653,6 +1699,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         created_rbd_pool = None
         created_rbd_image_name = None
         created_rados_namespace_name = None
+        actual_data_pool_name = None
         if context and create_image:
             if not rbd_pool_name:
                 return BdevStatus(status=errno.ENODEV,
@@ -1666,6 +1713,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
             if rbd_image_size % (1024 * 1024):
                 return BdevStatus(status=errno.EINVAL,
                                   error_message="Image size must be aligned to MiBs")
+
             rc = self.ceph_utils.pool_exists(rbd_pool_name)
             if not rc:
                 return BdevStatus(status=errno.ENODEV,
@@ -1698,7 +1746,18 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                                 f"{rbd_pool_name} has an invalid type "
                                                 f"{pool_type.name}")
 
+            actual_data_pool_name = self.ceph_utils.get_image_data_pool(rbd_pool_name,
+                                                                        rbd_image_name,
+                                                                        rados_namespace_name)
+
             if rbd_data_pool_name:
+                if actual_data_pool_name and actual_data_pool_name != rbd_data_pool_name:
+                    msg = f"Passed data pool name \"{rbd_data_pool_name}\" differs from " \
+                          f"actual one \"{actual_data_pool_name}\""
+                    self.logger.warning(msg)
+                    if wrn_msg:
+                        wrn_msg += "\n"
+                    wrn_msg += msg
                 rc = self.ceph_utils.pool_exists(rbd_data_pool_name)
                 if not rc:
                     return BdevStatus(status=errno.ENODEV,
@@ -1723,6 +1782,27 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                       error_message=f"RBD data pool "
                                                     f"{rbd_data_pool_name} is not a replicated "
                                                     f"or erasure coded pool")
+
+                pool_app_rc = self.check_pool_applications(rbd_data_pool_name, image_path,
+                                                           "create", "data pool")
+                if pool_app_rc.status != 0:
+                    self.logger.error(pool_app_rc.error_message)
+                    return pool_app_rc
+                if pool_app_rc.error_message:
+                    if wrn_msg:
+                        wrn_msg += "\n"
+                    wrn_msg += pool_app_rc.error_message
+                    self.logger.warning(pool_app_rc.error_message)
+
+            pool_app_rc = self.check_pool_applications(rbd_pool_name, image_path, "create", "pool")
+            if pool_app_rc.status != 0:
+                self.logger.error(pool_app_rc.error_message)
+                return pool_app_rc
+            if pool_app_rc.error_message:
+                if wrn_msg:
+                    wrn_msg += "\n"
+                wrn_msg += pool_app_rc.error_message
+                self.logger.warning(pool_app_rc.error_message)
 
             try:
                 enc_format = None
@@ -1755,6 +1835,18 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                             f"outside the gateway it won't get trashed on "
                                             f"namespace deletion")
                         trash_image = False
+                    if actual_data_pool_name and actual_data_pool_name != rbd_data_pool_name:
+                        pool_app_rc = self.check_pool_applications(actual_data_pool_name,
+                                                                   image_path,
+                                                                   "use", "data pool")
+                        if pool_app_rc.status != 0:
+                            self.logger.error(pool_app_rc.error_message)
+                            return pool_app_rc
+                        if pool_app_rc.error_message:
+                            if wrn_msg:
+                                wrn_msg += "\n"
+                            wrn_msg += pool_app_rc.error_message
+                            self.logger.warning(pool_app_rc.error_message)
             except Exception as ex:
                 errcode = 0
                 msg = ""
@@ -1791,6 +1883,32 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 self.logger.error(errmsg)
                 return BdevStatus(status=errno.EIO,
                                   error_message=errmsg)
+
+            if context:
+                pools_to_check = [(rbd_pool_name, "pool")]
+                data_pool_name = self.ceph_utils.get_image_data_pool(rbd_pool_name,
+                                                                     rbd_image_name,
+                                                                     rados_namespace_name)
+                if data_pool_name and data_pool_name != rbd_pool_name:
+                    pools_to_check.append((data_pool_name, "data pool"))
+                    if rbd_data_pool_name and data_pool_name != rbd_data_pool_name:
+                        msg = f"Passed data pool name \"{rbd_data_pool_name}\" differs from " \
+                              f"actual one \"{data_pool_name}\""
+                        self.logger.warning(msg)
+                        if wrn_msg:
+                            wrn_msg += "\n"
+                        wrn_msg += msg
+                for pool_entry in pools_to_check:
+                    pool_app_rc = self.check_pool_applications(pool_entry[0], image_path,
+                                                               "use", pool_entry[1])
+                    if pool_app_rc.status != 0:
+                        self.logger.error(pool_app_rc.error_message)
+                        return pool_app_rc
+                    if pool_app_rc.error_message:
+                        if wrn_msg:
+                            wrn_msg += "\n"
+                        wrn_msg += pool_app_rc.error_message
+                        self.logger.warning(pool_app_rc.error_message)
 
             if len(encryption_entries) > 0 and self.verify_image_encryption_settings:
                 enc_msg = self.ceph_utils.verify_image_encryption_settings(
@@ -1874,7 +1992,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         assert name == bdev_name, f"Created bdev name {bdev_name} differs " \
                                   f"from requested name {name}"
 
-        return BdevStatus(status=0, error_message="", bdev_name=name,
+        return BdevStatus(status=0, error_message=wrn_msg, bdev_name=name,
                           rbd_pool=rbd_pool_name,
                           rbd_image_name=rbd_image_name,
                           rados_namespace_name=rados_namespace_name, trash_image=trash_image)
@@ -3867,6 +3985,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
             # If we got here we asserted that ret_bdev.bdev_name == bdev_name
 
+            bdev_warning = ret_bdev.error_message
             pool_to_use = ret_bdev.rbd_pool
             data_pool_to_use = request.rbd_data_pool_name
             image_name_to_use = ret_bdev.rbd_image_name
@@ -3945,6 +4064,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
         errmsg = ""
         if create_degraded:
             errmsg = "Couldn't fetch passphrase for decrypting, a degraded namespace was created"
+            if bdev_warning:
+                errmsg += "\n"
+        if bdev_warning:
+            errmsg += bdev_warning
 
         return pb2.nsid_status(status=0, error_message=errmsg, nsid=ret_ns.nsid)
 
