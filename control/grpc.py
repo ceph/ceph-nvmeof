@@ -3564,9 +3564,22 @@ class GatewayService(pb2_grpc.GatewayServicer):
     def set_ana_state_safe(self, ana_info: pb2.ana_info, context=None):
         peer_msg = self.get_peer_message(context)
         """Sets ana state for this gateway."""
-        self.logger.info(f"Received request to set ana states {ana_info.states}, {peer_msg}")
         set_ana_status = 0
         assert self.rpc_lock.locked(), "RPC is unlocked when calling set_ana_state_safe()"
+
+        self.logger.info(f"Received request to set ana states {ana_info.states}, {peer_msg},"
+                         f" hold_ios: {ana_info.hold_ios}")
+
+        # Fast path: If hold_ios is explicitly requested, hold I/O immediately and return
+        if ana_info.hold_ios:
+            try:
+                self.logger.debug("send RPC to SPDK to transiently hold all IOs")
+                self.spdk_rpc_client.nvmf_set_transient_hold(enable=True)
+                return pb2.req_status(status=True)
+            except Exception:
+                self.logger.exception("failure in nvmf_set_transient_hold(enable=True)")
+                errmsg = "nvmf_set_transient_hold(enable=True)"
+                return pb2.nsid_status(status=errno.EINVAL, error_message=errmsg)
 
         inaccessible_ana_groups = {}
         awaited_cluster_contexts = set()
@@ -3617,6 +3630,11 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                 raise Exception(f"bdev_rbd_wait_for_latest_osdmap({cluster=}) ")
 
                             awaited_cluster_contexts.add(cluster)
+            # =====================================================================
+            # PHASE 3: Unhold I/Os now that all RADOS cluster contexts are synced
+            # =====================================================================
+            self.logger.debug("Releasing SPDK transient I/O hold after OSD map sync")
+            self.spdk_rpc_client.nvmf_set_transient_hold(enable=False)
 
             # =====================================================================
             # PHASE 4: Update ANA states on all SPDK subsystem listeners
@@ -3627,7 +3645,6 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 nqn = nas.nqn
                 if nqn not in self.subsys_serial:
                     continue
-
                 for gs in nas.states:
                     grp_id = str(gs.grp_id)
                     if gs.state == pb2.ana_state.OPTIMIZED:
