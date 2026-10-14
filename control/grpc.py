@@ -1830,11 +1830,14 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     self.logger.info(f"Image {image_path} already exists "
                                      f"with size {rbd_image_size} bytes")
                     if trash_image:
-                        self.logger.warning(f"Notice that as image "
-                                            f"{image_path} was created "
-                                            f"outside the gateway it won't get trashed on "
-                                            f"namespace deletion")
+                        trash_msg = f"Notice that as image {image_path} was created " \
+                                    f"outside the gateway it won't get trashed on " \
+                                    f"namespace deletion"
+                        self.logger.warning(trash_msg)
                         trash_image = False
+                        if wrn_msg:
+                            wrn_msg += "\n"
+                        wrn_msg += trash_msg
                     if actual_data_pool_name and actual_data_pool_name != rbd_data_pool_name:
                         pool_app_rc = self.check_pool_applications(actual_data_pool_name,
                                                                    image_path,
@@ -1927,9 +1930,13 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 self._set_image_auto_resize(rbd_pool_name, rbd_image_name,
                                             rados_namespace_name, False)
             except Exception as ex:
-                self.logger.warning(f"Error setting auto resize flag for image "
-                                    f"{image_path}, namespace "
-                                    f"will get resized in case of an image resize:\n{ex}")
+                resize_msg = f"Error setting auto resize flag for image " \
+                             f"{image_path}, namespace " \
+                             f"will get resized in case of an image resize:\n{ex}"
+                self.logger.warning(resize_msg)
+                if wrn_msg:
+                    wrn_msg += "\n"
+                wrn_msg += resize_msg
 
         cluster_name = None
         assert self.rpc_lock.locked(), "RPC is unlocked when calling bdev_rbd_create()"
@@ -3695,6 +3702,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
             return pb2.nsid_status(status=errno.EINVAL, error_message=errmsg)
 
         loc_grps_list = []
+        wrn_msg = ""
         anagrp = 0
         peer_msg = self.get_peer_message(context)
         nsid_msg = f"{request.nsid} " if request.nsid else ""
@@ -3742,9 +3750,13 @@ class GatewayService(pb2_grpc.GatewayServicer):
             return pb2.nsid_status(status=errno.EINVAL, error_message=errmsg)
 
         if request.trash_image and not request.create_image:
-            self.logger.warning("Can't trash the RBD image on delete if it "
-                                "wasn't created by the gateway, will reset the flag")
+            trash_msg = "Can't trash the RBD image on delete if it " \
+                        "wasn't created by the gateway, will reset the flag"
+            self.logger.warning(trash_msg)
             request.trash_image = False
+            if wrn_msg:
+                wrn_msg += "\n"
+            wrn_msg += trash_msg
 
         if request.block_size <= 0:
             errmsg = f"Failure adding namespace {nsid_msg}to {request.subsystem_nqn}: " \
@@ -3851,6 +3863,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
                         self.logger.warning(f"Can't fetch passphrase for id {ent.key_id}, "
                                             f"will create a degraded namespace")
                         create_degraded = True
+                        if wrn_msg:
+                            wrn_msg += "\n"
+                        wrn_msg += "Couldn't fetch passphrase for decrypting, a degraded " \
+                                   "namespace was created"
                         break
                     else:
                         errmsg = f"Failure adding namespace {nsid_msg}to " \
@@ -3985,7 +4001,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
             # If we got here we asserted that ret_bdev.bdev_name == bdev_name
 
-            bdev_warning = ret_bdev.error_message
+            if ret_bdev.error_message:
+                if wrn_msg:
+                    wrn_msg += "\n"
+                wrn_msg += ret_bdev.error_message
             pool_to_use = ret_bdev.rbd_pool
             data_pool_to_use = request.rbd_data_pool_name
             image_name_to_use = ret_bdev.rbd_image_name
@@ -4033,6 +4052,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
             if context:
                 # Update gateway state
                 request.nsid = ret_ns.nsid
+                request.trash_image = ret_bdev.trash_image
                 try:
                     json_req = json_format.MessageToJson(
                         request, preserving_proto_field_name=True,
@@ -4061,15 +4081,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                               rados_namespace_to_use,
                                               img_id)
 
-        errmsg = ""
-        if create_degraded:
-            errmsg = "Couldn't fetch passphrase for decrypting, a degraded namespace was created"
-            if bdev_warning:
-                errmsg += "\n"
-        if bdev_warning:
-            errmsg += bdev_warning
-
-        return pb2.nsid_status(status=0, error_message=errmsg, nsid=ret_ns.nsid)
+        return pb2.nsid_status(status=0, error_message=wrn_msg, nsid=ret_ns.nsid)
 
     def namespace_add(self, request, context=None):
         """Adds a namespace to a subsystem."""
