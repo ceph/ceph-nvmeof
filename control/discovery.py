@@ -269,6 +269,26 @@ class NVMeIdentify(AutoSerializableStructure):
     ]
 
 
+# Status Field of a completion queue entry (NVMe Base Specification,
+# "Completion Queue Entry: Status Field"). Bit 0 is the phase tag, which
+# fabrics do not use; the status code starts at bit 1.
+NVME_STATUS_SC_SHIFT = 1
+NVME_STATUS_SCT_SHIFT = 9
+NVME_STATUS_DNR = 0x8000
+NVME_SCT_GENERIC = 0x0
+NVME_SCT_COMMAND_SPECIFIC = 0x1
+NVME_SC_INVALID_LOG_PAGE = 0x09
+NVME_LOG_DISCOVERY = 0x70
+
+
+def nvme_status(sct, sc, dnr=True):
+    """Return the Status Field of a completion for this type and code."""
+    status = (sct << NVME_STATUS_SCT_SHIFT) | (sc << NVME_STATUS_SC_SHIFT)
+    if dnr:
+        status |= NVME_STATUS_DNR
+    return status
+
+
 # for set feature, keep alive and async
 class CqeNVMe(AutoSerializableStructure):
     _fields_ = [
@@ -767,6 +787,20 @@ class DiscoveryService:
 
         self.logger.debug("handle get log page request.")
         self_conn = self.conn_vals[conn.fileno()]
+
+        # A discovery controller only has the discovery log page. Any other
+        # one (hosts probe for e.g. the SMART log) must be completed with an
+        # error, like any controller does: closing the connection instead
+        # leaves the command without a completion, and the host has to time
+        # it out and recover the controller.
+        get_logpage_lid = struct.unpack_from('<I', data, 48)[0] & 0xFF
+        if get_logpage_lid != NVME_LOG_DISCOVERY:
+            self.logger.warning(f"unsupported log page {get_logpage_lid:#04x} requested, "
+                                f"completing with Invalid Log Page.")
+            return self.reply_error(conn, cmd_id,
+                                    nvme_status(NVME_SCT_COMMAND_SPECIFIC,
+                                                NVME_SC_INVALID_LOG_PAGE))
+
         my_omap_dict = self._read_all()
         if not my_omap_dict:
             self.logger.error("Error getting current state.")
@@ -804,14 +838,9 @@ class DiscoveryService:
         nvme_get_logpage_dword13 = struct.unpack_from('<I', data, 60)[0]      # noqa: F841
         nvme_get_logpage_dword14 = struct.unpack_from('<I', data, 64)[0]
         nvme_get_logpage_dword15 = struct.unpack_from('<I', data, 68)[0]      # noqa: F841
-        get_logpage_lid = nvme_get_logpage_dword10 & 0xFF
         get_logpage_lsp = (nvme_get_logpage_dword10 >> 8) & 0x1F      # noqa: F841
         get_logpage_lsi = nvme_get_logpage_dword11 >> 16              # noqa: F841
         get_logpage_uid_idx = nvme_get_logpage_dword14 & 0x3F         # noqa: F841
-
-        if get_logpage_lid != 0x70:
-            self.logger.error("request type error, not discovery request.")
-            return -1
 
         if nvme_data_len != nvme_sgl_len:
             self.logger.error(f"request data len error, {nvme_data_len=} != {nvme_sgl_len=}.")
@@ -991,6 +1020,32 @@ class DiscoveryService:
             self.logger.exception(f"got OS error {ex.errno}: {ex.strerror}")
             return -1
         self.logger.debug("reply keep alive request.")
+        return 0
+
+    def reply_error(self, conn, cmd_id, status):
+        """Complete a command with an error status and no data."""
+
+        self_conn = self.conn_vals[conn.fileno()]
+
+        pdu_reply = Pdu()
+        pdu_reply.type = NVME_TCP_PDU.RSP
+        pdu_reply.header_length = 24
+        pdu_reply.packet_length = 24
+
+        error_reply = CqeNVMe()
+        error_reply.sq_head_ptr = self_conn.sq_head_ptr
+        error_reply.cmd_id = cmd_id
+        error_reply.status = status
+
+        try:
+            conn.sendall(pdu_reply + error_reply)
+        except BrokenPipeError:
+            self.logger.error("client disconnected unexpectedly.")
+            return -1
+        except OSError as ex:
+            self.logger.exception(f"got OS error {ex.errno}: {ex.strerror}")
+            return -1
+        self.logger.debug(f"replied with status {status:#06x}.")
         return 0
 
     def reply_not_supported(self, conn, data, cmd_id):
