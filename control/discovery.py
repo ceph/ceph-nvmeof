@@ -277,6 +277,7 @@ NVME_STATUS_SCT_SHIFT = 9
 NVME_STATUS_DNR = 0x8000
 NVME_SCT_GENERIC = 0x0
 NVME_SCT_COMMAND_SPECIFIC = 0x1
+NVME_SC_INVALID_OPCODE = 0x01
 NVME_SC_INVALID_LOG_PAGE = 0x09
 NVME_LOG_DISCOVERY = 0x70
 
@@ -1052,31 +1053,10 @@ class DiscoveryService:
         """Reply to not supported opcodes."""
 
         self.logger.warning("handle not supported opcode.")
-        self_conn = self.conn_vals[conn.fileno()]
-
-        pdu_reply = Pdu()
-        pdu_reply.type = NVME_TCP_PDU.RSP
-        pdu_reply.header_length = 24
-        pdu_reply.packet_length = 24
-
-        # Cqe for not supported opcode reply
-        not_supported_reply = CqeNVMe()
-        not_supported_reply.sq_head_ptr = self_conn.sq_head_ptr
-        not_supported_reply.cmd_id = cmd_id
         # Invalid Command Opcode: A reserved coded value or an unsupported value
         # in the command opcode field.
-        not_supported_reply.status = 1
-
-        try:
-            conn.sendall(pdu_reply + not_supported_reply)
-        except BrokenPipeError:
-            self.logger.error("client disconnected unexpectedly.")
-            return -1
-        except OSError as ex:
-            self.logger.exception(f"got OS error {ex.errno}: {ex.strerror}")
-            return -1
-        self.logger.warning("reply not supported opcode.")
-        return 0
+        return self.reply_error(conn, cmd_id,
+                                nvme_status(NVME_SCT_GENERIC, NVME_SC_INVALID_OPCODE))
 
     def store_async(self, conn, data, cmd_id):
         """Parse and store async event."""

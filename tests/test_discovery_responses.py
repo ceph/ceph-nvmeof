@@ -6,6 +6,7 @@ import pytest
 from control.discovery import Connection, DiscoveryService, NVME_TCP_PDU
 
 # Status Field values (bit 0 is the phase tag, the status code starts at bit 1)
+INVALID_OPCODE_DNR = (0x0 << 9) | (0x01 << 1) | 0x8000
 INVALID_LOG_PAGE_DNR = (0x1 << 9) | (0x09 << 1) | 0x8000
 
 
@@ -83,6 +84,22 @@ def test_unsupported_log_page_is_completed_with_an_error(service, lid):
     assert cmd_id == 0x1234
     assert status == INVALID_LOG_PAGE_DNR
     assert service.conn_vals, "the connection must not be dropped"
+
+
+def test_unsupported_opcode_is_not_reported_as_success(service):
+    """Invalid Command Opcode is status code 01h, i.e. 0x0002 with the phase bit.
+
+    The reply used to set the status field to 1, which is only the phase tag:
+    the host read it as a successful completion.
+    """
+    sock = connect(service)
+    ret = service.reply_not_supported(sock, command(0x80, 7), 7)
+    assert ret == 0
+    pdu_type, cmd_id, status = response(sock.sent)
+    assert pdu_type == NVME_TCP_PDU.RSP
+    assert cmd_id == 7
+    assert status == INVALID_OPCODE_DNR
+    assert status >> 1 != 0, "status code 0 is a successful completion"
 
 
 def test_discovery_log_page_still_answered(service):
