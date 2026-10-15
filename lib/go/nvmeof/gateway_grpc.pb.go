@@ -28,54 +28,55 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	Gateway_NamespaceAdd_FullMethodName                      = "/Gateway/namespace_add"
-	Gateway_CreateSubsystem_FullMethodName                   = "/Gateway/create_subsystem"
-	Gateway_DeleteSubsystem_FullMethodName                   = "/Gateway/delete_subsystem"
-	Gateway_ChangeSubsystemKey_FullMethodName                = "/Gateway/change_subsystem_key"
-	Gateway_AddSubsystemNetwork_FullMethodName               = "/Gateway/add_subsystem_network"
-	Gateway_DelSubsystemNetwork_FullMethodName               = "/Gateway/del_subsystem_network"
-	Gateway_GwRefreshNetwork_FullMethodName                  = "/Gateway/gw_refresh_network"
-	Gateway_AddKmipServerEndpoints_FullMethodName            = "/Gateway/add_kmip_server_endpoints"
-	Gateway_DelKmipServerEndpoints_FullMethodName            = "/Gateway/del_kmip_server_endpoints"
-	Gateway_ListKmipServerEndpoints_FullMethodName           = "/Gateway/list_kmip_server_endpoints"
-	Gateway_ListNamespaces_FullMethodName                    = "/Gateway/list_namespaces"
-	Gateway_NamespaceResize_FullMethodName                   = "/Gateway/namespace_resize"
-	Gateway_NamespaceGetIoStats_FullMethodName               = "/Gateway/namespace_get_io_stats"
-	Gateway_ListNamespacesIoStats_FullMethodName             = "/Gateway/list_namespaces_io_stats"
-	Gateway_NamespaceSetQosLimits_FullMethodName             = "/Gateway/namespace_set_qos_limits"
-	Gateway_NamespaceChangeLoadBalancingGroup_FullMethodName = "/Gateway/namespace_change_load_balancing_group"
-	Gateway_NamespaceChangeVisibility_FullMethodName         = "/Gateway/namespace_change_visibility"
-	Gateway_NamespaceChangeLocation_FullMethodName           = "/Gateway/namespace_change_location"
-	Gateway_NamespaceSetRbdTrashImage_FullMethodName         = "/Gateway/namespace_set_rbd_trash_image"
-	Gateway_NamespaceSetAutoResize_FullMethodName            = "/Gateway/namespace_set_auto_resize"
-	Gateway_NamespaceDelete_FullMethodName                   = "/Gateway/namespace_delete"
-	Gateway_NamespaceAddHost_FullMethodName                  = "/Gateway/namespace_add_host"
-	Gateway_NamespaceDeleteHost_FullMethodName               = "/Gateway/namespace_delete_host"
-	Gateway_NamespaceUnpin_FullMethodName                    = "/Gateway/namespace_unpin"
-	Gateway_AddHost_FullMethodName                           = "/Gateway/add_host"
-	Gateway_RemoveHost_FullMethodName                        = "/Gateway/remove_host"
-	Gateway_SetKeepHostConnected_FullMethodName              = "/Gateway/set_keep_host_connected"
-	Gateway_ChangeHostKey_FullMethodName                     = "/Gateway/change_host_key"
-	Gateway_ListHosts_FullMethodName                         = "/Gateway/list_hosts"
-	Gateway_ListConnections_FullMethodName                   = "/Gateway/list_connections"
-	Gateway_GetConnectionIoStatistics_FullMethodName         = "/Gateway/get_connection_io_statistics"
-	Gateway_GetConnectionExtendedIoStatistics_FullMethodName = "/Gateway/get_connection_extended_io_statistics"
-	Gateway_CreateListener_FullMethodName                    = "/Gateway/create_listener"
-	Gateway_DeleteListener_FullMethodName                    = "/Gateway/delete_listener"
-	Gateway_ListListeners_FullMethodName                     = "/Gateway/list_listeners"
-	Gateway_ListSubsystems_FullMethodName                    = "/Gateway/list_subsystems"
-	Gateway_GetSubsystems_FullMethodName                     = "/Gateway/get_subsystems"
-	Gateway_SetAnaState_FullMethodName                       = "/Gateway/set_ana_state"
-	Gateway_GetSpdkNvmfLogFlagsAndLevel_FullMethodName       = "/Gateway/get_spdk_nvmf_log_flags_and_level"
-	Gateway_DisableSpdkNvmfLogs_FullMethodName               = "/Gateway/disable_spdk_nvmf_logs"
-	Gateway_SetSpdkNvmfLogs_FullMethodName                   = "/Gateway/set_spdk_nvmf_logs"
-	Gateway_GetGatewayInfo_FullMethodName                    = "/Gateway/get_gateway_info"
-	Gateway_GetGatewayLogLevel_FullMethodName                = "/Gateway/get_gateway_log_level"
-	Gateway_SetGatewayLogLevel_FullMethodName                = "/Gateway/set_gateway_log_level"
-	Gateway_ShowGatewayListenersInfo_FullMethodName          = "/Gateway/show_gateway_listeners_info"
-	Gateway_GetGatewayStats_FullMethodName                   = "/Gateway/get_gateway_stats"
-	Gateway_GetThreadStats_FullMethodName                    = "/Gateway/get_thread_stats"
-	Gateway_SetGatewayIoStatsMode_FullMethodName             = "/Gateway/set_gateway_io_stats_mode"
+	Gateway_NamespaceAdd_FullMethodName                           = "/Gateway/namespace_add"
+	Gateway_CreateSubsystem_FullMethodName                        = "/Gateway/create_subsystem"
+	Gateway_DeleteSubsystem_FullMethodName                        = "/Gateway/delete_subsystem"
+	Gateway_ChangeSubsystemKey_FullMethodName                     = "/Gateway/change_subsystem_key"
+	Gateway_AddSubsystemNetwork_FullMethodName                    = "/Gateway/add_subsystem_network"
+	Gateway_DelSubsystemNetwork_FullMethodName                    = "/Gateway/del_subsystem_network"
+	Gateway_GwRefreshNetwork_FullMethodName                       = "/Gateway/gw_refresh_network"
+	Gateway_SetSubsystemUseGroupConfigNetworkMasks_FullMethodName = "/Gateway/set_subsystem_use_group_config_network_masks"
+	Gateway_AddKmipServerEndpoints_FullMethodName                 = "/Gateway/add_kmip_server_endpoints"
+	Gateway_DelKmipServerEndpoints_FullMethodName                 = "/Gateway/del_kmip_server_endpoints"
+	Gateway_ListKmipServerEndpoints_FullMethodName                = "/Gateway/list_kmip_server_endpoints"
+	Gateway_ListNamespaces_FullMethodName                         = "/Gateway/list_namespaces"
+	Gateway_NamespaceResize_FullMethodName                        = "/Gateway/namespace_resize"
+	Gateway_NamespaceGetIoStats_FullMethodName                    = "/Gateway/namespace_get_io_stats"
+	Gateway_ListNamespacesIoStats_FullMethodName                  = "/Gateway/list_namespaces_io_stats"
+	Gateway_NamespaceSetQosLimits_FullMethodName                  = "/Gateway/namespace_set_qos_limits"
+	Gateway_NamespaceChangeLoadBalancingGroup_FullMethodName      = "/Gateway/namespace_change_load_balancing_group"
+	Gateway_NamespaceChangeVisibility_FullMethodName              = "/Gateway/namespace_change_visibility"
+	Gateway_NamespaceChangeLocation_FullMethodName                = "/Gateway/namespace_change_location"
+	Gateway_NamespaceSetRbdTrashImage_FullMethodName              = "/Gateway/namespace_set_rbd_trash_image"
+	Gateway_NamespaceSetAutoResize_FullMethodName                 = "/Gateway/namespace_set_auto_resize"
+	Gateway_NamespaceDelete_FullMethodName                        = "/Gateway/namespace_delete"
+	Gateway_NamespaceAddHost_FullMethodName                       = "/Gateway/namespace_add_host"
+	Gateway_NamespaceDeleteHost_FullMethodName                    = "/Gateway/namespace_delete_host"
+	Gateway_NamespaceUnpin_FullMethodName                         = "/Gateway/namespace_unpin"
+	Gateway_AddHost_FullMethodName                                = "/Gateway/add_host"
+	Gateway_RemoveHost_FullMethodName                             = "/Gateway/remove_host"
+	Gateway_SetKeepHostConnected_FullMethodName                   = "/Gateway/set_keep_host_connected"
+	Gateway_ChangeHostKey_FullMethodName                          = "/Gateway/change_host_key"
+	Gateway_ListHosts_FullMethodName                              = "/Gateway/list_hosts"
+	Gateway_ListConnections_FullMethodName                        = "/Gateway/list_connections"
+	Gateway_GetConnectionIoStatistics_FullMethodName              = "/Gateway/get_connection_io_statistics"
+	Gateway_GetConnectionExtendedIoStatistics_FullMethodName      = "/Gateway/get_connection_extended_io_statistics"
+	Gateway_CreateListener_FullMethodName                         = "/Gateway/create_listener"
+	Gateway_DeleteListener_FullMethodName                         = "/Gateway/delete_listener"
+	Gateway_ListListeners_FullMethodName                          = "/Gateway/list_listeners"
+	Gateway_ListSubsystems_FullMethodName                         = "/Gateway/list_subsystems"
+	Gateway_GetSubsystems_FullMethodName                          = "/Gateway/get_subsystems"
+	Gateway_SetAnaState_FullMethodName                            = "/Gateway/set_ana_state"
+	Gateway_GetSpdkNvmfLogFlagsAndLevel_FullMethodName            = "/Gateway/get_spdk_nvmf_log_flags_and_level"
+	Gateway_DisableSpdkNvmfLogs_FullMethodName                    = "/Gateway/disable_spdk_nvmf_logs"
+	Gateway_SetSpdkNvmfLogs_FullMethodName                        = "/Gateway/set_spdk_nvmf_logs"
+	Gateway_GetGatewayInfo_FullMethodName                         = "/Gateway/get_gateway_info"
+	Gateway_GetGatewayLogLevel_FullMethodName                     = "/Gateway/get_gateway_log_level"
+	Gateway_SetGatewayLogLevel_FullMethodName                     = "/Gateway/set_gateway_log_level"
+	Gateway_ShowGatewayListenersInfo_FullMethodName               = "/Gateway/show_gateway_listeners_info"
+	Gateway_GetGatewayStats_FullMethodName                        = "/Gateway/get_gateway_stats"
+	Gateway_GetThreadStats_FullMethodName                         = "/Gateway/get_thread_stats"
+	Gateway_SetGatewayIoStatsMode_FullMethodName                  = "/Gateway/set_gateway_io_stats_mode"
 )
 
 // GatewayClient is the client API for Gateway service.
@@ -96,6 +97,8 @@ type GatewayClient interface {
 	DelSubsystemNetwork(ctx context.Context, in *DelSubsystemNetworkReq, opts ...grpc.CallOption) (*ReqStatus, error)
 	// Refresh auto-listeners for all network masks configured on the given subsystem on this gateway
 	GwRefreshNetwork(ctx context.Context, in *GwRefreshNetworkReq, opts ...grpc.CallOption) (*GwRefreshNetworkStatus, error)
+	// Enable or disable the group config network mask for the subsystem
+	SetSubsystemUseGroupConfigNetworkMasks(ctx context.Context, in *SetSubsystemUseGroupConfigNetworkMasksReq, opts ...grpc.CallOption) (*SetSubsystemUseGroupConfigNetworkMasksStatus, error)
 	// Add KMIP server endpoints
 	AddKmipServerEndpoints(ctx context.Context, in *AddKmipServerEndpointsReq, opts ...grpc.CallOption) (*ReqStatus, error)
 	// Delete KMIP server endpoints
@@ -252,6 +255,16 @@ func (c *gatewayClient) GwRefreshNetwork(ctx context.Context, in *GwRefreshNetwo
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GwRefreshNetworkStatus)
 	err := c.cc.Invoke(ctx, Gateway_GwRefreshNetwork_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *gatewayClient) SetSubsystemUseGroupConfigNetworkMasks(ctx context.Context, in *SetSubsystemUseGroupConfigNetworkMasksReq, opts ...grpc.CallOption) (*SetSubsystemUseGroupConfigNetworkMasksStatus, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SetSubsystemUseGroupConfigNetworkMasksStatus)
+	err := c.cc.Invoke(ctx, Gateway_SetSubsystemUseGroupConfigNetworkMasks_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -686,6 +699,8 @@ type GatewayServer interface {
 	DelSubsystemNetwork(context.Context, *DelSubsystemNetworkReq) (*ReqStatus, error)
 	// Refresh auto-listeners for all network masks configured on the given subsystem on this gateway
 	GwRefreshNetwork(context.Context, *GwRefreshNetworkReq) (*GwRefreshNetworkStatus, error)
+	// Enable or disable the group config network mask for the subsystem
+	SetSubsystemUseGroupConfigNetworkMasks(context.Context, *SetSubsystemUseGroupConfigNetworkMasksReq) (*SetSubsystemUseGroupConfigNetworkMasksStatus, error)
 	// Add KMIP server endpoints
 	AddKmipServerEndpoints(context.Context, *AddKmipServerEndpointsReq) (*ReqStatus, error)
 	// Delete KMIP server endpoints
@@ -798,6 +813,9 @@ func (UnimplementedGatewayServer) DelSubsystemNetwork(context.Context, *DelSubsy
 }
 func (UnimplementedGatewayServer) GwRefreshNetwork(context.Context, *GwRefreshNetworkReq) (*GwRefreshNetworkStatus, error) {
 	return nil, status.Error(codes.Unimplemented, "method GwRefreshNetwork not implemented")
+}
+func (UnimplementedGatewayServer) SetSubsystemUseGroupConfigNetworkMasks(context.Context, *SetSubsystemUseGroupConfigNetworkMasksReq) (*SetSubsystemUseGroupConfigNetworkMasksStatus, error) {
+	return nil, status.Error(codes.Unimplemented, "method SetSubsystemUseGroupConfigNetworkMasks not implemented")
 }
 func (UnimplementedGatewayServer) AddKmipServerEndpoints(context.Context, *AddKmipServerEndpointsReq) (*ReqStatus, error) {
 	return nil, status.Error(codes.Unimplemented, "method AddKmipServerEndpoints not implemented")
@@ -1065,6 +1083,24 @@ func _Gateway_GwRefreshNetwork_Handler(srv interface{}, ctx context.Context, dec
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(GatewayServer).GwRefreshNetwork(ctx, req.(*GwRefreshNetworkReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Gateway_SetSubsystemUseGroupConfigNetworkMasks_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetSubsystemUseGroupConfigNetworkMasksReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GatewayServer).SetSubsystemUseGroupConfigNetworkMasks(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Gateway_SetSubsystemUseGroupConfigNetworkMasks_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GatewayServer).SetSubsystemUseGroupConfigNetworkMasks(ctx, req.(*SetSubsystemUseGroupConfigNetworkMasksReq))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1841,6 +1877,10 @@ var Gateway_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "gw_refresh_network",
 			Handler:    _Gateway_GwRefreshNetwork_Handler,
+		},
+		{
+			MethodName: "set_subsystem_use_group_config_network_masks",
+			Handler:    _Gateway_SetSubsystemUseGroupConfigNetworkMasks_Handler,
 		},
 		{
 			MethodName: "add_kmip_server_endpoints",
