@@ -3638,27 +3638,6 @@ class GatewayClient:
                     if args.w_megabytes_per_second is None:
                         self.cli.parser.error("At least one QOS limit should be set")
 
-        if args.format == "text" or args.format == "plain":
-            if args.rw_ios_per_second and (args.rw_ios_per_second % 1000) != 0:
-                rounded_rate = int((args.rw_ios_per_second + 1000) / 1000) * 1000
-                wrn_func(f"IOs per second {args.rw_ios_per_second} will be "
-                         f"rounded up to {rounded_rate}")
-            if args.rw_megabytes_per_second:
-                if args.rw_megabytes_per_second > GatewayClient.MAX_MB_PER_SECOND:
-                    wrn_func(f"Read/Write megabytes per second {args.rw_megabytes_per_second} "
-                             f"is too big, it will be truncated to "
-                             f"{GatewayClient.MAX_MB_PER_SECOND}")
-            if args.r_megabytes_per_second:
-                if args.r_megabytes_per_second > GatewayClient.MAX_MB_PER_SECOND:
-                    wrn_func(f"Read megabytes per second {args.r_megabytes_per_second} "
-                             f"is too big, it will be truncated to "
-                             f"{GatewayClient.MAX_MB_PER_SECOND}")
-            if args.w_megabytes_per_second:
-                if args.w_megabytes_per_second > GatewayClient.MAX_MB_PER_SECOND:
-                    wrn_func(f"Write megabytes per second {args.w_megabytes_per_second} "
-                             f"is too big, it will be truncated to "
-                             f"{GatewayClient.MAX_MB_PER_SECOND}")
-
         qos_args = {}
         qos_args["subsystem_nqn"] = args.subsystem
         if args.nsid:

@@ -1151,6 +1151,14 @@ class GatewayService(pb2_grpc.GatewayServicer):
         # Keep towards the end of init as we use fields like gateway_state in the rebalance thread
         self.rebalance = Rebalance(self)
 
+    @staticmethod
+    def append_message(msg: str, addition: str) -> str:
+        ret_msg = msg
+        if ret_msg:
+            ret_msg += "\n"
+        ret_msg += addition
+        return ret_msg
+
     def read_spdk_notifications(self, read_interval):
         if read_interval <= 0:
             return
@@ -1769,9 +1777,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     msg = f"Passed data pool name \"{rbd_data_pool_name}\" differs from " \
                           f"actual one \"{actual_data_pool_name}\""
                     self.logger.warning(msg)
-                    if wrn_msg:
-                        wrn_msg += "\n"
-                    wrn_msg += msg
+                    wrn_msg = self.append_message(wrn_msg, msg)
                 rc = self.ceph_utils.pool_exists(rbd_data_pool_name)
                 if not rc:
                     return BdevStatus(status=errno.ENODEV,
@@ -1803,9 +1809,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     self.logger.error(pool_app_rc.error_message)
                     return pool_app_rc
                 if pool_app_rc.error_message:
-                    if wrn_msg:
-                        wrn_msg += "\n"
-                    wrn_msg += pool_app_rc.error_message
+                    wrn_msg = self.append_message(wrn_msg, pool_app_rc.error_message)
                     self.logger.warning(pool_app_rc.error_message)
 
             pool_app_rc = self.check_pool_applications(rbd_pool_name, image_path, "create", "pool")
@@ -1813,9 +1817,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 self.logger.error(pool_app_rc.error_message)
                 return pool_app_rc
             if pool_app_rc.error_message:
-                if wrn_msg:
-                    wrn_msg += "\n"
-                wrn_msg += pool_app_rc.error_message
+                wrn_msg = self.append_message(wrn_msg, pool_app_rc.error_message)
                 self.logger.warning(pool_app_rc.error_message)
 
             try:
@@ -1849,9 +1851,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                     f"namespace deletion"
                         self.logger.warning(trash_msg)
                         trash_image = False
-                        if wrn_msg:
-                            wrn_msg += "\n"
-                        wrn_msg += trash_msg
+                        wrn_msg = self.append_message(wrn_msg, trash_msg)
                     if actual_data_pool_name and actual_data_pool_name != rbd_data_pool_name:
                         pool_app_rc = self.check_pool_applications(actual_data_pool_name,
                                                                    image_path,
@@ -1860,9 +1860,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                             self.logger.error(pool_app_rc.error_message)
                             return pool_app_rc
                         if pool_app_rc.error_message:
-                            if wrn_msg:
-                                wrn_msg += "\n"
-                            wrn_msg += pool_app_rc.error_message
+                            wrn_msg = self.append_message(wrn_msg, pool_app_rc.error_message)
                             self.logger.warning(pool_app_rc.error_message)
             except Exception as ex:
                 errcode = 0
@@ -1912,9 +1910,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                         msg = f"Passed data pool name \"{rbd_data_pool_name}\" differs from " \
                               f"actual one \"{data_pool_name}\""
                         self.logger.warning(msg)
-                        if wrn_msg:
-                            wrn_msg += "\n"
-                        wrn_msg += msg
+                        wrn_msg = self.append_message(wrn_msg, msg)
                 for pool_entry in pools_to_check:
                     pool_app_rc = self.check_pool_applications(pool_entry[0], image_path,
                                                                "use", pool_entry[1])
@@ -1922,9 +1918,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                         self.logger.error(pool_app_rc.error_message)
                         return pool_app_rc
                     if pool_app_rc.error_message:
-                        if wrn_msg:
-                            wrn_msg += "\n"
-                        wrn_msg += pool_app_rc.error_message
+                        wrn_msg = self.append_message(wrn_msg, pool_app_rc.error_message)
                         self.logger.warning(pool_app_rc.error_message)
 
             if len(encryption_entries) > 0 and self.verify_image_encryption_settings:
@@ -1948,9 +1942,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                              f"{image_path}, namespace " \
                              f"will get resized in case of an image resize:\n{ex}"
                 self.logger.warning(resize_msg)
-                if wrn_msg:
-                    wrn_msg += "\n"
-                wrn_msg += resize_msg
+                wrn_msg = self.append_message(wrn_msg, resize_msg)
 
         cluster_name = None
         assert self.rpc_lock.locked(), "RPC is unlocked when calling bdev_rbd_create()"
@@ -3883,9 +3875,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                         "wasn't created by the gateway, will reset the flag"
             self.logger.warning(trash_msg)
             request.trash_image = False
-            if wrn_msg:
-                wrn_msg += "\n"
-            wrn_msg += trash_msg
+            wrn_msg = self.append_message(wrn_msg, trash_msg)
 
         if request.block_size <= 0:
             errmsg = f"Failure adding namespace {nsid_msg}to {request.subsystem_nqn}: " \
@@ -3992,10 +3982,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
                         self.logger.warning(f"Can't fetch passphrase for id {ent.key_id}, "
                                             f"will create a degraded namespace")
                         create_degraded = True
-                        if wrn_msg:
-                            wrn_msg += "\n"
-                        wrn_msg += "Couldn't fetch passphrase for decrypting, a degraded " \
-                                   "namespace was created"
+                        wrn_msg = self.append_message(wrn_msg,
+                                                      "Couldn't fetch passphrase for decrypting, "
+                                                      "a degraded namespace was created")
                         break
                     else:
                         errmsg = f"Failure adding namespace {nsid_msg}to " \
@@ -4131,9 +4120,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
             # If we got here we asserted that ret_bdev.bdev_name == bdev_name
 
             if ret_bdev.error_message:
-                if wrn_msg:
-                    wrn_msg += "\n"
-                wrn_msg += ret_bdev.error_message
+                wrn_msg = self.append_message(wrn_msg, ret_bdev.error_message)
             pool_to_use = ret_bdev.rbd_pool
             data_pool_to_use = request.rbd_data_pool_name
             image_name_to_use = ret_bdev.rbd_image_name
@@ -5427,6 +5414,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
             "RPC is unlocked when calling namespace_set_qos_limits_safe()"
         max_mb_per_second = int(0xffffffffffffffff / (1024 * 1024))
 
+        wrn_msg = ""
         failure_prefix = f"Failure setting QOS limits for namespace {request.nsid} " \
                          f"on {request.subsystem_nqn}"
         peer_msg = self.get_peer_message(context)
@@ -5468,9 +5456,11 @@ class GatewayService(pb2_grpc.GatewayServicer):
             if self.ceph_utils.were_image_qos_limits_changed(find_ret.pool, find_ret.image,
                                                              find_ret.rados_namespace_name):
                 if request.force:
-                    self.logger.warning(f"The QOS limits for image "
-                                        f"{find_ret.pool}/{find_ret.image} were changed, will "
-                                        f"continue as the \"--force\" parameter was used")
+                    _msg = f"The QOS limits for image " \
+                           f"{find_ret.pool}/{find_ret.image} were changed, will " \
+                           f"continue as the \"--force\" parameter was used"
+                    self.logger.warning(_msg)
+                    wrn_msg = self.append_message(wrn_msg, _msg)
                 else:
                     errmsg = f"{failure_prefix}: QOS limits were changed for RBD image " \
                              f"{find_ret.pool}/{find_ret.image}, use the \"--force\" parameter " \
@@ -5479,34 +5469,43 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     status = errno.EEXIST if context else 0
                     return pb2.req_status(status=status, error_message=errmsg)
         except Exception:
-            self.logger.warning(f"Error trying to get the config attributes of image "
-                                f"{find_ret.pool}/{find_ret.image}, can't check "
-                                f"for QOS changes")
-            pass
+            _msg = f"Error trying to get the config attributes of image " \
+                   f"{find_ret.pool}/{find_ret.image}, can't check " \
+                   f"for QOS changes"
+            self.logger.warning(_msg)
+            wrn_msg = self.append_message(wrn_msg, _msg)
 
         if GatewayService.is_optional_field_in_message(request, "rw_ios_per_second"):
             if request.rw_ios_per_second % 1000 != 0:
                 rounded_rate = int((request.rw_ios_per_second + 1000) / 1000) * 1000
-                self.logger.warning(f"IOs per second {request.rw_ios_per_second} will be "
-                                    f"rounded up to {rounded_rate}")
+                _msg = f"IOs per second {request.rw_ios_per_second} will be " \
+                       f"rounded up to {rounded_rate}"
+                self.logger.warning(_msg)
+                wrn_msg = self.append_message(wrn_msg, _msg)
 
         if GatewayService.is_optional_field_in_message(request, "rw_mbytes_per_second"):
             if request.rw_mbytes_per_second > max_mb_per_second:
-                self.logger.warning(f"Read/Write megabytes per second "
-                                    f"{request.rw_mbytes_per_second} is too big, "
-                                    f"it will be truncated to {max_mb_per_second}")
+                _msg = f"Read/Write megabytes per second " \
+                       f"{request.rw_mbytes_per_second} is too big, " \
+                       f"it will be truncated to {max_mb_per_second}"
+                self.logger.warning(_msg)
+                wrn_msg = self.append_message(wrn_msg, _msg)
 
         if GatewayService.is_optional_field_in_message(request, "r_mbytes_per_second"):
             if request.r_mbytes_per_second > max_mb_per_second:
-                self.logger.warning(f"Read megabytes per second "
-                                    f"{request.r_mbytes_per_second} is too big, "
-                                    f"it will be truncated to {max_mb_per_second}")
+                _msg = f"Read megabytes per second " \
+                       f"{request.r_mbytes_per_second} is too big, " \
+                       f"it will be truncated to {max_mb_per_second}"
+                self.logger.warning(_msg)
+                wrn_msg = self.append_message(wrn_msg, _msg)
 
         if GatewayService.is_optional_field_in_message(request, "w_mbytes_per_second"):
             if request.w_mbytes_per_second > max_mb_per_second:
-                self.logger.warning(f"Write megabytes per second "
-                                    f"{request.w_mbytes_per_second} is too big, "
-                                    f"it will be truncated to {max_mb_per_second}")
+                _msg = f"Write megabytes per second " \
+                       f"{request.w_mbytes_per_second} is too big, " \
+                       f"it will be truncated to {max_mb_per_second}"
+                self.logger.warning(_msg)
+                wrn_msg = self.append_message(wrn_msg, _msg)
 
         set_qos_limits_args = {}
         set_qos_limits_args["name"] = bdev_name
@@ -5597,7 +5596,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     errmsg = f"{errmsg}:\n{ex}"
                     return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
 
-        return pb2.req_status(status=0, error_message="")
+        return pb2.req_status(status=0, error_message=wrn_msg)
 
     def namespace_set_qos_limits(self, request, context=None):
         """Set namespace's qos limits."""
