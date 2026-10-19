@@ -567,6 +567,7 @@ message nqn_ana_states {
 
 message ana_info {
 	repeated nqn_ana_states states = 1; // list of nqn states
+        optional bool hold_ios         = 2; // transient hold I/O flag for active-active failover
 }
 
 // Return messages 
