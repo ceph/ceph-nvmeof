@@ -924,8 +924,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
     PSK_PREFIX = "psk"
     DHCHAP_PREFIX = "dhchap"
-    DHCHAP_CONTROLLER_PREFIX = "dhchap_ctrlr"
+    DHCHAP_CONTROLLER_PREFIX = "dhchap-ctrlr"
     KEYS_DIR = "/var/tmp"
+    KEY_NAME_DELIMITER = "_"
     MAX_SUBSYSTEMS_DEFAULT = 128
     MAX_NAMESPACES_DEFAULT = 4096
     MAX_NAMESPACES_PER_SUBSYSTEM_DEFAULT = 512
@@ -1271,10 +1272,12 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
     @staticmethod
     def construct_key_name_for_keyring(subsysnqn: str, hostnqn: str, prefix: str = None) -> str:
-        key_name = hashlib.sha256(subsysnqn.encode()).hexdigest() + "_"
-        key_name += hashlib.sha256(hostnqn.encode()).hexdigest()
+        key_name = hashlib.sha256(subsysnqn.encode()).hexdigest()
+        if hostnqn:
+            key_name += GatewayService.KEY_NAME_DELIMITER + \
+                hashlib.sha256(hostnqn.encode()).hexdigest()
         if prefix:
-            key_name = prefix + "_" + key_name
+            key_name = prefix + GatewayService.KEY_NAME_DELIMITER + key_name
         return key_name
 
     def remove_key_from_keyring(self, key_type: str, subsysnqn: str, hostnqn: str) -> None:
@@ -1320,6 +1323,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
     def remove_all_subsystem_keys_from_keyring(self, subsysnqn: str) -> None:
         assert self.rpc_lock.locked(), "RPC is unlocked when calling " \
                                        "remove_all_subsystem_keys_from_keyring()"
+        key_name_part = None
         try:
             key_list = self.spdk_rpc_client.keyring_get_keys()
         except Exception:
@@ -1330,25 +1334,38 @@ class GatewayService(pb2_grpc.GatewayServicer):
             key_name = None
             try:
                 key_path = one_key["path"]
+            except Exception:
+                pass
+            try:
                 key_name = one_key["name"]
             except Exception:
-                self.logger.exception(f"Can't get details for key {one_key}")
-                continue
-            if not key_name or not key_path:
+                self.logger.exception(f"Can't get name of key {one_key}")
+            if not key_name:
                 continue
 
             should_remove = False
-            if key_path.startswith(f"{self.KEYS_DIR}/{self.PSK_PREFIX}_{subsysnqn}_"):
-                should_remove = True
-            elif key_path.startswith(f"{self.KEYS_DIR}/{self.DHCHAP_PREFIX}_{subsysnqn}_"):
-                should_remove = True
+            if key_path:
+                if key_path.startswith(f"{self.KEYS_DIR}/{self.PSK_PREFIX}_{subsysnqn}_"):
+                    should_remove = True
+                elif key_path.startswith(f"{self.KEYS_DIR}/{self.DHCHAP_PREFIX}_{subsysnqn}_"):
+                    should_remove = True
+            else:
+                if not key_name_part:
+                    key_name_part = GatewayService.construct_key_name_for_keyring(subsysnqn,
+                                                                                  None,
+                                                                                  None)
+                key_name_parts = key_name.split(GatewayService.KEY_NAME_DELIMITER)
+                if len(key_name_parts) != 3:
+                    self.logger.error(f"Invalid key name {key_name}")
+                    continue
+                if key_name_parts[1] == key_name_part:
+                    should_remove = True
 
             if should_remove:
                 try:
                     self.spdk_rpc_client.keyring_file_remove_key(name=key_name)
                 except Exception:
                     self.logger.exception(f"Can't remove key {key_name}")
-                    pass
 
     @staticmethod
     def is_valid_host_nqn(nqn):
