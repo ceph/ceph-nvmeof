@@ -1,8 +1,11 @@
 source .env
 
 verify_blocklist() {
-  stopped_gw_name=$1
-  NODE_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' $stopped_gw_name)
+  NODE_IP=$1
+  if [ -z "$NODE_IP" ] || [ "$NODE_IP" = "invalid IP" ]; then
+    echo "refusing to verify blocklist with ip '$NODE_IP'"
+    exit 1
+  fi
   BLOCKLIST=$(docker compose exec -T ceph ceph osd blocklist ls)
 
   echo "verifying there is at least 1 entry in the blocklist related to the stopped gateway"
@@ -25,14 +28,15 @@ verify_blocklist() {
 
 echo "obtaining gw1 container id and its ip"
 GW1_NAME=$(docker ps --format '{{.ID}}\t{{.Names}}' | awk '$2 ~ /nvmeof/ && $2 ~ /1/ {print $1}')
+GW1_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$GW1_NAME")
 
 echo "clearing blocklist"
 docker compose exec -T ceph ceph osd blocklist clear
 
-echo "shutting down gw1:$GW1_NAME"
+echo "shutting down gw1:$GW1_NAME ($GW1_IP)"
 docker stop $GW1_NAME
 
 echo "waiting for 30s after shutdown"
 sleep 30
 
-verify_blocklist "$GW1_NAME"
+verify_blocklist "$GW1_IP"

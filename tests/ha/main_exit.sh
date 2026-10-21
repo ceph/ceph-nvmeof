@@ -10,7 +10,7 @@ background_task() {
 
   # Waiting for the ceph container to become healthy
   while true; do
-    container_status=$(docker inspect --format='{{.State.Health.Status}}' ceph)
+    container_status=$(docker inspect --format='{{.State.Health.Status}}' ceph 2>/dev/null || true)
     if [ "$container_status" = "healthy" ]; then
       # success
       break
