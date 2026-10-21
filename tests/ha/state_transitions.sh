@@ -66,8 +66,11 @@ verify_ana_groups() {
 }
 
 verify_blocklist() {
-  stopped_gw_name=$1
-  NODE_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' $stopped_gw_name)
+  NODE_IP=$1
+  if [ -z "$NODE_IP" ] || [ "$NODE_IP" = "invalid IP" ]; then
+    echo "refusing to verify blocklist with ip '$NODE_IP'"
+    exit 1
+  fi
   BLOCKLIST=$(docker compose exec -T ceph ceph osd blocklist ls)
 
   echo "verifying there is at least 1 entry in the blocklist related to the stopped gateway"
@@ -108,7 +111,9 @@ verify_ana_groups "$gw1_ana" "$gw2_ana"
 #
 # Step 2 failover
 #
-echo "Stop gw $GW2_NAME"
+GW2_IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$GW2_NAME")
+docker compose exec -T ceph ceph osd blocklist clear
+echo "Stop gw $GW2_NAME ($GW2_IP)"
 docker stop $GW2_NAME
 
 docker ps
@@ -117,7 +122,7 @@ GW1_FAILOVER_OPTIMIZED=$(expect_optimized $GW1_NAME 2)
 gw1_ana1=$(access_number_by_index "$GW1_FAILOVER_OPTIMIZED" 0)
 gw1_ana2=$(access_number_by_index "$GW1_FAILOVER_OPTIMIZED" 1)
 verify_ana_groups "$gw1_ana1" "$gw1_ana2"
-verify_blocklist "$GW2_NAME"
+verify_blocklist "$GW2_IP"
 
 #
 # Step 3 failback
