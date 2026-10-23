@@ -5,7 +5,7 @@
 groups = ["default", "test"]
 strategy = ["inherit_metadata"]
 lock_version = "4.5.1"
-content_hash = "sha256:f41f0b2d92042ce8fd6510bf3a8c49a8d526c08bf7d709aff2fe733c9cdb37d6"
+content_hash = "sha256:dd040fce5fb5ac4c835b00e85d96a84e5975cd5a8300e23bb5f7c98860d19a45"
 
 [[metadata.targets]]
 requires_python = ">3.9.1"
@@ -584,19 +584,6 @@ files = [
 ]
 
 [[package]]
-name = "netifaces"
-version = "0.11.0"
-summary = "Portable network interface information."
-groups = ["default"]
-files = [
-    {file = "netifaces-0.11.0-cp39-cp39-macosx_10_15_x86_64.whl", hash = "sha256:5be83986100ed1fdfa78f11ccff9e4757297735ac17391b95e17e74335c2047d"},
-    {file = "netifaces-0.11.0-cp39-cp39-macosx_11_0_arm64.whl", hash = "sha256:54ff6624eb95b8a07e79aa8817288659af174e954cca24cdb0daeeddfc03c4ff"},
-    {file = "netifaces-0.11.0-cp39-cp39-manylinux_2_5_i686.manylinux1_i686.whl", hash = "sha256:841aa21110a20dc1621e3dd9f922c64ca64dd1eb213c47267a2c324d823f6c8f"},
-    {file = "netifaces-0.11.0-cp39-cp39-manylinux_2_5_x86_64.manylinux1_x86_64.whl", hash = "sha256:e76c7f351e0444721e85f975ae92718e21c1f361bda946d60a214061de1f00a1"},
-    {file = "netifaces-0.11.0.tar.gz", hash = "sha256:043a79146eb2907edf439899f262b3dfe41717d34124298ed281139a8b93ca32"},
-]
-
-[[package]]
 name = "packaging"
 version = "26.3"
 requires_python = ">=3.9"
@@ -684,6 +671,20 @@ dependencies = [
     "requests",
     "six",
     "sqlalchemy",
+]
+
+[[package]]
+name = "pyroute2"
+version = "0.9.7"
+requires_python = ">=3.9"
+summary = "Python Netlink library"
+groups = ["default"]
+dependencies = [
+    "win-inet-pton; platform_system == \"Windows\"",
+]
+files = [
+    {file = "pyroute2-0.9.7-py3-none-any.whl", hash = "sha256:01a2a3afe565a6acb0a0d5d8ac86c9682b6564407e3d9589070191ae94b737e8"},
+    {file = "pyroute2-0.9.7.tar.gz", hash = "sha256:a678b098478c46ec51d6bf9a03c3cd2ac0172dffa590e9e8c1eeab633d0c17c6"},
 ]
 
 [[package]]
@@ -991,4 +992,15 @@ groups = ["default"]
 files = [
     {file = "urllib3-2.6.3-py3-none-any.whl", hash = "sha256:bf272323e553dfb2e87d9bfd225ca7b0f467b919d7bbd355436d3fd37cb0acd4"},
     {file = "urllib3-2.6.3.tar.gz", hash = "sha256:1b62b6884944a57dbe321509ab94fd4d3b307075e0c2eae991ac71ee15ad38ed"},
+]
+
+[[package]]
+name = "win-inet-pton"
+version = "1.1.0"
+summary = "Native inet_pton and inet_ntop implementation for Python on Windows (with ctypes)."
+groups = ["default"]
+marker = "platform_system == \"Windows\""
+files = [
+    {file = "win_inet_pton-1.1.0-py2.py3-none-any.whl", hash = "sha256:eaf0193cbe7152ac313598a0da7313fb479f769343c0c16c5308f64887dc885b"},
+    {file = "win_inet_pton-1.1.0.tar.gz", hash = "sha256:dd03d942c0d3e2b1cf8bab511844546dfa5f74cb61b241699fa379ad707dea4f"},
 ]
