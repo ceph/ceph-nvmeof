@@ -5,7 +5,7 @@
 groups = ["default", "test"]
 strategy = ["cross_platform", "inherit_metadata"]
 lock_version = "4.5.0"
-content_hash = "sha256:f41f0b2d92042ce8fd6510bf3a8c49a8d526c08bf7d709aff2fe733c9cdb37d6"
+content_hash = "sha256:dd040fce5fb5ac4c835b00e85d96a84e5975cd5a8300e23bb5f7c98860d19a45"
 
 [[metadata.targets]]
 requires_python = ">=3.12,<3.13"
@@ -169,16 +169,6 @@ files = [
 ]
 
 [[package]]
-name = "netifaces"
-version = "0.11.0"
-summary = "Portable network interface information."
-groups = ["default"]
-marker = "python_version >= \"3.12\" and python_version < \"3.13\""
-files = [
-    {file = "netifaces-0.11.0.tar.gz", hash = "sha256:043a79146eb2907edf439899f262b3dfe41717d34124298ed281139a8b93ca32"},
-]
-
-[[package]]
 name = "packaging"
 version = "26.3"
 requires_python = ">=3.9"
@@ -270,20 +260,18 @@ dependencies = [
 ]
 
 [[package]]
-name = "pykmip"
-version = "0.11.0.dev1"
-requires_python = ">= 3.8"
-git = "https://github.com/ceph/PyKMIP.git"
-revision = "e70b82d5bcfe8f03d3f514b3f37d3933a42eb9ad"
-summary = "KMIP library"
+name = "pyroute2"
+version = "0.9.6"
+requires_python = ">=3.9"
+summary = "Python Netlink library"
 groups = ["default"]
 marker = "python_version >= \"3.12\" and python_version < \"3.13\""
 dependencies = [
-    "cryptography",
-    "enum-compat",
-    "requests",
-    "six",
-    "sqlalchemy",
+    "win-inet-pton; platform_system == \"Windows\"",
+]
+files = [
+    {file = "pyroute2-0.9.6-py3-none-any.whl", hash = "sha256:3334091326e560a506635449af03b26920d22d4e5a7996aed354363d106fcef8"},
+    {file = "pyroute2-0.9.6.tar.gz", hash = "sha256:6bc5e2ea9a372ded682b4ede4028ba00236bd6e35b42d833f39a96b219ef1db2"},
 ]
 
 [[package]]
