@@ -815,23 +815,29 @@ class NICS:
         interfaces = netifaces.interfaces()
         if self.logger:
             self.logger.debug(f"Network interfaces: {interfaces}")
-        for device_name in interfaces:
+        for name in interfaces:
+            # getifaddrs() reports an IPv4 address with a label such as
+            # "eth0:vip" under the label; a device name cannot contain ":".
+            device_name = name.split(":", 1)[0]
             if device_name.startswith(self.ignored_device_prefixes):
                 continue
             try:
-                nic = NIC(device_name)
+                nic = self.adapters.get(device_name) or NIC(device_name)
+                if name != device_name:
+                    nic.add_label(name)
             except Exception:
                 if self.logger:
-                    self.logger.exception(f"Error in interface {device_name}")
+                    self.logger.exception(f"Error in interface {name}")
                 continue
+            self.adapters[device_name] = nic
+
+        for device_name, nic in self.adapters.items():
             if self.logger:
                 self.logger.debug(f"interface {device_name}: {nic}")
             for ipv4_addr in nic.ipv4_addresses:
                 self.addresses[ipv4_addr] = device_name
             for ipv6_addr in nic.ipv6_addresses:
                 self.addresses[ipv6_addr] = device_name
-
-            self.adapters[device_name] = nic
 
     def verify_ip_address(self, addr: str, family: str) -> bool:
         # Allow "any host" address
@@ -917,6 +923,11 @@ class NIC:
         self.mac_list = addr_info.get(netifaces.AF_LINK, [])
         self.ipv4_list = addr_info.get(netifaces.AF_INET, [])
         self.ipv6_list = addr_info.get(netifaces.AF_INET6, [])
+
+    def add_label(self, label: str) -> None:
+        # Only IPv4 addresses carry labels
+        addr_info = netifaces.ifaddresses(label)
+        self.ipv4_list = self.ipv4_list + addr_info.get(netifaces.AF_INET, [])
 
     def _read_sysfs(self, file_name: str) -> Tuple[int, str]:
         err = 0
