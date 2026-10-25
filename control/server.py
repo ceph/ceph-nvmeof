@@ -604,6 +604,9 @@ class GatewayServer:
         cmd = [spdk_tgt_path, "--wait-for-rpc", "-u", "-r", self.spdk_rpc_socket_path]
 
         iobuf_options = self.config.get_with_default("spdk", "iobuf_options", "")
+        sock_impl_options = self.config.get_with_default("spdk", "sock_impl_options",
+                                                         '{"ssl": {"recv_buf_size": 2097152, '
+                                                         '"send_buf_size": 2097152}}')
         max_subsystems = self.config.getint_with_default("gateway",
                                                          "max_subsystems",
                                                          GatewayService.MAX_SUBSYSTEMS_DEFAULT)
@@ -687,6 +690,9 @@ class GatewayServer:
 
             # Set SSL tickets for ssl sock implemtation
             self._set_num_ssl_tickets(0)
+
+            # Initialize sock implementation options
+            self._initialize_sock_impl_options(sock_impl_options)
 
             # Initialize RBD CRC32C configuration
             self._initialize_rbd_crc32c()
@@ -874,7 +880,6 @@ class GatewayServer:
             self.spdk_rpc_client.iobuf_set_options(**args)
         except Exception:
             self.logger.exception("IObuf set options returned with error")
-            pass
 
     def _set_num_ssl_tickets(self, tickets_number=0):
         """Set SSL tickets number for ssl socket implementation."""
@@ -883,8 +888,33 @@ class GatewayServer:
             self.spdk_rpc_client.sock_impl_set_options(impl_name="ssl",
                                                        ssl_tickets_number=tickets_number)
         except Exception:
-            self.logger.exception("sock_impl_set_options returned with error")
-            pass
+            self.logger.exception("Failed to set default SSL ticket count")
+
+    def _initialize_sock_impl_options(self, options):
+        """Initialize socket implementation options."""
+
+        args = {}
+        self.logger.debug(f"initialize_sock_impl_options: options: {options}")
+        if not options:
+            return
+
+        try:
+            parsed_options = json.loads(options)
+            if not isinstance(parsed_options, dict) or any(
+                    not isinstance(vals, dict) for vals in parsed_options.values()):
+                raise ValueError("Socket implementation options must be JSON objects")
+            args.update(parsed_options)
+        except Exception:
+            self.logger.exception(f"Failed to parse spdk sock_impl_options ({options})")
+            return
+
+        for impl, vals in args.items():
+            try:
+                self.logger.debug(f"sock_impl_set_options(impl_name={impl}, {vals})")
+                self.spdk_rpc_client.sock_impl_set_options(impl_name=impl, **vals)
+            except Exception:
+                self.logger.exception(f"sock_impl_set_options(impl_name={impl}, {vals}) "
+                                      f"returned with error")
 
     def _initialize_rbd_crc32c(self):
         """Initialize RBD CRC32C configuration."""
