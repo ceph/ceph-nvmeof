@@ -644,6 +644,7 @@ jobs:
         timeout-minutes: 45
         run: |
           . .env
+          export COMPOSE_PROGRESS=quiet
           source "tests/ha/${{ matrix.test }}.sh"
 
       - name: Copy ceph logs
