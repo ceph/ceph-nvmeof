@@ -116,8 +116,7 @@ WORKDIR $APPDIR
 
 #------------------------------------------------------------------------------
 FROM python-intermediate AS builder-base
-ARG PDM_VERSION=2.26.8 \
-    PDM_INSTALL_CMD=sync \
+ARG PDM_INSTALL_CMD=sync \
     PDM_INSTALL_FLAGS="-v --no-isolation --no-self --no-editable" \
     PDM_INSTALL_DEV=""
 ENV PDM_INSTALL_FLAGS="$PDM_INSTALL_FLAGS $PDM_INSTALL_DEV"
@@ -135,7 +134,7 @@ RUN \
 
 RUN \
     --mount=type=cache,target=/root/.cache/pip \
-    pip install pdm==$PDM_VERSION
+    pip install pdm
 
 #------------------------------------------------------------------------------
 FROM builder-base AS builder
