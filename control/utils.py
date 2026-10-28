@@ -16,7 +16,6 @@ import logging
 import logging.handlers
 import gzip
 import shutil
-import netifaces
 import ipaddress
 from typing import Tuple, List
 from cryptography.fernet import Fernet
@@ -26,6 +25,12 @@ import json
 import subprocess
 from pathlib import Path
 from binascii import Error, crc32
+# Keep this import at module level. Importing pyroute2 runs "uname -p" and
+# "file" as subprocesses (via platform.uname() and platform.architecture()).
+# The gateway installs a SIGCHLD handler that exits on any child termination,
+# so the import has to happen before that handler is in place.
+from pyroute2 import IPRoute
+from pyroute2.netlink.rtnl import rt_scope
 
 
 class GatewayEnumUtils:
@@ -812,26 +817,39 @@ class NICS:
         self._build_adapter_info()
 
     def _build_adapter_info(self):
-        interfaces = netifaces.interfaces()
+        with IPRoute() as ipr:
+            links = ipr.get_links()
+            addrs = ipr.get_addr()
         if self.logger:
-            self.logger.debug(f"Network interfaces: {interfaces}")
-        for device_name in interfaces:
-            if device_name.startswith(self.ignored_device_prefixes):
+            self.logger.debug(f"Network interfaces: {[link.get('IFLA_IFNAME') for link in links]}")
+        # Netlink names an address's device by index, so a label such as
+        # "eth0:vip" never shows up as a device of its own.
+        nics = {}
+        for link in links:
+            device_name = link.get("IFLA_IFNAME")
+            if not device_name or device_name.startswith(self.ignored_device_prefixes):
                 continue
-            try:
-                nic = NIC(device_name)
-            except Exception:
-                if self.logger:
-                    self.logger.exception(f"Error in interface {device_name}")
-                continue
-            if self.logger:
-                self.logger.debug(f"interface {device_name}: {nic}")
-            for ipv4_addr in nic.ipv4_addresses:
-                self.addresses[ipv4_addr] = device_name
-            for ipv6_addr in nic.ipv6_addresses:
-                self.addresses[ipv6_addr] = device_name
+            nics[link["index"]] = NIC(device_name, link.get("IFLA_ADDRESS", ""))
 
-            self.adapters[device_name] = nic
+        for addr in addrs:
+            nic = nics.get(addr["index"])
+            # A link-local address cannot be listened on without a scope id
+            if nic is None or addr["scope"] == rt_scope["link"]:
+                continue
+            # IFA_ADDRESS is the peer on a point-to-point link
+            ip = addr.get("IFA_LOCAL") or addr.get("IFA_ADDRESS")
+            if addr["family"] == socket.AF_INET:
+                nic.ipv4_addresses.append(ip)
+            elif addr["family"] == socket.AF_INET6:
+                nic.ipv6_addresses.append(ip)
+            else:
+                continue
+            self.addresses[ip] = nic.device_name
+
+        for nic in nics.values():
+            if self.logger:
+                self.logger.debug(f"interface {nic.device_name}: {nic}")
+            self.adapters[nic.device_name] = nic
 
     def verify_ip_address(self, addr: str, family: str) -> bool:
         # Allow "any host" address
@@ -849,13 +867,9 @@ class NICS:
             return False
         # This should be the last condition
         if family == "ipv4":
-            for v4addr in adapter.ipv4_list:
-                if "addr" in v4addr and v4addr["addr"] == addr:
-                    return True
+            return addr in adapter.ipv4_addresses
         elif family == "ipv6":
-            for v6addr in adapter.ipv6_list:
-                if "addr" in v6addr and v6addr["addr"] == addr:
-                    return True
+            return addr in adapter.ipv6_addresses
         return False
 
     @staticmethod
@@ -903,20 +917,11 @@ class NIC:
 
     sysfs_root = '/sys/class/net'
 
-    def __init__(self, device_name: str) -> None:
+    def __init__(self, device_name: str, mac_address: str = "") -> None:
         self.device_name = device_name
-
-        self.mac_list = ''
-        self.ipv4_list = []
-        self.ipv6_list = []
-
-        self._extract_addresses()
-
-    def _extract_addresses(self) -> None:
-        addr_info = netifaces.ifaddresses(self.device_name)
-        self.mac_list = addr_info.get(netifaces.AF_LINK, [])
-        self.ipv4_list = addr_info.get(netifaces.AF_INET, [])
-        self.ipv6_list = addr_info.get(netifaces.AF_INET6, [])
+        self.mac_address = mac_address
+        self.ipv4_addresses: List[str] = []
+        self.ipv6_addresses: List[str] = []
 
     def _read_sysfs(self, file_name: str) -> Tuple[int, str]:
         err = 0
@@ -949,22 +954,6 @@ class NIC:
     def speed(self) -> int:
         err, content = self._read_sysfs(f"{NIC.sysfs_root}/{self.device_name}/speed")
         return int(content) if not err else 0
-
-    @property
-    def mac_address(self) -> str:
-        if self.mac_list:
-            return self.mac_list[0].get('addr')
-        else:
-            return ''
-
-    @property
-    def ipv4_addresses(self) -> List[str]:
-        return [ipv4_info.get('addr') for ipv4_info in self.ipv4_list]
-
-    @property
-    def ipv6_addresses(self) -> List[str]:
-        # Note. ipv6 addresses are suffixed by the adapter name
-        return [ipv6_info.get('addr').split('%')[0] for ipv6_info in self.ipv6_list]
 
     def __str__(self):
         return (
