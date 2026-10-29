@@ -50,7 +50,7 @@ verify_num_namespaces() {
   NQN_INDEX=1 # the tested subsystem is expected to be a second one, after tests/ha/setup.
 
   for i in $(seq 100); do
-    subs=$(docker compose  run -T --rm nvmeof-cli --server-address $GW_IP --server-port 5500 get_subsystems 2>&1 1>/dev/null | grep -v Creating | sed 's/Get subsystems://')
+    subs=$(docker compose  run -T --rm nvmeof-cli --server-address $GW_IP --server-port 5500 get_subsystems 2>&1 1>/dev/null | grep -vE 'Creating|Created' | sed 's/Get subsystems://')
     nss="$(num_nss "$subs" $NQN_INDEX)"
     if [ "$nss" -ne "$EXPECTED_NAMESPACES" ]; then
       echo "Not ready $GW_IP $nss $EXPECTED_NAMESPACES"
