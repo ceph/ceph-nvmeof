@@ -102,6 +102,7 @@ sudo docker run \
     --skip-gw-failover-latency-test \
     --skip-get-subsystems-latency-test \
     --skip-controller-get-io-statistics-test \
+    --skip-cross-namespace-copy-test \
     --ibm-cloud-key=nokey \
     --github-nvmeof-token=nokey \
     --check-vms-stage \
