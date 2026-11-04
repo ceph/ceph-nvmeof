@@ -9038,6 +9038,13 @@ class GatewayService(pb2_grpc.GatewayServicer):
         return self.execute_grpc_function(self.get_spdk_nvmf_log_flags_and_level_safe,
                                           request, context)
 
+    @staticmethod
+    def check_unknown_spdk_log_flags(all_log_flags: dict, flags) -> str:
+        unknown_flags = [flag for flag in dict.fromkeys(flags) if flag not in all_log_flags]
+        if not unknown_flags:
+            return ""
+        return f"Unknown SPDK log flags: {', '.join(unknown_flags)}"
+
     def set_spdk_nvmf_logs_safe(self, request, context):
         """Enables spdk nvmf logs"""
         log_level = None
@@ -9064,9 +9071,14 @@ class GatewayService(pb2_grpc.GatewayServicer):
         self.logger.info(f"Received request to set SPDK logs: log_level: {log_level}, "
                          f"print_level: {print_level}, extra: {request.extra_log_flags}{peer_msg}")
 
+        nvmf_log_flags = []
         try:
-            nvmf_log_flags = [key for key in self.spdk_rpc_client.log_get_flags().keys()
-                              if key.startswith('nvmf')]
+            all_log_flags = self.spdk_rpc_client.log_get_flags()
+            errmsg = self.check_unknown_spdk_log_flags(all_log_flags, request.extra_log_flags)
+            if errmsg:
+                self.logger.error(errmsg)
+                return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
+            nvmf_log_flags = [key for key in all_log_flags.keys() if key.startswith('nvmf')]
             nvmf_log_flags += request.extra_log_flags
             ret = [self.spdk_rpc_client.log_set_flag(
                 flag=flag) for flag in nvmf_log_flags]
@@ -9081,9 +9093,12 @@ class GatewayService(pb2_grpc.GatewayServicer):
         except Exception as ex:
             errmsg = "Failure setting SPDK log levels"
             self.logger.exception(errmsg)
-            errmsg = "{errmsg}:\n{ex}"
+            errmsg = f"{errmsg}:\n{ex}"
             for flag in nvmf_log_flags:
-                self.spdk_rpc_client.log_clear_flag(flag=flag)
+                try:
+                    self.spdk_rpc_client.log_clear_flag(flag=flag)
+                except Exception:
+                    self.logger.exception(f"Failure clearing SPDK log flag {flag}")
             resp = self.parse_json_exeption(ex)
             status = errno.EINVAL
             if resp:
@@ -9116,8 +9131,12 @@ class GatewayService(pb2_grpc.GatewayServicer):
                          f"extra: {request.extra_log_flags}{peer_msg}")
 
         try:
-            nvmf_log_flags = [key for key in self.spdk_rpc_client.log_get_flags().keys()
-                              if key.startswith('nvmf')]
+            all_log_flags = self.spdk_rpc_client.log_get_flags()
+            errmsg = self.check_unknown_spdk_log_flags(all_log_flags, request.extra_log_flags)
+            if errmsg:
+                self.logger.error(errmsg)
+                return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
+            nvmf_log_flags = [key for key in all_log_flags.keys() if key.startswith('nvmf')]
             nvmf_log_flags += request.extra_log_flags
             ret = [self.spdk_rpc_client.log_clear_flag(flag=flag)
                    for flag in nvmf_log_flags]
