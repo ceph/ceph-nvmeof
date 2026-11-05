@@ -129,13 +129,18 @@ RUN \
     --mount=type=cache,target=/var/cache/dnf \
     --mount=type=cache,target=/var/lib/dnf \
     dnf install -y python3-pip gcc gcc-c++ python3-devel libffi-devel git
-RUN \
-    --mount=type=cache,target=/root/.cache/pip \
-    pip install -U pip "setuptools<82" wheel
 
 RUN \
     --mount=type=cache,target=/root/.cache/pip \
     pip install pdm==$PDM_VERSION
+
+RUN \
+    --mount=type=cache,target=/root/.cache/pip \
+    pip install -U pip "hishel<=1.4.0"
+
+RUN \
+    --mount=type=cache,target=/root/.cache/pip \
+    pip install -U pip "setuptools<82" wheel
 
 #------------------------------------------------------------------------------
 FROM builder-base AS builder
