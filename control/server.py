@@ -881,7 +881,7 @@ class GatewayServer:
 
         try:
             self.spdk_rpc_client.sock_impl_set_options(impl_name="ssl",
-                                                       num_ssl_tickets=tickets_number)
+                                                       ssl_tickets_number=tickets_number)
         except Exception:
             self.logger.exception("Failed to set default SSL ticket count")
 
