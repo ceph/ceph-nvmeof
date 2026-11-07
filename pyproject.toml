@@ -31,7 +31,6 @@ dependencies = [
     "netifaces ~= 0.11.0",
     "cryptography>=43.0.3",
     "PyKMIP @ git+https://github.com/ceph/PyKMIP.git",
-    "hishel<=1.4.0",
     "setuptools<82.0.0",
 ]
 
