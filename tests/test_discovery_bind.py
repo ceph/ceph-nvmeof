@@ -1,3 +1,4 @@
+import copy
 import pytest
 from control.cli import main as cli
 from control.server import GatewayServer
@@ -19,6 +20,10 @@ def gateway(config, request):
     discPort = config.getint("discovery", "port")
     config.config["gateway"]["group"] = group_name
     config.config["gateway-logs"]["log_level"] = "debug"
+    if request.function.__name__ == "test_discovery_bind_abort":
+        # Quit on the first discovery service failure instead of restarting it
+        config = copy.deepcopy(config)
+        config.config["discovery"]["restart_attempts_limit"] = "0"
     ceph_utils = CephUtils(config)
 
     with GatewayServer(config) as gateway:
