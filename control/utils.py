@@ -144,6 +144,15 @@ class GatewayUtils:
         return False
 
     @staticmethod
+    def get_address_family(addr: str) -> str:
+        """Returns "ipv4" or "ipv6" according to the address, or "" if it's not a valid IP"""
+        try:
+            ipaddr = ipaddress.ip_address(GatewayUtils.unescape_address(addr))
+        except ValueError:
+            return ""
+        return f"ipv{ipaddr.version}"
+
+    @staticmethod
     def is_valid_ip_address(addr: str, adrfam: str) -> str:
         ipaddr = None
         try:

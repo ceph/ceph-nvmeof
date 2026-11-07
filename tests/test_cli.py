@@ -107,6 +107,7 @@ listener_list_invalid_adrfam = [["-a", addr, "-s", "5013", "--adrfam", "JUNK"]]
 listener_list_no_adrfam = [["-a", addr, "-s", "5053"]]
 listener_list_ipv6 = [["-a", addr_ipv6, "-s", "5003", "--adrfam", "ipv6"],
                       ["-a", addr_ipv6, "-s", "5004", "--adrfam", "IPV6"]]
+listener_list_ipv6_no_adrfam = [["-a", addr_ipv6, "-s", "5005"]]
 listener_list_discovery = [["-n", discovery_nqn, "-t", host_name, "-a", addr, "-s", "5012"]]
 listener_list_negative_port = [["-t", host_name, "-a", addr, "-s", "-2000"]]
 listener_list_big_port = [["-t", host_name, "-a", addr, "-s", "70000"]]
@@ -2018,6 +2019,48 @@ class TestCreate:
         assert "create_listener: True" in caplog.text
         assert "ipv4" in caplog.text.lower()
 
+    @pytest.mark.parametrize("listener", listener_list_ipv6_no_adrfam)
+    def test_create_listener_ipv6_no_adrfam(self, caplog, listener, gateway):
+        caplog.clear()
+        cli(["--server-address", server_addr_ipv6, "listener", "add", "--subsystem", subsystem,
+             "--host-name", host_name, "--verify-host-name"] + listener)
+        assert f"TCP ipv6 listener for {subsystem} at [{listener[1]}]:{listener[3]}" \
+               in caplog.text
+        assert f"Adding {subsystem} listener at [{listener[1]}]:{listener[3]}: " \
+               f"Successful" in caplog.text
+        caplog.clear()
+        cli(["--server-address", server_addr_ipv6, "listener", "del", "--subsystem", subsystem,
+             "--host-name", host_name] + listener)
+        assert f"Deleting listener [{listener[1]}]:{listener[3]} from {subsystem} " \
+               f"for host {host_name}: Successful" in caplog.text
+
+    @pytest.mark.parametrize("listener", listener_list_ipv6_no_adrfam)
+    def test_create_listener_ipv6_no_adrfam_grpc(self, caplog, listener, gateway):
+        gw, stub = gateway
+        caplog.clear()
+        listener_add_req = pb2.create_listener_req(
+            nqn=subsystem,
+            host_name=host_name,
+            traddr=listener[1],
+            trsvcid=int(listener[3]),
+            verify_host_name=True)
+        ret = stub.create_listener(listener_add_req)
+        assert ret.status == 0
+        assert f"Address family was set to ipv6 according to address {listener[1]}" \
+               in caplog.text
+        assert f"TCP ipv6 listener for {subsystem} at {listener[1]}:{listener[3]}" \
+               in caplog.text
+        caplog.clear()
+        listener_del_req = pb2.delete_listener_req(
+            nqn=subsystem,
+            host_name=host_name,
+            traddr=listener[1],
+            trsvcid=int(listener[3]))
+        ret = stub.delete_listener(listener_del_req)
+        assert ret.status == 0
+        assert f"Address family was set to ipv6 according to address {listener[1]}" \
+               in caplog.text
+
     def _adrfam2string(self, adrfam):
         if isinstance(adrfam, str):
             return adrfam
@@ -2943,15 +2986,12 @@ class TestListenerBadIPAddresses:
             pass
         assert "error: IP address :: is not an IPv4 address" in caplog.text
         assert rc == 2
-        rc = 0
-        try:
-            cli(["listener", "add", "--subsystem", subsystem11, "--traddr", "::",
-                 "--trsvcid", "4620", "--host-name", host_name])
-        except SystemExit as sysex:
-            rc = sysex.code
-            pass
-        assert "error: IP address :: is not an IPv4 address" in caplog.text
-        assert rc == 2
+        caplog.clear()
+        cli(["listener", "add", "--subsystem", "nqn.2016-06.io.spdk:junk", "--traddr", "::",
+             "--trsvcid", "4620", "--host-name", host_name])
+        assert "is not an IPv4 address" not in caplog.text
+        assert "TCP ipv6 listener for nqn.2016-06.io.spdk:junk at [::]:4620" in caplog.text
+        assert "can't find subsystem nqn.2016-06.io.spdk:junk" in caplog.text
 
 
 class TestImageResize:
