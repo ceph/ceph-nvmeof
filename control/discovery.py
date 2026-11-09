@@ -1147,6 +1147,7 @@ class DiscoveryService:
                     return
             except OSError as ex:
                 self.logger.error(f"Recived data failed. {ex.errno}: {ex.strerror}")
+                return
 
             while True:
                 if len(self_conn.recv_buffer) < 8:
@@ -1157,20 +1158,29 @@ class DiscoveryService:
                 ph_len = pdu[2]      # noqa: F841
                 ph_off = pdu[3]      # noqa: F841
                 package_len = pdu[4]
+
+                # Only guard against zero/sub-header length; do NOT bound by NVME_TCP_PDU_UNIT
+                if package_len < 8:
+                    self.logger.error(f"Invalid package_len: {package_len}")
+                    err = -1
+                    break
+
                 if len(self_conn.recv_buffer) < package_len:
                     return
 
                 data = self_conn.recv_buffer[:package_len]
                 self_conn.recv_buffer = self_conn.recv_buffer[package_len:]
 
+                # Keep original sq_head_ptr behavior expected by tests
                 self_conn.sq_head_ptr += 1
                 if self_conn.sq_head_ptr > SQ_HEAD_MAX:
                     self_conn.sq_head_ptr = 1
 
-                if NVME_TCP_PDU(pdu_type) == NVME_TCP_PDU.ICREQ:
+                # Check raw values directly to avoid ValueError on corrupt types like 108
+                if pdu_type == NVME_TCP_PDU.ICREQ.value:
                     err = self.reply_initialize(conn)
 
-                elif NVME_TCP_PDU(pdu_type) == NVME_TCP_PDU.CMD:
+                elif pdu_type == NVME_TCP_PDU.CMD.value:
                     CMD1 = struct.unpack_from('<BBH', data, 8)
                     opcode = CMD1[0]
                     reserved = CMD1[1]      # noqa: F841
@@ -1192,6 +1202,7 @@ class DiscoveryService:
                         err = self.reply_not_supported(conn, data, cmd_id)
                 else:
                     self.logger.error(f"unsupported pdu type: {pdu_type}")
+                    err = -1
 
                 if err == -1 or self_conn.shutdown_now is True:
                     del self.conn_vals[conn.fileno()]
