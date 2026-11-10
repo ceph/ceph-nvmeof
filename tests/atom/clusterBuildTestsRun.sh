@@ -4,25 +4,35 @@
 # the exit code will be the same as the exit code of the failed command.
 # see https://github.com/ceph/ceph-nvmeof/actions/runs/11928539421/job/33246031083
 set -e
-# pipefail ensures that a pipeline returns the exit status of the first failing command
-# rather than the last command (e.g., tee), so docker failures are properly captured
 set -o pipefail
 
 
 VERSION=$1
 CEPH_BRANCH=$2
-# CEPH_SHA supports:
-# - "latest"           - newest ready Shaman build for CEPH_BRANCH is resolved to a commit SHA
-# - anything else      - passed through as-is (a release number like "20.2.2" or a raw commit SHA)
 if [ "$3" = "latest" ]; then
     CEPH_SHA=$(curl -s https://shaman.ceph.com/api/repos/ceph/$CEPH_BRANCH/latest/centos/9/ | jq -r "[.[] | select(.archs[] == \"$(uname -m)\" and .status == \"ready\") | .sha1] | unique | .[0] // empty")
 else
     CEPH_SHA=$3
 fi
-ATOM_SHA=$4
-ACTION_URL=$5
+ACTION_URL=$4
+BUSY_FILE='/home/cephnvme/busyServer.txt'
+ATOM_IMAGE_FILE='/home/cephnvme/atom_image.txt'
+
+if [ ! -r "$ATOM_IMAGE_FILE" ]; then
+    echo "ERROR: $ATOM_IMAGE_FILE is missing or not readable on this runner."
+    echo "       It must hold the atom test framework image, for example:"
+    echo "       echo 'quay.io/<namespace>/nvmeof_atom:latest' > $ATOM_IMAGE_FILE"
+    exit 1
+fi
+ATOM_IMAGE=$(tr -d '[:space:]' < "$ATOM_IMAGE_FILE")
+if [ -z "$ATOM_IMAGE" ]; then
+    echo "ERROR: $ATOM_IMAGE_FILE is empty, it must hold an atom container image reference."
+    exit 1
+fi
 
 echo "CEPH_SHA found is: $CEPH_SHA"
+echo "ATOM_IMAGE is: $ATOM_IMAGE"
+
 
 # Choose the Ceph image based on the CEPH_SHA format:
 # - release tag ("20.2.2" or "v20.2.1") -> official quay.io/ceph/ceph, tag always prefixed with "v"
@@ -34,8 +44,6 @@ else
 fi
 echo "CEPH_IMG to be used is: $CEPH_IMG"
 
-RUNNER_FOLDER='/home/cephnvme/actions-runner'
-BUSY_FILE='/home/cephnvme/busyServer.txt'
 
 check_cluster_busy() {
     local busy_file=$1
@@ -55,31 +63,32 @@ check_cluster_busy() {
 }
 
 hostname
-# Acquire the cluster lock before any setup work (clone/build) so the whole
-# run is guarded and a failure during setup does not leave the server without
-# a busy marker.
 check_cluster_busy "$BUSY_FILE" "$ACTION_URL"
-rm -rf $RUNNER_FOLDER/ceph-nvmeof-atom
 sudo rm -rf /root/.ssh/atom_backup/artifact/multiIBMCloudServers_m7/*
 sudo ls -lta /root/.ssh/atom_backup/artifact/multiIBMCloudServers_m7
-cd $RUNNER_FOLDER
 
-# Cloning atom repo
-git clone git@github.ibm.com:NVME-Over-Fiber/ceph-nvmeof-atom.git
+for i in 1 2 3; do
+    echo "Attempt $i to pull $ATOM_IMAGE..."
+    sudo docker pull "$ATOM_IMAGE" && break
+    if [ "$i" = 3 ]; then
+        echo "ERROR: failed to pull $ATOM_IMAGE after 3 attempts"
+        exit 1
+    fi
+    echo "Pull failed. Retrying in $((i * 10))s..."
+    sleep $((i * 10))
+done
 
-# Switch to given SHA
-cd ceph-nvmeof-atom
-git checkout $ATOM_SHA
-
-# Build atom images based on the cloned repo
-sudo docker build -t nvmeof_atom:$ATOM_SHA .
+ATOM_IMAGE_DIGEST=$(sudo docker image inspect --format '{{if .RepoDigests}}{{index .RepoDigests 0}}{{end}}' "$ATOM_IMAGE" 2>/dev/null || true)
+echo "Atom image in use: $ATOM_IMAGE (digest: ${ATOM_IMAGE_DIGEST:-unknown})"
 
 set -x
 # Create a temporary file to capture output and exit status
 TEMP_OUTPUT="/tmp/docker_output_$$"
 sudo docker run \
+    -v /etc/localtime:/etc/localtime:ro \
     -v /root/.ssh:/root/.ssh \
-    nvmeof_atom:"$ATOM_SHA" \
+    -e PYTHONUNBUFFERED=1 \
+    "$ATOM_IMAGE" \
     bash -c "python3 atom_main.py \
     --project=nvmeof \
     --ceph-img="$CEPH_IMG" \
