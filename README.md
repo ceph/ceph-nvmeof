@@ -437,6 +437,13 @@ make build SPDK_TARGET_ARCH="armv8.2-a+crypto" \
     SPDK_MAKEFLAGS="DPDKBUILD_FLAGS=-Dplatform=kunpeng920" SPDK_CONFIGURE_DSA=""
 ```
 
+To build SPDK for development, with assertions enabled and no optimization:
+```bash
+make build SPDK_CONFIGURE_DEBUG=--enable-debug SVC="spdk bdevperf nvmeof"
+```
+
+By default SPDK is built as an optimized release build, which is also what the published images use.
+
 The resulting images should be like these:
 
 ```bash

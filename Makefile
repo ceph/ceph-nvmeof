@@ -59,6 +59,7 @@ build: export SPDK_GIT_COMMIT != git rev-parse HEAD:spdk
 build: export BUILD_DATE != date -u +"%Y-%m-%d %H:%M:%S %Z"
 build: export NVMEOF_GIT_MODIFIED_FILES != git status -s | grep -e "^ *M" | sed 's/^ *M //' | xargs
 build: export SPDK_CONFIGURE_DSA := $(SPDK_CONFIGURE_DSA)
+build: export SPDK_CONFIGURE_DEBUG := $(SPDK_CONFIGURE_DEBUG)
 
 # Variables
 SHAMAN_FETCH_ATTEMPTS := 3
