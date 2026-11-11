@@ -5,10 +5,31 @@
 #  SPDX-License-Identifier: LGPL-3.0-or-later
 #
 
+import os
 from abc import ABC, abstractmethod
 from .config import GatewayConfig
 from collections import defaultdict
-from typing import Dict
+from typing import Dict, Optional
+
+
+def default_librbd_core_mask(cpu_count: Optional[int]) -> Optional[str]:
+    """Return the four CPUs after the default reactor mask 0-3.
+
+    The gateway starts reactors on cores 0-3 when no reactor mask is
+    configured. Those next four CPUs exist only when at least eight CPUs
+    are online.
+    """
+    if cpu_count is not None and cpu_count >= 8:
+        return "[4-7]"
+    return None
+
+
+def resolve_librbd_core_mask(configured: Optional[str],
+                             cpu_count: Optional[int]) -> Optional[str]:
+    """Use an explicit conf value, otherwise the default mask."""
+    if configured:
+        return configured
+    return default_librbd_core_mask(cpu_count)
 
 
 # Interface for cluster allocation strategy
@@ -28,9 +49,23 @@ class ClusterAllocationStrategy(ABC):
         """Init common cluster context management variables"""
         self.config = config
         self.gs = gs
-        self.librbd_core_mask = self.config.get_with_default(
+        configured_mask = self.config.get_with_default(
             "spdk", "librbd_core_mask", None
         )
+        self.librbd_core_mask = resolve_librbd_core_mask(
+            configured_mask, os.cpu_count()
+        )
+        if not configured_mask:
+            if self.librbd_core_mask:
+                self.gs.logger.info(
+                    f"spdk.librbd_core_mask unset; using {self.librbd_core_mask}, "
+                    f"the four CPUs after the default reactor mask 0-3"
+                )
+            else:
+                self.gs.logger.info(
+                    "spdk.librbd_core_mask unset and fewer than 8 CPUs are "
+                    "online; leaving librbd threads unpinned"
+                )
         self.rados_id = self.config.get_with_default("ceph", "id", "")
         if self.rados_id == "":
             self.rados_id = None
