@@ -397,7 +397,7 @@ class TestCreate:
         assert "No subsystem with serial number JUNK" in caplog.text
         caplog.clear()
         cli(["subsystem", "list", "--subsystem", "JUNK"])
-        assert "Failure listing subsystems: No such device" in caplog.text
+        assert "Failure listing subsystems: Subsystem with NQN 'JUNK' not found" in caplog.text
         assert '"nqn": "JUNK"' in caplog.text
         caplog.clear()
         subs_list = cli_test(["--format", "text", "subsystem", "list"])

@@ -39,6 +39,7 @@ class CephUtils:
     MB = 1024 * 1024
     encryption_table_sizes = {pb2.EncryptionFormat.luks1: 4 * MB,
                               pb2.EncryptionFormat.luks2: 16 * MB}
+    ALLOWED_POOL_APPLICATIONS = ["rbd"]
 
     def __init__(self, config):
         self.logger = GatewayLogger(config).logger
@@ -313,6 +314,22 @@ class CephUtils:
             self.logger.exception(f"Unknown pool type {pool_type} in pool {pool_found}")
 
         return CephUtils.CephPoolType.INVALID
+
+    def pool_applications(self, pool) -> list:
+        if not pool:
+            return []
+        apps = []
+        try:
+            with rados.Rados(conffile=self.ceph_conf, rados_id=self.rados_id) as cluster:
+                if not cluster.pool_exists(pool):
+                    return []
+                with cluster.open_ioctx(pool) as ioctx:
+                    apps = ioctx.application_list()
+        except Exception:
+            self.logger.exception(f"Can't get pool {pool} applications")
+            return None
+
+        return apps
 
     def _flag_is_set(self, flag, pool) -> bool:
         cmd = '{' + f'"prefix": "osd pool get", "pool": "{pool}", ' \
@@ -749,6 +766,38 @@ class CephUtils:
                     self.logger.exception(f"Error while trying to get the id of image "
                                           f"{img_path}")
         return value
+
+    def get_image_data_pool(self, pool: str, image_name: str, rados_namespace_name: str) -> str:
+        pool_id = None
+        pool_name = None
+        if not self.pool_exists(pool):
+            self.logger.warning(f"Pool {pool} doesn't exist")
+            return None
+
+        img_path = f"{pool}/{rados_namespace_name}/{image_name}" if rados_namespace_name \
+            else f"{pool}/{image_name}"
+        with rados.Rados(conffile=self.ceph_conf, rados_id=self.rados_id) as cluster:
+            with cluster.open_ioctx(pool) as ioctx:
+                if rados_namespace_name:
+                    ioctx.set_namespace(rados_namespace_name)
+                try:
+                    with rbd.Image(ioctx, image_name) as img:
+                        pool_id = img.data_pool_id()
+                        self.logger.debug(f"The data pool ID of image {img_path} is {pool_id}")
+                except rbd.ImageNotFound:
+                    self.logger.warning(f"Image {img_path} doesn't exist")
+                except Exception:
+                    self.logger.exception(f"Error while trying to get the data pool id of image "
+                                          f"{img_path}")
+            if pool_id is None or pool_id < 0:
+                return None
+            try:
+                with cluster.open_ioctx2(pool_id) as ioctx:
+                    pool_name = ioctx.get_pool_name()
+            except Exception:
+                self.logger.exception(f"Error getting pool name for id {pool_id}")
+                return None
+        return pool_name
 
     def get_rbd_exception_details(self, ex):
         ex_details = (None, None)

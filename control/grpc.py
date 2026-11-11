@@ -93,6 +93,15 @@ class BdevStatus:
         self.degraded = degraded
 
 
+class SubsysNetworkInfo:
+    def __init__(self, network_masks=None, use_group_conf=False):
+        self.network_masks = network_masks or []
+        self.use_group_conf = use_group_conf
+
+    def __bool__(self):
+        return bool(self.network_masks) or self.use_group_conf
+
+
 class MonitorGroupService(monitor_pb2_grpc.MonitorGroupServicer):
     def __init__(self, set_group_id: Callable[[int], None]) -> None:
         self.set_group_id = set_group_id
@@ -923,8 +932,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
     PSK_PREFIX = "psk"
     DHCHAP_PREFIX = "dhchap"
-    DHCHAP_CONTROLLER_PREFIX = "dhchap_ctrlr"
+    DHCHAP_CONTROLLER_PREFIX = "dhchap-ctrlr"
     KEYS_DIR = "/var/tmp"
+    KEY_NAME_DELIMITER = "_"
     MAX_SUBSYSTEMS_DEFAULT = 128
     MAX_NAMESPACES_DEFAULT = 4096
     MAX_NAMESPACES_PER_SUBSYSTEM_DEFAULT = 512
@@ -978,6 +988,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
         self.verify_listener_ip = self.config.getboolean_with_default("gateway",
                                                                       "verify_listener_ip",
                                                                       True)
+        listener_network_masks_str = self.config.get_with_default(
+            "gateway", "listener_network_masks", "")
+        self.listener_network_masks = [m.strip() for m in listener_network_masks_str.split(",")
+                                       if m.strip()]
         self.gateway_group = self.config.get_with_default("gateway", "group", "")
         self.max_hosts_per_namespace = self.config.getint_with_default(
             "gateway",
@@ -1054,6 +1068,27 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         self.verify_image_encryption_settings = self.config.getboolean_with_default(
             "gateway", "verify_image_encryption_settings", True)
+        self.verify_pool_applications = self.config.getboolean_with_default(
+            "gateway", "verify_pool_applications", True)
+        self.allowed_pool_apps = []
+        allowed_pool_apps = self.config.get_with_default(
+            "gateway", "allowed_pool_applications", None)
+        if allowed_pool_apps:
+            self.allowed_pool_apps = [app.strip() for app in allowed_pool_apps.split(",")
+                                      if app.strip()]
+        if not self.allowed_pool_apps:
+            self.allowed_pool_apps = CephUtils.ALLOWED_POOL_APPLICATIONS
+        if not self.allowed_pool_apps:
+            self.allowed_pool_apps = []
+        self.allowed_pool_apps_msg = ""
+        if self.allowed_pool_apps:
+            if len(self.allowed_pool_apps) == 1:
+                self.allowed_pool_apps_msg = \
+                    "\nAllowed application is: " + self.allowed_pool_apps[0]
+            else:
+                _apps = ", ".join(self.allowed_pool_apps)
+                self.allowed_pool_apps_msg = "\nAllowed applications are: " + _apps
+
         self.kmip_cert_dir = self.config.get_with_default("kmip",
                                                           "cert_dir",
                                                           "./certs/kmip/{server_name}")
@@ -1115,6 +1150,14 @@ class GatewayService(pb2_grpc.GatewayServicer):
             self.spdk_notifications_thread.start()
         # Keep towards the end of init as we use fields like gateway_state in the rebalance thread
         self.rebalance = Rebalance(self)
+
+    @staticmethod
+    def append_message(msg: str, addition: str) -> str:
+        ret_msg = msg
+        if ret_msg:
+            ret_msg += "\n"
+        ret_msg += addition
+        return ret_msg
 
     def read_spdk_notifications(self, read_interval):
         if read_interval <= 0:
@@ -1270,10 +1313,12 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
     @staticmethod
     def construct_key_name_for_keyring(subsysnqn: str, hostnqn: str, prefix: str = None) -> str:
-        key_name = hashlib.sha256(subsysnqn.encode()).hexdigest() + "_"
-        key_name += hashlib.sha256(hostnqn.encode()).hexdigest()
+        key_name = hashlib.sha256(subsysnqn.encode()).hexdigest()
+        if hostnqn:
+            key_name += GatewayService.KEY_NAME_DELIMITER + \
+                hashlib.sha256(hostnqn.encode()).hexdigest()
         if prefix:
-            key_name = prefix + "_" + key_name
+            key_name = prefix + GatewayService.KEY_NAME_DELIMITER + key_name
         return key_name
 
     def remove_key_from_keyring(self, key_type: str, subsysnqn: str, hostnqn: str) -> None:
@@ -1319,6 +1364,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
     def remove_all_subsystem_keys_from_keyring(self, subsysnqn: str) -> None:
         assert self.rpc_lock.locked(), "RPC is unlocked when calling " \
                                        "remove_all_subsystem_keys_from_keyring()"
+        key_name_part = None
         try:
             key_list = self.spdk_rpc_client.keyring_get_keys()
         except Exception:
@@ -1329,25 +1375,38 @@ class GatewayService(pb2_grpc.GatewayServicer):
             key_name = None
             try:
                 key_path = one_key["path"]
+            except Exception:
+                pass
+            try:
                 key_name = one_key["name"]
             except Exception:
-                self.logger.exception(f"Can't get details for key {one_key}")
-                continue
-            if not key_name or not key_path:
+                self.logger.exception(f"Can't get name of key {one_key}")
+            if not key_name:
                 continue
 
             should_remove = False
-            if key_path.startswith(f"{self.KEYS_DIR}/{self.PSK_PREFIX}_{subsysnqn}_"):
-                should_remove = True
-            elif key_path.startswith(f"{self.KEYS_DIR}/{self.DHCHAP_PREFIX}_{subsysnqn}_"):
-                should_remove = True
+            if key_path:
+                if key_path.startswith(f"{self.KEYS_DIR}/{self.PSK_PREFIX}_{subsysnqn}_"):
+                    should_remove = True
+                elif key_path.startswith(f"{self.KEYS_DIR}/{self.DHCHAP_PREFIX}_{subsysnqn}_"):
+                    should_remove = True
+            else:
+                if not key_name_part:
+                    key_name_part = GatewayService.construct_key_name_for_keyring(subsysnqn,
+                                                                                  None,
+                                                                                  None)
+                key_name_parts = key_name.split(GatewayService.KEY_NAME_DELIMITER)
+                if len(key_name_parts) != 3:
+                    self.logger.error(f"Invalid key name {key_name}")
+                    continue
+                if key_name_parts[1] == key_name_part:
+                    should_remove = True
 
             if should_remove:
                 try:
                     self.spdk_rpc_client.keyring_file_remove_key(name=key_name)
                 except Exception:
                     self.logger.exception(f"Can't remove key {key_name}")
-                    pass
 
     @staticmethod
     def is_valid_host_nqn(nqn):
@@ -1560,6 +1619,30 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 self.logger.exception(f"Error setting image identification {img_id_value} for "
                                       f"{image_path}")
 
+    def check_pool_applications(self, pool_name, image_path, cmd, pool_type) -> BdevStatus:
+        pool_apps = self.ceph_utils.pool_applications(pool_name)
+        self.logger.debug(f"{pool_type} {pool_name} applications: {pool_apps}")
+        if pool_apps is None:
+            msg = f"Can't get enabled application list for {pool_type} \"{pool_name}\""
+            status = errno.EINVAL if self.verify_pool_applications else 0
+            return BdevStatus(status=status, error_message=msg)
+        if pool_apps:
+            for app in pool_apps:
+                if app.strip() in self.allowed_pool_apps:
+                    continue
+                if self.verify_pool_applications:
+                    errmsg = f"RBD {pool_type} \"{pool_name}\" has application \"{app}\" " \
+                             f"enabled, can't {cmd} image {image_path}." \
+                             f"{self.allowed_pool_apps_msg}"
+                    return BdevStatus(status=errno.EINVAL, error_message=errmsg)
+                else:
+                    wrn_msg = f"RBD {pool_type} \"{pool_name}\" has application \"{app}\" " \
+                              f"enabled, will {cmd} image {image_path} " \
+                              f"anyway as pool application verification is disabled." \
+                              f"{self.allowed_pool_apps_msg}"
+                    return BdevStatus(status=0, error_message=wrn_msg)
+        return BdevStatus(status=0, error_message="")
+
     def create_rbd_bdev(self, anagrp: int, name, uuid, rbd_pool_name, rbd_data_pool_name,
                         rbd_image_name,
                         block_size, create_image, trash_image, rbd_image_size, disable_auto_resize,
@@ -1570,6 +1653,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         assert self.rpc_lock.locked(), "RPC is unlocked when calling create_rbd_bdev()"
 
+        wrn_msg = ""
         if context and create_image:
             cr_img_msg = "will create image if doesn't exist"
         else:
@@ -1653,6 +1737,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         created_rbd_pool = None
         created_rbd_image_name = None
         created_rados_namespace_name = None
+        actual_data_pool_name = None
         if context and create_image:
             if not rbd_pool_name:
                 return BdevStatus(status=errno.ENODEV,
@@ -1666,6 +1751,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
             if rbd_image_size % (1024 * 1024):
                 return BdevStatus(status=errno.EINVAL,
                                   error_message="Image size must be aligned to MiBs")
+
             rc = self.ceph_utils.pool_exists(rbd_pool_name)
             if not rc:
                 return BdevStatus(status=errno.ENODEV,
@@ -1698,7 +1784,16 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                                 f"{rbd_pool_name} has an invalid type "
                                                 f"{pool_type.name}")
 
+            actual_data_pool_name = self.ceph_utils.get_image_data_pool(rbd_pool_name,
+                                                                        rbd_image_name,
+                                                                        rados_namespace_name)
+
             if rbd_data_pool_name:
+                if actual_data_pool_name and actual_data_pool_name != rbd_data_pool_name:
+                    msg = f"Passed data pool name \"{rbd_data_pool_name}\" differs from " \
+                          f"actual one \"{actual_data_pool_name}\""
+                    self.logger.warning(msg)
+                    wrn_msg = self.append_message(wrn_msg, msg)
                 rc = self.ceph_utils.pool_exists(rbd_data_pool_name)
                 if not rc:
                     return BdevStatus(status=errno.ENODEV,
@@ -1723,6 +1818,23 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                       error_message=f"RBD data pool "
                                                     f"{rbd_data_pool_name} is not a replicated "
                                                     f"or erasure coded pool")
+
+                pool_app_rc = self.check_pool_applications(rbd_data_pool_name, image_path,
+                                                           "create", "data pool")
+                if pool_app_rc.status != 0:
+                    self.logger.error(pool_app_rc.error_message)
+                    return pool_app_rc
+                if pool_app_rc.error_message:
+                    wrn_msg = self.append_message(wrn_msg, pool_app_rc.error_message)
+                    self.logger.warning(pool_app_rc.error_message)
+
+            pool_app_rc = self.check_pool_applications(rbd_pool_name, image_path, "create", "pool")
+            if pool_app_rc.status != 0:
+                self.logger.error(pool_app_rc.error_message)
+                return pool_app_rc
+            if pool_app_rc.error_message:
+                wrn_msg = self.append_message(wrn_msg, pool_app_rc.error_message)
+                self.logger.warning(pool_app_rc.error_message)
 
             try:
                 enc_format = None
@@ -1750,11 +1862,22 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     self.logger.info(f"Image {image_path} already exists "
                                      f"with size {rbd_image_size} bytes")
                     if trash_image:
-                        self.logger.warning(f"Notice that as image "
-                                            f"{image_path} was created "
-                                            f"outside the gateway it won't get trashed on "
-                                            f"namespace deletion")
+                        trash_msg = f"Notice that as image {image_path} was created " \
+                                    f"outside the gateway it won't get trashed on " \
+                                    f"namespace deletion"
+                        self.logger.warning(trash_msg)
                         trash_image = False
+                        wrn_msg = self.append_message(wrn_msg, trash_msg)
+                    if actual_data_pool_name and actual_data_pool_name != rbd_data_pool_name:
+                        pool_app_rc = self.check_pool_applications(actual_data_pool_name,
+                                                                   image_path,
+                                                                   "use", "data pool")
+                        if pool_app_rc.status != 0:
+                            self.logger.error(pool_app_rc.error_message)
+                            return pool_app_rc
+                        if pool_app_rc.error_message:
+                            wrn_msg = self.append_message(wrn_msg, pool_app_rc.error_message)
+                            self.logger.warning(pool_app_rc.error_message)
             except Exception as ex:
                 errcode = 0
                 msg = ""
@@ -1792,6 +1915,28 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 return BdevStatus(status=errno.EIO,
                                   error_message=errmsg)
 
+            if context:
+                pools_to_check = [(rbd_pool_name, "pool")]
+                data_pool_name = self.ceph_utils.get_image_data_pool(rbd_pool_name,
+                                                                     rbd_image_name,
+                                                                     rados_namespace_name)
+                if data_pool_name and data_pool_name != rbd_pool_name:
+                    pools_to_check.append((data_pool_name, "data pool"))
+                    if rbd_data_pool_name and data_pool_name != rbd_data_pool_name:
+                        msg = f"Passed data pool name \"{rbd_data_pool_name}\" differs from " \
+                              f"actual one \"{data_pool_name}\""
+                        self.logger.warning(msg)
+                        wrn_msg = self.append_message(wrn_msg, msg)
+                for pool_entry in pools_to_check:
+                    pool_app_rc = self.check_pool_applications(pool_entry[0], image_path,
+                                                               "use", pool_entry[1])
+                    if pool_app_rc.status != 0:
+                        self.logger.error(pool_app_rc.error_message)
+                        return pool_app_rc
+                    if pool_app_rc.error_message:
+                        wrn_msg = self.append_message(wrn_msg, pool_app_rc.error_message)
+                        self.logger.warning(pool_app_rc.error_message)
+
             if len(encryption_entries) > 0 and self.verify_image_encryption_settings:
                 enc_msg = self.ceph_utils.verify_image_encryption_settings(
                     rbd_pool_name,
@@ -1809,9 +1954,11 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 self._set_image_auto_resize(rbd_pool_name, rbd_image_name,
                                             rados_namespace_name, False)
             except Exception as ex:
-                self.logger.warning(f"Error setting auto resize flag for image "
-                                    f"{image_path}, namespace "
-                                    f"will get resized in case of an image resize:\n{ex}")
+                resize_msg = f"Error setting auto resize flag for image " \
+                             f"{image_path}, namespace " \
+                             f"will get resized in case of an image resize:\n{ex}"
+                self.logger.warning(resize_msg)
+                wrn_msg = self.append_message(wrn_msg, resize_msg)
 
         cluster_name = None
         assert self.rpc_lock.locked(), "RPC is unlocked when calling bdev_rbd_create()"
@@ -1874,7 +2021,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         assert name == bdev_name, f"Created bdev name {bdev_name} differs " \
                                   f"from requested name {name}"
 
-        return BdevStatus(status=0, error_message="", bdev_name=name,
+        return BdevStatus(status=0, error_message=wrn_msg, bdev_name=name,
                           rbd_pool=rbd_pool_name,
                           rbd_image_name=rbd_image_name,
                           rados_namespace_name=rados_namespace_name, trash_image=trash_image)
@@ -2017,6 +2164,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
             f"Received request to create subsystem {request.subsystem_nqn}, enable_ha: "
             f"{request.enable_ha}, max_namespaces: {request.max_namespaces}, no group "
             f"append: {request.no_group_append}, network mask: {request.network_mask}, "
+            f"use group config network masks: {request.use_group_config_network_masks}, "
             f"port: {request.port}, "
             f"secure listeners: {request.secure_listeners}, model name: {request.model_name}, "
             f"context: {context}{peer_msg}")
@@ -2069,6 +2217,12 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                      nqn=request.subsystem_nqn)
 
         if request.network_mask:
+            if request.use_group_config_network_masks:
+                errmsg = f"{create_subsystem_error_prefix}: an explicit network mask " \
+                         f"and the group config network mask are mutually exclusive"
+                self.logger.error(errmsg)
+                return pb2.subsys_status(status=errno.EINVAL, error_message=errmsg,
+                                         nqn=request.subsystem_nqn)
             for netmask in list(request.network_mask):
                 if not NICS.is_valid_subnet(netmask):
                     errmsg = f"{create_subsystem_error_prefix}: Invalid subnet for " \
@@ -2203,7 +2357,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 self.logger.debug(f"create_subsystem {request.subsystem_nqn}: {ret}")
                 self.subsys_max_ns[request.subsystem_nqn] = request.max_namespaces
                 self.subsys_serial[request.subsystem_nqn] = request.serial_number
-                self.subsys_network[request.subsystem_nqn] = list(request.network_mask)
+                self.subsys_network[request.subsystem_nqn] = SubsysNetworkInfo(
+                    network_masks=list(request.network_mask),
+                    use_group_conf=request.use_group_config_network_masks)
 
                 dhchap_key_for_omap = request.dhchap_key
                 key_encrypted_for_omap = False
@@ -2264,7 +2420,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                              error_message=errmsg, nqn=request.subsystem_nqn)
 
         error_message = ""
-        if request.network_mask and context:
+        if (request.network_mask or request.use_group_config_network_masks) and context:
             try:
                 rt = self._create_auto_listeners_safe(request)
                 error_message = rt.error_message
@@ -2388,7 +2544,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
     def _create_auto_listeners_safe(self, request):
         """
-        Internal method - Automatically create listeners for IPs within subnet of 'network_mask'
+        Internal method - Automatically create listeners for IPs within subnet of 'network_mask',
+        or of the gateway group's 'listener_network_masks' if 'use_group_config_network_masks'
         request: create_subsystem_req type
         """
 
@@ -2412,7 +2569,10 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     f"network mask.")
 
         final_err_msg = ""
-        network_mask_subnets = request.network_mask
+        if request.use_group_config_network_masks:
+            network_mask_subnets = self.listener_network_masks
+        else:
+            network_mask_subnets = request.network_mask
         for subnet in set(network_mask_subnets):
             found_host_ips = NICS(self.logger, True).get_ips_in_subnet(subnet)
             err_msg, _ = self._add_auto_listeners(request.subsystem_nqn, found_host_ips,
@@ -2490,6 +2650,11 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 self.logger.error(errmsg)
                 return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
 
+            if subsys_entry.use_group_config_network_masks:
+                errmsg = f"{failure_prefix}: subsystem {request.subsystem_nqn} is using " \
+                         f"the gateway group config's listener network masks, disable that first"
+                self.logger.error(errmsg)
+                return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
             try:
                 network_to_add = request.network_mask
                 existing_network_masks = set(subsys_entry.network_mask)
@@ -2505,7 +2670,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                                       subsys_entry.port)
                 existing_network_masks.add(network_to_add)
                 new_network_mask = list(existing_network_masks)
-                self.subsys_network[request.subsystem_nqn] = new_network_mask
+                self.subsys_network[request.subsystem_nqn] = SubsysNetworkInfo(
+                    network_masks=new_network_mask)
                 if context:
                     # add network to subsystem's OMAP
                     subsys_entry.network_mask[:] = new_network_mask
@@ -2571,6 +2737,12 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 return pb2.req_status(status=errno.ENOENT, error_message=errmsg)
             assert subsys_entry, f"{failure_prefix}: Can't find entry for subsystem " \
                                  f"{request.subsystem_nqn}"
+            if subsys_entry.use_group_config_network_masks:
+                errmsg = f"{failure_prefix}: subsystem {request.subsystem_nqn} is using the " \
+                         f"gateway group config's listener network masks, there is no " \
+                         f"explicit network mask to delete"
+                self.logger.error(errmsg)
+                return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
             try:
                 network_to_delete = request.network_mask
                 if not subsys_entry.network_mask:
@@ -2607,7 +2779,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                                       subsys_entry.secure_listeners,
                                                       subsys_entry.port)
                 new_network_mask = remaining_network_masks
-                self.subsys_network[request.subsystem_nqn] = new_network_mask
+                self.subsys_network[request.subsystem_nqn] = SubsysNetworkInfo(
+                    network_masks=new_network_mask)
                 if context:
                     # remove network from subsystem's OMAP
                     subsys_entry.network_mask[:] = new_network_mask
@@ -2670,7 +2843,13 @@ class GatewayService(pb2_grpc.GatewayServicer):
             assert subsys_entry, f"{failure_prefix}: Can't find entry for subsystem " \
                                  f"{request.subsystem_nqn}"
 
-            if not subsys_entry.network_mask:
+            if subsys_entry.use_group_config_network_masks:
+                effective_network_masks = self.listener_network_masks
+            elif subsys_entry.network_mask:
+                effective_network_masks = list(subsys_entry.network_mask)
+            elif self.subsystem_auto_listeners.get(request.subsystem_nqn):
+                effective_network_masks = []
+            else:
                 errmsg = (f"{failure_prefix}: subsystem {request.subsystem_nqn} "
                           f"has no network masks configured")
                 self.logger.error(errmsg)
@@ -2680,7 +2859,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
             try:
                 nics = NICS(self.logger, True)
                 subnet_ips = set()
-                for mask in subsys_entry.network_mask:
+                for mask in effective_network_masks:
                     for ip in nics.get_ips_in_subnet(mask):
                         adrfam = f'ipv{ip_address(ip).version}'
                         if nics.verify_ip_address(ip, adrfam):
@@ -2720,6 +2899,126 @@ class GatewayService(pb2_grpc.GatewayServicer):
         err_prefix = "Failure refreshing network listeners: "
         return self.execute_grpc_function(self.gw_refresh_network_safe, request,
                                           context, err_prefix)
+
+    def set_subsystem_use_group_config_network_masks_safe(self, request, context):
+        """Enable or disable the group config network mask for the subsystem"""
+        assert self.rpc_lock.locked(), \
+            "RPC is unlocked when calling " \
+            "set_subsystem_use_group_config_network_masks_safe()"
+
+        use_conf = request.use_group_config_network_masks
+        cmd_txt = 'enable' if use_conf else 'disable'
+        self.logger.info(
+            f"Received request to {cmd_txt} group config network masks "
+            f"for subsystem {request.subsystem_nqn}, context: {context}")
+
+        if not request.subsystem_nqn:
+            errmsg = "Failure setting group config network masks, " \
+                     "missing subsystem NQN"
+            self.logger.error(errmsg)
+            return pb2.set_subsystem_use_group_config_network_masks_status(
+                status=errno.EINVAL, error_message=errmsg)
+
+        failure_prefix = f"Failure setting group config network masks for " \
+                         f"subsystem {request.subsystem_nqn}"
+
+        final_err_msg = ""
+        added = []
+        removed = []
+        omap_lock = self.omap_lock.get_omap_lock_to_use(context)
+        with omap_lock:
+            subsys_entry = None
+            state = self.gateway_state.local.get_state()
+            subsys_key = GatewayState.build_subsystem_key(request.subsystem_nqn)
+            try:
+                state_subsys = state[subsys_key]
+                subsys_entry = json_format.Parse(state_subsys, pb2.create_subsystem_req(),
+                                                 ignore_unknown_fields=True)
+            except Exception:
+                errmsg = f"{failure_prefix}: Can't find entry for subsystem " \
+                         f"{request.subsystem_nqn}"
+                self.logger.error(errmsg)
+                return pb2.set_subsystem_use_group_config_network_masks_status(
+                    status=errno.ENOENT, error_message=errmsg)
+            assert subsys_entry, f"{failure_prefix}: Can't find entry for subsystem " \
+                                 f"{request.subsystem_nqn}"
+
+            if use_conf == subsys_entry.use_group_config_network_masks:
+                warnmsg = f"Group config network masks are already {cmd_txt}d for " \
+                          f"subsystem {request.subsystem_nqn}"
+                self.logger.warning(warnmsg)
+                return pb2.set_subsystem_use_group_config_network_masks_status(
+                    status=0, error_message=warnmsg)
+
+            if use_conf and subsys_entry.network_mask:
+                errmsg = f"{failure_prefix}: subsystem {request.subsystem_nqn} already has an " \
+                         f"explicit network mask configured, delete it first"
+                self.logger.error(errmsg)
+                return pb2.set_subsystem_use_group_config_network_masks_status(
+                    status=errno.EINVAL, error_message=errmsg)
+
+            if use_conf and context:
+                listener_prefix = GatewayState.build_partial_listener_key(
+                    request.subsystem_nqn, None)
+                has_manual_listener = False
+                for key in state:
+                    if key.startswith(listener_prefix):
+                        has_manual_listener = True
+                        break
+                if has_manual_listener:
+                    errmsg = f"{failure_prefix}: subsystem {request.subsystem_nqn} has manual " \
+                             f"listener(s). A subsystem can only use manual listeners or " \
+                             f"network mask, not both. Remove the manual listener(s) first."
+                    self.logger.error(errmsg)
+                    return pb2.set_subsystem_use_group_config_network_masks_status(
+                        status=errno.EINVAL, error_message=errmsg)
+
+            try:
+                if use_conf:
+                    nics = NICS(self.logger, True)
+                    subnet_ips = set()
+                    for subnet in self.listener_network_masks:
+                        for ip in nics.get_ips_in_subnet(subnet):
+                            adrfam = f'ipv{ip_address(ip).version}'
+                            if nics.verify_ip_address(ip, adrfam):
+                                subnet_ips.add(ip)
+                    if subnet_ips:
+                        final_err_msg, added = self._add_auto_listeners(
+                            request.subsystem_nqn, sorted(subnet_ips),
+                            subsys_entry.secure_listeners, subsys_entry.port)
+                else:
+                    current_ips = {ip for (_, ip, _) in
+                                   self.subsystem_auto_listeners.get(request.subsystem_nqn, set())}
+                    if current_ips:
+                        final_err_msg, removed = self._del_auto_listeners(
+                            request.subsystem_nqn, sorted(current_ips),
+                            subsys_entry.secure_listeners, subsys_entry.port)
+
+                self.subsys_network[request.subsystem_nqn] = SubsysNetworkInfo(
+                    use_group_conf=use_conf)
+                if context:
+                    subsys_entry.use_group_config_network_masks = use_conf
+                    json_req = json_format.MessageToJson(
+                        subsys_entry, preserving_proto_field_name=True,
+                        including_default_value_fields=True)
+                    self.gateway_state.add_subsystem(request.subsystem_nqn, json_req)
+                self.logger.info(f"{cmd_txt.capitalize()}d group config network masks "
+                                 f"for subsystem {request.subsystem_nqn}")
+            except Exception as ex:
+                errmsg = f"{failure_prefix}: Failure occurred:\n{ex}"
+                self.logger.error(errmsg)
+                return pb2.set_subsystem_use_group_config_network_masks_status(
+                    status=errno.EINVAL, error_message=errmsg)
+
+        return pb2.set_subsystem_use_group_config_network_masks_status(
+            status=0, error_message=final_err_msg, added=added, removed=removed)
+
+    def set_subsystem_use_group_config_network_masks(self, request, context=None):
+        """Enable or disable the group config network mask for the subsystem"""
+        err_prefix = "Failure setting group config network masks: "
+        return self.execute_grpc_function(
+            self.set_subsystem_use_group_config_network_masks_safe, request,
+            context, err_prefix)
 
     def _normalize_kmip_server_endpoint_port(self, server: str,
                                              endpoint: pb2.kmip_server_endpoint) -> None:
@@ -3452,15 +3751,19 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         inaccessible_ana_groups = {}
         awaited_cluster_contexts = set()
+        # Bound before the try block: the exception handler below formats them, and any
+        # failure raised before PHASE 4 would otherwise leave them unbound
+        ana_grpids = []
+        ana_states = []
+        new_ana_states = []
         try:
             # =====================================================================
-            # PHASE 1: Update local tracking state dictionaries
+            # PHASE 1: Collect the new ANA states, don't publish them locally yet
             # =====================================================================
             for nas in ana_info.states:
                 nqn = nas.nqn
                 for gs in nas.states:
-                    self.ana_map[nqn][gs.grp_id] = gs.state
-                    self.ana_grp_state[gs.grp_id] = gs.state
+                    new_ana_states.append((nqn, gs.grp_id, gs.state))
             # =====================================================================
             # PHASE 2: Wait for latest OSD map across ALL required cluster contexts
             # =====================================================================
@@ -3543,11 +3846,24 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         except Exception:
             self.logger.exception("Error during set_ana_state_safe execution")
+            if set_ana_status == 0:
+                set_ana_status = errno.EINVAL
             errmsg = f"Failure set_ana_states_all to " \
-                     f" {ana_grpids=}, {ana_states=}"
+                     f" {ana_grpids=}, {ana_states=}, requested {new_ana_states}," \
+                     f" error {set_ana_status}"
             self.logger.error(errmsg)
-            return pb2.nsid_status(status=set_ana_status, error_message=errmsg)
+            # The Ceph monitor client treats a non-zero status as success and retries
+            # set_ana_state until it gets one, so a failure must be reported as zero
+            return pb2.req_status(status=False, error_message=errmsg)
 
+        # Only now that SPDK holds the new states (or there was nothing to apply) may we
+        # publish them locally. Recording them earlier makes this gateway, the rebalance
+        # logic and create_listener() act on an ownership SPDK was never told about.
+        for nqn, grp_id, state in new_ana_states:
+            self.ana_map[nqn][grp_id] = state
+            self.ana_grp_state[grp_id] = state
+
+        # A non-zero status means success to the Ceph monitor client, see above
         return pb2.req_status(status=True)
 
     def namespace_add_safe(self, request, context):
@@ -3560,6 +3876,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
             return pb2.nsid_status(status=errno.EINVAL, error_message=errmsg)
 
         loc_grps_list = []
+        wrn_msg = ""
         anagrp = 0
         peer_msg = self.get_peer_message(context)
         nsid_msg = f"{request.nsid} " if request.nsid else ""
@@ -3607,9 +3924,11 @@ class GatewayService(pb2_grpc.GatewayServicer):
             return pb2.nsid_status(status=errno.EINVAL, error_message=errmsg)
 
         if request.trash_image and not request.create_image:
-            self.logger.warning("Can't trash the RBD image on delete if it "
-                                "wasn't created by the gateway, will reset the flag")
+            trash_msg = "Can't trash the RBD image on delete if it " \
+                        "wasn't created by the gateway, will reset the flag"
+            self.logger.warning(trash_msg)
             request.trash_image = False
+            wrn_msg = self.append_message(wrn_msg, trash_msg)
 
         if request.block_size <= 0:
             errmsg = f"Failure adding namespace {nsid_msg}to {request.subsystem_nqn}: " \
@@ -3716,6 +4035,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
                         self.logger.warning(f"Can't fetch passphrase for id {ent.key_id}, "
                                             f"will create a degraded namespace")
                         create_degraded = True
+                        wrn_msg = self.append_message(wrn_msg,
+                                                      "Couldn't fetch passphrase for decrypting, "
+                                                      "a degraded namespace was created")
                         break
                     else:
                         errmsg = f"Failure adding namespace {nsid_msg}to " \
@@ -3850,6 +4172,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
             # If we got here we asserted that ret_bdev.bdev_name == bdev_name
 
+            if ret_bdev.error_message:
+                wrn_msg = self.append_message(wrn_msg, ret_bdev.error_message)
             pool_to_use = ret_bdev.rbd_pool
             data_pool_to_use = request.rbd_data_pool_name
             image_name_to_use = ret_bdev.rbd_image_name
@@ -3897,6 +4221,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
             if context:
                 # Update gateway state
                 request.nsid = ret_ns.nsid
+                request.trash_image = ret_bdev.trash_image
                 try:
                     json_req = json_format.MessageToJson(
                         request, preserving_proto_field_name=True,
@@ -3925,11 +4250,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                               rados_namespace_to_use,
                                               img_id)
 
-        errmsg = ""
-        if create_degraded:
-            errmsg = "Couldn't fetch passphrase for decrypting, a degraded namespace was created"
-
-        return pb2.nsid_status(status=0, error_message=errmsg, nsid=ret_ns.nsid)
+        return pb2.nsid_status(status=0, error_message=wrn_msg, nsid=ret_ns.nsid)
 
     def namespace_add(self, request, context=None):
         """Adds a namespace to a subsystem."""
@@ -5146,6 +5467,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
             "RPC is unlocked when calling namespace_set_qos_limits_safe()"
         max_mb_per_second = int(0xffffffffffffffff / (1024 * 1024))
 
+        wrn_msg = ""
         failure_prefix = f"Failure setting QOS limits for namespace {request.nsid} " \
                          f"on {request.subsystem_nqn}"
         peer_msg = self.get_peer_message(context)
@@ -5187,9 +5509,11 @@ class GatewayService(pb2_grpc.GatewayServicer):
             if self.ceph_utils.were_image_qos_limits_changed(find_ret.pool, find_ret.image,
                                                              find_ret.rados_namespace_name):
                 if request.force:
-                    self.logger.warning(f"The QOS limits for image "
-                                        f"{find_ret.pool}/{find_ret.image} were changed, will "
-                                        f"continue as the \"--force\" parameter was used")
+                    _msg = f"The QOS limits for image " \
+                           f"{find_ret.pool}/{find_ret.image} were changed, will " \
+                           f"continue as the \"--force\" parameter was used"
+                    self.logger.warning(_msg)
+                    wrn_msg = self.append_message(wrn_msg, _msg)
                 else:
                     errmsg = f"{failure_prefix}: QOS limits were changed for RBD image " \
                              f"{find_ret.pool}/{find_ret.image}, use the \"--force\" parameter " \
@@ -5198,34 +5522,43 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     status = errno.EEXIST if context else 0
                     return pb2.req_status(status=status, error_message=errmsg)
         except Exception:
-            self.logger.warning(f"Error trying to get the config attributes of image "
-                                f"{find_ret.pool}/{find_ret.image}, can't check "
-                                f"for QOS changes")
-            pass
+            _msg = f"Error trying to get the config attributes of image " \
+                   f"{find_ret.pool}/{find_ret.image}, can't check " \
+                   f"for QOS changes"
+            self.logger.warning(_msg)
+            wrn_msg = self.append_message(wrn_msg, _msg)
 
         if GatewayService.is_optional_field_in_message(request, "rw_ios_per_second"):
             if request.rw_ios_per_second % 1000 != 0:
                 rounded_rate = int((request.rw_ios_per_second + 1000) / 1000) * 1000
-                self.logger.warning(f"IOs per second {request.rw_ios_per_second} will be "
-                                    f"rounded up to {rounded_rate}")
+                _msg = f"IOs per second {request.rw_ios_per_second} will be " \
+                       f"rounded up to {rounded_rate}"
+                self.logger.warning(_msg)
+                wrn_msg = self.append_message(wrn_msg, _msg)
 
         if GatewayService.is_optional_field_in_message(request, "rw_mbytes_per_second"):
             if request.rw_mbytes_per_second > max_mb_per_second:
-                self.logger.warning(f"Read/Write megabytes per second "
-                                    f"{request.rw_mbytes_per_second} is too big, "
-                                    f"it will be truncated to {max_mb_per_second}")
+                _msg = f"Read/Write megabytes per second " \
+                       f"{request.rw_mbytes_per_second} is too big, " \
+                       f"it will be truncated to {max_mb_per_second}"
+                self.logger.warning(_msg)
+                wrn_msg = self.append_message(wrn_msg, _msg)
 
         if GatewayService.is_optional_field_in_message(request, "r_mbytes_per_second"):
             if request.r_mbytes_per_second > max_mb_per_second:
-                self.logger.warning(f"Read megabytes per second "
-                                    f"{request.r_mbytes_per_second} is too big, "
-                                    f"it will be truncated to {max_mb_per_second}")
+                _msg = f"Read megabytes per second " \
+                       f"{request.r_mbytes_per_second} is too big, " \
+                       f"it will be truncated to {max_mb_per_second}"
+                self.logger.warning(_msg)
+                wrn_msg = self.append_message(wrn_msg, _msg)
 
         if GatewayService.is_optional_field_in_message(request, "w_mbytes_per_second"):
             if request.w_mbytes_per_second > max_mb_per_second:
-                self.logger.warning(f"Write megabytes per second "
-                                    f"{request.w_mbytes_per_second} is too big, "
-                                    f"it will be truncated to {max_mb_per_second}")
+                _msg = f"Write megabytes per second " \
+                       f"{request.w_mbytes_per_second} is too big, " \
+                       f"it will be truncated to {max_mb_per_second}"
+                self.logger.warning(_msg)
+                wrn_msg = self.append_message(wrn_msg, _msg)
 
         set_qos_limits_args = {}
         set_qos_limits_args["name"] = bdev_name
@@ -5316,7 +5649,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     errmsg = f"{errmsg}:\n{ex}"
                     return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
 
-        return pb2.req_status(status=0, error_message="")
+        return pb2.req_status(status=0, error_message=wrn_msg)
 
     def namespace_set_qos_limits(self, request, context=None):
         """Set namespace's qos limits."""
@@ -7023,9 +7356,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
         else:
             subsysmsg = "all subsystems"
         hostmsg = f"host {request.host_nqn}" if request.host_nqn else "all hosts"
-        self.logger.info(f"Received request to {cmd} IO statistics for {hostmsg} "
-                         f"on {subsysmsg}, verbose: {verbose}, "
-                         f"context: {context}{peer_msg}")
+        self.logger.debug(f"Received request to {cmd} IO statistics for {hostmsg} "
+                          f"on {subsysmsg}, verbose: {verbose}, "
+                          f"context: {context}{peer_msg}")
         failure_prefix = f"Failure {cmd2} IO statistics for {hostmsg} " \
                          f"on {subsysmsg}"
 
@@ -7658,11 +7991,19 @@ class GatewayService(pb2_grpc.GatewayServicer):
             self.logger.error(errmsg)
             return pb2.req_status(status=errno.ENOENT, error_message=errmsg)
 
-        if context and self.subsys_network.get(request.nqn):
-            errmsg = f"{create_listener_error_prefix}: Subsystem {request.nqn} has a " \
-                     f"network mask configured. A subsystem can only use manual " \
-                     f"listeners or network mask, not both. Remove the network mask " \
-                     f"first to add a manual listener."
+        subsys_net_info = self.subsys_network.get(request.nqn)
+        if context and subsys_net_info:
+            if subsys_net_info.use_group_conf:
+                errmsg = f"{create_listener_error_prefix}: Subsystem {request.nqn} is " \
+                         f"using the gateway group config's listener network masks. A " \
+                         f"subsystem can only use manual listeners or network mask, not " \
+                         f"both. Disable the group config network mask for the " \
+                         f"subsystem first to add a manual listener."
+            else:
+                errmsg = f"{create_listener_error_prefix}: Subsystem {request.nqn} has a " \
+                         f"network mask configured. A subsystem can only use manual " \
+                         f"listeners or network mask, not both. Remove the network mask " \
+                         f"first to add a manual listener."
             self.logger.error(errmsg)
             return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
 
@@ -7839,7 +8180,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                                       f"nvmf_subsystem_listener_set_ana_state "
                                                       f"response {rc=}")
 
-                    self.logger.info(f"Set ana group state to inaccessible for group "
+                    self.logger.info(f"Set ana group state to non-optimized for group "
                                      f"{GatewayService.MAINTENANCE_ANA_GROUP}, subsystem "
                                      f"{request.nqn}, listen address "
                                      f"{traddr}:{request.trsvcid}")
@@ -8103,9 +8444,24 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                 f"Failed to query 'nvme-gw listeners' for {request.nqn}")
 
                     if is_auto_listener:
-                        errmsg = f"{delete_listener_error_prefix}: Listener was created " \
-                                 f"automatically as part of the subsystem's network mask. " \
-                                 f"To remove it, modify the network mask."
+                        uses_config_netmask = False
+                        subsys_key = GatewayState.build_subsystem_key(request.nqn)
+                        try:
+                            subsys_entry = json_format.Parse(
+                                state[subsys_key], pb2.create_subsystem_req(),
+                                ignore_unknown_fields=True)
+                            uses_config_netmask = subsys_entry.use_group_config_network_masks
+                        except Exception:
+                            pass
+                        if uses_config_netmask:
+                            errmsg = f"{delete_listener_error_prefix}: Listener was created " \
+                                     f"automatically from the gateway group config's listener " \
+                                     f"network masks. To remove it, disable the group config " \
+                                     f"network mask for the subsystem."
+                        else:
+                            errmsg = f"{delete_listener_error_prefix}: Listener was created " \
+                                     f"automatically as part of the subsystem's network mask. " \
+                                     f"To remove it, modify the network mask."
                         self.logger.error(errmsg)
                         return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
 
@@ -8245,7 +8601,9 @@ class GatewayService(pb2_grpc.GatewayServicer):
                 raise RuntimeError(err_msg)
             state_subsys = state[subsys_key]
             subsystem = json.loads(state_subsys)
-            if subsystem and subsystem.get('network_mask'):
+            has_network_mask = subsystem and subsystem.get('network_mask')
+            has_group_config_mask = subsystem and subsystem.get('use_group_config_network_masks')
+            if has_network_mask or has_group_config_mask:
                 pool = self.config.get("ceph", "pool")
                 group = self.config.get("gateway", "group")
                 nvmemon_listeners = self.ceph_utils.get_gw_listeners(pool, group)
@@ -8447,7 +8805,12 @@ class GatewayService(pb2_grpc.GatewayServicer):
                     s["namespace_count"] = len(s["namespaces"])
                     s["network_mask"] = []
                     if s["nqn"] in self.subsys_network:
-                        s["network_mask"] = list(self.subsys_network[s['nqn']])
+                        subsys_net_info = self.subsys_network[s['nqn']]
+                        s["use_group_config_network_masks"] = subsys_net_info.use_group_conf
+                        if subsys_net_info.use_group_conf:
+                            s["network_mask"] = list(self.listener_network_masks)
+                        else:
+                            s["network_mask"] = list(subsys_net_info.network_masks)
                     s["enable_ha"] = True
                     s["has_dhchap_key"] = self.host_info.does_subsystem_have_dhchap_key(s["nqn"])
                     s["created_without_key"] = \

@@ -6,6 +6,7 @@ updates:
     target-branch: "devel"
     schedule:
       interval: "weekly"
+      day: "saturday"
     labels:
       - bump-go-libs
     commit-message:
@@ -15,6 +16,7 @@ updates:
     target-branch: "tentacle_9.2"
     schedule:
       interval: "weekly"
+      day: "saturday"
     labels:
       - bump-go-libs
     commit-message:
@@ -24,6 +26,7 @@ updates:
     target-branch: "tentacle_9.1"
     schedule:
       interval: "weekly"
+      day: "saturday"
     labels:
       - bump-go-libs
     commit-message:
@@ -33,6 +36,17 @@ updates:
     target-branch: "umbrella"
     schedule:
       interval: "weekly"
+      day: "saturday"
+    labels:
+      - bump-go-libs
+    commit-message:
+      prefix: "rebase"
+  - package-ecosystem: "gomod"
+    directory: "/lib/go/nvmeof"
+    target-branch: "umbrella_10.0"
+    schedule:
+      interval: "weekly"
+      day: "saturday"
     labels:
       - bump-go-libs
     commit-message:

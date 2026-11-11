@@ -375,7 +375,9 @@ class Rebalance:
                                      f" destination ana group "
                                      f"{min_ana_grp}, subsystem {chosen_nqn}"
                                      f" location {ns_info.location} ")
-                    self.ns_rebalance(context, ana_id, min_ana_grp, 1, "0", ns_info.location)
+                    # also force rebalance encrypted namespaces in this case
+                    self.ns_rebalance(context, ana_id, min_ana_grp, 1, "0", ns_info.location,
+                                      False, True)
                     return 0
                 else:
                     self.logger.warning(f"Impossible to find correct LB group for ns {nsid}"

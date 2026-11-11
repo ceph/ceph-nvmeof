@@ -96,6 +96,20 @@ def test_rbd_image_trash(caplog, two_gateways):
     caplog.clear()
     cli(["--server-port", "5502", "--format", "json", "subsystem", "list"])
     assert f'"nqn": "{subsystem}"' in caplog.text
+    state = gatewayA.gateway_state.omap.get_state()
+    for key, val in state.items():
+        if not key.startswith(gatewayA.gateway_state.local.NAMESPACE_PREFIX):
+            continue
+        valstr = val.decode()
+        assert '"trash_image": true' in valstr
+    caplog.clear()
+    cli(["namespace", "del", "--subsystem", subsystem, "--nsid", "1"])
+    assert f"Failure deleting namespace 1 from {subsystem}: Confirmation for trashing " \
+           f"RBD image is needed." in caplog.text
+    caplog.clear()
+    cli(["--format", "json", "namespace", "list"])
+    assert f'"ns_subsystem_nqn": "{subsystem}"' in caplog.text
+    assert '"nsid": 1' in caplog.text
     caplog.clear()
     cli(["namespace", "del", "--subsystem", subsystem, "--nsid", "1", "--i-am-sure"])
     assert f"Deleting namespace 1 from {subsystem}: Successful" in caplog.text
@@ -125,12 +139,40 @@ def test_rbd_image_trash(caplog, two_gateways):
     assert '"nsid": 1' in caplog.text
     assert f'"rbd_image_name": "{image}"' in caplog.text
     assert '"trash_image": false' in caplog.text
+    state = gatewayA.gateway_state.omap.get_state()
+    for key, val in state.items():
+        if not key.startswith(gatewayA.gateway_state.local.NAMESPACE_PREFIX):
+            continue
+        valstr = val.decode()
+        assert '"trash_image": false' in valstr
     caplog.clear()
     cli(["namespace", "del", "--subsystem", subsystem, "--nsid", "1"])
     assert f"Deleting namespace 1 from {subsystem}: Successful" in caplog.text
     caplog.clear()
     cli(["--format", "json", "namespace", "list"])
     assert '"namespaces": []' in caplog.text
+    time.sleep(30)
+    assert ceph_utils.does_image_exist(pool, image)
+    ceph_utils.delete_image(pool, image)
+    assert not ceph_utils.does_image_exist(pool, image)
+    ceph_utils.create_image(pool, None, None, image, 16777216)
+    assert ceph_utils.does_image_exist(pool, image)
+    caplog.clear()
+    cli(["namespace", "add", "--subsystem", subsystem, "--rbd-pool", pool,
+         "--rbd-image", image, "--size", "16MB", "--rbd-create-image",
+         "--rbd-trash-image-on-delete"])
+    assert f"Adding namespace 1 to {subsystem}: Successful" in caplog.text
+    assert f"Notice that as image {pool}/{image} was created outside the gateway " \
+           f"it won't get trashed on namespace deletion" in caplog.text
+    time.sleep(30)
+    caplog.clear()
+    cli(["--server-port", "5502", "--format", "json", "namespace", "list"])
+    assert f'"ns_subsystem_nqn": "{subsystem}"' in caplog.text
+    assert '"nsid": 1' in caplog.text
+    caplog.clear()
+    cli(["--server-port", "5502", "namespace", "del", "--subsystem", subsystem, "--nsid", "1"])
+    assert f"Deleting namespace 1 from {subsystem}: Successful" in caplog.text
+    time.sleep(30)
     assert ceph_utils.does_image_exist(pool, image)
     ceph_utils.delete_image(pool, image)
     assert not ceph_utils.does_image_exist(pool, image)
@@ -159,6 +201,13 @@ def test_change_rbd_image_trash(caplog, two_gateways):
     assert '"nsid": 1' in caplog.text
     assert f'"rbd_image_name": "{image3}"' in caplog.text
     assert '"trash_image": true' in caplog.text
+    state = gatewayA.gateway_state.omap.get_state()
+    for key, val in state.items():
+        if not key.startswith(gatewayA.gateway_state.local.NAMESPACE_PREFIX):
+            continue
+        valstr = val.decode()
+        assert '"trash_image": true' in valstr
+        assert '"trash_image": false' not in valstr
     caplog.clear()
     rc = 0
     try:
@@ -206,6 +255,13 @@ def test_change_rbd_image_trash(caplog, two_gateways):
            f'<grpc._server' in caplog.text
     assert f'Received request to set the RBD trash image flag of namespace 1 in ' \
            f'{subsystem} to "do not trash on namespace deletion", context: None' in caplog.text
+    state = gatewayA.gateway_state.omap.get_state()
+    for key, val in state.items():
+        if not key.startswith(gatewayA.gateway_state.local.NAMESPACE_PREFIX):
+            continue
+        valstr = val.decode()
+        assert '"trash_image": true' not in valstr
+        assert '"trash_image": false' in valstr
     caplog.clear()
     cli(["--format", "json", "namespace", "list"])
     assert f'"ns_subsystem_nqn": "{subsystem}"' in caplog.text

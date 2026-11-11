@@ -212,6 +212,14 @@ def test_get_stats_host_not_connected(caplog, two_gateways):
            f"Host is not connected" in caplog.text
 
 
+def test_get_extended_stats_host_not_connected(caplog, two_gateways):
+    caplog.clear()
+    cli(["connection", "get_extended_io_statistics", "--subsystem", subsystem1,
+         "--host-nqn", hostnqn1])
+    assert f"Failure getting IO statistics for host {hostnqn1} on subsystem {subsystem1}: " \
+           f"Host is not connected" in caplog.text
+
+
 def test_get_stats_host_when_disabled(caplog, two_gateways):
     caplog.clear()
     cli(["--server-port", "5502", "connection", "get_io_statistics", "--subsystem", subsystem1,
@@ -226,6 +234,16 @@ def test_reset_stats_host_when_disabled(caplog, two_gateways):
     caplog.clear()
     cli(["--server-port", "5502", "connection", "reset_io_statistics", "--subsystem", subsystem1,
          "--host-nqn", hostnqn1])
+    assert f"Received request to reset IO statistics for host {hostnqn1} on subsystem " \
+           f"{subsystem1}" in caplog.text
+    assert f"Failure resetting IO statistics for host {hostnqn1} on subsystem {subsystem1}: " \
+           f"IO statistics is disabled or not supported" in caplog.text
+
+
+def test_reset_extended_stats_host_when_disabled(caplog, two_gateways):
+    caplog.clear()
+    cli(["--server-port", "5502", "connection", "reset_extended_io_statistics",
+         "--subsystem", subsystem1, "--host-nqn", hostnqn1])
     assert f"Received request to reset IO statistics for host {hostnqn1} on subsystem " \
            f"{subsystem1}" in caplog.text
     assert f"Failure resetting IO statistics for host {hostnqn1} on subsystem {subsystem1}: " \
