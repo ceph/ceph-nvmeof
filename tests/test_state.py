@@ -189,3 +189,42 @@ def test_state_notify_update(config, ioctx, local_state, omap_state):
     assert update_counter == 4
     elapsed = time.time() - start
     assert elapsed < update_interval_sec
+
+
+def test_state_update_batched_changes(config, ioctx, local_state, omap_state):
+    """Confirms additions and removals are kept when batched with changes."""
+
+    removed_key = "qos_test_1"
+    changed_key = "qos_test_2"
+    added_key = "qos_test_3"
+    updated_keys = {True: set(), False: set()}
+
+    def _state_update(update, is_add_req, break_interval):
+        updated_keys[is_add_req].update(update.keys())
+
+    state = GatewayStateHandler(config, local_state, omap_state,
+                                _state_update, None, "test")
+
+    version = 1
+    for key in (removed_key, changed_key):
+        version += 1
+        add_key(ioctx, key, "old", version, omap_state.omap_name,
+                omap_state.OMAP_VERSION_KEY)
+    assert state.update()
+    updated_keys[True].clear()
+    updated_keys[False].clear()
+
+    # Make all changes before the next update, so they are handled in one batch
+    version += 1
+    remove_key(ioctx, removed_key, version, omap_state.omap_name,
+               omap_state.OMAP_VERSION_KEY)
+    version += 1
+    add_key(ioctx, changed_key, "new", version, omap_state.omap_name,
+            omap_state.OMAP_VERSION_KEY)
+    version += 1
+    add_key(ioctx, added_key, "new", version, omap_state.omap_name,
+            omap_state.OMAP_VERSION_KEY)
+    assert state.update()
+
+    assert updated_keys[False] == {removed_key, changed_key}
+    assert updated_keys[True] == {added_key, changed_key}
