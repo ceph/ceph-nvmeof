@@ -2674,7 +2674,7 @@ class GatewayClient:
 
         return connections_info.status
 
-    def connection_get_io_statistics(self, args):
+    def connection_get_io_statistics(self, args, use_extended=False):
         """Get connection's IO statistics."""
 
         def _are_latency_stats_empty(lat_stats) -> bool:
@@ -2712,7 +2712,6 @@ class GatewayClient:
         if not args.host_nqn:
             args.host_nqn = ""
 
-        use_extended = False
         if args.verbose_statistics_mode:
             use_extended = True
         if (not args.subsystem) or (not args.host_nqn):
@@ -2824,7 +2823,7 @@ class GatewayClient:
 
         return ret.status
 
-    def connection_reset_io_statistics(self, args):
+    def connection_reset_io_statistics(self, args, use_extended=False):
         """Reset connection's IO statistics."""
 
         out_func, err_func, wrn_func = self.get_output_functions(args)
@@ -2837,7 +2836,8 @@ class GatewayClient:
         if not args.host_nqn:
             args.host_nqn = ""
 
-        use_extended = (not args.subsystem) or (not args.host_nqn)
+        if not use_extended:
+            use_extended = (not args.subsystem) or (not args.host_nqn)
 
         if use_extended:
             req = pb2.get_connection_extended_io_statistics_req(subsystem_nqn=args.subsystem,
@@ -2927,9 +2927,15 @@ class GatewayClient:
     connection_actions.append({"name": "get_io_statistics",
                                "args": get_io_statistics_args,
                                "help": "Get the IO statistics for a connection"})
+    connection_actions.append({"name": "get_extended_io_statistics",
+                               "args": get_io_statistics_args,
+                               "help": "Get extended IO statistics for a connection"})
     connection_actions.append({"name": "reset_io_statistics",
                                "args": reset_io_statistics_args,
                                "help": "Reset the IO statistics for a connection"})
+    connection_actions.append({"name": "reset_extended_io_statistics",
+                               "args": reset_io_statistics_args,
+                               "help": "Reset extended IO statistics for a connection"})
     connection_choices = get_actions(connection_actions)
 
     @cli.cmd(connection_actions)
@@ -2939,8 +2945,12 @@ class GatewayClient:
             return self.connection_list(args)
         elif args.action == "get_io_statistics":
             return self.connection_get_io_statistics(args)
+        elif args.action == "get_extended_io_statistics":
+            return self.connection_get_io_statistics(args, True)
         elif args.action == "reset_io_statistics":
             return self.connection_reset_io_statistics(args)
+        elif args.action == "reset_extended_io_statistics":
+            return self.connection_reset_io_statistics(args, True)
         if not args.action:
             self.cli.parser.error(f"missing action for connection command (choose "
                                   f"from {GatewayClient.connection_choices})")
