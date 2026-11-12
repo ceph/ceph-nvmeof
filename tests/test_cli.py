@@ -2770,6 +2770,15 @@ class TestSPDKLOg:
         assert 'SPDK log flag "virtio" is disabled' in caplog.text
         assert 'SPDK log flag "vmd" is disabled' in caplog.text
         caplog.clear()
+        cli(["spdk_log_level", "set", "--extra-log-flags", "virtio", "junk1", "junk2"])
+        assert "Unknown SPDK log flags: junk1, junk2" in caplog.text
+        caplog.clear()
+        cli(["spdk_log_level", "get", "--all-log-flags"])
+        assert 'SPDK log flag "virtio" is disabled' in caplog.text
+        caplog.clear()
+        cli(["spdk_log_level", "disable", "--extra-log-flags", "junk1"])
+        assert "Unknown SPDK log flags: junk1" in caplog.text
+        caplog.clear()
         rc = 0
         try:
             cli(["spdk_log_level", "set", "--extra-log-flags"])
