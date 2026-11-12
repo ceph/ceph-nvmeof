@@ -24,7 +24,7 @@ def tw_gateways(config):
     configB = copy.deepcopy(config)
     configA.config["spdk"]["sock_impl_options"] = '{"ssl": {"recv_buf_size": 1048576, ' \
                                                   '"send_buf_size": 1048576, ' \
-                                                  '"num_ssl_tickets": 5}, "posix": ' \
+                                                  '"ssl_tickets_number": 5}, "posix": ' \
                                                   '{"recv_buf_size": 1572864, ' \
                                                   '"send_buf_size": 1572864}}'
     configB.config["spdk"]["sock_impl_options"] = '{"ssl": "stam"}'
@@ -83,8 +83,8 @@ def test_sock_impl_options(caplog, tw_gateways):
         opts = gwA.spdk_rpc_client.sock_impl_get_options(impl_name="ssl")
         assert opts["recv_buf_size"] == 1048576
         assert opts["send_buf_size"] == 1048576
-        assert opts["num_ssl_tickets"] == 5
+        assert opts["ssl_tickets_number"] == 5
     with gwB.rpc_lock:
         opts = gwB.spdk_rpc_client.sock_impl_get_options(impl_name="ssl")
         assert opts["recv_buf_size"] == 4096
-        assert opts["num_ssl_tickets"] == 0
+        assert opts["ssl_tickets_number"] == 0
