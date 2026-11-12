@@ -71,6 +71,19 @@ EOF
 RUN cat /etc/yum.repos.d/ceph.repo
 
 RUN rpm -vih https://dl.fedoraproject.org/pub/epel/epel-release-latest-10.noarch.rpm
+# EPEL 10 is branched per RHEL minor. epel-release-latest-10 follows the newest
+# minor, which moves before Rocky rebuilds. Select this image's own minor so
+# packages such as python3-pyOpenSSL match the base image.
+RUN set -euo pipefail; \
+    . /etc/os-release; \
+    major=${VERSION_ID%%.*}; \
+    if [ "${ID}" != "centos" ] && [ "${major}" -ge 10 ]; then \
+        sed -i -E \
+            -e 's/\$\{releasever_minor:\+-z\}//' \
+            -e 's/\$\{stream:\+s\}//' \
+            -e 's/^(metalink=.*)\$releasever\&/\1$releasever_major.$releasever_minor\&/' \
+            /etc/yum.repos.d/epel*.repo; \
+    fi
 RUN if [ -n "$CEPH_CLUSTER_EPEL_REPO_URL" ]; then \
       curl -fL -o /etc/yum.repos.d/ceph-epel.repo "$CEPH_CLUSTER_EPEL_REPO_URL"; \
     fi
