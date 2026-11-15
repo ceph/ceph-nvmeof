@@ -306,7 +306,7 @@ class TestCreate:
              "ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ"
              "ZZZZZZZZZZZZZZZZZZZ",
              "--no-group-append"])
-        assert "is too long, maximal length is 223" in caplog.text
+        assert "is too long, maximal length is 222" in caplog.text
         caplog.clear()
         cli(["subsystem", "add", "--subsystem", "nqn.2014-08.org.nvmexpress:uuid:0",
              "--no-group-append"])

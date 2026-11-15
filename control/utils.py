@@ -234,8 +234,9 @@ class GatewayUtils:
         if len(nqn) < NQN_MIN_LENGTH:
             return (errno.EINVAL, f"NQN \"{nqn}\" is too short, minimal length is {NQN_MIN_LENGTH}")
 
-        if len(nqn) > NQN_MAX_LENGTH:
-            return (errno.EINVAL, f"NQN \"{nqn}\" is too long, maximal length is {NQN_MAX_LENGTH}")
+        if len(nqn) >= NQN_MAX_LENGTH:
+            return (errno.EINVAL,
+                    f"NQN \"{nqn}\" is too long, maximal length is {NQN_MAX_LENGTH - 1}")
         if GatewayUtils.is_discovery_nqn(nqn):
             # The NQN is technically valid but we will probably reject it
             # later as being a discovery one
