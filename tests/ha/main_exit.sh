@@ -8,9 +8,11 @@ background_task() {
   # Give gateway some time
   sleep 5
 
-  # Waiting for the ceph container to become healthy
+  # Waiting for the ceph container to become healthy.
+  # The container may not exist yet: this task races with "docker compose up",
+  # and a failing inspect under bash -e would abort the waiter.
   while true; do
-    container_status=$(docker inspect --format='{{.State.Health.Status}}' ceph)
+    container_status=$(docker inspect --format='{{.State.Health.Status}}' ceph 2>/dev/null || echo "missing")
     if [ "$container_status" = "healthy" ]; then
       # success
       break
@@ -97,9 +99,17 @@ else
     exit 1  # Failure exit code
 fi
 
-# Wait for the background task to finish
-wait $TASK_PID  # Wait for the specific PID to complete
-background_task_exit_code=$?    # Capture the exit code of the background task
+# Exit code 1 is also what connect_panic produces. That path means the
+# background task never registered the gateway and never sent SIGABRT.
+if docker logs "$GW_NAME" 2>&1 | grep -q "connect panic"; then
+    echo "❌ gateway exited from connect panic before monitor_client was aborted"
+    exit 1
+fi
+
+# Wait for the background task to finish. set -e would skip the status
+# message below when wait itself returns non-zero.
+background_task_exit_code=0
+wait $TASK_PID || background_task_exit_code=$?
 
 # Check the exit code and print the result
 if [ $background_task_exit_code -eq 0 ]; then
