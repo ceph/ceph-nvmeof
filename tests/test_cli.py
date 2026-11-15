@@ -2345,6 +2345,13 @@ class TestDelete:
         assert "error: must use --force when setting host name to *" in caplog.text
         assert rc == 2
 
+    def test_delete_listener_wrong_subsys(self, caplog, gateway):
+        caplog.clear()
+        cli(["listener", "del", "--subsystem", "junk", "--host-name", host_name,
+             "--traddr", "4.4.4.4", "--trsvcid", "1234"])
+        assert "Failed to delete listener 4.4.4.4:1234 from junk: " \
+               "Subsystem junk not found" in caplog.text
+
     def test_delete_non_existing_listener(self, caplog, gateway):
         caplog.clear()
         cli(["listener", "del", "--subsystem", subsystem, "--host-name", host_name,
