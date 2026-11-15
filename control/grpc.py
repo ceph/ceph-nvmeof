@@ -7780,6 +7780,11 @@ class GatewayService(pb2_grpc.GatewayServicer):
             self.logger.error(errmsg)
             return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
 
+        if request.nqn not in self.subsys_serial:
+            errmsg = f"{delete_listener_error_prefix}: Subsystem {request.nqn} not found"
+            self.logger.error(errmsg)
+            return pb2.req_status(status=errno.ENOENT, error_message=errmsg)
+
         if GatewayUtils.is_discovery_nqn(request.nqn):
             errmsg = f"{delete_listener_error_prefix}: " \
                      f"Can't delete a listener from a discovery subsystem"
