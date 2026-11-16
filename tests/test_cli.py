@@ -2770,12 +2770,28 @@ class TestSPDKLOg:
         assert 'SPDK log flag "virtio" is enabled' in caplog.text
         assert 'SPDK log flag "vmd" is enabled' in caplog.text
         caplog.clear()
+        cli(["spdk_log_level", "set", "--extra-log-flags", "io_cancel", "junk", "json_util"])
+        assert 'Failure setting SPDK log levels: Invalid log flag "junk"' in caplog.text
+        cli(["spdk_log_level", "get", "--all-log-flags"])
+        assert 'SPDK log flag "io_cancel" is disabled' in caplog.text
+        assert 'SPDK log flag "json_util" is disabled' in caplog.text
+        caplog.clear()
+        cli(["spdk_log_level", "set", "--extra-log-flags", "io_cancel", "json_util"])
+        assert "Set SPDK log levels and nvmf log flags: Successful" in caplog.text
+        caplog.clear()
         cli(["spdk_log_level", "disable", "--extra-log-flags", "virtio", "vmd"])
         assert "Disable SPDK log flags: Successful" in caplog.text
         caplog.clear()
         cli(["spdk_log_level", "get", "--all-log-flags"])
         assert 'SPDK log flag "virtio" is disabled' in caplog.text
         assert 'SPDK log flag "vmd" is disabled' in caplog.text
+        caplog.clear()
+        cli(["spdk_log_level", "disable", "--extra-log-flags", "io_cancel", "junk", "json_util"])
+        assert 'Failure disabling SPDK log flags: Invalid log flag "junk"' in caplog.text
+        caplog.clear()
+        cli(["spdk_log_level", "get", "--all-log-flags"])
+        assert 'SPDK log flag "io_cancel" is enabled' in caplog.text
+        assert 'SPDK log flag "json_util" is enabled' in caplog.text
         caplog.clear()
         rc = 0
         try:
