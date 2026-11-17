@@ -51,11 +51,32 @@ class Rebalance:
                     return
                 time.sleep(0.5)
 
-        while (self.rebalance_period_sec > 0):
+        while True:
+            period = self.gw_srv.config.getint_with_default(
+                "gateway",
+                "rebalance_period_sec",
+                7)
+            max_ns = self.gw_srv.config.getint_with_default(
+                "gateway",
+                "max_ns_to_change_lb_grp",
+                8)
+            self.rebalance_period_sec = period
+            self.rebalance_max_ns_to_change_lb_grp = max_ns
+            if not self.gw_srv.up_and_running:
+                self.logger.warning("SPDK is not up and running!")
+                return
+            if period <= 0:
+                time.sleep(1)
+                continue
+            while not self.gw_srv.gateway_state.is_initialization_over():
+                if not self.gw_srv.up_and_running:
+                    self.logger.warning("SPDK is not up and running!")
+                    return
+                time.sleep(0.5)
             while self.gw_srv.gateway_state.update_is_active_lock.locked():
                 time.sleep(0.5)         # wait until update is over
 
-            for i in range(self.rebalance_max_ns_to_change_lb_grp):
+            for i in range(max_ns):
                 try:
                     if not self.gw_srv.up_and_running:
                         self.logger.warning("SPDK is not up and running!")
@@ -70,7 +91,7 @@ class Rebalance:
                         death_event.set()
                     raise
                 time.sleep(0.01)          # release lock for 10ms after rebalancing each 1 NS
-            time.sleep(self.rebalance_period_sec)
+            time.sleep(period)
 
     def find_min_loaded_group(self, grp_list) -> int:
         min_load = Rebalance.INVALID_LOAD_BALANCING_GROUP
