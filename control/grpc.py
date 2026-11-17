@@ -9069,9 +9069,15 @@ class GatewayService(pb2_grpc.GatewayServicer):
         self.logger.info(f"Received request to set SPDK logs: log_level: {log_level}, "
                          f"print_level: {print_level}, extra: {request.extra_log_flags}{peer_msg}")
 
+        nvmf_log_flags = []
         try:
-            nvmf_log_flags = [key for key in self.spdk_rpc_client.log_get_flags().keys()
-                              if key.startswith('nvmf')]
+            spdk_log_flags = self.spdk_rpc_client.log_get_flags().keys()
+            nvmf_log_flags = [key for key in spdk_log_flags if key.startswith('nvmf')]
+            for flag in request.extra_log_flags:
+                if flag not in spdk_log_flags:
+                    errmsg = f'Failure setting SPDK log levels: Invalid log flag "{flag}"'
+                    self.logger.error(errmsg)
+                    return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
             nvmf_log_flags += request.extra_log_flags
             ret = [self.spdk_rpc_client.log_set_flag(
                 flag=flag) for flag in nvmf_log_flags]
@@ -9086,9 +9092,11 @@ class GatewayService(pb2_grpc.GatewayServicer):
         except Exception as ex:
             errmsg = "Failure setting SPDK log levels"
             self.logger.exception(errmsg)
-            errmsg = "{errmsg}:\n{ex}"
             for flag in nvmf_log_flags:
-                self.spdk_rpc_client.log_clear_flag(flag=flag)
+                try:
+                    self.spdk_rpc_client.log_clear_flag(flag=flag)
+                except Exception:
+                    self.logger.exception(f"Error while clearing log flag {flag}")
             resp = self.parse_json_exeption(ex)
             status = errno.EINVAL
             if resp:
@@ -9120,9 +9128,15 @@ class GatewayService(pb2_grpc.GatewayServicer):
         self.logger.info(f"Received request to disable SPDK logs, "
                          f"extra: {request.extra_log_flags}{peer_msg}")
 
+        nvmf_log_flags = []
         try:
-            nvmf_log_flags = [key for key in self.spdk_rpc_client.log_get_flags().keys()
-                              if key.startswith('nvmf')]
+            spdk_log_flags = self.spdk_rpc_client.log_get_flags().keys()
+            nvmf_log_flags = [key for key in spdk_log_flags if key.startswith('nvmf')]
+            for flag in request.extra_log_flags:
+                if flag not in spdk_log_flags:
+                    errmsg = f'Failure disabling SPDK log flags: Invalid log flag "{flag}"'
+                    self.logger.error(errmsg)
+                    return pb2.req_status(status=errno.EINVAL, error_message=errmsg)
             nvmf_log_flags += request.extra_log_flags
             ret = [self.spdk_rpc_client.log_clear_flag(flag=flag)
                    for flag in nvmf_log_flags]
@@ -9131,14 +9145,13 @@ class GatewayService(pb2_grpc.GatewayServicer):
                           self.spdk_rpc_client.log_set_print_level(level='INFO')]
             ret.extend(logs_level)
         except Exception as ex:
-            errmsg = "Failure in disable SPDK log flags"
+            errmsg = "Failure disabling SPDK log flags"
             self.logger.exception(errmsg)
-            errmsg = f"{errmsg}:\n{ex}"
             resp = self.parse_json_exeption(ex)
             status = errno.EINVAL
             if resp:
                 status = resp["code"]
-                errmsg = f"Failure in disable SPDK log flags: {resp['message']}"
+                errmsg = f"Failure disabling SPDK log flags: {resp['message']}"
             return pb2.req_status(status=status, error_message=errmsg)
 
         status = 0
