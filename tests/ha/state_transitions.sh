@@ -4,36 +4,41 @@ cmd=nvmf_subsystem_get_listeners
 nqn=nqn.2016-06.io.spdk:cnode1
 
 expect_optimized() {
-  GW_NAME=$1
-  EXPECTED_OPTIMIZED=$2
+  local gateway=$1 expected=$2 peer=${3:-}
+  local deadline=$((SECONDS + ${CONVERGE_TIMEOUT:-120}))
+  local socket groups remaining state node
+  local -a optimized=()
 
-  socket=$(docker exec "$GW_NAME" find /var/tmp -name spdk.sock)
-  # Verify expected number of "optimized"
-  while true; do
-    response=$(docker exec "$GW_NAME" "$rpc" "-s" "$socket" "$cmd" "$nqn")
-    ana_states=$(echo "$response" | jq -r '.[0].ana_states')
-
-    # Count the number of "optimized" groups
-    optimized_count=$(jq -nr --argjson ana_states "$ana_states" '$ana_states | map(select(.ana_state == "optimized")) | length')
-
-    # Check if there is expected number of "optimized" group
-    if [ "$optimized_count" -eq "$EXPECTED_OPTIMIZED" ]; then
-      # Iterate through JSON array
-      for item in $(echo "$ana_states" | jq -c '.[]'); do
-        ana_group=$(echo "$item" | jq -r '.ana_group')
-        ana_state=$(echo "$item" | jq -r '.ana_state')
-
-        # Check if ana_state is "optimized"
-        if [ "$ana_state" = "optimized" ]; then
-          echo "$ana_group"
-        fi
-      done
-      break
-    else
-      sleep 1
-      continue
+  socket=$(timeout 5 docker exec "$gateway" find /var/tmp -name spdk.sock) || return 1
+  while (( SECONDS < deadline )); do
+    for node in "$gateway" ${peer:+"$peer"}; do
+      state=$(timeout 5 docker inspect "$node" \
+        --format '{{.State.Status}} (exit {{.State.ExitCode}})') || return 1
+      if [[ $state != running* ]]; then
+        echo "Gateway $node is $state while waiting for $gateway to own $expected ANA groups" >&2
+        return 1
+      fi
+    done
+    remaining=$((deadline - SECONDS))
+    (( remaining > 0 )) || break
+    if groups=$(set -o pipefail
+      timeout "$remaining" docker exec "$gateway" "$rpc" -s "$socket" "$cmd" "$nqn" |
+        jq -r '.[0].ana_states[]? | select(.ana_state == "optimized") | .ana_group'
+    ); then
+      optimized=()
+      if [[ -n $groups ]]; then
+        mapfile -t optimized <<< "$groups"
+      fi
+      if (( ${#optimized[@]} == expected )); then
+        printf '%s\n' "${optimized[@]}"
+        return 0
+      fi
     fi
+    sleep 1
   done
+  echo "Timed out waiting for $gateway to own $expected optimized ANA groups" \
+    "(last: ${optimized[*]:-none})" >&2
+  return 1
 }
 
 # GW name by index
@@ -96,10 +101,10 @@ GW2_NAME=$(gw_name 2)
 #
 # Step 1 validate both gave are optimized for one of ANA groups 1 and 2
 #
-GW1_OPTIMIZED=$(expect_optimized $GW1_NAME 1)
+GW1_OPTIMIZED=$(expect_optimized "$GW1_NAME" 1 "$GW2_NAME")
 gw1_ana=$(access_number_by_index "$GW1_OPTIMIZED" 0)
 
-GW2_OPTIMIZED=$(expect_optimized $GW2_NAME 1)
+GW2_OPTIMIZED=$(expect_optimized "$GW2_NAME" 1 "$GW1_NAME")
 gw2_ana=$(access_number_by_index "$GW2_OPTIMIZED" 0)
 
 verify_ana_groups "$gw1_ana" "$gw2_ana"
@@ -135,10 +140,10 @@ docker start $GW2_NAME
 
 docker ps
 
-GW1_OPTIMIZED=$(expect_optimized $GW1_NAME 1)
+GW1_OPTIMIZED=$(expect_optimized "$GW1_NAME" 1 "$GW2_NAME")
 gw1_ana=$(access_number_by_index "$GW1_OPTIMIZED" 0)
 
-GW2_OPTIMIZED=$(expect_optimized $GW2_NAME 1)
+GW2_OPTIMIZED=$(expect_optimized "$GW2_NAME" 1 "$GW1_NAME")
 gw2_ana=$(access_number_by_index "$GW2_OPTIMIZED" 0)
 
 verify_ana_groups "$gw1_ana" "$gw2_ana"
