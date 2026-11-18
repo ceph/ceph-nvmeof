@@ -25,6 +25,17 @@ concurrency:
 env:
   WAIT_INTERVAL_SECS: 1
 jobs:
+  show-actor:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Show who started this CI
+        run: |
+          echo "CI started by ${{ github.actor }}"
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "Pull request from ${{ github.event.pull_request.head.repo.full_name }}"
+            echo "ghRunner and atom for pull requests start in self-hosted-runners.yml after this workflow finishes."
+          fi
+
   build:
     if: github.event.pull_request.user.login != 'dependabot[bot]'
     runs-on: ubuntu-latest
@@ -284,11 +295,14 @@ jobs:
 
   ghRunner:
     needs: [build, build-ceph]
+    # Pull requests are started by self-hosted-runners.yml, which can read
+    # RUNNER_ALLOW_LIST. This job covers push, schedule, dispatch, and release.
+    if: github.event_name != 'pull_request' && vars.RUNNER_ALLOW_LIST != '' && contains(fromJSON(vars.RUNNER_ALLOW_LIST), github.actor)
     strategy:
       fail-fast: false
       matrix:
         test: ["qos_fio_run"]
-    runs-on: ghRunner
+    runs-on: ghRunnerStaging
     timeout-minutes: 90  # 30 min of fio plus setup and teardown
     env:
       HUGEPAGES: 512  # single spdk instance, with headroom
@@ -297,6 +311,9 @@ jobs:
       NVMEOF_CEPH_VERSION: ${{ needs.build-ceph.outputs.ceph_version }}
       SPDK_CEPH_VERSION: ${{ needs.build-ceph.outputs.ceph_version }}
     steps:
+      - name: Show who started this CI
+        run: echo "CI started by ${{ github.actor }}"
+
       - name: Reclaim workspace from previous runs
         run: |
           if [ -d "$GITHUB_WORKSPACE" ]; then
@@ -803,9 +820,12 @@ jobs:
 
   atom:
     needs: [build, build-ceph]
-    if: github.repository == 'ceph/ceph-nvmeof'
+    if: github.event_name != 'pull_request' && github.repository == 'ceph/ceph-nvmeof' && vars.RUNNER_ALLOW_LIST != '' && contains(fromJSON(vars.RUNNER_ALLOW_LIST), github.actor)
     runs-on: atomRunner
     steps:
+      - name: Show who started this CI
+        run: echo "CI started by ${{ github.actor }}"
+
       - name: Checkout code
         uses: actions/checkout@v6
 
@@ -838,7 +858,13 @@ jobs:
         run: ./tests/atom/cpArtifactAndCleanup.sh
 
   push-images-to-ceph-registry:
-    if: github.event_name == 'release'
+    if: >-
+      github.event_name == 'release' &&
+      needs.pytest.result == 'success' &&
+      needs.demo.result == 'success' &&
+      needs.discovery.result == 'success' &&
+      needs.ha.result == 'success' &&
+      (needs.atom.result == 'success' || needs.atom.result == 'skipped')
     needs: [pytest, demo, discovery, ha, atom]
     runs-on: ubuntu-latest
 
@@ -876,7 +902,14 @@ jobs:
           make push
 
   push-devel-image-to-ceph-registry:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/devel'
+    if: >-
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/devel' &&
+      needs.pytest.result == 'success' &&
+      needs.demo.result == 'success' &&
+      needs.discovery.result == 'success' &&
+      needs.ha.result == 'success' &&
+      (needs.atom.result == 'success' || needs.atom.result == 'skipped')
     needs: [pytest, demo, discovery, ha, atom]
     runs-on: ubuntu-latest
 
