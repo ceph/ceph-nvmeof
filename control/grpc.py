@@ -18,6 +18,7 @@ import hashlib
 import tempfile
 import time
 import rbd
+import grpc
 from ipaddress import ip_address
 from pathlib import Path
 from typing import Iterator, Callable, Optional
@@ -107,7 +108,10 @@ class MonitorGroupService(monitor_pb2_grpc.MonitorGroupServicer):
         self.set_group_id = set_group_id
 
     def group_id(self, request: monitor_pb2.group_id_req, context=None) -> Empty:
-        self.set_group_id(request.id)
+        # Waking startup stops this bootstrap server. Let gRPC finish the
+        # reply first, so shutdown cannot cancel the client's group_id call.
+        if not context.add_callback(lambda: self.set_group_id(request.id)):
+            context.abort(grpc.StatusCode.CANCELLED, "Group ID call already terminated")
         return Empty()
 
 
