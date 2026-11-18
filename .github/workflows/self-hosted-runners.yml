@@ -1,0 +1,241 @@
+# yamllint disable rule:line-length
+name: "Self-hosted runners"
+# Runs from the default branch, so a fork pull request cannot change this check.
+# Repository variable RUNNER_ALLOW_LIST is a JSON array of GitHub logins.
+permissions:
+  actions: read
+  contents: read
+  statuses: write
+on:  # yamllint disable rule:truthy
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+concurrency:
+  group: self-hosted-runners-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: true
+jobs:
+  allow:
+    if: github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.conclusion != 'cancelled'
+    runs-on: ubuntu-latest
+    outputs:
+      ok: ${{ steps.check.outputs.ok }}
+    steps:
+      - id: check
+        env:
+          ALLOW_LIST: ${{ vars.RUNNER_ALLOW_LIST }}
+          ACTOR: ${{ github.event.workflow_run.actor.login }}
+        run: |
+          python3 - << 'PY'
+          import json
+          import os
+          raw = os.environ.get("ALLOW_LIST") or ""
+          actor = os.environ.get("ACTOR") or ""
+          ok = False
+          try:
+              allowed = json.loads(raw)
+              ok = isinstance(allowed, list) and actor in allowed
+          except json.JSONDecodeError:
+              print("RUNNER_ALLOW_LIST is not a JSON array of logins")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
+              fh.write("ok=true\n" if ok else "ok=false\n")
+          print(f"Pull request CI was started by {actor}")
+          print("Self-hosted runner jobs allowed" if ok else "Self-hosted runner jobs skipped")
+          PY
+
+  ghRunner:
+    needs: allow
+    if: needs.allow.outputs.ok == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        test: ["qos_fio_run"]
+    runs-on: ghRunnerStaging
+    timeout-minutes: 90  # 30 min of fio plus setup and teardown
+    env:
+      HUGEPAGES: 512  # single spdk instance, with headroom
+    steps:
+      - name: Show who started this CI
+        run: echo "CI started by ${{ github.event.workflow_run.actor.login }}"
+
+      - name: Reclaim workspace from previous runs
+        run: |
+          if [ -d "$GITHUB_WORKSPACE" ]; then
+            sudo chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE" || true
+          fi
+
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ github.event.workflow_run.head_repository.full_name }}
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+
+      - name: Clean up leftovers from previous runs
+        run: |
+          sudo nvme disconnect-all || true
+          docker compose down --volumes --remove-orphans || true
+          docker ps -aq | xargs -r docker rm -f || true
+          docker system prune --force --volumes || true
+          rm -f nvmeof.tar nvmeof-cli.tar ceph.tar bdevperf.tar spdk.tar
+
+      - name: Check initiator tooling
+        run: |
+          sudo modprobe nvme-tcp
+          nvme version
+          fio --version
+          uuidgen --version
+
+      - name: Setup huge pages
+        run: |
+          make setup HUGEPAGES=$HUGEPAGES
+
+      - name: Download container images
+        uses: actions/download-artifact@v8
+        with:
+          pattern: container_images*
+          merge-multiple: true
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Load container images
+        run: |
+          docker load < nvmeof.tar
+          docker load < nvmeof-cli.tar
+          load_out=$(docker load < ceph.tar)
+          echo "$load_out"
+          image=${load_out##*Loaded image: }
+          image=${image%%$'\n'*}
+          CEPH_VERSION=${image##*:}
+          if [ -z "$CEPH_VERSION" ] || [ "$CEPH_VERSION" = "$image" ]; then
+            echo "Could not read the Ceph image tag from docker load" >&2
+            exit 1
+          fi
+          echo "CEPH_VERSION=$CEPH_VERSION" >> "$GITHUB_ENV"
+          echo "CEPH_CLUSTER_VERSION=$CEPH_VERSION" >> "$GITHUB_ENV"
+          echo "NVMEOF_CEPH_VERSION=$CEPH_VERSION" >> "$GITHUB_ENV"
+          echo "SPDK_CEPH_VERSION=$CEPH_VERSION" >> "$GITHUB_ENV"
+
+      # This test runs against a single gateway, so start exactly one.
+      - name: Start ceph and one gateway
+        timeout-minutes: 5
+        run: |
+          docker compose version
+          ./tests/ha/start_up.sh 1
+
+      - name: Wait for the gateway to be listening
+        timeout-minutes: 3
+        run: |
+          ./tests/ha/wait_gateways.sh 1
+
+      - name: List containers
+        if: success() || failure()
+        run: docker compose ps || true
+
+      - name: List processes
+        if: success() || failure()
+        run: docker compose top || true
+
+      - name: Run ${{ matrix.test }} test
+        timeout-minutes: 50
+        run: |
+          ./tests/gh_runner/${{ matrix.test }}.sh
+
+      - name: Copy ceph logs
+        if: success() || failure()
+        run: docker cp  ceph:/ceph/out /tmp/out || true
+
+      - name: Upload ceph logs
+        if: success() || failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ceph_out_ghrunner_${{ matrix.test }}
+          path: /tmp/out/*.log
+
+      - name: Display logs
+        if: success() || failure()
+        run: |
+          make logs OPTS="" || true
+
+      - name: Tear down
+        if: always()
+        run: |
+          sudo nvme disconnect-all || true
+          make down || true
+          make clean || true
+          rm -rf /tmp/out
+          rm -f nvmeof.tar nvmeof-cli.tar ceph.tar bdevperf.tar spdk.tar
+
+      - name: Report ghRunner on the pull request
+        if: always()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          state=failure
+          if [ "${{ job.status }}" = "success" ]; then
+            state=success
+          fi
+          gh api "repos/${{ github.repository }}/statuses/${{ github.event.workflow_run.head_sha }}" \
+            -f state="$state" \
+            -f context="ghRunner" \
+            -f description="ghRunner ${state}" \
+            -f target_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+  atom:
+    needs: allow
+    if: needs.allow.outputs.ok == 'true' && github.repository == 'ceph/ceph-nvmeof'
+    runs-on: atomRunner
+    steps:
+      - name: Show who started this CI
+        run: echo "CI started by ${{ github.event.workflow_run.actor.login }}"
+
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ github.event.workflow_run.head_repository.full_name }}
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+
+      - name: Container_images_nvmeof folder (tar files) download
+        run: |
+          rm -rf container_images_nvmeof
+          for i in {1..5}; do
+            echo "Attempt $i to download artifacts from run ${{ github.event.workflow_run.id }}..."
+            gh run download "${{ github.event.workflow_run.id }}" --repo "${{ github.repository }}" --pattern "container_images_nvmeof" && break
+            echo "Download failed. Retrying in $((i * 5))s..."
+            sleep $((i * 5))
+          done
+          if [ ! -d container_images_nvmeof ]; then
+            echo "ERROR: artifact 'container_images_nvmeof' was never downloaded for run ${{ github.event.workflow_run.id }}"
+            exit 1
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Cluster build and Atom tests run
+        if: always()
+        run: |
+          set -o pipefail
+          . .env
+          ACTION_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.event.workflow_run.id }}"
+          ./tests/atom/clusterBuildTestsRun.sh "$NVMEOF_VERSION" "$CEPH_BRANCH" "$CEPH_SHA" "$ACTION_URL" 2>&1 | tee atom_nvmeof_console.log
+
+      - name: Atom artifact build
+        if: always()
+        run: ./tests/atom/cpArtifactAndCleanup.sh
+
+      - name: Report atom on the pull request
+        if: always()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          state=failure
+          if [ "${{ job.status }}" = "success" ]; then
+            state=success
+          fi
+          gh api "repos/${{ github.repository }}/statuses/${{ github.event.workflow_run.head_sha }}" \
+            -f state="$state" \
+            -f context="atom" \
+            -f description="atom ${state}" \
+            -f target_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
