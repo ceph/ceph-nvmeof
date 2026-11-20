@@ -248,25 +248,56 @@ class GatewayClient:
             if out_func:
                 out_func("Enable server auth since both --client-key and "
                          "--client-cert are provided")
-            with client_cert as f:
-                client_cert = f.read()
-            with client_key as f:
-                client_key = f.read()
+            self.logger.debug(f"Loading client key from {client_key.name}")
+            try:
+                with client_cert as f:
+                    client_cert = f.read()
+                self.logger.debug("Successfully loaded client cert")
+            except Exception as e:
+                self.cli.parser.error(f"Error reading client cert: {e}")
+
+            try:
+                with client_key as f:
+                    client_key = f.read()
+                self.logger.debug("Successfully loaded client key")
+            except Exception as e:
+                self.cli.parser.error(f"Error reading client key: {e}")
+
             if server_cert:
-                with server_cert as f:
-                    server_cert = f.read()
+                self.logger.debug(f"Loading server cert from {server_cert.name}")
+                try:
+                    with server_cert as f:
+                        server_cert = f.read()
+                    self.logger.debug("Successfully loaded server cert")
+                except Exception as e:
+                    self.cli.parser.error(f"Error reading server cert: {e}")
             else:
                 err_func("No server certificate file was provided")
 
-            credentials = grpc.ssl_channel_credentials(
-                root_certificates=server_cert,
-                private_key=client_key,
-                certificate_chain=client_cert,
-            )
-            channel = grpc.secure_channel(server, credentials,
-                                          options=[('grpc.max_receive_message_length', msg_len)])
+            try:
+                credentials = grpc.ssl_channel_credentials(
+                    root_certificates=server_cert,
+                    private_key=client_key,
+                    certificate_chain=client_cert,
+                )
+                self.logger.debug("Successfully created mTLS client credentials")
+            except Exception as e:
+                self.cli.parser.error(f"Error creating mTLS client credentials: {e}")
+
+            try:
+                channel = grpc.secure_channel(
+                    server,
+                    credentials,
+                    options=[
+                        ('grpc.max_receive_message_length', msg_len),
+                    ],
+                )
+                self.logger.info(f"Successfully connected to mTLS server at {server}")
+            except Exception as e:
+                self.cli.parser.error(f"Error connecting to mTLS server at {server}: {e}")
         else:
             # Instantiate a channel without credentials
+            self.logger.debug(f"Connecting to insecure channel at {server}")
             channel = grpc.insecure_channel(server,
                                             options=[('grpc.max_receive_message_length', msg_len)])
 
