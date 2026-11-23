@@ -1,55 +1,5 @@
 set -xe
-rpc=/usr/libexec/spdk/scripts/rpc.py
-cmd=nvmf_subsystem_get_listeners
-
-expect_optimized() {
-  GW_NAME=$1
-  EXPECTED_OPTIMIZED=$2
-  NQN=$3
-
-  socket_retries=0
-  socket=""
-  while [ $socket_retries -lt 10 ] ; do
-      socket=$(docker exec "$GW_NAME" find /var/tmp -name spdk.sock)
-      if [ -n "$socket" ]; then
-          break
-      fi
-      socket_retries=$(expr $socket_retries + 1)
-      sleep 1
-  done
-  if [ -z "$socket" ]; then
-      exit 1 # failed
-  fi
-
-  # Verify expected number of "optimized"
-  for i in $(seq 50); do
-    response=$(docker exec "$GW_NAME" "$rpc" "-s" "$socket" "$cmd" "$NQN")
-    ana_states=$(echo "$response" | jq -r '.[0].ana_states')
-
-    # Count the number of "optimized" groups
-    optimized_count=$(jq -nr --argjson ana_states "$ana_states" '$ana_states | map(select(.ana_state == "optimized")) | length')
-
-    # Check if there is expected number of "optimized" group
-    if [ "$optimized_count" -eq "$EXPECTED_OPTIMIZED" ]; then
-      # Iterate through JSON array
-      for item in $(echo "$ana_states" | jq -c '.[]'); do
-        ana_group=$(echo "$item" | jq -r '.ana_group')
-        ana_state=$(echo "$item" | jq -r '.ana_state')
-
-        # Check if ana_state is "optimized"
-        if [ "$ana_state" = "optimized" ]; then
-          echo "$ana_group"
-        fi
-      done
-      return
-    else
-      sleep 5
-      continue
-    fi
-  done
-  echo "‼️  expect_optimized timeout GW_NAME=$1 EXPECTED_OPTIMIZED=$2 NQN=$3"
-  exit 1 # failed
-}
+. "${GITHUB_WORKSPACE:-.}/tests/ha/ana_polling.sh"
 
 # GW name by index
 gw_name() {

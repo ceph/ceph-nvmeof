@@ -1,45 +1,11 @@
 set -xe
-rpc=/usr/libexec/spdk/scripts/rpc.py
-cmd=nvmf_subsystem_get_listeners
+. "${GITHUB_WORKSPACE:-.}/tests/ha/ana_polling.sh"
 nqn=nqn.2016-06.io.spdk:cnode1
-
-expect_optimized() {
-  GW_NAME=$1
-  EXPECTED_OPTIMIZED=$2
-
-  socket=$(docker exec "$GW_NAME" find /var/tmp -name spdk.sock)
-  # Verify expected number of "optimized"
-  while true; do
-    response=$(docker exec "$GW_NAME" "$rpc" "-s" "$socket" "$cmd" "$nqn")
-    ana_states=$(echo "$response" | jq -r '.[0].ana_states')
-
-    # Count the number of "optimized" groups
-    optimized_count=$(jq -nr --argjson ana_states "$ana_states" '$ana_states | map(select(.ana_state == "optimized")) | length')
-
-    # Check if there is expected number of "optimized" group
-    if [ "$optimized_count" -eq "$EXPECTED_OPTIMIZED" ]; then
-      # Iterate through JSON array
-      for item in $(echo "$ana_states" | jq -c '.[]'); do
-        ana_group=$(echo "$item" | jq -r '.ana_group')
-        ana_state=$(echo "$item" | jq -r '.ana_state')
-
-        # Check if ana_state is "optimized"
-        if [ "$ana_state" = "optimized" ]; then
-          echo "$ana_group"
-        fi
-      done
-      break
-    else
-      sleep 1
-      continue
-    fi
-  done
-}
 
 # GW name by index
 gw_name() {
   i=$1
-  docker ps --format '{{.ID}}\t{{.Names}}' | awk '$2 ~ /nvmeof/ && $2 ~ /'$i'/ {print $1}'
+  docker ps --all --format '{{.ID}}\t{{.Names}}' | awk '$2 ~ /nvmeof/ && $2 ~ /'$i'/ {print $1}'
 }
 
 # Function to access numbers by index
@@ -93,17 +59,16 @@ make down
 # Step 2 Start a new deployment
 docker compose up -d --scale nvmeof=2 nvmeof
 
-# Step 3 Wait for ceph container to become healthy"
-while true; do
-  container_status=$(docker inspect --format='{{.State.Health.Status}}' ceph)
-  if [[ $container_status == "healthy" ]]; then
-    # success
-    break
-  else
-    # Wait for a specific time before checking again
-    sleep 1
-    echo -n .
+# Step 3 Wait for the Ceph container to become healthy
+ceph_deadline=$(($(date +%s) + ${CONVERGE_TIMEOUT:-120}))
+while :; do
+  container_status=$(timeout 5 docker inspect --format '{{.State.Health.Status}}' ceph)
+  [ "$container_status" = healthy ] && break
+  if [ "$(date +%s)" -ge "$ceph_deadline" ]; then
+    echo "Timed out waiting for the Ceph container to become healthy (last: $container_status)" >&2
+    exit 1
   fi
+  sleep 1
 done
 docker ps
 
@@ -117,20 +82,24 @@ for i in $(seq 2); do
 done
 
 # Step 6 Wait for both gateways to be ready
-source $test_dir/wait_gateways.sh
+if ! CLI_TLS_ARGS="${CLI_TLS_ARGS:-}" timeout "${CONVERGE_TIMEOUT:-120}" \
+    "$test_dir/wait_gateways.sh" 2; then
+  echo "Gateways did not become ready after late registration" >&2
+  exit 1
+fi
 
 # Step 7 Setup host
-source $test_dir/setup.sh
+. "$test_dir/setup.sh"
 
 #
 # Step 8 validate both gateways are optimized for one of ANA groups 1 and 2
 #
 GW1_NAME=$(gw_name 1)
 GW2_NAME=$(gw_name 2)
-GW1_OPTIMIZED=$(expect_optimized $GW1_NAME 1)
+GW1_OPTIMIZED=$(expect_optimized "$GW1_NAME" 1 "$nqn" "$GW2_NAME")
 gw1_ana=$(access_number_by_index "$GW1_OPTIMIZED" 0)
 
-GW2_OPTIMIZED=$(expect_optimized $GW2_NAME 1)
+GW2_OPTIMIZED=$(expect_optimized "$GW2_NAME" 1 "$nqn" "$GW1_NAME")
 gw2_ana=$(access_number_by_index "$GW2_OPTIMIZED" 0)
 
 verify_ana_groups "$gw1_ana" "$gw2_ana"
