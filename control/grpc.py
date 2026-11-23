@@ -961,7 +961,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         # tests environment where we skip main
         config.display_environment_info(self.logger)
         self.ceph_utils = ceph_utils
-        self.ceph_utils.fetch_and_display_ceph_version()
+        self.ceph_utils.display_ceph_version_and_fsid()
         self.config = config
         config.dump_config_file(self.logger)
         self.rpc_lock = rpc_lock
@@ -9179,32 +9179,41 @@ class GatewayService(pb2_grpc.GatewayServicer):
             return None
         return (v1, v2, v3)
 
-    def get_gateway_info_safe(self, request, context):
+    def get_gateway_info(self, request, context=None):
         """Get gateway's info"""
 
-        assert self.rpc_lock.locked(), "RPC is unlocked when calling get_gateway_info_safe()"
         peer_msg = self.get_peer_message(context)
         self.logger.debug(f"Received request to get gateway's info{peer_msg}")
         gw_version_string = os.getenv("NVMEOF_VERSION")
-        if not self.spdk_version:
-            try:
-                ret = self.spdk_rpc_client.spdk_get_version()
-                if ret:
-                    self.spdk_version = ret["version"]
-            except Exception:
-                self.logger.exception("Error getting SPDK version")
-                pass
+        cli_version_string = request.cli_version
+        addr = self.config.get_with_default("gateway", "addr", "")
+        port = self.config.get_with_default("gateway", "port", "")
+        initialization_over_info = self.gateway_state.get_initialization_over_info()
+        init_over_str = ""
+        if initialization_over_info[0] and initialization_over_info[1]:
+            init_over_str = time.ctime(initialization_over_info[1])
+            init_over_str += f" ({int(initialization_over_info[1])})"
+        ceph_ver = self.ceph_utils.fetch_ceph_version()
+        ceph_fsid = self.fsid
+        if not ceph_fsid:
+            ceph_fsid = self.ceph_utils.fetch_ceph_fsid()
+        with self.rpc_lock:
+            if ceph_fsid and not self.fsid:
+                self.fsid = ceph_fsid
+            location = self.ceph_utils.get_gateway_location(self.gateway_pool,
+                                                            self.gateway_group,
+                                                            self.gateway_name)
+            if not self.spdk_version:
+                try:
+                    ret = self.spdk_rpc_client.spdk_get_version()
+                    if ret:
+                        self.spdk_version = ret["version"]
+                except Exception:
+                    self.logger.exception("Error getting SPDK version")
         if self.spdk_version:
             spdk_version_string = self.spdk_version
         else:
             spdk_version_string = os.getenv("NVMEOF_SPDK_VERSION")
-        cli_version_string = request.cli_version
-        addr = self.config.get_with_default("gateway", "addr", "")
-        port = self.config.get_with_default("gateway", "port", "")
-        initialization_over = self.gateway_state.is_initialization_over()
-        location = self.ceph_utils.get_gateway_location(self.gateway_pool,
-                                                        self.gateway_group,
-                                                        self.gateway_name)
         ret = pb2.gateway_info(cli_version=request.cli_version,
                                version=gw_version_string,
                                spdk_version=spdk_version_string,
@@ -9220,9 +9229,12 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                max_namespaces_per_subsystem=self.max_namespaces_per_subsystem,
                                max_hosts_per_subsystem=self.max_hosts_per_subsystem,
                                max_hosts=self.max_hosts,
-                               gateway_initialization_over=initialization_over,
+                               gateway_initialization_over=initialization_over_info[0],
+                               initialization_over_time=init_over_str,
                                io_stats_enabled=self.io_stats_enabled,
                                location=location,
+                               ceph_version=ceph_ver,
+                               ceph_cluster_id=self.fsid,
                                status=0,
                                error_message="")
         cli_ver = self.parse_version(cli_version_string)
@@ -9251,11 +9263,6 @@ class GatewayService(pb2_grpc.GatewayServicer):
             log_func = self.logger.error
         log_func(f"Gateway's info:\n{ret}")
         return ret
-
-    def get_gateway_info(self, request, context=None):
-        """Get gateway's info"""
-
-        return self.execute_grpc_function(self.get_gateway_info_safe, request, context)
 
     def set_gateway_io_stats_mode_safe(self, request, context):
         """Set gateway's IO statistics mode"""

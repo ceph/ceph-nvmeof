@@ -4656,6 +4656,9 @@ type GatewayInfo struct {
 	GatewayInitializationOver *bool                  `protobuf:"varint,18,opt,name=gateway_initialization_over,json=gatewayInitializationOver,proto3,oneof" json:"gateway_initialization_over,omitempty"`
 	IoStatsEnabled            *bool                  `protobuf:"varint,19,opt,name=io_stats_enabled,json=ioStatsEnabled,proto3,oneof" json:"io_stats_enabled,omitempty"`
 	Location                  *string                `protobuf:"bytes,20,opt,name=location,proto3,oneof" json:"location,omitempty"`
+	InitializationOverTime    *string                `protobuf:"bytes,21,opt,name=initialization_over_time,json=initializationOverTime,proto3,oneof" json:"initialization_over_time,omitempty"`
+	CephVersion               *string                `protobuf:"bytes,22,opt,name=ceph_version,json=cephVersion,proto3,oneof" json:"ceph_version,omitempty"`
+	CephClusterId             *string                `protobuf:"bytes,23,opt,name=ceph_cluster_id,json=cephClusterId,proto3,oneof" json:"ceph_cluster_id,omitempty"`
 	unknownFields             protoimpl.UnknownFields
 	sizeCache                 protoimpl.SizeCache
 }
@@ -4826,6 +4829,27 @@ func (x *GatewayInfo) GetIoStatsEnabled() bool {
 func (x *GatewayInfo) GetLocation() string {
 	if x != nil && x.Location != nil {
 		return *x.Location
+	}
+	return ""
+}
+
+func (x *GatewayInfo) GetInitializationOverTime() string {
+	if x != nil && x.InitializationOverTime != nil {
+		return *x.InitializationOverTime
+	}
+	return ""
+}
+
+func (x *GatewayInfo) GetCephVersion() string {
+	if x != nil && x.CephVersion != nil {
+		return *x.CephVersion
+	}
+	return ""
+}
+
+func (x *GatewayInfo) GetCephClusterId() string {
+	if x != nil && x.CephClusterId != nil {
+		return *x.CephClusterId
 	}
 	return ""
 }
@@ -7954,7 +7978,7 @@ const file_gateway_proto_rawDesc = "" +
 	"\x0f_has_dhchap_keyB\x11\n" +
 	"\x0f_allow_any_hostB\x16\n" +
 	"\x14_created_without_keyB!\n" +
-	"\x1f_use_group_config_network_masks\"\xc4\a\n" +
+	"\x1f_use_group_config_network_masks\"\x9a\t\n" +
 	"\fgateway_info\x12\x1f\n" +
 	"\vcli_version\x18\x01 \x01(\tR\n" +
 	"cliVersion\x12\x18\n" +
@@ -7978,7 +8002,11 @@ const file_gateway_proto_rawDesc = "" +
 	"\tmax_hosts\x18\x11 \x01(\rH\x05R\bmaxHosts\x88\x01\x01\x12C\n" +
 	"\x1bgateway_initialization_over\x18\x12 \x01(\bH\x06R\x19gatewayInitializationOver\x88\x01\x01\x12-\n" +
 	"\x10io_stats_enabled\x18\x13 \x01(\bH\aR\x0eioStatsEnabled\x88\x01\x01\x12\x1f\n" +
-	"\blocation\x18\x14 \x01(\tH\bR\blocation\x88\x01\x01B\x0f\n" +
+	"\blocation\x18\x14 \x01(\tH\bR\blocation\x88\x01\x01\x12=\n" +
+	"\x18initialization_over_time\x18\x15 \x01(\tH\tR\x16initializationOverTime\x88\x01\x01\x12&\n" +
+	"\fceph_version\x18\x16 \x01(\tH\n" +
+	"R\vcephVersion\x88\x01\x01\x12+\n" +
+	"\x0fceph_cluster_id\x18\x17 \x01(\tH\vR\rcephClusterId\x88\x01\x01B\x0f\n" +
 	"\r_spdk_versionB\x11\n" +
 	"\x0f_max_subsystemsB\x11\n" +
 	"\x0f_max_namespacesB\x1a\n" +
@@ -7988,7 +8016,10 @@ const file_gateway_proto_rawDesc = "" +
 	"_max_hostsB\x1e\n" +
 	"\x1c_gateway_initialization_overB\x13\n" +
 	"\x11_io_stats_enabledB\v\n" +
-	"\t_location\"d\n" +
+	"\t_locationB\x1b\n" +
+	"\x19_initialization_over_timeB\x0f\n" +
+	"\r_ceph_versionB\x12\n" +
+	"\x10_ceph_cluster_id\"d\n" +
 	"\vcli_version\x12\x16\n" +
 	"\x06status\x18\x01 \x01(\x05R\x06status\x12#\n" +
 	"\rerror_message\x18\x02 \x01(\tR\ferrorMessage\x12\x18\n" +

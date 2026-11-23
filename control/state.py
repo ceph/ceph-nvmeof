@@ -1345,11 +1345,15 @@ class GatewayStateHandler:
                                                                      25)
         self.update_is_active_lock = threading.Lock()
         self.first_update_over = False
+        self.first_update_over_time = 0
         self.id_text = id_text
         self.up_and_running = True
 
     def is_initialization_over(self) -> bool:
         return self.first_update_over
+
+    def get_initialization_over_info(self) -> tuple[bool, float]:
+        return (self.first_update_over, self.first_update_over_time)
 
     def add_namespace(self, subsystem_nqn: str, nsid: str, val: str):
         """Adds a namespace to the state data store."""
@@ -2380,6 +2384,7 @@ class GatewayStateHandler:
                                  f"({self.id_text}).")
 
         if not self.first_update_over:
+            self.first_update_over_time = time.time()
             self.first_update_over = True
             self.logger.info(f"Initialization is over ({self.id_text}).")
 

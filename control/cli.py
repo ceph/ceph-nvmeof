@@ -404,7 +404,11 @@ class GatewayClient:
                     out_func(f"Gateway's group: {gw_info.group}")
                 if gw_info.hostname:
                     out_func(f"Gateway's host name: {gw_info.hostname}")
-                if not gw_info.gateway_initialization_over:
+                if gw_info.gateway_initialization_over:
+                    init_over = gw_info.initialization_over_time
+                    if init_over:
+                        out_func(f"Gateway's initialization over time: {init_over}")
+                else:
                     out_func("Gateway's initialization is still in progress")
                 out_func(f"Gateway's load balancing group: {gw_info.load_balancing_group}")
                 out_func(f"Gateway's address: {gw_info.addr}")
@@ -425,6 +429,10 @@ class GatewayClient:
                 out_func(f"Gateway's IO statistics is {io_stats_txt}")
                 if gw_info.spdk_version:
                     out_func(f"SPDK version: {gw_info.spdk_version}")
+                if gw_info.ceph_version:
+                    out_func(f"Ceph version: {gw_info.ceph_version}")
+                if gw_info.ceph_cluster_id:
+                    out_func(f"Ceph cluster ID: {gw_info.ceph_cluster_id}")
                 if not gw_info.bool_status:
                     err_func("Getting gateway's information returned status mismatch")
                 if gw_info.error_message:
