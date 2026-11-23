@@ -7,7 +7,7 @@ function cephnvmf_func()
 
 function demo_test_unsecured()
 {
-    make demo OPTS=-T NVMEOF_IO_PORT2=${port2}
+    make demo OPTS=-T NVMEOF_IO_PORT2=${port2} HOSTNQN=${localhostnqn}
     return $?
 }
 
@@ -143,7 +143,6 @@ function demo_bdevperf_unsecured()
     [[ `echo $conns | jq -r '.connections[0]'` == "null" ]]
 
     echo "ℹ️  bdevperf tcp connect ip: $NVMEOF_IP_ADDRESS port: $NVMEOF_IO_PORT nqn: $NQN, host in namespace netmask"
-    localhostnqn=`cat /etc/nvme/hostnqn`
     devs=`make exec -s SVC=bdevperf OPTS=-T CMD="$rpc -v -s $BDEVPERF_SOCKET bdev_nvme_attach_controller -b Nvme0 -t tcp -a $NVMEOF_IP_ADDRESS -s $NVMEOF_IO_PORT -f ipv4 -n $NQN -q $localhostnqn -l -1 -o 10"`
     [[ "$devs" == "Nvme0n1 Nvme0n2" ]]
 
@@ -166,7 +165,6 @@ function demo_bdevperf_unsecured()
     [[ `echo $conns | jq -r '.connections[1]'` == "null" ]]
 
     echo "ℹ️  bdevperf tcp connect ip: $NVMEOF_IP_ADDRESS port: ${port2} nqn: $NQN, using any host listener"
-    localhostnqn=`cat /etc/nvme/hostnqn`
     devs=`make exec -s SVC=bdevperf OPTS=-T CMD="$rpc -v -s $BDEVPERF_SOCKET bdev_nvme_attach_controller -b Nvme1 -t tcp -a $NVMEOF_IP_ADDRESS -s ${port2} -f ipv4 -n $NQN -q $localhostnqn -l -1 -o 10"`
 
     echo "ℹ️  verify connection list"
@@ -1547,6 +1545,7 @@ rpc="/usr/libexec/spdk/scripts/rpc.py"
 port2=`expr ${NVMEOF_IO_PORT} + 10`
 port3=`expr ${NVMEOF_IO_PORT} + 20`
 port4=`expr ${NVMEOF_IO_PORT} + 30`
+localhostnqn="${NQN}localhost"
 case "$1" in
     test_unsecured)
         demo_test_unsecured
