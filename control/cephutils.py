@@ -238,19 +238,16 @@ class CephUtils:
 
             return self.anagroup_list
 
-    def fetch_and_display_ceph_version(self):
+    def fetch_ceph_version(self):
+        ceph_ver = ""
         try:
             rply = self.execute_ceph_monitor_command('{"prefix":"mon versions"}')
             ceph_ver = rply[1].decode().removeprefix("{").strip().split(":")[0]
             ceph_ver = ceph_ver.removeprefix('"').removesuffix('"')
             ceph_ver = ceph_ver.removeprefix("ceph version ")
-            self.logger.info(f"Connected to Ceph with version \"{ceph_ver}\"")
-            ceph_fsid = self.fetch_ceph_fsid()
-            if ceph_fsid:
-                self.logger.info(f"Cluster ID is {ceph_fsid}")
         except Exception:
             self.logger.exception("Failure fetching Ceph version")
-            pass
+        return ceph_ver
 
     def fetch_ceph_fsid(self) -> str:
         fsid = None
@@ -261,6 +258,14 @@ class CephUtils:
             self.logger.exception("Failure fetching Ceph FSID")
 
         return fsid
+
+    def display_ceph_version_and_fsid(self):
+        ceph_ver = self.fetch_ceph_version()
+        if ceph_ver:
+            self.logger.info(f"Connected to Ceph with version \"{ceph_ver}\"")
+        ceph_fsid = self.fetch_ceph_fsid()
+        if ceph_fsid:
+            self.logger.info(f"Cluster ID is {ceph_fsid}")
 
     def pool_exists(self, pool) -> bool:
         if not pool:

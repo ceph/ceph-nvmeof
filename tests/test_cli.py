@@ -218,6 +218,10 @@ class TestGet:
                 spdk_ver = None
         if not spdk_ver:
             spdk_ver = os.getenv("NVMEOF_SPDK_VERSION")
+        ceph_ver = gw.ceph_utils.fetch_ceph_version()
+        fsid = gw.ceph_utils.fetch_ceph_fsid()
+        init_time = gw.gateway_state.get_initialization_over_info()[1]
+        cur_time = f"{time.ctime(init_time)} ({int(init_time)})"
         gw_info = cli_test(["gw", "info"])
         assert gw_info is not None
         assert gw_info.cli_version == cli_ver
@@ -230,8 +234,17 @@ class TestGet:
         assert gw_info.max_namespaces_per_subsystem == 64
         assert gw_info.max_hosts == 6
         assert gw_info.max_hosts_per_subsystem == 4
+        assert gw_info.initialization_over_time
+        assert cur_time in gw_info.initialization_over_time
+        assert gw_info.ceph_version
+        assert ceph_ver == gw_info.ceph_version
+        assert gw_info.ceph_cluster_id
+        assert fsid == gw_info.ceph_cluster_id
         assert gw_info.status == 0
         assert gw_info.bool_status
+        caplog.clear()
+        cli(["--format", "json", "gw", "info"])
+        assert '"gateway_initialization_over": true' in caplog.text
 
     def test_get_gateway_stats(self, caplog, gateway):
         caplog.clear()
