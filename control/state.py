@@ -259,11 +259,11 @@ class GatewayState(ABC):
         state = self.get_state()
         for key in list(state.keys()):
             # Separate if to several statements to keep flake8 happy
-            if key.startswith(GatewayState.build_namespace_qos_key(subsystem_nqn, nsid)):
+            if key == GatewayState.build_namespace_qos_key(subsystem_nqn, nsid):
                 self._remove_key(key)
             elif key.startswith(GatewayState.build_namespace_host_key(subsystem_nqn, nsid, "")):
                 self._remove_key(key)
-            elif key.startswith(GatewayState.build_namespace_refresh_size_key(subsystem_nqn, nsid)):
+            elif key == GatewayState.build_namespace_refresh_size_key(subsystem_nqn, nsid):
                 self._remove_key(key)
 
     def add_namespace_qos(self, subsystem_nqn: str, nsid: str, val: str):

@@ -2,7 +2,7 @@ import pytest
 import time
 import rados
 import threading
-from control.state import LocalGatewayState, OmapGatewayState, GatewayStateHandler
+from control.state import LocalGatewayState, OmapGatewayState, GatewayStateHandler, GatewayState
 
 
 @pytest.fixture
@@ -189,3 +189,22 @@ def test_state_notify_update(config, ioctx, local_state, omap_state):
     assert update_counter == 4
     elapsed = time.time() - start
     assert elapsed < update_interval_sec
+
+
+def test_remove_namespace_keeps_other_namespaces(local_state):
+    """Confirms removing a namespace keeps the keys of other namespaces."""
+
+    subsystem = "nqn.2016-06.io.spdk:cnode1"
+    for nsid in ["1", "10", "11"]:
+        local_state.add_namespace(subsystem, nsid, "ns")
+        local_state.add_namespace_qos(subsystem, nsid, "qos")
+        local_state.add_namespace_refresh_size(subsystem, nsid)
+
+    local_state.remove_namespace(subsystem, "1")
+
+    state = local_state.get_state()
+    assert GatewayState.build_namespace_qos_key(subsystem, "1") not in state
+    assert GatewayState.build_namespace_refresh_size_key(subsystem, "1") not in state
+    for nsid in ["10", "11"]:
+        assert GatewayState.build_namespace_qos_key(subsystem, nsid) in state
+        assert GatewayState.build_namespace_refresh_size_key(subsystem, nsid) in state
