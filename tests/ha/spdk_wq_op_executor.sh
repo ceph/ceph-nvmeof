@@ -1,0 +1,85 @@
+#!/bin/sh
+# SpdkContextWQ + objecter_dispatch_to_op_executor HA check.
+# Expects start_up_spdk_wq_op_executor.sh (ceph config set before GWs) and setup.sh.
+set -ex
+
+# Check if GITHUB_WORKSPACE is defined
+if [ -n "$GITHUB_WORKSPACE" ]; then
+    test_dir="$GITHUB_WORKSPACE/tests/ha"
+else
+    test_dir=$(dirname "$0")
+fi
+
+NQN="nqn.2016-06.io.spdk:cnode1"
+rpc=/usr/libexec/spdk/scripts/rpc.py
+SPDK_SOCKET=/var/tmp/spdk.sock
+
+echo "ℹ️  T1: validate ceph config set objecter_dispatch_to_op_executor"
+op_exec=$(docker compose exec -T ceph \
+  ceph config get client objecter_dispatch_to_op_executor | tr -d '\r\n')
+echo "ceph config get client objecter_dispatch_to_op_executor=$op_exec"
+[ "$op_exec" = "true" ]
+
+# Confirm the option is present in the mon config DB (set by start_up_*, not default).
+dump=$(docker compose exec -T ceph ceph config dump -f json)
+echo "$dump" | jq -e '
+  map(select(
+    .name == "objecter_dispatch_to_op_executor"
+    and (.value == "true" or .value == true)
+  )) | length > 0
+' >/dev/null
+echo "✅ mon config DB has objecter_dispatch_to_op_executor=true"
+
+strand=$(docker compose exec -T ceph \
+  ceph config get client objecter_dispatch_to_session_strand 2>/dev/null | tr -d '\r\n' || true)
+echo "objecter_dispatch_to_session_strand=${strand:-<default>}"
+if [ -n "$strand" ] && [ "$strand" != "false" ]; then
+  echo "FAIL: objecter_dispatch_to_session_strand must be false, got $strand" >&2
+  exit 1
+fi
+
+echo "ℹ️  T3: Objecter applied op-executor from mon config (ctor enable log)"
+# Objecter.cc logs this once at construction when the flag is true (after
+# get_monmap_and_config). A fresh `ceph` CLI client emits it on stderr; it does
+# not reliably land in gateway Python logs under /var/log/ceph.
+enable_re='objecter_dispatch_to_op_executor=true: OSD op replies'
+cli_out=$(docker compose exec -T ceph ceph status 2>&1 || true)
+if ! printf '%s\n' "$cli_out" | grep -q -- "$enable_re" && \
+   ! grep -Rsq -- "$enable_re" /var/log/ceph/ 2>/dev/null && \
+   ! docker compose logs 2>&1 | grep -q -- "$enable_re"; then
+  echo "FAIL: missing Objecter enable log matching: $enable_re" >&2
+  echo "---- ceph status stderr/stdout (head) ----" >&2
+  printf '%s\n' "$cli_out" | head -80 >&2 || true
+  exit 1
+fi
+echo "✅ Objecter ctor applied objecter_dispatch_to_op_executor=true"
+
+echo "ℹ️  T2/T4/T5: sanity I/O + SpdkContextWQ asserts"
+. "$test_dir/spdk_wq.sh"
+
+echo "ℹ️  T6: namespace delete under light load"
+# Prefer GW1_NAME from sanity/spdk_wq (set before bdevperf). Re-resolve carefully:
+# project name is ceph-nvmeof-*, so a bare /nvmeof/ && /1/ also matches bdevperf-1.
+if [ -z "${GW1_NAME:-}" ]; then
+  GW1_NAME=$(docker ps --format '{{.ID}}\t{{.Names}}' \
+    | awk '$2 ~ /nvmeof-[0-9]+$/ {print $1; exit}')
+fi
+GW1_IP="$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$GW1_NAME")"
+echo "GW1_NAME=$GW1_NAME GW1_IP=$GW1_IP"
+cli() {
+  docker compose run --rm nvmeof-cli --server-address "$GW1_IP" --server-port 5500 "$@"
+}
+# Delete nsid 2 (demo_image2 from setup.sh); keep nsid 1 for residual path.
+cli namespace del --subsystem "$NQN" --nsid 2
+ns_list=$(cli --output stdio --format json namespace list --subsystem "$NQN")
+echo "$ns_list"
+[ "$(echo "$ns_list" | jq -r '.status')" = "0" ]
+[ "$(echo "$ns_list" | jq -r '.namespaces[0].nsid')" = "1" ]
+[ "$(echo "$ns_list" | jq -r '.namespaces[1]')" = "null" ]
+
+if docker compose logs nvmeof 2>&1 | grep -q 'operations still pending during destruction'; then
+  echo "FAIL: operations still pending during destruction after namespace del" >&2
+  exit 1
+fi
+
+echo "✅ spdk_wq_op_executor: all checks passed"
