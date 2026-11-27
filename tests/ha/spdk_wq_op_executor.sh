@@ -14,31 +14,44 @@ NQN="nqn.2016-06.io.spdk:cnode1"
 rpc=/usr/libexec/spdk/scripts/rpc.py
 SPDK_SOCKET=/var/tmp/spdk.sock
 
-echo "ℹ️  T1: mon config objecter_dispatch_to_op_executor"
+echo "ℹ️  T1: validate ceph config set objecter_dispatch_to_op_executor"
 op_exec=$(docker compose exec -T ceph \
   ceph config get client objecter_dispatch_to_op_executor | tr -d '\r\n')
-echo "objecter_dispatch_to_op_executor=$op_exec"
+echo "ceph config get client objecter_dispatch_to_op_executor=$op_exec"
 [ "$op_exec" = "true" ]
+
+# Confirm the option is present in the mon config DB (set by start_up_*, not default).
+dump=$(docker compose exec -T ceph ceph config dump -f json)
+echo "$dump" | jq -e '
+  map(select(
+    .name == "objecter_dispatch_to_op_executor"
+    and (.value == "true" or .value == true)
+  )) | length > 0
+' >/dev/null
+echo "✅ mon config DB has objecter_dispatch_to_op_executor=true"
+
 strand=$(docker compose exec -T ceph \
   ceph config get client objecter_dispatch_to_session_strand 2>/dev/null | tr -d '\r\n' || true)
 echo "objecter_dispatch_to_session_strand=${strand:-<default>}"
-# Default is false; accept false or empty.
 if [ -n "$strand" ] && [ "$strand" != "false" ]; then
   echo "FAIL: objecter_dispatch_to_session_strand must be false, got $strand" >&2
   exit 1
 fi
 
-echo "ℹ️  T2/T4/T5: sanity I/O + SpdkContextWQ asserts"
-. "$test_dir/spdk_wq.sh"
-
-echo "ℹ️  T3: Objecter took op-executor path (enable log)"
-# Control-plane and/or RBD client logs land in compose nvmeof / container logs.
-if ! docker compose logs nvmeof 2>&1 | grep -q 'objecter_dispatch_to_op_executor=true'; then
-  echo "FAIL: missing Objecter_dispatch_to_op_executor=true enable log in nvmeof logs" >&2
-  docker compose logs nvmeof 2>&1 | tail -200 >&2 || true
+echo "ℹ️  T3: Objecter applied op-executor from mon config (ctor enable log)"
+# Objecter.cc logs this only when dispatch_to_op_executor was true at construction
+# (after get_monmap_and_config). Proves ceph config set was honored before GW connect.
+enable_re='objecter_dispatch_to_op_executor=true: OSD op replies'
+if ! docker compose logs nvmeof 2>&1 | grep -q "$enable_re"; then
+  echo "FAIL: missing Objecter enable log matching: $enable_re" >&2
+  echo "---- nvmeof logs (tail) ----" >&2
+  docker compose logs nvmeof 2>&1 | tail -300 >&2 || true
   exit 1
 fi
-echo "✅ Objecter op-executor enable log present"
+echo "✅ Objecter ctor applied objecter_dispatch_to_op_executor=true"
+
+echo "ℹ️  T2/T4/T5: sanity I/O + SpdkContextWQ asserts"
+. "$test_dir/spdk_wq.sh"
 
 echo "ℹ️  T6: namespace delete under light load"
 GW1_NAME=$(docker ps --format '{{.ID}}\t{{.Names}}' | awk '$2 ~ /nvmeof/ && $2 ~ /1/ {print $1}')
