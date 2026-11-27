@@ -6,6 +6,9 @@ FROM quay.io/rockylinux/rockylinux:10-minimal AS build
 ARG CEPH_CLUSTER_VERSION
 ARG CEPH_CLUSTER_CEPH_REPO_BASEURL
 ARG CEPH_CLUSTER_CEPH_SHA
+# GitHub org/repo used to fetch src/vstart.sh for the resolved SHA.
+# Use ceph/ceph-ci for shaman tip builds that are not on ceph/ceph yet.
+ARG CEPH_CLUSTER_GIT_REPO=ceph/ceph
 ARG CEPH_CLUSTER_EPEL_REPO_URL=""
 
 ARG MICRODNF_OPTS="\
@@ -50,6 +53,7 @@ RUN <<EOF
     echo ======================================================================
     echo CEPH_CLUSTER_CEPH_REPO_BASEURL=$CEPH_CLUSTER_CEPH_REPO_BASEURL
     echo CEPH_CLUSTER_CEPH_SHA=$CEPH_CLUSTER_CEPH_SHA
+    echo CEPH_CLUSTER_GIT_REPO=$CEPH_CLUSTER_GIT_REPO
     echo CEPH_CLUSTER_VERSION=$CEPH_CLUSTER_VERSION
     echo ======================================================================
 EOF
@@ -135,8 +139,9 @@ USER ceph
 WORKDIR /ceph
 ARG CEPH_CLUSTER_VERSION
 ARG CEPH_CLUSTER_CEPH_SHA
+ARG CEPH_CLUSTER_GIT_REPO=ceph/ceph
 ADD --chown=ceph:ceph --chmod=755 \
-    https://raw.githubusercontent.com/ceph/ceph/${CEPH_CLUSTER_CEPH_SHA:-v${CEPH_CLUSTER_VERSION:?}}/src/vstart.sh .
+    https://raw.githubusercontent.com/${CEPH_CLUSTER_GIT_REPO}/${CEPH_CLUSTER_CEPH_SHA:-v${CEPH_CLUSTER_VERSION:?}}/src/vstart.sh .
 
 COPY <<EOF ./CMakeCache.txt
 ceph_SOURCE_DIR:STATIC=/ceph
