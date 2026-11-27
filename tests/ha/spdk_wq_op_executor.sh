@@ -58,8 +58,14 @@ echo "ℹ️  T2/T4/T5: sanity I/O + SpdkContextWQ asserts"
 . "$test_dir/spdk_wq.sh"
 
 echo "ℹ️  T6: namespace delete under light load"
-GW1_NAME=$(docker ps --format '{{.ID}}\t{{.Names}}' | awk '$2 ~ /nvmeof/ && $2 ~ /1/ {print $1}')
+# Prefer GW1_NAME from sanity/spdk_wq (set before bdevperf). Re-resolve carefully:
+# project name is ceph-nvmeof-*, so a bare /nvmeof/ && /1/ also matches bdevperf-1.
+if [ -z "${GW1_NAME:-}" ]; then
+  GW1_NAME=$(docker ps --format '{{.ID}}\t{{.Names}}' \
+    | awk '$2 ~ /nvmeof-[0-9]+$/ {print $1; exit}')
+fi
 GW1_IP="$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$GW1_NAME")"
+echo "GW1_NAME=$GW1_NAME GW1_IP=$GW1_IP"
 cli() {
   docker compose run --rm nvmeof-cli --server-address "$GW1_IP" --server-port 5500 "$@"
 }
