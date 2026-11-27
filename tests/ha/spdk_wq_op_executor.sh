@@ -39,18 +39,17 @@ if [ -n "$strand" ] && [ "$strand" != "false" ]; then
 fi
 
 echo "ℹ️  T3: Objecter applied op-executor from mon config (ctor enable log)"
-# Objecter.cc logs this only when dispatch_to_op_executor was true at construction
-# (after get_monmap_and_config). Proves ceph config set was honored before GW connect.
-# librados dout lands in gateway/SPDK log files under /var/log/ceph (bind-mounted),
-# not always in `docker compose logs nvmeof` (Python logger only).
+# Objecter.cc logs this once at construction when the flag is true (after
+# get_monmap_and_config). A fresh `ceph` CLI client emits it on stderr; it does
+# not reliably land in gateway Python logs under /var/log/ceph.
 enable_re='objecter_dispatch_to_op_executor=true: OSD op replies'
-if ! grep -Rsq -- "$enable_re" /var/log/ceph/ 2>/dev/null && \
-   ! docker compose logs nvmeof 2>&1 | grep -q -- "$enable_re"; then
+cli_out=$(docker compose exec -T ceph ceph status 2>&1 || true)
+if ! printf '%s\n' "$cli_out" | grep -q -- "$enable_re" && \
+   ! grep -Rsq -- "$enable_re" /var/log/ceph/ 2>/dev/null && \
+   ! docker compose logs 2>&1 | grep -q -- "$enable_re"; then
   echo "FAIL: missing Objecter enable log matching: $enable_re" >&2
-  echo "---- /var/log/ceph (grep) ----" >&2
-  grep -Rs -- "$enable_re" /var/log/ceph/ 2>&1 | head -50 >&2 || true
-  echo "---- nvmeof compose logs (tail) ----" >&2
-  docker compose logs nvmeof 2>&1 | tail -200 >&2 || true
+  echo "---- ceph status stderr/stdout (head) ----" >&2
+  printf '%s\n' "$cli_out" | head -80 >&2 || true
   exit 1
 fi
 echo "✅ Objecter ctor applied objecter_dispatch_to_op_executor=true"
