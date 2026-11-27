@@ -41,11 +41,16 @@ fi
 echo "ℹ️  T3: Objecter applied op-executor from mon config (ctor enable log)"
 # Objecter.cc logs this only when dispatch_to_op_executor was true at construction
 # (after get_monmap_and_config). Proves ceph config set was honored before GW connect.
+# librados dout lands in gateway/SPDK log files under /var/log/ceph (bind-mounted),
+# not always in `docker compose logs nvmeof` (Python logger only).
 enable_re='objecter_dispatch_to_op_executor=true: OSD op replies'
-if ! docker compose logs nvmeof 2>&1 | grep -q "$enable_re"; then
+if ! grep -Rsq -- "$enable_re" /var/log/ceph/ 2>/dev/null && \
+   ! docker compose logs nvmeof 2>&1 | grep -q -- "$enable_re"; then
   echo "FAIL: missing Objecter enable log matching: $enable_re" >&2
-  echo "---- nvmeof logs (tail) ----" >&2
-  docker compose logs nvmeof 2>&1 | tail -300 >&2 || true
+  echo "---- /var/log/ceph (grep) ----" >&2
+  grep -Rs -- "$enable_re" /var/log/ceph/ 2>&1 | head -50 >&2 || true
+  echo "---- nvmeof compose logs (tail) ----" >&2
+  docker compose logs nvmeof 2>&1 | tail -200 >&2 || true
   exit 1
 fi
 echo "✅ Objecter ctor applied objecter_dispatch_to_op_executor=true"
