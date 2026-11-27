@@ -62,7 +62,6 @@ services:
         CEPH_CLUSTER_VERSION:
         CEPH_CLUSTER_CEPH_REPO_BASEURL:
         CEPH_CLUSTER_CEPH_SHA:
-        CEPH_CLUSTER_GIT_REPO:
       labels:
         io.ceph.nvmeof:
     environment:
